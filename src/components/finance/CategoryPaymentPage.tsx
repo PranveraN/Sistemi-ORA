@@ -1,0 +1,1137 @@
+"use client";
+
+import { useEffect, useState, useCallback, useRef } from "react";
+import Header from "@/components/layout/Header";
+import Link from "next/link";
+import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
+import {
+  Search, CheckCircle, AlertCircle, Clock,
+  Plus, X, Save, Users, Loader2, Printer,
+  TrendingUp, TrendingDown, ArrowLeftRight, FileUp,
+  CalendarDays, Download,
+} from "lucide-react";
+import * as XLSX from "xlsx";
+import InvoicePrintModal from "./InvoicePrintModal";
+import ExpensesSection from "./ExpensesSection";
+
+interface Payment {
+  id: number;
+  amount: number;
+  finalAmount: number;
+  paidAmount: number;
+  balance: number;
+  status: string;
+  method: string | null;
+  dueDate: string;
+  paidDate: string | null;
+  discount: number;
+  discountType: string | null;
+  scholarship: number;
+  description: string | null;
+}
+
+interface StudentRow {
+  id: number;
+  firstName: string;
+  lastName: string;
+  class: { id: number; name: string } | null;
+  discountPct: number;
+  payment: Payment | null;        // aggregated (for table stats)
+  installments: Payment[];        // raw (0, 1, or 2 records)
+}
+
+interface Stats {
+  total: number;
+  paid: number;
+  partial: number;
+  overdue: number;
+  pending: number;
+  totalRevenue: number;
+  totalDebt: number;
+}
+
+interface Category {
+  id: number;
+  name: string;
+  type: string;
+  defaultAmount: number;
+}
+
+interface Props {
+  categoryName: string;
+  title: string;
+  icon: React.ReactNode;
+  color: string;
+  isMonthly?: boolean;
+}
+
+type Tab = "income" | "expense" | "handover";
+
+function exportStudentsExcel(
+  students: StudentRow[],
+  stats: Stats | null,
+  title: string,
+  month: number,
+  year: number,
+  isMonthly: boolean,
+) {
+  const wb = XLSX.utils.book_new();
+  const today = new Date().toLocaleDateString("sq-AL");
+  const period = isMonthly && month > 0
+    ? `${MONTHS[month - 1]} ${year > 0 ? year : ""}`
+    : year > 0 ? String(year) : "Të gjitha";
+
+  // Sheet 1: Lista nxënësve
+  const rows: (string | number)[][] = [
+    [`${title} — ${period}`, "", "", "", "", "", ""],
+    ["#", "Emri", "Mbiemri", "Klasa", "Shuma (€)", "Paguar (€)", "Borxhi (€)", "Statusi"],
+    ...students.map((s, i) => [
+      i + 1,
+      s.firstName,
+      s.lastName,
+      s.class?.name ?? "—",
+      s.payment?.finalAmount ?? 0,
+      s.payment?.paidAmount ?? 0,
+      s.payment?.balance ?? 0,
+      s.payment
+        ? (s.payment.status === "PAID" ? "Paguar"
+          : s.payment.status === "PARTIAL" ? "Pjesërisht"
+          : s.payment.status === "OVERDUE" ? "Vonuar"
+          : "Pa pagesë")
+        : "Pa pagesë",
+    ]),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = [
+    { wch: 5 }, { wch: 18 }, { wch: 18 }, { wch: 8 },
+    { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 },
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, "Lista");
+
+  // Sheet 2: Përmbledhje
+  if (stats) {
+    const summary = [
+      [`RAPORTI — ${title}`, "", today],
+      [],
+      ["Gjithsej nxënës", stats.total],
+      ["Paguar", stats.paid],
+      ["Pjesërisht", stats.partial],
+      ["Vonuar", stats.overdue],
+      ["Pa pagesë", stats.pending],
+      [],
+      ["Të ardhura totale (€)", stats.totalRevenue],
+      ["Borxh total (€)", stats.totalDebt],
+    ];
+    const ws2 = XLSX.utils.aoa_to_sheet(summary);
+    ws2["!cols"] = [{ wch: 26 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, ws2, "Permbledhje");
+  }
+
+  const filename = `${title.replace(/\s+/g, "-")}-${period.replace(/\s+/g, "-")}-${today.replace(/\//g, "-")}.xlsx`;
+  XLSX.writeFile(wb, filename);
+}
+
+const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  { key: "income",   label: "Të Hyra",         icon: <TrendingUp    className="w-4 h-4" /> },
+  { key: "expense",  label: "Shpenzime",        icon: <TrendingDown  className="w-4 h-4" /> },
+  { key: "handover", label: "Dorezim Parash",   icon: <ArrowLeftRight className="w-4 h-4" /> },
+];
+
+export default function CategoryPaymentPage({ categoryName, title, icon, color, isMonthly = true }: Props) {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year,  setYear]  = useState(now.getFullYear());
+  const [search,  setSearch]  = useState("");
+  const [students, setStudents] = useState<StudentRow[]>([]);
+  const [stats,    setStats]   = useState<Stats | null>(null);
+  const [category, setCategory] = useState<Category | null>(null);
+  const [loading,  setLoading]  = useState(true);
+  const [modal,      setModal]      = useState<StudentRow | null>(null);
+  const [printModal, setPrintModal] = useState<StudentRow | null>(null);
+  const [tab, setTab] = useState<Tab>("income");
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams({ category: categoryName, search });
+    // month=0 → "Të gjitha" → omit month param
+    if (isMonthly && month > 0) params.set("month", String(month));
+    // year=0 → "Të gjitha" → omit year param
+    if (year > 0) params.set("year", String(year));
+    const res = await fetch(`/api/category-payments?${params}`);
+    if (res.ok) {
+      const d = await res.json();
+      setStudents(d.students);
+      setStats(d.stats);
+      setCategory(d.category);
+    }
+    setLoading(false);
+  }, [categoryName, month, year, search, isMonthly]);
+
+  const _firstRender = useRef(true);
+  useEffect(() => {
+    const delay = _firstRender.current ? 0 : 300;
+    _firstRender.current = false;
+    const t = setTimeout(fetchData, delay);
+    return () => clearTimeout(t);
+  }, [fetchData]);
+
+  const statusOrder = ["OVERDUE", "PARTIAL", "PENDING", "PAID"];
+  const sorted = [...students].sort((a, b) => {
+    const ai = statusOrder.indexOf(a.payment?.status || "PENDING");
+    const bi = statusOrder.indexOf(b.payment?.status || "PENDING");
+    return ai - bi;
+  });
+
+  return (
+    <>
+      <Header title={title} />
+      <div className="p-6 space-y-5 animate-fade-in">
+
+        {/* Tab bar + shared filters */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">
+            {TABS.map(t => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  tab === t.key
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <Link href="/payments/import" className="btn-secondary text-sm" title="Import pagesa nga Excel">
+            <FileUp className="w-4 h-4" />
+            Import Excel
+          </Link>
+
+          <button
+            onClick={() => exportStudentsExcel(students, stats, title, month, year, isMonthly)}
+            className="btn-secondary text-sm"
+            title="Exporto në Excel"
+          >
+            <Download className="w-4 h-4" />
+            Exporto Excel
+          </button>
+
+          <div className="flex items-center gap-2 ml-auto">
+            {isMonthly && (
+              <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="form-input w-36">
+                <option value={0}>Të gjitha</option>
+                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            )}
+            <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-28">
+              <option value={0}>Të gjitha</option>
+              {[2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* ── INCOME TAB ── */}
+        {tab === "income" && (
+          <>
+            {stats && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                <StatCard label="Gjithsej"   value={stats.total}   icon={<Users         className="w-4 h-4" />} bg="bg-slate-100 dark:bg-slate-700"       text="text-slate-600 dark:text-slate-300" />
+                <StatCard label="Paguar"     value={stats.paid}    icon={<CheckCircle   className="w-4 h-4" />} bg="bg-green-50 dark:bg-green-900/30"     text="text-green-600 dark:text-green-400" />
+                <StatCard label="Pjesërisht" value={stats.partial} icon={<Clock         className="w-4 h-4" />} bg="bg-blue-50 dark:bg-blue-900/30"       text="text-blue-600 dark:text-blue-400" />
+                <StatCard label="Vonuar"     value={stats.overdue} icon={<AlertCircle   className="w-4 h-4" />} bg="bg-red-50 dark:bg-red-900/30"         text="text-red-600 dark:text-red-400" />
+                <div className="card p-3 sm:col-span-2">
+                  <p className="text-xs text-slate-400 mb-0.5">Të Hyra</p>
+                  <p className="text-lg font-bold text-green-600">{formatCurrency(stats.totalRevenue)}</p>
+                </div>
+                <div className="card p-3 sm:col-span-2 lg:col-span-2 hidden lg:block">
+                  <p className="text-xs text-slate-400 mb-0.5">Borxhe</p>
+                  <p className="text-lg font-bold text-red-500">{formatCurrency(stats.totalDebt)}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Kërko nxënësin..."
+                  className="form-input pl-9"
+                />
+              </div>
+              <div className="text-sm text-slate-400">
+                {stats && <span>{stats.paid}/{stats.total} paguan</span>}
+              </div>
+            </div>
+
+            {stats && stats.total > 0 && (
+              <div className="card p-3 flex items-center gap-3">
+                <span className="text-xs text-slate-400 w-20 flex-shrink-0">Pagesa</span>
+                <div className="flex-1 h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden flex">
+                  <div className="bg-green-500 h-full transition-all" style={{ width: `${(stats.paid    / stats.total) * 100}%` }} />
+                  <div className="bg-blue-400 h-full transition-all"  style={{ width: `${(stats.partial / stats.total) * 100}%` }} />
+                  <div className="bg-red-400  h-full transition-all"  style={{ width: `${(stats.overdue / stats.total) * 100}%` }} />
+                </div>
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 w-12 text-right">
+                  {Math.round(((stats.paid + stats.partial) / stats.total) * 100)}%
+                </span>
+              </div>
+            )}
+
+            {/* Student table */}
+            <div className="card overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50">
+                    <tr>
+                      <th className="table-header">#</th>
+                      <th className="table-header">Nxënësi</th>
+                      <th className="table-header">Klasa</th>
+                      <th className="table-header">Shuma</th>
+                      <th className="table-header">Paguar</th>
+                      <th className="table-header">Borxhi</th>
+                      <th className="table-header">Metoda</th>
+                      <th className="table-header">Data / Afati</th>
+                      <th className="table-header">Statusi</th>
+                      <th className="table-header text-right">Veprime</th>
+                      <th className="table-header w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={11} className="py-16 text-center">
+                          <Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" />
+                        </td>
+                      </tr>
+                    ) : sorted.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="py-16 text-center text-slate-400 text-sm">
+                          Asnjë nxënës nuk u gjet
+                        </td>
+                      </tr>
+                    ) : sorted.map((s, i) => {
+                      const p = s.payment;
+                      const hasMonthly = s.installments.some(p => p.description?.startsWith("MUAJI_"));
+                      const hasTwo = !hasMonthly && s.installments.length >= 2;
+                      const k1 = hasTwo ? s.installments[0] : null;
+                      const k2 = hasTwo ? s.installments[1] : null;
+                      const statusKey = p?.status || "PENDING";
+                      const rowBg = statusKey === "OVERDUE" ? "bg-red-50/40 dark:bg-red-900/10" : "";
+                      const basePrice = category?.defaultAmount ?? 0;
+                      const expectedPrice = Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100));
+                      const debt = p?.status === "PAID" ? 0 : p ? p.balance : expectedPrice;
+
+                      return (
+                        <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${rowBg}`}>
+                          <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
+                          <td className="table-cell">
+                            <Link href={`/students/${s.id}`} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
+                              {s.firstName} {s.lastName}
+                            </Link>
+                            {hasMonthly && (
+                              <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-medium">
+                                <CalendarDays className="w-3 h-3" />
+                                {s.installments.length} muaj
+                              </span>
+                            )}
+                            {hasTwo && (
+                              <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded font-medium">
+                                <CalendarDays className="w-3 h-3" />
+                                2 këste
+                              </span>
+                            )}
+                          </td>
+                          <td className="table-cell">
+                            {s.class
+                              ? <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-2 py-0.5 rounded text-xs font-medium">{s.class.name}</span>
+                              : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="table-cell font-medium text-slate-800 dark:text-slate-200">
+                            {p ? (
+                              formatCurrency(p.finalAmount)
+                            ) : basePrice > 0 ? (
+                              <div>
+                                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                  {formatCurrency(expectedPrice)}
+                                </span>
+                                {(s.discountPct ?? 0) > 0 && (
+                                  <>
+                                    <span className="ml-1 text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
+                                      -{s.discountPct}%
+                                    </span>
+                                    <p className="text-[10px] text-slate-400 line-through">{formatCurrency(basePrice)}</p>
+                                  </>
+                                )}
+                              </div>
+                            ) : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="table-cell text-green-600 dark:text-green-400 font-medium">
+                            {p ? formatCurrency(p.paidAmount) : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="table-cell">
+                            {p?.status === "PAID" ? (
+                              <span className="text-green-500 text-xs font-medium">✓ Pa borxh</span>
+                            ) : p && p.balance > 0 ? (
+                              <span className="text-red-600 dark:text-red-400 font-semibold">{formatCurrency(p.balance)}</span>
+                            ) : !p && expectedPrice > 0 ? (
+                              <span className="text-red-600 dark:text-red-400 font-semibold">{formatCurrency(expectedPrice)}</span>
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </td>
+                          <td className="table-cell text-slate-500 dark:text-slate-400 text-xs">
+                            {hasTwo ? (
+                              <div className="space-y-0.5">
+                                {k1?.method && <div>K1: {getStatusLabel(k1.method)}</div>}
+                                {k2?.method && <div>K2: {getStatusLabel(k2.method)}</div>}
+                                {!k1?.method && !k2?.method && "—"}
+                              </div>
+                            ) : (
+                              p?.method ? getStatusLabel(p.method) : "—"
+                            )}
+                          </td>
+                          <td className="table-cell text-slate-400 text-xs">
+                            {hasTwo && k1 && k2 ? (
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-slate-400 w-6">K1:</span>
+                                  {k1.paidDate
+                                    ? <span className="text-green-600">{formatDate(k1.paidDate)}</span>
+                                    : <span className="text-red-400">Afati {formatDate(k1.dueDate)}</span>}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-slate-400 w-6">K2:</span>
+                                  {k2.paidDate
+                                    ? <span className="text-green-600">{formatDate(k2.paidDate)}</span>
+                                    : <span className="text-red-400">Afati {formatDate(k2.dueDate)}</span>}
+                                </div>
+                              </div>
+                            ) : p?.paidDate ? (
+                              formatDate(p.paidDate)
+                            ) : p?.dueDate ? (
+                              <span className="text-red-400">Afati: {formatDate(p.dueDate)}</span>
+                            ) : "—"}
+                          </td>
+                          <td className="table-cell">
+                            {hasTwo && k1 && k2 ? (
+                              <div className="space-y-1">
+                                <span className={`badge text-[10px] ${getStatusColor(k1.status)}`}>
+                                  K1 {getStatusLabel(k1.status)}
+                                </span>
+                                <span className={`badge text-[10px] ${getStatusColor(k2.status)}`}>
+                                  K2 {getStatusLabel(k2.status)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className={`badge ${getStatusColor(statusKey)}`}>
+                                {p ? getStatusLabel(statusKey) : "Pa pagesë"}
+                              </span>
+                            )}
+                          </td>
+                          <td className="table-cell text-right">
+                            <button
+                              onClick={() => setModal(s)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                p?.status === "PAID"
+                                  ? "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                  : "bg-primary-600 hover:bg-primary-700 text-white"
+                              }`}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              {hasMonthly ? "Modifiko Muajt" : hasTwo ? "Modifiko Këste" : p ? (p.status === "PAID" ? "Modifiko" : "Plotëso") : "Shto"}
+                            </button>
+                          </td>
+                          <td className="table-cell">
+                            <button
+                              onClick={() => setPrintModal(s)}
+                              title="Gjenero faturë"
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 dark:text-slate-500 dark:hover:text-primary-400 transition-colors"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+
+        {tab === "expense" && (
+          <ExpensesSection categoryId={category?.id ?? null} type="EXPENSE" month={month} year={year} />
+        )}
+
+        {tab === "handover" && (
+          <ExpensesSection categoryId={category?.id ?? null} type="HANDOVER" month={month} year={year} />
+        )}
+      </div>
+
+      {modal && category && (
+        <PaymentModal
+          student={modal}
+          category={category}
+          month={isMonthly && month > 0 ? month : undefined}
+          year={year}
+          onClose={() => setModal(null)}
+          onSave={async () => { setModal(null); await fetchData(); }}
+        />
+      )}
+
+      {printModal && (
+        <InvoicePrintModal
+          student={printModal}
+          payment={printModal.payment}
+          categoryName={title}
+          month={isMonthly && month > 0 ? month : undefined}
+          year={year}
+          onClose={() => setPrintModal(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function StatCard({ label, value, icon, bg, text }: {
+  label: string; value: number; icon: React.ReactNode; bg: string; text: string;
+}) {
+  return (
+    <div className="card p-3 flex items-center gap-2.5">
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bg}`}>
+        <span className={text}>{icon}</span>
+      </div>
+      <div>
+        <p className={`text-xl font-bold ${text}`}>{value}</p>
+        <p className="text-xs text-slate-400">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+const SCHOOL_MONTHS_LBL = ["Shtator", "Tetor", "Nëntor", "Dhjetor", "Janar", "Shkurt", "Mars", "Prill", "Maj", "Qershor"];
+const SCHOOL_MONTH_CALS = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6];
+
+/* ─── Payment Modal ──────────────────────────────────────── */
+interface ModalProps {
+  student: StudentRow;
+  category: Category;
+  month?: number;
+  year: number;
+  onClose: () => void;
+  onSave: () => void;
+}
+
+function PaymentModal({ student, category, month, year, onClose, onSave }: ModalProps) {
+  const today = new Date().toISOString().split("T")[0];
+  const installments = student.installments;
+
+  // Detect existing installment type
+  const k1Existing = installments.find(p => p.description === "KESTI_1") ?? installments[0] ?? null;
+  const k2Existing = installments.find(p => p.description === "KESTI_2") ?? installments[1] ?? null;
+  const isAlreadyMonthly = installments.some(p => p.description?.startsWith("MUAJI_"));
+  const isAlreadyTwo = !isAlreadyMonthly && (
+    installments.length >= 2 ||
+    installments.some(p => p.description === "KESTI_1" || p.description === "KESTI_2")
+  );
+
+  // Single payment is the first one if it's not a KESTI/MUAJI record
+  const singleExisting = !isAlreadyTwo && !isAlreadyMonthly ? (installments[0] ?? null) : null;
+
+  const [mode, setMode] = useState<"single" | "two" | "monthly">(
+    isAlreadyMonthly ? "monthly" : isAlreadyTwo ? "two" : "single"
+  );
+  const [saving, setSaving] = useState(false);
+
+  // ── Common form (gross amount + discounts) ──
+  const [form, setForm] = useState({
+    amount:       String(singleExisting?.amount      ?? k1Existing?.amount ?? ""),
+    discount:     String(singleExisting?.discount    ?? "0"),
+    discountType: singleExisting?.discountType       ?? "fixed",
+    scholarship:  String(singleExisting?.scholarship ?? "0"),
+  });
+
+  // Derived final amount for reference
+  const amount      = parseFloat(form.amount || "0");
+  const discount    = parseFloat(form.discount || "0");
+  const scholarship = parseFloat(form.scholarship || "0");
+  const discountAmt = form.discountType === "percentage" ? (amount * discount) / 100 : discount;
+  const totalFinal  = Math.max(0, amount - discountAmt - scholarship);
+
+  // ── Single mode extra state ──
+  const [sForm, setSForm] = useState({
+    paidAmount: String(singleExisting?.paidAmount ?? ""),
+    method:     singleExisting?.method            ?? "CASH",
+    dueDate:    singleExisting?.dueDate
+      ? new Date(singleExisting.dueDate).toISOString().split("T")[0]
+      : new Date(year, (month ?? 1) - 1, 5).toISOString().split("T")[0],
+    paidDate:   singleExisting?.paidDate
+      ? new Date(singleExisting.paidDate).toISOString().split("T")[0]
+      : today,
+  });
+
+  // ── Two-installment state ──
+  const half1 = k1Existing ? k1Existing.finalAmount : Math.ceil(totalFinal / 2);
+  const half2 = k2Existing ? k2Existing.finalAmount : totalFinal - Math.ceil(totalFinal / 2);
+
+  const [k1Form, setK1Form] = useState({
+    portion:    String(half1),
+    paidAmount: String(k1Existing?.paidAmount ?? ""),
+    paidDate:   k1Existing?.paidDate ? new Date(k1Existing.paidDate).toISOString().split("T")[0] : today,
+    dueDate:    k1Existing?.dueDate  ? new Date(k1Existing.dueDate).toISOString().split("T")[0]  : "2026-09-15",
+    method:     k1Existing?.method   ?? "CASH",
+  });
+
+  const [k2Form, setK2Form] = useState({
+    portion:    String(half2),
+    paidAmount: String(k2Existing?.paidAmount ?? ""),
+    paidDate:   k2Existing?.paidDate ? new Date(k2Existing.paidDate).toISOString().split("T")[0] : today,
+    dueDate:    k2Existing?.dueDate  ? new Date(k2Existing.dueDate).toISOString().split("T")[0]  : "2026-11-30",
+    method:     k2Existing?.method   ?? "CASH",
+  });
+
+  // Auto-update portion 2 when totalFinal or portion 1 changes
+  const portion1 = parseFloat(k1Form.portion || "0");
+  const portion2 = parseFloat(k2Form.portion || "0");
+  const portionSum = portion1 + portion2;
+
+  function set(field: string, val: string) { setForm(f => ({ ...f, [field]: val })); }
+  function setS(field: string, val: string) { setSForm(f => ({ ...f, [field]: val })); }
+  function setK1(field: string, val: string) { setK1Form(f => ({ ...f, [field]: val })); }
+  function setK2(field: string, val: string) { setK2Form(f => ({ ...f, [field]: val })); }
+
+  // ── Monthly installment state ──
+  function defaultDueMonth(idx: number): string {
+    const yr = year > 0 ? year : new Date().getFullYear();
+    const calYear = idx < 4 ? yr : yr + 1;
+    const calMonth = idx < 4 ? idx + 9 : idx - 3;
+    return `${calYear}-${String(calMonth).padStart(2, "0")}-05`;
+  }
+
+  const [mForms, setMForms] = useState<{
+    portion: string; paidAmount: string; paidDate: string; dueDate: string; method: string;
+  }[]>(() =>
+    Array.from({ length: 10 }, (_, i) => {
+      const ex = installments.find(p => p.description === `MUAJI_${i + 1}`) ?? null;
+      return {
+        portion:    ex ? String(ex.finalAmount)  : "",
+        paidAmount: ex ? String(ex.paidAmount)   : "0",
+        paidDate:   ex?.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
+        dueDate:    ex?.dueDate  ? new Date(ex.dueDate).toISOString().split("T")[0]  : defaultDueMonth(i),
+        method:     ex?.method   ?? "CASH",
+      };
+    })
+  );
+
+  function setM(idx: number, field: string, val: string) {
+    setMForms(f => f.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  }
+
+  function splitEvenly() {
+    const perMonth = totalFinal > 0 ? Math.round((totalFinal / 10) * 100) / 100 : 0;
+    setMForms(f => f.map(r => ({ ...r, portion: String(perMonth) })));
+  }
+
+  const sPaid    = parseFloat(sForm.paidAmount || "0");
+  const sBalance = Math.max(0, totalFinal - sPaid);
+  const k1Paid   = parseFloat(k1Form.paidAmount || "0");
+  const k2Paid   = parseFloat(k2Form.paidAmount || "0");
+
+  function statusLabel(portionAmt: number, paidAmt: number, dueDateStr: string): { label: string; color: string } {
+    if (portionAmt > 0 && paidAmt >= portionAmt) return { label: "✓ Paguar", color: "text-green-600" };
+    if (paidAmt > 0) return { label: "~ Pjesërisht", color: "text-blue-600" };
+    if (dueDateStr && new Date(dueDateStr) < new Date()) return { label: "⚠ Vonuar", color: "text-red-600" };
+    return { label: "Pending", color: "text-slate-400" };
+  }
+
+  async function handleSave() {
+    setSaving(true);
+
+    if (mode === "single") {
+      // If switching from two-installment to single: delete both old ones
+      if (isAlreadyTwo) {
+        await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+      }
+      const payload = {
+        studentId:    student.id,
+        categoryId:   category.id,
+        amount:       form.amount,
+        discount:     form.discount,
+        discountType: form.discountType,
+        scholarship:  form.scholarship,
+        paidAmount:   sForm.paidAmount,
+        method:       sForm.method,
+        dueDate:      sForm.dueDate,
+        paidDate:     sForm.paidDate,
+        description:  null,
+        month,
+        year,
+      };
+      if (singleExisting) {
+        await fetch(`/api/payments/${singleExisting.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+    } else if (mode === "two") {
+      // Two-installment mode
+      // If switching from single to two: delete old single payment
+      if (!isAlreadyTwo && singleExisting) {
+        await fetch(`/api/payments/${singleExisting.id}`, { method: "DELETE" });
+      }
+
+      const saveInstallment = async (
+        existing: Payment | null,
+        portionAmt: number,
+        paidAmt: number,
+        dueDate: string,
+        paidDate: string,
+        method: string,
+        description: string,
+      ) => {
+        const payload = {
+          studentId:    student.id,
+          categoryId:   category.id,
+          amount:       portionAmt,
+          discount:     0,
+          discountType: "fixed",
+          scholarship:  0,
+          paidAmount:   paidAmt,
+          method,
+          dueDate,
+          paidDate,
+          description,
+          month,
+          year,
+        };
+        if (existing) {
+          await fetch(`/api/payments/${existing.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        } else {
+          await fetch("/api/payments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
+      };
+
+      await saveInstallment(k1Existing, portion1, k1Paid, k1Form.dueDate, k1Form.paidDate, k1Form.method, "KESTI_1");
+      await saveInstallment(k2Existing, portion2, k2Paid, k2Form.dueDate, k2Form.paidDate, k2Form.method, "KESTI_2");
+    } else {
+      // Monthly mode — delete non-monthly installments if switching from other mode
+      if (!isAlreadyMonthly) {
+        await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+      }
+      const yr = year > 0 ? year : new Date().getFullYear();
+      await Promise.all(mForms.map(async (mf, i) => {
+        const ex = installments.find(p => p.description === `MUAJI_${i + 1}`) ?? null;
+        const payload = {
+          studentId:    student.id,
+          categoryId:   category.id,
+          amount:       parseFloat(mf.portion || "0"),
+          discount:     0,
+          discountType: "fixed",
+          scholarship:  0,
+          paidAmount:   parseFloat(mf.paidAmount || "0"),
+          method:       mf.method,
+          dueDate:      mf.dueDate,
+          paidDate:     mf.paidDate,
+          description:  `MUAJI_${i + 1}`,
+          month:        SCHOOL_MONTH_CALS[i],
+          year:         i < 4 ? yr : yr + 1,
+        };
+        if (ex) {
+          await fetch(`/api/payments/${ex.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        } else {
+          await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        }
+      }));
+    }
+
+    setSaving(false);
+    onSave();
+  }
+
+  function quickPay() {
+    setSForm(f => ({ ...f, paidAmount: String(totalFinal), paidDate: today }));
+  }
+
+  const k1Status = statusLabel(portion1, k1Paid, k1Form.dueDate);
+  const k2Status = statusLabel(portion2, k2Paid, k2Form.dueDate);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl animate-fade-in max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-800 z-10">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-white">
+              {isAlreadyTwo || mode === "two" ? "Pagesa me Dy Këste" : (singleExisting ? "Modifiko Pagesën" : "Shto Pagesë")}
+            </h3>
+            <p className="text-sm text-slate-400 mt-0.5">
+              {student.firstName} {student.lastName}
+              {student.class && <span> • Klasa {student.class.name}</span>}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {/* Mode toggle */}
+          <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-xl w-fit">
+            <button
+              onClick={() => setMode("single")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                mode === "single"
+                  ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
+            >
+              Pagesë e plotë
+            </button>
+            <button
+              onClick={() => setMode("two")}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                mode === "two"
+                  ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
+            >
+              <CalendarDays className="w-4 h-4" />
+              Dy Këste
+            </button>
+            <button
+              onClick={() => setMode("monthly")}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                mode === "monthly"
+                  ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
+            >
+              <CalendarDays className="w-4 h-4" />
+              Çdo Muaj
+            </button>
+          </div>
+
+          {/* Common: gross amount + discounts */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Shuma & Zbritja</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="form-label">Shuma (€) <span className="text-red-500">*</span></label>
+                <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)}
+                  className="form-input" placeholder="0.00" min="0" step="0.01" />
+              </div>
+              <div>
+                <label className="form-label">Zbritja</label>
+                <div className="flex gap-1">
+                  <select value={form.discountType} onChange={e => set("discountType", e.target.value)} className="form-input w-16 text-xs">
+                    <option value="fixed">€</option>
+                    <option value="percentage">%</option>
+                  </select>
+                  <input type="number" value={form.discount} onChange={e => set("discount", e.target.value)}
+                    className="form-input flex-1" placeholder="0" min="0" />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-2 px-3 py-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg text-sm">
+              <span className="text-slate-500">Shuma finale:</span>
+              <span className="font-bold text-primary-700 dark:text-primary-400">{formatCurrency(totalFinal)}</span>
+            </div>
+          </div>
+
+          {/* ── SINGLE MODE ── */}
+          {mode === "single" && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Pagesa</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">Paguar (€)</label>
+                  <input type="number" value={sForm.paidAmount} onChange={e => setS("paidAmount", e.target.value)}
+                    className="form-input" placeholder="0.00" min="0" step="0.01" />
+                </div>
+                <div>
+                  <label className="form-label">Mënyra</label>
+                  <select value={sForm.method} onChange={e => setS("method", e.target.value)} className="form-input">
+                    <option value="CASH">Cash</option>
+                    <option value="BANK">Bankë</option>
+                    <option value="CARD">Kartelë</option>
+                    <option value="ONLINE">Online</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">Afati i Pagesës</label>
+                  <input type="date" value={sForm.dueDate} onChange={e => setS("dueDate", e.target.value)} className="form-input" />
+                </div>
+                <div>
+                  <label className="form-label">Data e Pagesës</label>
+                  <input type="date" value={sForm.paidDate} onChange={e => setS("paidDate", e.target.value)} className="form-input" />
+                </div>
+              </div>
+              {sBalance > 0 && sPaid > 0 && (
+                <div className="flex items-center justify-between p-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm">
+                  <span className="text-amber-700 dark:text-amber-400">Borxh i mbetur:</span>
+                  <span className="font-bold text-amber-700 dark:text-amber-400">{formatCurrency(sBalance)}</span>
+                </div>
+              )}
+              {totalFinal > 0 && sPaid < totalFinal && (
+                <button onClick={quickPay} className="w-full py-2 rounded-lg border-2 border-dashed border-green-300 dark:border-green-700 text-green-600 dark:text-green-400 text-sm font-medium hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors flex items-center justify-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  Shëno si paguar plotësisht ({formatCurrency(totalFinal)})
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── TWO INSTALLMENTS MODE ── */}
+          {mode === "two" && (
+            <div className="space-y-4">
+              {/* Portion validation */}
+              {totalFinal > 0 && Math.abs(portionSum - totalFinal) > 0.01 && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+                  ⚠ Shuma e dy kësteve ({formatCurrency(portionSum)}) nuk përputhet me totalin ({formatCurrency(totalFinal)})
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* K1 */}
+                <div className="border border-slate-200 dark:border-slate-600 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Kësti i Parë</p>
+                    <span className={`text-xs font-medium ${k1Status.color}`}>{k1Status.label}</span>
+                  </div>
+                  <div>
+                    <label className="form-label">Shuma e këstit (€)</label>
+                    <input type="number" value={k1Form.portion} onChange={e => setK1("portion", e.target.value)}
+                      className="form-input" placeholder="0" min="0" step="0.01" />
+                  </div>
+                  <div>
+                    <label className="form-label">Afati</label>
+                    <input type="date" value={k1Form.dueDate} onChange={e => setK1("dueDate", e.target.value)} className="form-input" />
+                  </div>
+                  <div>
+                    <label className="form-label">Paguar (€)</label>
+                    <input type="number" value={k1Form.paidAmount} onChange={e => setK1("paidAmount", e.target.value)}
+                      className="form-input" placeholder="0" min="0" step="0.01" />
+                  </div>
+                  <div>
+                    <label className="form-label">Data e pagesës</label>
+                    <input type="date" value={k1Form.paidDate} onChange={e => setK1("paidDate", e.target.value)} className="form-input" />
+                  </div>
+                  <div>
+                    <label className="form-label">Mënyra</label>
+                    <select value={k1Form.method} onChange={e => setK1("method", e.target.value)} className="form-input">
+                      <option value="CASH">Cash</option>
+                      <option value="BANK">Bankë</option>
+                      <option value="CARD">Kartelë</option>
+                      <option value="ONLINE">Online</option>
+                    </select>
+                  </div>
+                  {portion1 > 0 && k1Paid < portion1 && (
+                    <button
+                      onClick={() => setK1("paidAmount", String(portion1))}
+                      className="w-full py-1.5 rounded-lg border border-dashed border-green-300 dark:border-green-700 text-green-600 text-xs font-medium hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
+                    >
+                      ✓ Paguar plotësisht ({formatCurrency(portion1)})
+                    </button>
+                  )}
+                </div>
+
+                {/* K2 */}
+                <div className="border border-slate-200 dark:border-slate-600 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Kësti i Dytë</p>
+                    <span className={`text-xs font-medium ${k2Status.color}`}>{k2Status.label}</span>
+                  </div>
+                  <div>
+                    <label className="form-label">Shuma e këstit (€)</label>
+                    <input type="number" value={k2Form.portion} onChange={e => setK2("portion", e.target.value)}
+                      className="form-input" placeholder="0" min="0" step="0.01" />
+                  </div>
+                  <div>
+                    <label className="form-label">Afati</label>
+                    <input type="date" value={k2Form.dueDate} onChange={e => setK2("dueDate", e.target.value)} className="form-input" />
+                  </div>
+                  <div>
+                    <label className="form-label">Paguar (€)</label>
+                    <input type="number" value={k2Form.paidAmount} onChange={e => setK2("paidAmount", e.target.value)}
+                      className="form-input" placeholder="0" min="0" step="0.01" />
+                  </div>
+                  <div>
+                    <label className="form-label">Data e pagesës</label>
+                    <input type="date" value={k2Form.paidDate} onChange={e => setK2("paidDate", e.target.value)} className="form-input" />
+                  </div>
+                  <div>
+                    <label className="form-label">Mënyra</label>
+                    <select value={k2Form.method} onChange={e => setK2("method", e.target.value)} className="form-input">
+                      <option value="CASH">Cash</option>
+                      <option value="BANK">Bankë</option>
+                      <option value="CARD">Kartelë</option>
+                      <option value="ONLINE">Online</option>
+                    </select>
+                  </div>
+                  {portion2 > 0 && k2Paid < portion2 && (
+                    <button
+                      onClick={() => setK2("paidAmount", String(portion2))}
+                      className="w-full py-1.5 rounded-lg border border-dashed border-green-300 dark:border-green-700 text-green-600 text-xs font-medium hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
+                    >
+                      ✓ Paguar plotësisht ({formatCurrency(portion2)})
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="grid grid-cols-3 gap-2 text-xs p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <div>
+                  <p className="text-slate-400 mb-0.5">Total paguar</p>
+                  <p className="font-bold text-green-600">{formatCurrency(k1Paid + k2Paid)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 mb-0.5">Borxhi</p>
+                  <p className="font-bold text-red-600">{formatCurrency(Math.max(0, totalFinal - k1Paid - k2Paid))}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 mb-0.5">Total këste</p>
+                  <p className="font-bold text-primary-600">{formatCurrency(portionSum)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── MONTHLY MODE ── */}
+          {mode === "monthly" && (() => {
+            const totalMAmount = mForms.reduce((s, f) => s + parseFloat(f.portion || "0"), 0);
+            const totalMPaid   = mForms.reduce((s, f) => s + parseFloat(f.paidAmount || "0"), 0);
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">10 Muajt Shkollor</p>
+                  <button onClick={splitEvenly} className="text-xs text-primary-600 hover:underline">
+                    Ndaj njëlloj ({totalFinal > 0 ? formatCurrency(Math.round(totalFinal / 10 * 100) / 100) : "0 €"}/muaj)
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-slate-400 border-b border-slate-100 dark:border-slate-700">
+                        <th className="text-left pb-2 pr-2 font-medium">Muaji</th>
+                        <th className="pb-2 pr-2 font-medium">Shuma €</th>
+                        <th className="pb-2 pr-2 font-medium">Afati</th>
+                        <th className="pb-2 pr-2 font-medium">Paguar €</th>
+                        <th className="pb-2 pr-2 font-medium">Mënyra</th>
+                        <th className="pb-2 pr-2 font-medium">Statusi</th>
+                        <th className="pb-2 font-medium"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mForms.map((mf, i) => {
+                        const portionAmt = parseFloat(mf.portion || "0");
+                        const paidAmt    = parseFloat(mf.paidAmount || "0");
+                        const st = statusLabel(portionAmt, paidAmt, mf.dueDate);
+                        return (
+                          <tr key={i} className="border-b border-slate-100 dark:border-slate-700/50">
+                            <td className="py-1.5 pr-2 font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                              {SCHOOL_MONTHS_LBL[i]}
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <input type="number" value={mf.portion} min="0"
+                                onChange={e => setM(i, "portion", e.target.value)}
+                                className="form-input py-1 w-20 text-xs text-right" placeholder="0" />
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <input type="date" value={mf.dueDate}
+                                onChange={e => setM(i, "dueDate", e.target.value)}
+                                className="form-input py-1 text-xs" />
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <input type="number" value={mf.paidAmount} min="0"
+                                onChange={e => setM(i, "paidAmount", e.target.value)}
+                                className="form-input py-1 w-20 text-xs text-right" placeholder="0" />
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <select value={mf.method} onChange={e => setM(i, "method", e.target.value)}
+                                className="form-input py-1 text-xs">
+                                <option value="CASH">Cash</option>
+                                <option value="BANK">Bankë</option>
+                                <option value="CARD">Kartelë</option>
+                                <option value="ONLINE">Online</option>
+                              </select>
+                            </td>
+                            <td className={`py-1.5 pr-2 font-medium whitespace-nowrap ${st.color}`}>{st.label}</td>
+                            <td className="py-1.5">
+                              {portionAmt > 0 && paidAmt < portionAmt && (
+                                <button onClick={() => setM(i, "paidAmount", String(portionAmt))}
+                                  className="text-green-600 dark:text-green-400 hover:underline text-xs whitespace-nowrap">
+                                  ✓ Pago
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl text-xs">
+                  <div>
+                    <p className="text-slate-400 mb-0.5">Total paguar</p>
+                    <p className="font-bold text-green-600">{formatCurrency(totalMPaid)}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 mb-0.5">Borxhi</p>
+                    <p className="font-bold text-red-600">{formatCurrency(Math.max(0, totalMAmount - totalMPaid))}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 mb-0.5">Total muajor</p>
+                    <p className={`font-bold ${Math.abs(totalMAmount - totalFinal) > 0.01 && totalFinal > 0 ? "text-amber-500" : "text-primary-600"}`}>
+                      {formatCurrency(totalMAmount)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        <div className="flex gap-3 p-5 pt-0 sticky bottom-0 bg-white dark:bg-slate-800">
+          <button onClick={onClose} className="btn-secondary flex-1 justify-center">
+            <X className="w-4 h-4" />Anulo
+          </button>
+          <button onClick={handleSave} disabled={saving} className="btn-primary flex-1 justify-center">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? "Duke ruajtur..." : mode === "two" ? "Ruaj të Dyja Këste" : mode === "monthly" ? "Ruaj 10 Muajt" : "Ruaj"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

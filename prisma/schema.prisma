@@ -1,0 +1,380 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  email     String     @unique
+  name      String
+  password  String
+  role      String     @default("SECRETARY") // ADMIN, FINANCE, SECRETARY
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  auditLogs AuditLog[]
+}
+
+model Class {
+  id        Int       @id @default(autoincrement())
+  name      String    // "1A", "2B", etj.
+  level     String    // "Klasa 1", "Klasa 2"
+  teacher   String?
+  students  Student[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Student {
+  id             Int       @id @default(autoincrement())
+  firstName      String
+  lastName       String
+  parentName     String?
+  birthDate      DateTime?
+  personalNumber String?   @unique
+  classId        Int?
+  class          Class?    @relation(fields: [classId], references: [id])
+  familyId       String?   // FAM-001, FAM-002, etj.
+  discountPct    Float     @default(0) // Zbritja % (vëlla/motër)
+  guardian       String?
+  motherNumber   String?
+  diaryNumber    String?
+  parentPhone    String?
+  address        String?
+  // Mother
+  motherName     String?
+  motherBirth    DateTime?
+  motherProf     String?
+  motherPhone    String?
+  motherEmail    String?
+  // Father
+  fatherName     String?
+  fatherBirth    DateTime?
+  fatherProf     String?
+  fatherPhone    String?
+  fatherEmail    String?
+  kontrata       String?   // Po, Nuk e ka kthy, Nuk ka
+  status         String    @default("ACTIVE") // ACTIVE, INACTIVE
+  enrollDate     DateTime  @default(now())
+  notes          String?
+  payments       Payment[]
+  invoices       Invoice[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([lastName, firstName])
+  @@index([status])
+  @@index([classId])
+  @@index([parentPhone])
+  @@index([fatherPhone])
+  @@index([motherPhone])
+}
+
+model PaymentCategory {
+  id            Int       @id @default(autoincrement())
+  name          String
+  description   String?
+  type          String    @default("monthly") // monthly, annual, one-time
+  defaultAmount Float     @default(0)
+  payments      Payment[]
+  expenses      Expense[]
+  createdAt     DateTime  @default(now())
+}
+
+model Expense {
+  id          Int             @id @default(autoincrement())
+  categoryId  Int
+  category    PaymentCategory @relation(fields: [categoryId], references: [id])
+  type        String          // "EXPENSE" | "HANDOVER"
+  amount      Float
+  description String?
+  recipient   String?
+  date        DateTime        @default(now())
+  method      String?
+  reference   String?
+  month       Int?
+  year        Int?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model ShpenzimKategori {
+  id        Int        @id @default(autoincrement())
+  emri      String
+  ngjyra    String?    // hex color, p.sh. "#ef4444"
+  ikona     String?    // emoji ose emër ikone
+  shpenzime Shpenzim[]
+  createdAt DateTime   @default(now())
+}
+
+model Shpenzim {
+  id         Int              @id @default(autoincrement())
+  kategoriId Int
+  kategori   ShpenzimKategori @relation(fields: [kategoriId], references: [id])
+  shuma      Float
+  pershkrim  String?
+  marres     String?
+  data       DateTime         @default(now())
+  metoda     String?          // CASH, BANK, CARD
+  referenca  String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([kategoriId])
+  @@index([data])
+}
+
+model Payment {
+  id            Int              @id @default(autoincrement())
+  studentId     Int
+  student       Student          @relation(fields: [studentId], references: [id])
+  categoryId    Int
+  category      PaymentCategory  @relation(fields: [categoryId], references: [id])
+  amount        Float
+  discount      Float            @default(0)
+  discountType  String?          // percentage, fixed
+  scholarship   Float            @default(0)
+  finalAmount   Float
+  dueDate       DateTime
+  paidDate      DateTime?
+  paidAmount    Float            @default(0)
+  balance       Float            @default(0)
+  method        String?          // CASH, BANK, CARD, ONLINE
+  status        String           @default("PENDING") // PENDING, PARTIAL, PAID, OVERDUE
+  description   String?
+  invoiceId     Int?
+  invoice       Invoice?         @relation(fields: [invoiceId], references: [id])
+  month         Int?             // 1-12 for monthly payments
+  year          Int?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model Invoice {
+  id          Int           @id @default(autoincrement())
+  number      String        @unique
+  type        String        // INVOICE, PROFORMA, OFFER
+  studentId   Int
+  student     Student       @relation(fields: [studentId], references: [id])
+  items       InvoiceItem[]
+  subtotal    Float
+  vatRate     Float         @default(0)
+  vatAmount   Float         @default(0)
+  total       Float
+  status      String        @default("DRAFT") // DRAFT, SENT, PAID, CANCELLED
+  dueDate     DateTime?
+  paidDate    DateTime?
+  notes       String?
+  payments    Payment[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model InvoiceItem {
+  id          Int     @id @default(autoincrement())
+  invoiceId   Int
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float   @default(1)
+  unitPrice   Float
+  total       Float
+}
+
+// ── Sistemi i Uniformave ──────────────────────────────────
+
+model UniProduct {
+  id          Int           @id @default(autoincrement())
+  name        String
+  description String?
+  photo       String?
+  buyPrice    Float
+  sellPrice   Float
+  stock       Int           @default(0)
+  stockAlert  Int           @default(5)
+  active      Boolean       @default(true)
+  saleItems   UniSaleItem[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model UniSale {
+  id            Int           @id @default(autoincrement())
+  customerName  String
+  customerPhone String?
+  totalAmount   Float
+  totalCost     Float
+  profit        Float
+  paidAmount    Float         @default(0)
+  balance       Float         @default(0)
+  status        String        @default("PENDING")
+  saleDate      DateTime      @default(now())
+  notes         String?
+  items         UniSaleItem[]
+  payments      UniPayment[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model UniSaleItem {
+  id        Int        @id @default(autoincrement())
+  saleId    Int
+  sale      UniSale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId Int
+  product   UniProduct @relation(fields: [productId], references: [id])
+  size      String?
+  quantity  Int
+  buyPrice  Float
+  sellPrice Float
+  total     Float
+  profit    Float
+}
+
+model UniPayment {
+  id        Int      @id @default(autoincrement())
+  saleId    Int
+  sale      UniSale  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  amount    Float
+  method    String   @default("CASH")
+  paidAt    DateTime @default(now())
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model UniHandover {
+  id          Int      @id @default(autoincrement())
+  amount      Float
+  description String?
+  recipient   String?
+  method      String   @default("CASH")
+  handoverAt  DateTime @default(now())
+  reference   String?
+  createdAt   DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  action    String   // CREATE, UPDATE, DELETE, LOGIN, etc.
+  entity    String   // Student, Payment, Invoice, etc.
+  entityId  Int?
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+// ── TIMI INVEST ───────────────────────────────────────────
+
+model TimiInvestStudent {
+  id           Int      @id @default(autoincrement())
+  firstName    String
+  lastName     String
+  parentName   String
+  parentPhone  String
+  regularPrice    Float
+  discountPct     Float    @default(0)
+  manualDiscAmt   Float    @default(0)
+  active       Boolean  @default(true)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model TimiInvestInvoice {
+  id          Int      @id @default(autoincrement())
+  number      String   @unique
+  seq         Int
+  month       Int
+  year        Int
+  parentName  String
+  date        DateTime @default(now())
+  items       String   // JSON: [{name, regularPrice, discountPct, finalAmount}]
+  totalAmount Float
+  timiDiscPct Float    @default(4.66)
+  timiDiscAmt Float
+  finalAmount Float
+  notes       String?
+  schoolYear  String?
+  createdAt   DateTime @default(now())
+}
+
+// ── Fletorja Digjitale e Adminit ──────────────────────────
+
+model AdminNote {
+  id        Int      @id @default(autoincrement())
+  title     String?
+  content   String
+  color     String   @default("slate") // slate, blue, yellow, green, red, purple, orange
+  tags      String?  // comma-separated
+  pinned    Boolean  @default(false)
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AdminTask {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  dueDate     DateTime?
+  assignedTo  String?
+  status      String    @default("TODO") // TODO, IN_PROGRESS, DONE, CANCELLED
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model AdminReminder {
+  id          Int      @id @default(autoincrement())
+  title       String
+  type        String   @default("GENERAL") // PAYMENT, MEETING, DOCUMENT, GENERAL
+  dueDate     DateTime
+  done        Boolean  @default(false)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AdminEvent {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  date        DateTime
+  endDate     DateTime?
+  type        String    @default("GENERAL") // EXAM, MEETING, ACTIVITY, HOLIDAY, GENERAL
+  color       String    @default("blue")
+  allDay      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// ── Stafi ─────────────────────────────────────────────────
+
+model Staff {
+  id          Int      @id @default(autoincrement())
+  emri        String
+  telefoni    String?
+  lenda       String?
+  nrPersonal  String?
+  nrLlogarise String?
+  banka       String?
+  totalBruto  Float?
+  kontrata    String?
+  kodi        String?
+  tipi        String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

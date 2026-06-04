@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"C:\\\\Users\\\\Akademia Ora\\\\Desktop\\\\Sistemi Ora\\\\src\\\\app\\\\api\\\\expenses\\\\[id]\" 2>/dev/null; echo \"done\")",
+      "PowerShell(Get-Process -Name \"node\")",
+      "PowerShell(Stop-Process -Force)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Akademia Ora\\Desktop\\Sistemi Ora\\src\\app\\api\\expenses"
+    ]
+  }
+}
