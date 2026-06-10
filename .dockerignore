@@ -1,0 +1,44 @@
+# Dependencies / build output (rebuilt inside the image)
+node_modules
+.next
+out
+build
+
+# Local databases — NEVER copy a dev/demo DB into the image.
+# The real database lives on the server's Docker volume.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
+
+# Secrets / local env
+.env
+.env.local
+.env*.local
+.env.production
+
+# Git / VCS
+.git
+.gitignore
+
+# Editor / OS / agent tooling
+.claude
+.vscode
+.idea
+.DS_Store
+
+# Docs and Windows helper scripts (not needed in the image)
+*.bat
+INSTALIMI.md
+DEPLOY.md
+check_size.mjs
+
+# Misc
+npm-debug.log*
+*.pem
+.vercel
+tsconfig.tsbuildinfo
