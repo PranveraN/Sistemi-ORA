@@ -4,6 +4,9 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Required when running behind a reverse proxy (nginx) / Cloudflare in
+  // production, so NextAuth trusts the forwarded Host/X-Forwarded-Proto headers.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",

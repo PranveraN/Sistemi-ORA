@@ -1,0 +1,34 @@
+# ---------------------------------------------------------------------------
+# Akademia Ora — production deployment
+#
+#   docker compose build
+#   docker compose up -d
+#
+# Configuration comes from .env.production (copy .env.production.example).
+# The app is published ONLY on 127.0.0.1 — your nginx reverse proxy (with the
+# Cloudflare Origin certificate) terminates TLS for admin.akademiaora.com and
+# proxies to it. See DEPLOY.md.
+# ---------------------------------------------------------------------------
+services:
+  app:
+    build: .
+    image: akademia-ora:latest
+    container_name: akademia-ora
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      # The database lives on the named volume below. Do not change this path
+      # unless you also change the volume mount.
+      DATABASE_URL: "file:/data/akademia-ora.db"
+      NODE_ENV: "production"
+    volumes:
+      - akademia-data:/data
+    ports:
+      # host:container — bound to localhost so only the local nginx can reach
+      # it. Change APP_PORT in .env.production if 3000 is already taken.
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+
+volumes:
+  akademia-data:
+    name: akademia-ora-data

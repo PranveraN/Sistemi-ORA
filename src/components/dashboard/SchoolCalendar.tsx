@@ -251,7 +251,7 @@ export default function SchoolCalendar() {
               const dateLabel = d.toLocaleDateString("sq-AL", { day: "numeric", month: "short" });
               return (
                 <div key={i} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border ${c.bg} ${c.border} cursor-pointer hover:opacity-90 transition-opacity`}
-                  onClick={() => setCur(new Date(d.getFullYear(), d.getMonth(), 1)) || setSelected(ev.date)}>
+                  onClick={() => { setCur(new Date(d.getFullYear(), d.getMonth(), 1)); setSelected(ev.date); }}>
                   <span className="text-base flex-shrink-0">{TYPE_ICONS[ev.type]}</span>
                   <div className="flex-1 min-w-0">
                     <p className={`text-xs font-semibold truncate ${c.text}`}>{ev.label}</p>
