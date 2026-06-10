@@ -12,6 +12,7 @@ import Link from "next/link";
 import OfertaModal from "@/components/OfertaModal";
 import TimiInvestModal from "@/components/TimiInvestModal";
 import QuickActions from "@/components/dashboard/QuickActions";
+import SchoolCalendar from "@/components/dashboard/SchoolCalendar";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -238,87 +239,74 @@ export default function DashboardPage() {
 
         </div>
 
-        {/* Charts */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          {/* Revenue Chart */}
-          <div className="card p-5 xl:col-span-2">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="section-title">Të Hyrat — 6 Muajt e Fundit</h2>
-            </div>
-            <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={data.monthlyChartData}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
-                />
-                <Tooltip
-                  formatter={(v: number) => [formatCurrency(v), "Të hyra"]}
-                  contentStyle={{
-                    background: "#1e293b",
-                    border: "none",
-                    borderRadius: "8px",
-                    color: "#f8fafc",
-                    fontSize: "12px",
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="total"
-                  stroke="#2563eb"
-                  strokeWidth={2}
-                  fill="url(#colorRevenue)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+        {/* Kalendarit + Grafiku + Statusi */}
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+
+          {/* Kalendari */}
+          <div className="xl:col-span-1">
+            <SchoolCalendar />
           </div>
 
-          {/* Quick stats */}
-          <div className="card p-5">
-            <h2 className="section-title mb-4">Statusi i Pagesave</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-700 dark:text-green-400">Të Paguara</span>
+          {/* Grafiku + Statusi */}
+          <div className="xl:col-span-3 flex flex-col gap-4">
+
+            {/* Revenue Chart */}
+            <div className="card p-5 flex-1">
+              <h2 className="section-title mb-4">Të Hyrat — 6 Muajt e Fundit</h2>
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={data.monthlyChartData}>
+                  <defs>
+                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false}
+                    tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+                  <Tooltip formatter={(v: number) => [formatCurrency(v), "Të hyra"]}
+                    contentStyle={{ background: "#1e293b", border: "none", borderRadius: "8px", color: "#f8fafc", fontSize: "12px" }} />
+                  <Area type="monotone" dataKey="total" stroke="#2563eb" strokeWidth={2} fill="url(#colorRevenue)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Statusi i Pagesave — horizontal */}
+            <div className="card p-4">
+              <h2 className="section-title mb-3">Statusi i Pagesave</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="flex items-center gap-2.5 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
+                  <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-green-600 dark:text-green-400">Të Paguara</p>
+                    <p className="text-sm font-bold text-green-700 dark:text-green-300">{formatCurrency(data.totalRevenue)}</p>
+                  </div>
                 </div>
-                <span className="text-sm font-bold text-green-700 dark:text-green-400">
-                  {formatCurrency(data.totalRevenue)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-600" />
-                  <span className="text-sm font-medium text-red-700 dark:text-red-400">Borxhe</span>
+                <div className="flex items-center gap-2.5 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl">
+                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-red-600 dark:text-red-400">Borxhe</p>
+                    <p className="text-sm font-bold text-red-700 dark:text-red-300">{formatCurrency(data.overdueAmount)}</p>
+                  </div>
                 </div>
-                <span className="text-sm font-bold text-red-700 dark:text-red-400">
-                  {formatCurrency(data.overdueAmount)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-yellow-600" />
-                  <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400">Vonuar ({data.overdueCount})</span>
+                <div className="flex items-center gap-2.5 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+                  <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-amber-600 dark:text-amber-400">Vonuar</p>
+                    <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{data.overdueCount} nxënës</p>
+                  </div>
                 </div>
-                <span className="text-sm font-bold text-yellow-700 dark:text-yellow-400">nxënës</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-700 dark:text-blue-400">Nxënës Aktivë</span>
+                <div className="flex items-center gap-2.5 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+                  <Users className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-blue-600 dark:text-blue-400">Nxënës Aktivë</p>
+                    <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{data.activeStudents}</p>
+                  </div>
                 </div>
-                <span className="text-sm font-bold text-blue-700 dark:text-blue-400">{data.activeStudents}</span>
               </div>
             </div>
+
           </div>
         </div>
 

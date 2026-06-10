@@ -43,8 +43,14 @@ interface Student {
   parentPhone: string | null;
   fatherName: string | null;
   fatherPhone: string | null;
+  fatherBirth: string | null;
+  fatherProf: string | null;
+  fatherEmail: string | null;
   motherName: string | null;
   motherPhone: string | null;
+  motherBirth: string | null;
+  motherProf: string | null;
+  motherEmail: string | null;
   personalNumber: string | null;
   birthDate: string | null;
   address: string | null;
@@ -175,27 +181,53 @@ export default function StudentProfile({ student }: { student: Student }) {
             />
           )}
 
-          <div className="border-t border-slate-100 dark:border-slate-700 pt-4 space-y-3">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Prindi</h4>
-            <InfoRow
-              label="Emri"
-              value={student.parentName}
-              icon={<User className="w-3.5 h-3.5 text-slate-400" />}
-            />
-            <InfoRow
-              label="Telefoni"
-              value={student.parentPhone}
-              icon={<Phone className="w-3.5 h-3.5 text-slate-400" />}
-            />
-            {student.guardian && <InfoRow label="Kujdestari" value={student.guardian} />}
-            {student.address && (
-              <InfoRow
-                label="Adresa"
-                value={student.address}
-                icon={<MapPin className="w-3.5 h-3.5 text-slate-400" />}
-              />
-            )}
-          </div>
+          {/* Baba */}
+          {(student.fatherName || student.fatherPhone) && (
+            <div className="border-t border-slate-100 dark:border-slate-700 pt-4 space-y-2.5">
+              <h4 className="text-xs font-semibold text-blue-500 uppercase tracking-wider flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5" /> Babai
+              </h4>
+              {student.fatherName  && <InfoRow label="Emri"        value={student.fatherName} />}
+              {student.fatherBirth && <InfoRow label="Datëlindja"  value={formatDate(student.fatherBirth)} />}
+              {student.fatherProf  && <InfoRow label="Profesioni"  value={student.fatherProf} />}
+              {student.fatherPhone && <InfoRow label="Telefoni"    value={student.fatherPhone} icon={<Phone className="w-3.5 h-3.5 text-slate-400" />} />}
+              {student.fatherEmail && <InfoRow label="E-mail"      value={student.fatherEmail} />}
+            </div>
+          )}
+
+          {/* Nëna */}
+          {(student.motherName || student.motherPhone) && (
+            <div className="border-t border-slate-100 dark:border-slate-700 pt-4 space-y-2.5">
+              <h4 className="text-xs font-semibold text-pink-500 uppercase tracking-wider flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5" /> Nëna
+              </h4>
+              {student.motherName  && <InfoRow label="Emri"        value={student.motherName} />}
+              {student.motherBirth && <InfoRow label="Datëlindja"  value={formatDate(student.motherBirth)} />}
+              {student.motherProf  && <InfoRow label="Profesioni"  value={student.motherProf} />}
+              {student.motherPhone && <InfoRow label="Telefoni"    value={student.motherPhone} icon={<Phone className="w-3.5 h-3.5 text-slate-400" />} />}
+              {student.motherEmail && <InfoRow label="E-mail"      value={student.motherEmail} />}
+            </div>
+          )}
+
+          {/* Fallback nëse nuk ka baba/nënë të regjistruar */}
+          {!student.fatherName && !student.fatherPhone && !student.motherName && !student.motherPhone && student.parentName && (
+            <div className="border-t border-slate-100 dark:border-slate-700 pt-4 space-y-2.5">
+              <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Prindi</h4>
+              <InfoRow label="Emri"    value={student.parentName} icon={<User className="w-3.5 h-3.5 text-slate-400" />} />
+              <InfoRow label="Telefoni" value={student.parentPhone} icon={<Phone className="w-3.5 h-3.5 text-slate-400" />} />
+            </div>
+          )}
+
+          {student.guardian && (
+            <div className="border-t border-slate-100 dark:border-slate-700 pt-3">
+              <InfoRow label="Kujdestari" value={student.guardian} />
+            </div>
+          )}
+          {student.address && (
+            <div className="border-t border-slate-100 dark:border-slate-700 pt-3">
+              <InfoRow label="Adresa" value={student.address} icon={<MapPin className="w-3.5 h-3.5 text-slate-400" />} />
+            </div>
+          )}
 
           {student.notes && (
             <div className="border-t border-slate-100 dark:border-slate-700 pt-4">

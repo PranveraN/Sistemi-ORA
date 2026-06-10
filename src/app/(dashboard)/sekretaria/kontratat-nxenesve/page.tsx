@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { Search, FileSignature, X, Printer, ChevronLeft, ChevronRight, Plus, FileDown, FileText } from "lucide-react";
 import React from "react";
@@ -15,6 +15,7 @@ interface Student {
   personalNumber: string;
   birthDate: string;
   address: string | null;
+  discountPct: number;
   class: { name: string; level: string } | null;
   motherName: string | null;
   motherBirth: string | null;
@@ -60,7 +61,25 @@ function fmtDate(iso: string) {
   } catch { return ""; }
 }
 
-function EF({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+function EF({ value, onChange, placeholder, suffix }: { value: string; onChange: (v: string) => void; placeholder?: string; suffix?: string }) {
+  if (suffix) {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", width: "100%", borderBottom: "1px dashed #bbb" }}>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          style={{
+            fontFamily: "inherit", fontSize: "inherit", flex: 1,
+            background: value ? "transparent" : "#fffbeb",
+            border: "none", outline: "none", padding: "1px 2px",
+          }}
+        />
+        <span style={{ fontFamily: "inherit", fontSize: "inherit", color: "#555", paddingRight: "2px", flexShrink: 0 }}>{suffix}</span>
+      </span>
+    );
+  }
   return (
     <input
       type="text"
@@ -226,31 +245,89 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
   const [siblingsAdded, setSiblingsAdded] = useState(false);
 
   useEffect(() => {
-    const phone = student.parentPhone || student.fatherPhone || student.motherPhone;
-    if (!phone) return;
-    fetch(`/api/students?siblingPhone=${encodeURIComponent(phone)}&excludeId=${student.id}&status=ACTIVE&limit=5`)
-      .then(r => r.json())
-      .then(data => { if (data.students?.length > 0) setSiblings(data.students); })
-      .catch(() => {});
+    // Normalizimi i numrave: mbajmë vetëm shifrat (pa +, hapësira, etj.)
+    function normPhone(p: string) { return p.replace(/\D/g, ""); }
+
+    const rawPhones = [student.fatherPhone, student.motherPhone, student.parentPhone]
+      .filter((p): p is string => Boolean(p));
+    // Për çdo numër, gjeneroj variante: me shifra të plota + pa prefiksin e vendit (3 shifrat e para)
+    const phones = [...new Set(
+      rawPhones.flatMap(p => {
+        const digits = normPhone(p);
+        return [digits, digits.slice(-9)]; // p.sh. "38344123456" dhe "44123456" / 9 shifra
+      }).filter(Boolean)
+    )];
+
+    const fetchAll = async () => {
+      const catsFetch = fetch("/api/categories");
+      const sibFetch = phones.length > 0
+        ? fetch(`/api/students?siblingAnyPhone=${encodeURIComponent(phones.join(","))}&excludeId=${student.id}&status=ACTIVE&limit=5`)
+        : null;
+
+      const [catsRes, sibRes] = await Promise.all([catsFetch, sibFetch ?? Promise.resolve(null)]);
+      const cats: { name: string; defaultAmount: number }[] = await catsRes.json();
+      const shkollimi = cats.find(c => c.name === "Shkollimi");
+      const base = shkollimi?.defaultAmount || 2000;
+      const mainPrice = Math.round(base * (1 - (student.discountPct || 0) / 100));
+
+      let found: Student[] = [];
+      if (sibRes) {
+        const sibData = await sibRes.json();
+        found = sibData.students || [];
+      }
+      const [s2, s3] = found;
+
+      setD(prev => ({
+        ...prev,
+        price: String(mainPrice),
+        ...(s2 ? {
+          sib2Name:     `${s2.firstName} ${s2.lastName}`,
+          sib2Personal: s2.personalNumber || "",
+          sib2Birth:    s2.birthDate ? fmtDate(s2.birthDate) : "",
+          sib2Class:    s2.class ? `${s2.class.level} — ${s2.class.name}` : "",
+          sib2Price:    String(Math.round(base * (1 - (s2.discountPct || 0) / 100))),
+        } : {}),
+        ...(s3 ? {
+          sib3Name:     `${s3.firstName} ${s3.lastName}`,
+          sib3Personal: s3.personalNumber || "",
+          sib3Birth:    s3.birthDate ? fmtDate(s3.birthDate) : "",
+          sib3Class:    s3.class ? `${s3.class.level} — ${s3.class.name}` : "",
+          sib3Price:    String(Math.round(base * (1 - (s3.discountPct || 0) / 100))),
+        } : {}),
+      }));
+
+      if (found.length > 0) {
+        setSiblingsAdded(true);
+        setSiblings([]);
+      }
+    };
+
+    fetchAll().catch(() => {});
   }, [student]);
 
+  // Buton manual si fallback (nëse user dëshiron t'i ri-shtojë)
   const addSiblings = () => {
     const [s2, s3] = siblings;
-    setD(prev => ({
-      ...prev,
-      ...(s2 ? {
-        sib2Name: `${s2.firstName} ${s2.lastName}`,
-        sib2Personal: s2.personalNumber || "",
-        sib2Birth: s2.birthDate ? fmtDate(s2.birthDate) : "",
-        sib2Class: s2.class ? `${s2.class.level} — ${s2.class.name}` : "",
-      } : {}),
-      ...(s3 ? {
-        sib3Name: `${s3.firstName} ${s3.lastName}`,
-        sib3Personal: s3.personalNumber || "",
-        sib3Birth: s3.birthDate ? fmtDate(s3.birthDate) : "",
-        sib3Class: s3.class ? `${s3.class.level} — ${s3.class.name}` : "",
-      } : {}),
-    }));
+    setD(prev => {
+      const base = parseFloat(prev.price) || 2000;
+      return {
+        ...prev,
+        ...(s2 ? {
+          sib2Name:     `${s2.firstName} ${s2.lastName}`,
+          sib2Personal: s2.personalNumber || "",
+          sib2Birth:    s2.birthDate ? fmtDate(s2.birthDate) : "",
+          sib2Class:    s2.class ? `${s2.class.level} — ${s2.class.name}` : "",
+          sib2Price:    String(Math.round(base * (1 - (s2.discountPct || 0) / 100))),
+        } : {}),
+        ...(s3 ? {
+          sib3Name:     `${s3.firstName} ${s3.lastName}`,
+          sib3Personal: s3.personalNumber || "",
+          sib3Birth:    s3.birthDate ? fmtDate(s3.birthDate) : "",
+          sib3Class:    s3.class ? `${s3.class.level} — ${s3.class.name}` : "",
+          sib3Price:    String(Math.round(base * (1 - (s3.discountPct || 0) / 100))),
+        } : {}),
+      };
+    });
     setSiblingsAdded(true);
     setSiblings([]);
   };
@@ -273,11 +350,13 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
       .then((cats: { name: string; defaultAmount: number }[]) => {
         const shkollimi = cats.find(c => c.name === "Shkollimi");
         if (shkollimi?.defaultAmount) {
-          setD(prev => ({ ...prev, price: String(shkollimi.defaultAmount) }));
+          const base = shkollimi.defaultAmount;
+          const finalPrice = Math.round(base * (1 - (student.discountPct || 0) / 100));
+          setD(prev => ({ ...prev, price: String(finalPrice) }));
         }
       })
       .catch(() => {});
-  }, []);
+  }, [student]);
 
   const handleExportPDF = async () => {
     const element = document.getElementById("contract-content");
@@ -337,7 +416,11 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
   .art-print { display: block !important; }
   .art-nr-print { display: block !important; }
   .page-break { page-break-before: always; padding-top: 16px; }
-</style></head><body>${content}</body></html>`);
+  .copy-1 { page-break-after: always; break-after: page; }
+</style></head><body>
+<div class="copy-1">${content}</div>
+<div class="copy-2">${content}</div>
+</body></html>`);
     w.document.close();
     setTimeout(() => { w.print(); }, 500);
   };
@@ -473,9 +556,9 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                 </tr>
                 <tr>
                   {[
-                    <><span style={{ ...LB, fontWeight: "bold" }}>Çmimi:</span><EF value={d.price} onChange={set("price")} placeholder="€" /></>,
-                    <><span style={{ ...LB, fontWeight: "bold" }}>Çmimi:</span><EF value={d.sib2Price} onChange={set("sib2Price")} placeholder="€" /></>,
-                    <><span style={{ ...LB, fontWeight: "bold" }}>Çmimi:</span><EF value={d.sib3Price} onChange={set("sib3Price")} placeholder="€" /></>,
+                    <><span style={{ ...LB, fontWeight: "bold" }}>Çmimi:</span><EF value={d.price} onChange={set("price")} placeholder="0" suffix="€" /></>,
+                    <><span style={{ ...LB, fontWeight: "bold" }}>Çmimi:</span><EF value={d.sib2Price} onChange={set("sib2Price")} placeholder="0" suffix="€" /></>,
+                    <><span style={{ ...LB, fontWeight: "bold" }}>Çmimi:</span><EF value={d.sib3Price} onChange={set("sib3Price")} placeholder="0" suffix="€" /></>,
                   ].map((cell, i) => <td key={i} style={CS}>{cell}</td>)}
                 </tr>
               </tbody>
@@ -691,6 +774,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
 export default function KontratetNxenesve() {
   const searchParams = useSearchParams();
   const studentIdParam = searchParams.get("studentId");
+  const router = useRouter();
 
   const [students, setStudents] = useState<Student[]>([]);
   const [total, setTotal] = useState(0);
@@ -806,7 +890,15 @@ export default function KontratetNxenesve() {
         </div>
       </div>
 
-      {selected && <ContractModal student={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <ContractModal
+          student={selected}
+          onClose={() => {
+            setSelected(null);
+            if (studentIdParam) router.back();
+          }}
+        />
+      )}
     </>
   );
 }

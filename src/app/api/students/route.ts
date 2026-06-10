@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status") || "";
   const classId = searchParams.get("classId") || "";
   const siblingPhone = searchParams.get("siblingPhone") || "";
+  const siblingAnyPhone = searchParams.get("siblingAnyPhone") || ""; // numra të shumëfishtë, ndarë me presje
   const siblingFatherPhone = searchParams.get("siblingFatherPhone") || "";
   const siblingFatherName = searchParams.get("siblingFatherName") || "";
   const siblingMotherPhone = searchParams.get("siblingMotherPhone") || "";
@@ -27,7 +28,27 @@ export async function GET(req: NextRequest) {
 
   const where: Record<string, unknown> = {};
 
-  if (siblingFatherPhone || siblingMotherPhone) {
+  if (siblingAnyPhone) {
+    // Kërko me normalizim SQLite: heq hapësira, +, /, - para krahasimit
+    // Kjo zgjidhë rastet ku DB ka "049 233 097" por query dërgon "049233097"
+    const phones = siblingAnyPhone.split(",").map(p => p.trim()).filter(Boolean);
+    if (phones.length > 0) {
+      const norm = (col: string) =>
+        `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col},''),' ',''),'+',''),'/',''),'-',''),'(','')`;
+      const ph = phones.map(() => "?").join(",");
+      const exId = parseInt(excludeId || "0") || 0;
+      const rawIds = await prisma.$queryRawUnsafe<{ id: number }[]>(
+        `SELECT DISTINCT id FROM Student
+         WHERE id != ? AND (
+           ${norm("parentPhone")} IN (${ph})
+           OR ${norm("fatherPhone")} IN (${ph})
+           OR ${norm("motherPhone")} IN (${ph})
+         )`,
+        exId, ...phones, ...phones, ...phones
+      );
+      where.id = { in: rawIds.map(r => Number(r.id)) };
+    }
+  } else if (siblingFatherPhone || siblingMotherPhone) {
     const orConditions: Record<string, unknown>[] = [];
     if (siblingFatherPhone && siblingFatherName) {
       orConditions.push({ fatherPhone: siblingFatherPhone, fatherName: siblingFatherName });
@@ -69,30 +90,45 @@ export async function GET(req: NextRequest) {
   if (classId) where.classId = parseInt(classId);
   if (excludeId) where.NOT = { id: parseInt(excludeId) };
 
-  const [students, total, activeCount, debtCount] = await Promise.all([
+  const [rawStudents, total, activeCount, debtCount] = await Promise.all([
     prisma.student.findMany({
       where,
       include: {
         class: { select: { name: true, level: true } },
-        payments: {
-          select: { balance: true, paidAmount: true },
-          orderBy: { createdAt: "desc" },
-          take: 60, // max 5 vjet × 12 muaj — shmang fetch të gjithë historikut
-        },
       },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
       skip: (page - 1) * limit,
       take: limit,
     }),
     prisma.student.count({ where }),
-    // Nëse filtrimi është tashmë ACTIVE, activeCount = total
     status === "ACTIVE"
-      ? Promise.resolve(0).then(() => prisma.student.count({ where }))
+      ? prisma.student.count({ where })
       : prisma.student.count({ where: { ...where, status: "ACTIVE" } }),
     prisma.student.count({ where: { ...where, payments: { some: { balance: { gt: 0 } } } } }),
   ]);
 
+  // Merr totalet e pagesave për këta nxënës me 1 query grupuese
+  const studentIds = rawStudents.map(s => s.id);
+  const paymentSums = await prisma.payment.groupBy({
+    by: ["studentId"],
+    where: { studentId: { in: studentIds } },
+    _sum: { paidAmount: true },
+  });
+  const sumMap = new Map(paymentSums.map(p => [p.studentId, p._sum.paidAmount ?? 0]));
+
+  const students = rawStudents.map(s => ({
+    ...s,
+    totalPaid: sumMap.get(s.id) ?? 0,
+  }));
+
   return NextResponse.json({ students, total, activeCount, debtCount, page, limit });
+}
+
+// Normalizo numrin e telefonit: largo hapësirat, +, /, -, ()
+function normalizePhone(p?: string | null): string | null {
+  if (!p) return null;
+  const clean = p.replace(/[\s+\-/()]/g, "").trim();
+  return clean || null;
 }
 
 export async function POST(req: NextRequest) {
@@ -117,19 +153,19 @@ export async function POST(req: NextRequest) {
         guardian: body.guardian || null,
         motherNumber: body.motherNumber || null,
         diaryNumber: body.diaryNumber || null,
-        parentPhone: body.fatherPhone || body.motherPhone || body.parentPhone || undefined,
+        parentPhone: normalizePhone(body.fatherPhone || body.motherPhone || body.parentPhone) ?? undefined,
         address: body.address || null,
         status: body.status || "ACTIVE",
         notes: body.notes || null,
         motherName: body.motherName || null,
         motherBirth: parseDate(body.motherBirth) ?? null,
         motherProf: body.motherProf || null,
-        motherPhone: body.motherPhone || null,
+        motherPhone: normalizePhone(body.motherPhone),
         motherEmail: body.motherEmail || null,
         fatherName: body.fatherName || null,
         fatherBirth: parseDate(body.fatherBirth) ?? null,
         fatherProf: body.fatherProf || null,
-        fatherPhone: body.fatherPhone || null,
+        fatherPhone: normalizePhone(body.fatherPhone),
         fatherEmail: body.fatherEmail || null,
       },
     });

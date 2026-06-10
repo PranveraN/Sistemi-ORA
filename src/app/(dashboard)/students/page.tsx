@@ -31,7 +31,7 @@ interface Student {
   status: string;
   enrollDate: string;
   class: { name: string; level: string } | null;
-  payments: { balance: number; paidAmount: number }[];
+  totalPaid: number;
 }
 
 export default function StudentsPage() {
@@ -43,6 +43,7 @@ export default function StudentsPage() {
   const [activeCount, setActiveCount] = useState(0);
   const [debtCount, setDebtCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [classId, setClassId] = useState(classIdParam);
@@ -50,6 +51,29 @@ export default function StudentsPage() {
   const [page, setPage] = useState(1);
   const [tuitionPrice, setTuitionPrice] = useState<number>(2000);
   const limit = 20;
+
+  /* Inline price editing */
+  const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
+  const [editingPriceVal, setEditingPriceVal] = useState("");
+
+  function startEditPrice(s: Student) {
+    const fp = Math.round(tuitionPrice * (1 - s.discountPct / 100));
+    setEditingPriceId(s.id);
+    setEditingPriceVal(String(fp));
+  }
+
+  async function commitEditPrice(s: Student) {
+    setEditingPriceId(null);
+    const newPrice = parseFloat(editingPriceVal);
+    if (isNaN(newPrice) || newPrice <= 0) return;
+    const newDisc = Math.max(0, Math.round((1 - newPrice / tuitionPrice) * 10000) / 100);
+    setStudents(prev => prev.map(x => x.id === s.id ? { ...x, discountPct: newDisc } : x));
+    await fetch(`/api/students/${s.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discountPct: newDisc }),
+    });
+  }
 
   useEffect(() => {
     Promise.all([
@@ -66,8 +90,8 @@ export default function StudentsPage() {
     });
   }, []);
 
-  const fetchStudents = useCallback(async () => {
-    setLoading(true);
+  const fetchStudents = useCallback(async (isFirst = false) => {
+    if (isFirst) setLoading(true); else setRefreshing(true);
     const params = new URLSearchParams({
       search, status, page: String(page), limit: String(limit),
     });
@@ -83,22 +107,24 @@ export default function StudentsPage() {
     setActiveCount(data.activeCount ?? 0);
     setDebtCount(data.debtCount ?? 0);
     setLoading(false);
+    setRefreshing(false);
   }, [search, status, page, classId]);
 
 
   const _firstRender = useRef(true);
   useEffect(() => {
-    const delay = _firstRender.current ? 0 : 300;
+    const isFirst = _firstRender.current;
+    const delay = isFirst ? 0 : 300;
     _firstRender.current = false;
-    const timer = setTimeout(fetchStudents, delay);
+    const timer = setTimeout(() => fetchStudents(isFirst), delay);
     return () => clearTimeout(timer);
   }, [fetchStudents]);
 
 
   const totalPages = Math.ceil(total / limit);
   const finalPrice  = (s: Student) => Math.round(tuitionPrice * (1 - s.discountPct / 100));
-  const totalPaid   = (s: Student) => s.payments.reduce((sum, p) => sum + p.paidAmount, 0);
-  const totalDebt   = (s: Student) => Math.max(0, finalPrice(s) - totalPaid(s));
+  const totalPaid   = (s: Student) => s.totalPaid;
+  const totalDebt   = (s: Student) => Math.max(0, finalPrice(s) - s.totalPaid);
 
   async function handleExportFamilies() {
     const res = await fetch(`/api/reports/families?basePrice=${tuitionPrice}`);
@@ -319,8 +345,46 @@ export default function StudentsPage() {
           </div>
         </div>
 
+        {/* Banner Familja — shfaqet vetëm kur ka kërkim aktiv dhe rezultatet janë vëllezër/motra */}
+        {(() => {
+          if (!search.trim()) return null;   // ← fshih pa kërkim
+          if (students.length < 2) return null;
+          const phones = students.map(s => s.parentPhone).filter(Boolean);
+          const freq = phones.reduce<Record<string, number>>((acc, p) => { acc[p!] = (acc[p!] ?? 0) + 1; return acc; }, {});
+          const sharedPhone = Object.entries(freq).find(([, count]) => count >= 2)?.[0];
+          if (!sharedPhone) return null;
+          const siblings = students.filter(s => s.parentPhone === sharedPhone);
+          return (
+            <Link
+              href={`/families?phone=${encodeURIComponent(sharedPhone)}`}
+              className="flex items-center gap-3 px-4 py-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-xl hover:bg-primary-100 dark:hover:bg-primary-900/30 transition-colors"
+            >
+              <div className="w-9 h-9 rounded-xl bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center shrink-0">
+                <Users className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-primary-800 dark:text-primary-300">
+                  {siblings.length} vëllezër/motra të familjes {siblings[0]?.lastName}
+                </p>
+                <p className="text-xs text-primary-600 dark:text-primary-400">
+                  Kliko për të parë profilin e plotë të familjes →
+                </p>
+              </div>
+            </Link>
+          );
+        })()}
+
         {/* Table */}
-        <div className="card overflow-hidden">
+        <div className={`card overflow-hidden transition-opacity duration-150 ${refreshing ? "opacity-60" : ""}`}>
+          {refreshing && (
+            <div className="flex items-center gap-2 px-5 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+              <svg className="animate-spin w-3.5 h-3.5 text-primary-500" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="text-xs text-slate-400">Duke rifreskuar...</span>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 dark:bg-slate-800/50">
@@ -398,20 +462,36 @@ export default function StudentsPage() {
                           Kontratë
                         </Link>
                       </td>
-                      {/* Çmimi Final */}
-                      <td className="table-cell">
-                        <div>
-                          <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
-                            {formatCurrency(fp)}
-                          </span>
-                          {s.discountPct > 0 && (
-                            <span className="ml-1.5 text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
-                              -{s.discountPct}%
-                            </span>
-                          )}
-                        </div>
-                        {s.discountPct > 0 && (
-                          <p className="text-[10px] text-slate-400 line-through">{formatCurrency(tuitionPrice)}</p>
+                      {/* Çmimi Final — editueshëm inline */}
+                      <td className="table-cell" onClick={() => editingPriceId !== s.id && startEditPrice(s)}>
+                        {editingPriceId === s.id ? (
+                          <input
+                            type="number"
+                            className="w-24 border border-primary-400 rounded-lg px-2 py-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            value={editingPriceVal}
+                            autoFocus
+                            min={0}
+                            onChange={e => setEditingPriceVal(e.target.value)}
+                            onBlur={() => commitEditPrice(s)}
+                            onKeyDown={e => { if (e.key === "Enter") commitEditPrice(s); if (e.key === "Escape") setEditingPriceId(null); }}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        ) : (
+                          <div className="cursor-pointer group">
+                            <div className="flex items-center gap-1">
+                              <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm group-hover:text-primary-600 transition-colors">
+                                {formatCurrency(fp)}
+                              </span>
+                              {s.discountPct > 0 && (
+                                <span className="text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
+                                  -{s.discountPct}%
+                                </span>
+                              )}
+                            </div>
+                            {s.discountPct > 0 && (
+                              <p className="text-[10px] text-slate-400 line-through">{formatCurrency(tuitionPrice)}</p>
+                            )}
+                          </div>
                         )}
                       </td>
                       {/* Paguar */}

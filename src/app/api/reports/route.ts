@@ -1,20 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getDateRange, getAcademicMonths, type YearType } from "@/lib/academicYear";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const type = searchParams.get("type") || "monthly";
-  const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
+  const type     = searchParams.get("type") || "monthly";
+  const year     = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
+  const yearType = (searchParams.get("yearType") || "calendar") as YearType;
+
+  const { start, end, label } = getDateRange(year, yearType);
+
+  const months = yearType === "academic"
+    ? getAcademicMonths(year)
+    : Array.from({ length: 12 }, (_, i) => ({
+        calMonth: i + 1,
+        calYear:  year,
+        label: ["Janar","Shkurt","Mars","Prill","Maj","Qershor","Korrik","Gusht","Shtator","Tetor","Nëntor","Dhjetor"][i],
+      }));
 
   if (type === "monthly") {
     const data = [];
-    for (let m = 1; m <= 12; m++) {
-      const firstDay = new Date(year, m - 1, 1);
-      const lastDay = new Date(year, m, 0, 23, 59, 59);
+    for (const m of months) {
+      const firstDay = new Date(m.calYear, m.calMonth - 1, 1);
+      const lastDay  = new Date(m.calYear, m.calMonth, 0, 23, 59, 59);
 
       const result = await prisma.payment.aggregate({
         where: {
@@ -26,12 +38,14 @@ export async function GET(req: NextRequest) {
       });
 
       data.push({
-        month: m,
+        month: m.calMonth,
+        year:  m.calYear,
+        label: m.label,
         total: result._sum.paidAmount || 0,
         count: result._count,
       });
     }
-    return NextResponse.json({ type: "monthly", year, data });
+    return NextResponse.json({ type: "monthly", year, yearType, label, data });
   }
 
   if (type === "byClass") {
@@ -63,33 +77,51 @@ export async function GET(req: NextRequest) {
   }
 
   if (type === "debts") {
-    const studentsWithDebt = await prisma.student.findMany({
-      where: {
-        status: "ACTIVE",
-        payments: {
-          some: { balance: { gt: 0 } },
-        },
-      },
+    const shkollimi = await prisma.paymentCategory.findFirst({
+      where: { name: { contains: "Shkollim" } },
+    });
+    const basePrice = shkollimi?.defaultAmount ?? 0;
+
+    const allActive = await prisma.student.findMany({
+      where: { status: "ACTIVE" },
       include: {
         class: { select: { name: true } },
         payments: {
-          where: { balance: { gt: 0 } },
+          where: { paidDate: { gte: start, lte: end } },
           include: { category: { select: { name: true } } },
         },
       },
       orderBy: { lastName: "asc" },
     });
 
-    return NextResponse.json({
-      type: "debts",
-      data: studentsWithDebt.map(s => ({
-        id: s.id,
-        name: `${s.lastName} ${s.firstName}`,
-        class: s.class?.name || "—",
-        totalDebt: s.payments.reduce((sum, p) => sum + p.balance, 0),
-        payments: s.payments,
-      })),
-    });
+    const result = allActive
+      .map(s => {
+        const finalPrice = Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100));
+        const totalPaid  = s.payments.reduce((sum, p) => sum + p.paidAmount, 0);
+        const paidBalance = s.payments.reduce((sum, p) => sum + p.balance, 0);
+
+        // Nëse nuk ka asnjë pagesë, borxhi = çmimi i plotë
+        const totalDebt = s.payments.length === 0
+          ? finalPrice
+          : paidBalance;
+
+        const paymentsWithDebt = s.payments.filter(p => p.balance > 0);
+
+        return {
+          id:        s.id,
+          name:      `${s.lastName} ${s.firstName}`,
+          class:     s.class?.name || "—",
+          totalDebt,
+          totalPaid,
+          finalPrice,
+          noPay:     s.payments.length === 0,
+          payments:  paymentsWithDebt,
+        };
+      })
+      .filter(s => s.totalDebt > 0)
+      .sort((a, b) => b.totalDebt - a.totalDebt);
+
+    return NextResponse.json({ type: "debts", data: result });
   }
 
   return NextResponse.json({ error: "Unknown report type" }, { status: 400 });

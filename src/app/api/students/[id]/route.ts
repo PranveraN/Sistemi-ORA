@@ -8,6 +8,12 @@ function parseDate(val: unknown): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+function normalizePhone(p?: string | null): string | null {
+  if (!p) return null;
+  const clean = p.replace(/[\s+\-/()]/g, "").trim();
+  return clean || null;
+}
+
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -54,19 +60,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         guardian: body.guardian || null,
         motherNumber: body.motherNumber || null,
         diaryNumber: body.diaryNumber || null,
-        parentPhone: body.fatherPhone || body.motherPhone || body.parentPhone || null,
+        parentPhone: normalizePhone(body.fatherPhone || body.motherPhone || body.parentPhone),
         address: body.address || null,
         status: body.status,
         notes: body.notes || null,
         motherName: body.motherName || null,
         motherBirth: parseDate(body.motherBirth),
         motherProf: body.motherProf || null,
-        motherPhone: body.motherPhone || null,
+        motherPhone: normalizePhone(body.motherPhone),
         motherEmail: body.motherEmail || null,
         fatherName: body.fatherName || null,
         fatherBirth: parseDate(body.fatherBirth),
         fatherProf: body.fatherProf || null,
-        fatherPhone: body.fatherPhone || null,
+        fatherPhone: normalizePhone(body.fatherPhone),
         fatherEmail: body.fatherEmail || null,
       },
     });
@@ -101,9 +107,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await req.json();
 
+  const data: Record<string, unknown> = {};
+  if ("kontrata" in body) data.kontrata = body.kontrata ?? null;
+  if ("discountPct" in body) data.discountPct = Number(body.discountPct) || 0;
+
   const student = await prisma.student.update({
     where: { id: parseInt(id) },
-    data: { kontrata: body.kontrata ?? null },
+    data,
   });
 
   return NextResponse.json(student);

@@ -64,7 +64,24 @@ const GROUP_COLORS: Record<string, string> = {
   "Baba":    "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300",
 };
 
+interface FatherRow {
+  firstName: string;
+  lastName: string;
+  personalNumber: string;
+  fatherName: string;
+  fatherBirth: string;
+  fatherProf: string;
+  fatherPhone: string;
+  fatherEmail: string;
+  _match: string; // si u gjet nxënësi
+  _valid: boolean;
+  _error: string;
+}
+
 export default function ImportStudentsPage() {
+  const [mode, setMode] = useState<"students" | "father">("students");
+
+  // ── Mënyra nxënës ──
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging]   = useState(false);
   const [fileName, setFileName]   = useState("");
@@ -72,6 +89,14 @@ export default function ImportStudentsPage() {
   const [importing, setImporting] = useState(false);
   const [result, setResult]       = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
   const [step, setStep]           = useState<"upload" | "preview" | "done">("upload");
+
+  // ── Mënyra babai ──
+  const fatherInputRef = useRef<HTMLInputElement>(null);
+  const [fatherRows, setFatherRows]   = useState<FatherRow[]>([]);
+  const [fatherFile, setFatherFile]   = useState("");
+  const [fatherStep, setFatherStep]   = useState<"upload" | "preview" | "done">("upload");
+  const [fatherImporting, setFatherImporting] = useState(false);
+  const [fatherResult, setFatherResult] = useState<{ updated: number; skipped: number; notFound: number; errors: string[] } | null>(null);
 
   async function downloadTemplate() {
     const XLSX = await import("xlsx");
@@ -142,34 +167,88 @@ export default function ImportStudentsPage() {
     if (raw.length > 0) {
       const firstKeys = Object.keys(raw[0]);
 
-      // 1. Exact match me emrat e kolonave (template)
+      // 1. Exact match — case-insensitive + Unicode NFC normalizim
       for (const col of COLUMNS) {
-        const match = firstKeys.find(k => k.trim() === col.label);
+        const labelNorm = col.label.normalize("NFC").trim().toLowerCase();
+        const match = firstKeys.find(k => k.normalize("NFC").trim().toLowerCase() === labelNorm);
         if (match) headerMap[match] = col.key;
       }
 
-      // 2. Fuzzy fallback për skedarë jo-template
+      // 2. Fuzzy fallback — normalizoj Unicode + karakteret shqipe
+      function norm(s: string): string {
+        return s
+          .normalize("NFC")          // normalizoj Unicode (ë precomposed vs decomposed)
+          .toLowerCase().trim()
+          .replace(/ë/g, "e")        // Babë→babe, Nënë→nene, Datëlindja→datelindja
+          .replace(/ç/g, "c")
+          .replace(/[-_\.\(\)]/g, " ")  // - _ . ( ) → hapësirë
+          .replace(/\s+/g, " ").trim();
+      }
+
+      // "Babë"→"babe", "Babës"→"babes", "babait"→"babait" etj.
+      const isBaba  = (n: string) =>
+        n.includes("baba") || n.includes("babe") ||    // Baba / Babë
+        n.includes("babes") || n.includes("babait") || n.includes("babas") ||
+        n.includes("babës"); // rast ku norm nuk aplikohet
+
+      // "Nënë"→"nene", "Nënës"→"nenes" etj.
+      const isNene  = (n: string) =>
+        n.includes("nene") || n.includes("nena") ||
+        n.includes("nenes") || n.includes("nenat") ||
+        n.includes("nënes"); // rast ku norm nuk aplikohet
+
+      const isDate  = (n: string) =>
+        n.includes("datelindja") || n.includes("datelindjes") ||
+        n.includes("lindje") || n.includes("lindjes") ||
+        n.includes("lindur") || n.includes("date of birth") ||
+        (n.includes("date") && !n.includes("update") && !n.includes("created"));
+
+      const isTel   = (n: string) =>
+        n.includes("telefon") || n.includes("tel") ||
+        n.includes("phone") || n.includes("celular") ||
+        n.includes("cel") || n.includes("mob") ||
+        n.includes("nr cel") || n.includes("kontakt");
+
+      const isEmail = (n: string) =>
+        n.includes("email") || n.includes("e mail") || n.includes("mail");
+
+      const isProf  = (n: string) =>
+        n.includes("profes") || n.includes("profesion") ||
+        n.includes("pune") || n.includes("veprimtari") ||
+        n.includes("punedhen") || n.includes("occupation");
+
+      const isName  = (n: string) =>
+        n.includes("emri") || n.includes("emer") ||
+        n.includes("name") || n.includes("mbiemri");
+
       for (const key of firstKeys) {
         if (headerMap[key]) continue;
-        const n = key.toLowerCase().trim();
-        if      (n === "emri" || n === "first name" || n === "firstname")    headerMap[key] = "firstName";
-        else if (n === "mbiemri" || n === "last name" || n === "lastname")   headerMap[key] = "lastName";
-        else if (n.includes("nr. personal") || n.includes("personal"))      headerMap[key] = "personalNumber";
-        else if ((n.includes("datë") || n.includes("date")) && !n.includes("nënë") && !n.includes("babë")) headerMap[key] = "birthDate";
-        else if (n.includes("klas"))                                         headerMap[key] = "klasa";
-        else if (n.includes("ditar"))                                        headerMap[key] = "diaryNumber";
-        else if (n.includes("adres"))                                        headerMap[key] = "address";
-        else if (n.includes("status"))                                       headerMap[key] = "status";
-        else if ((n.includes("nënë") || n.includes("nene")) && n.includes("emri")) headerMap[key] = "motherName";
-        else if ((n.includes("nënë") || n.includes("nene")) && (n.includes("datë") || n.includes("lindje"))) headerMap[key] = "motherBirth";
-        else if ((n.includes("nënë") || n.includes("nene")) && n.includes("profes")) headerMap[key] = "motherProf";
-        else if ((n.includes("nënë") || n.includes("nene")) && (n.includes("tel") || n.includes("phone"))) headerMap[key] = "motherPhone";
-        else if ((n.includes("nënë") || n.includes("nene")) && n.includes("email")) headerMap[key] = "motherEmail";
-        else if ((n.includes("babë") || n.includes("baba")) && n.includes("emri")) headerMap[key] = "fatherName";
-        else if ((n.includes("babë") || n.includes("baba")) && (n.includes("datë") || n.includes("lindje"))) headerMap[key] = "fatherBirth";
-        else if ((n.includes("babë") || n.includes("baba")) && n.includes("profes")) headerMap[key] = "fatherProf";
-        else if ((n.includes("babë") || n.includes("baba")) && (n.includes("tel") || n.includes("phone"))) headerMap[key] = "fatherPhone";
-        else if ((n.includes("babë") || n.includes("baba")) && n.includes("email")) headerMap[key] = "fatherEmail";
+        const n = norm(key);
+
+        if      (n === "emri" || n === "first name" || n === "firstname" || n === "emer")  headerMap[key] = "firstName";
+        else if (n === "mbiemri" || n === "last name" || n === "lastname" || n === "mbiemer") headerMap[key] = "lastName";
+        else if (n.includes("personal") || n.includes("nr personal"))                     headerMap[key] = "personalNumber";
+        else if (n.includes("klas"))                                                       headerMap[key] = "klasa";
+        else if (n.includes("ditar"))                                                      headerMap[key] = "diaryNumber";
+        else if (n.includes("adres"))                                                      headerMap[key] = "address";
+        else if (n.includes("status"))                                                     headerMap[key] = "status";
+        // Nëna — rendit sipas specifickitetit (email para tel para prof para date para name)
+        else if (isNene(n) && isEmail(n))  headerMap[key] = "motherEmail";
+        else if (isNene(n) && isTel(n))    headerMap[key] = "motherPhone";
+        else if (isNene(n) && isProf(n))   headerMap[key] = "motherProf";
+        else if (isNene(n) && isDate(n))   headerMap[key] = "motherBirth";
+        else if (isNene(n) && isName(n))   headerMap[key] = "motherName";
+        else if (isNene(n))                headerMap[key] = "motherName"; // fallback
+        // Baba — rendit sipas specifickitetit
+        else if (isBaba(n) && isEmail(n))  headerMap[key] = "fatherEmail";
+        else if (isBaba(n) && isTel(n))    headerMap[key] = "fatherPhone";
+        else if (isBaba(n) && isProf(n))   headerMap[key] = "fatherProf";
+        else if (isBaba(n) && isDate(n))   headerMap[key] = "fatherBirth";
+        else if (isBaba(n) && isName(n))   headerMap[key] = "fatherName";
+        else if (isBaba(n))                headerMap[key] = "fatherName"; // fallback
+        // Nxënësi — datat dhe tel të nxënësit vetëm nëse nuk ka "nene"/"baba"
+        else if (isDate(n) && !isNene(n) && !isBaba(n)) headerMap[key] = "birthDate";
+        else if (isTel(n)  && !isNene(n) && !isBaba(n)) headerMap[key] = "parentPhone";
       }
     }
 
@@ -255,6 +334,78 @@ export default function ImportStudentsPage() {
   const validCount   = students.filter(s =>  s._valid).length;
   const warningCount = students.filter(s => !s._valid).length;
 
+  // ── Funksionet për importin e të dhënave të babait ──
+  async function downloadFatherTemplate() {
+    const XLSX = await import("xlsx");
+    const headers = ["Nr. Personal", "Emri Nxënësit", "Mbiemri Nxënësit", "Emri i Babës", "Datëlindja (Babë)", "Profesioni (Babë)", "Tel. Baba", "Email Baba"];
+    const example = ["1001234567890", "Ardit", "Berisha", "Agim Berisha", "05/06/1982", "Inxhinier", "044 333 444", "agim@email.com"];
+    const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+    ws["!cols"] = [{ wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 26 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Te Dhenat Babait");
+    XLSX.writeFile(wb, "Template-Te-Dhenat-Babait.xlsx");
+  }
+
+  async function parseFatherFile(file: File) {
+    const XLSX = await import("xlsx");
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: "array", cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
+
+    function n(s: string) {
+      return s.normalize("NFC").toLowerCase().trim()
+        .replace(/ë/g, "e").replace(/ç/g, "c").replace(/[-_\.\(\)]/g, " ").replace(/\s+/g, " ").trim();
+    }
+
+    function getCol(row: Record<string, unknown>, ...keys: string[]): string {
+      const lrow = Object.fromEntries(Object.entries(row).map(([k, v]) => [n(k), v]));
+      for (const key of keys) { const v = lrow[n(key)]; if (v !== undefined && String(v).trim()) return String(v).trim(); }
+      return "";
+    }
+
+    const parsed: FatherRow[] = raw.map((row, i) => {
+      const personalNumber = getCol(row, "Nr. Personal", "nr personal", "personal number", "numri personal");
+      const firstName      = getCol(row, "Emri Nxënësit", "Emri", "first name", "firstname");
+      const lastName       = getCol(row, "Mbiemri Nxënësit", "Mbiemri", "last name", "lastname");
+      const fatherName     = getCol(row, "Emri i Babes", "Emri i Babës", "father name", "emri babes");
+      const fatherBirth    = getCol(row, "Datelindja (Babe)", "Datëlindja (Babë)", "father birth", "datelindja babes");
+      const fatherProf     = getCol(row, "Profesioni (Babe)", "Profesioni (Babë)", "profesioni babes", "father profession");
+      const fatherPhone    = getCol(row, "Tel. Baba", "Telefoni Baba", "father phone", "telefoni babes");
+      const fatherEmail    = getCol(row, "Email Baba", "Email Babes", "father email", "emaili babes");
+
+      const hasId   = !!(personalNumber || (firstName && lastName));
+      const hasFather = !!(fatherName || fatherPhone || fatherProf || fatherBirth || fatherEmail);
+
+      return {
+        firstName, lastName, personalNumber,
+        fatherName, fatherBirth, fatherProf, fatherPhone, fatherEmail,
+        _match: personalNumber ? `Nr. ${personalNumber}` : `${firstName} ${lastName}`.trim(),
+        _valid: hasId && hasFather,
+        _error: !hasId ? "Mungon identifikuesi (nr. personal ose emri)" : !hasFather ? `Rreshti ${i + 2}: nuk ka të dhëna babai` : "",
+      };
+    }).filter(r => r._match.trim() || r.personalNumber);
+
+    setFatherRows(parsed);
+    setFatherFile(file.name);
+    setFatherStep("preview");
+  }
+
+  async function handleFatherImport() {
+    const toImport = fatherRows.filter(r => r._valid);
+    if (!toImport.length) return;
+    setFatherImporting(true);
+    const res = await fetch("/api/students/import-father", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows: toImport }),
+    });
+    const data = await res.json();
+    setFatherResult(data);
+    setFatherImporting(false);
+    setFatherStep("done");
+  }
+
   return (
     <>
       <Header />
@@ -265,11 +416,182 @@ export default function ImportStudentsPage() {
             <ChevronLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="page-title">Import i Listës së Nxënësve</h1>
-            <p className="text-sm text-slate-400 mt-0.5">Ngarko skedarin Excel me të dhënat e nxënësve dhe prindëve</p>
+            <h1 className="page-title">Import i të Dhënave</h1>
+            <p className="text-sm text-slate-400 mt-0.5">Ngarko skedarin Excel me të dhënat e nxënësve ose prindëve</p>
           </div>
         </div>
 
+        {/* Tab switcher */}
+        <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-fit">
+          <button onClick={() => setMode("students")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${mode === "students" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}>
+            👤 Lista Nxënësve
+          </button>
+          <button onClick={() => setMode("father")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${mode === "father" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}>
+            👨 Të Dhënat e Babait
+          </button>
+        </div>
+
+        {/* ════ MODE: BABAI ════ */}
+        {mode === "father" && (
+          <div className="space-y-5">
+            {fatherStep === "upload" && (
+              <div className="space-y-4">
+                <div className="card p-5 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
+                      <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-800 dark:text-white text-sm">Shkarko templatein për të dhënat e babait</p>
+                      <p className="text-xs text-slate-400">Kolona: Nr. Personal, Emri, Mbiemri, Emri i Babës, Datëlindja, Profesioni, Telefoni, Email</p>
+                    </div>
+                  </div>
+                  <button onClick={downloadFatherTemplate} className="btn-secondary">
+                    <Download className="w-4 h-4" /> Shkarko Template
+                  </button>
+                </div>
+
+                <div
+                  onClick={() => fatherInputRef.current?.click()}
+                  className="card p-12 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all border-2 border-dashed border-slate-200 dark:border-slate-600 hover:border-blue-300 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                >
+                  <div className="w-14 h-14 bg-blue-50 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center">
+                    <Upload className="w-7 h-7 text-blue-400" />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-semibold text-slate-700 dark:text-slate-200">Ngarko Excel me të dhënat e babait</p>
+                    <p className="text-sm text-slate-400 mt-1">Mbështet: .xlsx, .xls</p>
+                  </div>
+                  <input ref={fatherInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) parseFatherFile(f); }} />
+                </div>
+
+                <div className="card p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800">
+                  <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-2">ℹ️ Si funksionon</p>
+                  <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
+                    <li>• Çdo rresht identifikon nxënësin me <strong>Nr. Personal</strong> ose <strong>Emri + Mbiemri</strong></li>
+                    <li>• Importohen vetëm fushat e babait që janë <strong>aktualisht bosh</strong> — nuk mbishkruhen të dhënat ekzistuese</li>
+                    <li>• Nxënësit që nuk gjenden raportojnë si gabim</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {fatherStep === "preview" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="card p-4 flex items-center gap-3">
+                    <CheckCircle className="w-7 h-7 text-blue-500" />
+                    <div><p className="text-xl font-bold text-blue-600">{fatherRows.filter(r => r._valid).length}</p>
+                      <p className="text-xs text-slate-400">Gati për import</p></div>
+                  </div>
+                  <div className="card p-4 flex items-center gap-3">
+                    <AlertCircle className="w-7 h-7 text-amber-400" />
+                    <div><p className="text-xl font-bold text-amber-500">{fatherRows.filter(r => !r._valid).length}</p>
+                      <p className="text-xs text-slate-400">Me probleme</p></div>
+                  </div>
+                  <div className="card p-4 flex items-center gap-3">
+                    <FileSpreadsheet className="w-7 h-7 text-slate-400" />
+                    <div><p className="text-xl font-bold text-slate-700 dark:text-white">{fatherRows.length}</p>
+                      <p className="text-xs text-slate-400">Gjithsej rreshta</p></div>
+                  </div>
+                </div>
+
+                <div className="card overflow-hidden">
+                  <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 dark:bg-slate-800/50 sticky top-0">
+                        <tr>
+                          <th className="table-header">#</th>
+                          <th className="table-header">Identifikuesi</th>
+                          <th className="table-header text-blue-600">Emri i Babës</th>
+                          <th className="table-header text-blue-600">Datëlindja</th>
+                          <th className="table-header text-blue-600">Profesioni</th>
+                          <th className="table-header text-blue-600">Telefoni</th>
+                          <th className="table-header text-blue-600">Email</th>
+                          <th className="table-header">Statusi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                        {fatherRows.map((r, i) => (
+                          <tr key={i} className={r._valid ? "hover:bg-slate-50 dark:hover:bg-slate-800/30" : "bg-red-50 dark:bg-red-900/10"}>
+                            <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
+                            <td className="table-cell font-medium text-slate-800 dark:text-slate-200 text-xs">{r._match}</td>
+                            <td className="table-cell text-xs text-blue-700 dark:text-blue-300">{r.fatherName || <span className="text-slate-300">—</span>}</td>
+                            <td className="table-cell text-xs text-slate-500">{r.fatherBirth || <span className="text-slate-300">—</span>}</td>
+                            <td className="table-cell text-xs text-slate-500">{r.fatherProf || <span className="text-slate-300">—</span>}</td>
+                            <td className="table-cell text-xs text-slate-500">{r.fatherPhone || <span className="text-slate-300">—</span>}</td>
+                            <td className="table-cell text-xs text-slate-400">{r.fatherEmail || <span className="text-slate-300">—</span>}</td>
+                            <td className="table-cell">
+                              {r._valid
+                                ? <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full font-medium">✓ OK</span>
+                                : <span className="text-[10px] bg-red-100 dark:bg-red-900/30 text-red-600 px-1.5 py-0.5 rounded-full font-medium" title={r._error}>⚠ Gabim</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button onClick={() => { setFatherRows([]); setFatherFile(""); setFatherStep("upload"); }} className="btn-secondary">
+                    <X className="w-4 h-4" /> Anulo
+                  </button>
+                  <button onClick={handleFatherImport} disabled={fatherImporting || !fatherRows.filter(r => r._valid).length} className="btn-primary">
+                    {fatherImporting ? <><Loader2 className="w-4 h-4 animate-spin" /> Duke importuar...</> : <><Upload className="w-4 h-4" /> Importo {fatherRows.filter(r => r._valid).length} rreshta</>}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {fatherStep === "done" && fatherResult && (
+              <div className="card p-10 flex flex-col items-center text-center gap-5">
+                <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-8 h-8 text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">Import i Kryer!</h2>
+                  <p className="text-slate-400 text-sm">Të dhënat e babait u importuan</p>
+                </div>
+                <div className="grid grid-cols-3 gap-4 w-full max-w-md">
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+                    <p className="text-3xl font-bold text-blue-600">{fatherResult.updated}</p>
+                    <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">Nxënës u përditësuan</p>
+                  </div>
+                  <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                    <p className="text-3xl font-bold text-slate-500">{fatherResult.skipped}</p>
+                    <p className="text-sm text-slate-500 mt-1">Tashmë plotë</p>
+                  </div>
+                  <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+                    <p className="text-3xl font-bold text-amber-500">{fatherResult.notFound}</p>
+                    <p className="text-sm text-amber-600 mt-1">Nuk u gjetën</p>
+                  </div>
+                </div>
+                {fatherResult.errors.length > 0 && (
+                  <div className="w-full p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-left">
+                    <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-2">Gabime:</p>
+                    {fatherResult.errors.map((e, i) => <p key={i} className="text-xs text-red-600 dark:text-red-400">• {e}</p>)}
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={() => { setFatherRows([]); setFatherFile(""); setFatherResult(null); setFatherStep("upload"); }} className="btn-secondary">
+                    <Upload className="w-4 h-4" /> Import tjetër
+                  </button>
+                  <Link href="/students" className="btn-primary">
+                    <CheckCircle className="w-4 h-4" /> Shiko Nxënësit
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ════ MODE: NXËNËSIT ════ */}
+        {mode === "students" && (
+          <>
         {/* Hapat */}
         <div className="flex items-center gap-2 text-sm">
           {[
@@ -538,6 +860,8 @@ export default function ImportStudentsPage() {
               </Link>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </>

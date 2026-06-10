@@ -20,7 +20,6 @@ type PrismaPayment = {
 
 function aggregateStatus(payments: PrismaPayment[]): string {
   if (!payments.length) return "PENDING";
-  if (payments.length === 1) return payments[0].status;
   const totalFinal = payments.reduce((s, p) => s + p.finalAmount, 0);
   const totalPaid  = payments.reduce((s, p) => s + p.paidAmount,  0);
   if (totalFinal > 0 && totalPaid >= totalFinal) return "PAID";
@@ -118,7 +117,7 @@ export async function GET(req: NextRequest) {
       class:        s.class,
       discountPct:  s.discountPct,
       payment:      aggregatePayment(s.payments as PrismaPayment[]),
-      installments: isNarrow ? s.payments.slice(0, 2) : [],
+      installments: s.payments,
     })),
     stats: {
       total:    students.length,

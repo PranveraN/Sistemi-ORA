@@ -8,7 +8,7 @@ import {
   Search, CheckCircle, AlertCircle, Clock,
   Plus, X, Save, Users, Loader2, Printer,
   TrendingUp, TrendingDown, ArrowLeftRight, FileUp,
-  CalendarDays, Download,
+  CalendarDays, Download, Trash2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
@@ -147,9 +147,10 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [stats,    setStats]   = useState<Stats | null>(null);
   const [category, setCategory] = useState<Category | null>(null);
   const [loading,  setLoading]  = useState(true);
-  const [modal,      setModal]      = useState<StudentRow | null>(null);
-  const [printModal, setPrintModal] = useState<StudentRow | null>(null);
-  const [tab, setTab] = useState<Tab>("income");
+  const [modal,        setModal]        = useState<StudentRow | null>(null);
+  const [printModal,   setPrintModal]   = useState<StudentRow | null>(null);
+  const [tab,          setTab]          = useState<Tab>("income");
+  const [statusFilter, setStatusFilter] = useState<string>("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -177,11 +178,25 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   }, [fetchData]);
 
   const statusOrder = ["OVERDUE", "PARTIAL", "PENDING", "PAID"];
-  const sorted = [...students].sort((a, b) => {
-    const ai = statusOrder.indexOf(a.payment?.status || "PENDING");
-    const bi = statusOrder.indexOf(b.payment?.status || "PENDING");
-    return ai - bi;
-  });
+  const sorted = [...students]
+    .filter(s => {
+      if (!statusFilter) return true;
+      if (statusFilter === "NONE") return !s.payment;
+      if (statusFilter === "WITH_PAYMENT") return !!s.payment && s.payment.paidAmount > 0;
+      return (s.payment?.status || "PENDING") === statusFilter;
+    })
+    .sort((a, b) => {
+      const ai = statusOrder.indexOf(a.payment?.status || "PENDING");
+      const bi = statusOrder.indexOf(b.payment?.status || "PENDING");
+      return ai - bi;
+    });
+
+  const totalPaidVisible = sorted.reduce((sum, s) => sum + (s.payment?.paidAmount ?? 0), 0);
+  const totalDebtVisible = sorted.reduce((sum, s) => {
+    if (!s.payment) return sum + Math.round((category?.defaultAmount ?? 0) * (1 - (s.discountPct ?? 0) / 100));
+    if (s.payment.status === "PAID") return sum;
+    return sum + s.payment.balance;
+  }, 0);
 
   return (
     <>
@@ -240,10 +255,81 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           <>
             {stats && (
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-                <StatCard label="Gjithsej"   value={stats.total}   icon={<Users         className="w-4 h-4" />} bg="bg-slate-100 dark:bg-slate-700"       text="text-slate-600 dark:text-slate-300" />
-                <StatCard label="Paguar"     value={stats.paid}    icon={<CheckCircle   className="w-4 h-4" />} bg="bg-green-50 dark:bg-green-900/30"     text="text-green-600 dark:text-green-400" />
-                <StatCard label="Pjesërisht" value={stats.partial} icon={<Clock         className="w-4 h-4" />} bg="bg-blue-50 dark:bg-blue-900/30"       text="text-blue-600 dark:text-blue-400" />
-                <StatCard label="Vonuar"     value={stats.overdue} icon={<AlertCircle   className="w-4 h-4" />} bg="bg-red-50 dark:bg-red-900/30"         text="text-red-600 dark:text-red-400" />
+                <div
+                  onClick={() => setStatusFilter("")}
+                  className={`card p-3 cursor-pointer transition-all hover:shadow-md ${statusFilter === "" ? "ring-2 ring-slate-400" : "opacity-80 hover:opacity-100"}`}
+                  title="Shfaq të gjithë"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                      <Users className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                    </div>
+                    <span className="text-xs text-slate-400">Gjithsej</span>
+                    {statusFilter === "" && <span className="ml-auto text-[10px] bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 px-1.5 rounded-full font-medium">Aktiv</span>}
+                  </div>
+                  <p className="text-xl font-bold text-slate-700 dark:text-slate-200">{stats.total}</p>
+                </div>
+
+                <div
+                  onClick={() => setStatusFilter(f => f === "PAID" ? "" : "PAID")}
+                  className={`card p-3 cursor-pointer transition-all hover:shadow-md ${statusFilter === "PAID" ? "ring-2 ring-green-400" : "opacity-80 hover:opacity-100"}`}
+                  title="Filtro: Paguar"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-7 h-7 rounded-lg bg-green-50 dark:bg-green-900/30 flex items-center justify-center">
+                      <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    <span className="text-xs text-slate-400">Paguar</span>
+                    {statusFilter === "PAID" && <span className="ml-auto text-[10px] bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-1.5 rounded-full font-medium">Aktiv</span>}
+                  </div>
+                  <p className="text-xl font-bold text-green-600 dark:text-green-400">{stats.paid}</p>
+                </div>
+
+                <div
+                  onClick={() => setStatusFilter(f => f === "PARTIAL" ? "" : "PARTIAL")}
+                  className={`card p-3 cursor-pointer transition-all hover:shadow-md ${statusFilter === "PARTIAL" ? "ring-2 ring-blue-400" : "opacity-80 hover:opacity-100"}`}
+                  title="Filtro: Pjesërisht"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+                      <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <span className="text-xs text-slate-400">Pjesërisht</span>
+                    {statusFilter === "PARTIAL" && <span className="ml-auto text-[10px] bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-1.5 rounded-full font-medium">Aktiv</span>}
+                  </div>
+                  <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{stats.partial}</p>
+                </div>
+
+                <div
+                  onClick={() => setStatusFilter(f => f === "OVERDUE" ? "" : "OVERDUE")}
+                  className={`card p-3 cursor-pointer transition-all hover:shadow-md ${statusFilter === "OVERDUE" ? "ring-2 ring-red-400" : "opacity-80 hover:opacity-100"}`}
+                  title="Filtro: Vonuar"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
+                      <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                    </div>
+                    <span className="text-xs text-slate-400">Vonuar</span>
+                    {statusFilter === "OVERDUE" && <span className="ml-auto text-[10px] bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 px-1.5 rounded-full font-medium">Aktiv</span>}
+                  </div>
+                  <p className="text-xl font-bold text-red-600 dark:text-red-400">{stats.overdue}</p>
+                </div>
+
+                <div
+                  onClick={() => setStatusFilter(f => f === "WITH_PAYMENT" ? "" : "WITH_PAYMENT")}
+                  className={`card p-3 cursor-pointer transition-all hover:shadow-md ${statusFilter === "WITH_PAYMENT" ? "ring-2 ring-emerald-400" : "opacity-80 hover:opacity-100"}`}
+                  title="Filtro: Të gjitha me pagesë (Paguar + Pjesërisht)"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center">
+                      <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <span className="text-xs text-slate-400 whitespace-nowrap">Me pagesë</span>
+                    {statusFilter === "WITH_PAYMENT" && <span className="ml-auto text-[10px] bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 px-1.5 rounded-full font-medium">Aktiv</span>}
+                  </div>
+                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{stats.paid + stats.partial}</p>
+                </div>
+
                 <div className="card p-3 sm:col-span-2">
                   <p className="text-xs text-slate-400 mb-0.5">Të Hyra</p>
                   <p className="text-lg font-bold text-green-600">{formatCurrency(stats.totalRevenue)}</p>
@@ -265,8 +351,17 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                   className="form-input pl-9"
                 />
               </div>
-              <div className="text-sm text-slate-400">
-                {stats && <span>{stats.paid}/{stats.total} paguan</span>}
+              <div className="flex items-center gap-2">
+                {statusFilter && (
+                  <button onClick={() => setStatusFilter("")}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100 transition-colors">
+                    <X className="w-3 h-3" />
+                    {statusFilter === "PAID" ? "Paguar" : statusFilter === "PARTIAL" ? "Pjesërisht" : statusFilter === "OVERDUE" ? "Vonuar" : statusFilter === "WITH_PAYMENT" ? "Me pagesë" : "Filtri"}
+                  </button>
+                )}
+                <span className="text-sm text-slate-400">
+                  {sorted.length}{statusFilter ? ` / ${students.length}` : ""} nxënës
+                </span>
               </div>
             </div>
 
@@ -461,6 +556,23 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                       );
                     })}
                   </tbody>
+                  {sorted.length > 0 && (
+                    <tfoot className="bg-slate-50 dark:bg-slate-800/50 border-t-2 border-slate-200 dark:border-slate-600">
+                      <tr>
+                        <td className="table-cell text-xs font-bold text-slate-500 uppercase tracking-wide" colSpan={3}>
+                          Total ({sorted.length} nxënës)
+                        </td>
+                        <td className="table-cell" />
+                        <td className="table-cell font-bold text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(totalPaidVisible)}
+                        </td>
+                        <td className="table-cell font-bold text-red-600 dark:text-red-400">
+                          {totalDebtVisible > 0 ? formatCurrency(totalDebtVisible) : <span className="text-emerald-500 text-xs">✓ Pa borxh</span>}
+                        </td>
+                        <td colSpan={4} />
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </div>
@@ -572,7 +684,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
     method:     singleExisting?.method            ?? "CASH",
     dueDate:    singleExisting?.dueDate
       ? new Date(singleExisting.dueDate).toISOString().split("T")[0]
-      : new Date(year, (month ?? 1) - 1, 5).toISOString().split("T")[0],
+      : `${year > 0 ? year : new Date().getFullYear()}-09-15`,
     paidDate:   singleExisting?.paidDate
       ? new Date(singleExisting.paidDate).toISOString().split("T")[0]
       : today,
@@ -586,7 +698,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
     portion:    String(half1),
     paidAmount: String(k1Existing?.paidAmount ?? ""),
     paidDate:   k1Existing?.paidDate ? new Date(k1Existing.paidDate).toISOString().split("T")[0] : today,
-    dueDate:    k1Existing?.dueDate  ? new Date(k1Existing.dueDate).toISOString().split("T")[0]  : "2026-09-15",
+    dueDate:    k1Existing?.dueDate  ? new Date(k1Existing.dueDate).toISOString().split("T")[0]  : `${year > 0 ? year : new Date().getFullYear()}-09-15`,
     method:     k1Existing?.method   ?? "CASH",
   });
 
@@ -594,7 +706,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
     portion:    String(half2),
     paidAmount: String(k2Existing?.paidAmount ?? ""),
     paidDate:   k2Existing?.paidDate ? new Date(k2Existing.paidDate).toISOString().split("T")[0] : today,
-    dueDate:    k2Existing?.dueDate  ? new Date(k2Existing.dueDate).toISOString().split("T")[0]  : "2026-11-30",
+    dueDate:    k2Existing?.dueDate  ? new Date(k2Existing.dueDate).toISOString().split("T")[0]  : `${year > 0 ? year : new Date().getFullYear()}-11-30`,
     method:     k2Existing?.method   ?? "CASH",
   });
 
@@ -650,6 +762,15 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
     if (paidAmt > 0) return { label: "~ Pjesërisht", color: "text-blue-600" };
     if (dueDateStr && new Date(dueDateStr) < new Date()) return { label: "⚠ Vonuar", color: "text-red-600" };
     return { label: "Pending", color: "text-slate-400" };
+  }
+
+  async function handleDeleteInstallment(payment: Payment | null) {
+    if (!payment) return;
+    if (!confirm("Fshi këtë këst? Ky veprim nuk mund të kthehet.")) return;
+    setSaving(true);
+    await fetch(`/api/payments/${payment.id}`, { method: "DELETE" });
+    setSaving(false);
+    onSave();
   }
 
   async function handleSave() {
@@ -924,7 +1045,19 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
                 <div className="border border-slate-200 dark:border-slate-600 rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Kësti i Parë</p>
-                    <span className={`text-xs font-medium ${k1Status.color}`}>{k1Status.label}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-medium ${k1Status.color}`}>{k1Status.label}</span>
+                      {k1Existing && (
+                        <button
+                          onClick={() => handleDeleteInstallment(k1Existing)}
+                          disabled={saving}
+                          title="Fshi këtë këst"
+                          className="p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="form-label">Shuma e këstit (€)</label>
@@ -967,7 +1100,19 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
                 <div className="border border-slate-200 dark:border-slate-600 rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Kësti i Dytë</p>
-                    <span className={`text-xs font-medium ${k2Status.color}`}>{k2Status.label}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-medium ${k2Status.color}`}>{k2Status.label}</span>
+                      {k2Existing && (
+                        <button
+                          onClick={() => handleDeleteInstallment(k2Existing)}
+                          disabled={saving}
+                          title="Fshi këtë këst"
+                          className="p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="form-label">Shuma e këstit (€)</label>

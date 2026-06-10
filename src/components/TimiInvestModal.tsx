@@ -227,6 +227,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   const [studentForm, setStudentForm] = useState({
     firstName: "", lastName: "", parentName: "", parentPhone: "",
     regularPrice: "2000", discountPct: "0", manualDiscAmt: "0", notes: "",
+    linkedStudentId: "",
   });
 
   /* Student picker (search from existing students) */
@@ -242,6 +243,30 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
     parentName: "", date: new Date().toISOString().slice(0, 10),
     notes: "", schoolYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
   });
+
+  /* Parent autocomplete for multi-child invoices */
+  const [parentSuggestions, setParentSuggestions] = useState<{ name: string; ids: number[] }[]>([]);
+  const [showParentSugg, setShowParentSugg] = useState(false);
+
+  function handleParentNameChange(value: string) {
+    setProfForm(f => ({ ...f, parentName: value }));
+    if (!value.trim()) { setShowParentSugg(false); return; }
+    const groups: Record<string, number[]> = {};
+    for (const s of students.filter(s => s.active)) {
+      if (!s.parentName.toLowerCase().includes(value.toLowerCase())) continue;
+      if (!groups[s.parentName]) groups[s.parentName] = [];
+      groups[s.parentName].push(s.id);
+    }
+    const sugg = Object.entries(groups).map(([name, ids]) => ({ name, ids }));
+    setParentSuggestions(sugg);
+    setShowParentSugg(sugg.length > 0);
+  }
+
+  function selectParentSugg(name: string, ids: number[]) {
+    setProfForm(f => ({ ...f, parentName: name }));
+    setSelectedIds(new Set(ids.slice(0, 5)));
+    setShowParentSugg(false);
+  }
 
   /* Fetch */
   const fetchStudents = useCallback(async () => {
@@ -284,8 +309,8 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
     return () => clearTimeout(t);
   }, [studentSearch]);
 
-  function pickStudentFromSystem(s: { firstName: string; lastName: string; parentName: string; parentPhone: string }) {
-    setStudentForm(prev => ({ ...prev, firstName: s.firstName, lastName: s.lastName, parentName: s.parentName, parentPhone: s.parentPhone }));
+  function pickStudentFromSystem(s: { id: number; firstName: string; lastName: string; parentName: string; parentPhone: string }) {
+    setStudentForm(prev => ({ ...prev, firstName: s.firstName, lastName: s.lastName, parentName: s.parentName, parentPhone: s.parentPhone, linkedStudentId: String(s.id) }));
     setStudentSearch(`${s.firstName} ${s.lastName}`);
     setShowSuggestions(false);
   }
@@ -294,11 +319,11 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   function openStudentForm(s?: TimiStudent) {
     if (s) {
       setEditStudent(s);
-      setStudentForm({ firstName: s.firstName, lastName: s.lastName, parentName: s.parentName, parentPhone: s.parentPhone, regularPrice: String(s.regularPrice), discountPct: String(s.discountPct), manualDiscAmt: String(s.manualDiscAmt ?? 0), notes: s.notes || "" });
+      setStudentForm({ firstName: s.firstName, lastName: s.lastName, parentName: s.parentName, parentPhone: s.parentPhone, regularPrice: String(s.regularPrice), discountPct: String(s.discountPct), manualDiscAmt: String(s.manualDiscAmt ?? 0), notes: s.notes || "", linkedStudentId: "" });
       setStudentSearch(`${s.firstName} ${s.lastName}`);
     } else {
       setEditStudent(null);
-      setStudentForm({ firstName: "", lastName: "", parentName: "", parentPhone: "", regularPrice: "2000", discountPct: "0", manualDiscAmt: "0", notes: "" });
+      setStudentForm({ firstName: "", lastName: "", parentName: "", parentPhone: "", regularPrice: "2000", discountPct: "0", manualDiscAmt: "0", notes: "", linkedStudentId: "" });
       setStudentSearch("");
     }
     setShowSuggestions(false);
@@ -308,7 +333,12 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   async function saveStudent() {
     const method = editStudent ? "PUT" : "POST";
     const url    = editStudent ? `/api/timi-invest/students/${editStudent.id}` : "/api/timi-invest/students";
-    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...studentForm, regularPrice: parseFloat(studentForm.regularPrice), discountPct: parseFloat(studentForm.discountPct) }) });
+    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      ...studentForm,
+      regularPrice:    parseFloat(studentForm.regularPrice),
+      discountPct:     parseFloat(studentForm.discountPct),
+      studentId:       studentForm.linkedStudentId ? parseInt(studentForm.linkedStudentId) : null,
+    }) });
     setShowStudentForm(false);
     fetchStudents();
   }
@@ -324,15 +354,16 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
     const total    = Math.round((priceAfterDisc - timiAmt) * 100) / 100;
     const items    = [{ name: `${s.firstName} ${s.lastName}`, regularPrice: s.regularPrice, discountPct: s.discountPct, manualDiscAmt: s.manualDiscAmt || 0, finalAmount: priceAfterDisc }];
     const body     = {
-      parentName:  s.parentName || `${s.firstName} ${s.lastName}`,
-      date:        new Date().toISOString().slice(0, 10),
-      timiDiscPct: timiPct,
+      parentName:     s.parentName || `${s.firstName} ${s.lastName}`,
+      date:           new Date().toISOString().slice(0, 10),
+      timiDiscPct:    timiPct,
       items,
-      totalAmount: priceAfterDisc,
-      timiDiscAmt: timiAmt,
-      finalAmount: total,
-      notes:       s.notes || null,
-      schoolYear:  null,
+      totalAmount:    priceAfterDisc,
+      timiDiscAmt:    timiAmt,
+      finalAmount:    total,
+      notes:          s.notes || null,
+      schoolYear:     null,
+      timiStudentIds: [s.id],
     };
     const r   = await fetch("/api/timi-invest/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const inv = await r.json();
@@ -401,7 +432,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
       alert("Plotëso emrin e prindit dhe zgjidh të paktën një nxënës.");
       return;
     }
-    const body = { ...profForm, timiDiscPct: TIMI_DISC_PCT, items, totalAmount, timiDiscAmt, finalAmount };
+    const body = { ...profForm, timiDiscPct: TIMI_DISC_PCT, items, totalAmount, timiDiscAmt, finalAmount, timiStudentIds: [...selectedIds] };
     const r = await fetch("/api/timi-invest/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const inv = await r.json();
     fetchInvoices();
@@ -780,9 +811,32 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-5">
               {/* Form */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
+                <div className="relative">
                   <label className="form-label">Emri i prindit <span className="text-red-500">*</span></label>
-                  <input className="form-input" placeholder="Emri i plotë i prindit" value={profForm.parentName} onChange={e => setProfForm({ ...profForm, parentName: e.target.value })} />
+                  <input
+                    className="form-input"
+                    placeholder="Shkruaj emrin e prindit..."
+                    value={profForm.parentName}
+                    onChange={e => handleParentNameChange(e.target.value)}
+                    onFocus={() => profForm.parentName.trim() && setShowParentSugg(parentSuggestions.length > 0)}
+                    onBlur={() => setTimeout(() => setShowParentSugg(false), 150)}
+                    autoComplete="off"
+                  />
+                  {showParentSugg && parentSuggestions.length > 0 && (
+                    <ul className="absolute z-30 left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-xl shadow-xl overflow-hidden">
+                      {parentSuggestions.map((p, i) => (
+                        <li key={i}>
+                          <button type="button" onMouseDown={() => selectParentSugg(p.name, p.ids)}
+                            className="w-full text-left px-4 py-2.5 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex items-center justify-between gap-3">
+                            <span className="font-semibold text-sm text-slate-800 dark:text-slate-100">{p.name}</span>
+                            <span className="text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full font-medium flex-shrink-0">
+                              {p.ids.length} {p.ids.length === 1 ? "fëmijë" : "fëmijë"}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div>
                   <label className="form-label">Data e profaturës</label>

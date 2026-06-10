@@ -25,10 +25,10 @@ export async function GET() {
     totalRevenue,
     recentPayments,
     overduePayments,
-    monthlyStats,
     newStudentsThisMonth,
     expiringThisWeek,
-    enrollmentTrend,
+    allMonthlyPayments,
+    allEnrollments,
   ] = await Promise.all([
     prisma.student.count(),
     prisma.student.count({ where: { status: "ACTIVE" } }),
@@ -78,19 +78,6 @@ export async function GET() {
       _count: true,
     }),
 
-    // Last 6 months payments for chart — per month aggregate
-    Promise.all(
-      Array.from({ length: 6 }, (_, i) => {
-        const d = new Date(thisYear, thisMonth - (5 - i), 1);
-        const start = new Date(d.getFullYear(), d.getMonth(), 1);
-        const end   = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-        return prisma.payment.aggregate({
-          where: { paidDate: { gte: start, lte: end }, status: { in: ["PAID", "PARTIAL"] } },
-          _sum: { paidAmount: true },
-        }).then(r => ({ month: d, total: r._sum.paidAmount || 0 }));
-      })
-    ),
-
     // New students enrolled this month
     prisma.student.count({
       where: { enrollDate: { gte: firstDayThisMonth, lte: lastDayThisMonth } },
@@ -105,24 +92,45 @@ export async function GET() {
       },
     }),
 
-    // Enrollment per month last 6 months
-    Promise.all(
-      Array.from({ length: 6 }, (_, i) => {
-        const d = new Date(thisYear, thisMonth - (5 - i), 1);
-        const start = new Date(d.getFullYear(), d.getMonth(), 1);
-        const end   = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-        return prisma.student.count({
-          where: { enrollDate: { gte: start, lte: end } },
-        }).then(count => ({ month: d, count }));
-      })
-    ),
+    // Të gjitha pagesat e 6 muajve të fundit — 1 query në vend të 6
+    prisma.payment.findMany({
+      where: {
+        paidDate: { gte: new Date(thisYear, thisMonth - 5, 1) },
+        status: { in: ["PAID", "PARTIAL"] },
+      },
+      select: { paidDate: true, paidAmount: true },
+    }),
+
+    // Të gjithë nxënësit e regjistruar në 6 muajt e fundit — 1 query në vend të 6
+    prisma.student.findMany({
+      where: { enrollDate: { gte: new Date(thisYear, thisMonth - 5, 1) } },
+      select: { enrollDate: true },
+    }),
   ]);
 
-  // Build monthly chart data — monthlyStats dhe enrollmentTrend janë tashmë të agreguar
-  const monthlyChartData = monthlyStats.map((stat, i) => ({
-    month: new Intl.DateTimeFormat("sq-AL", { month: "short" }).format(stat.month),
-    total: stat.total,
-    enrolled: enrollmentTrend[i]?.count ?? 0,
+  // Ndërtoj chart data duke grupuar 2 query-t në JavaScript (ishte 12 query)
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(thisYear, thisMonth - (5 - i), 1);
+    return { date: d, key: `${d.getFullYear()}-${d.getMonth()}` };
+  });
+
+  const revenueByMonth = new Map<string, number>();
+  for (const p of allMonthlyPayments) {
+    if (!p.paidDate) continue;
+    const key = `${p.paidDate.getFullYear()}-${p.paidDate.getMonth()}`;
+    revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + p.paidAmount);
+  }
+
+  const enrollByMonth = new Map<string, number>();
+  for (const s of allEnrollments) {
+    const key = `${s.enrollDate.getFullYear()}-${s.enrollDate.getMonth()}`;
+    enrollByMonth.set(key, (enrollByMonth.get(key) ?? 0) + 1);
+  }
+
+  const monthlyChartData = months.map(({ date, key }) => ({
+    month:    new Intl.DateTimeFormat("sq-AL", { month: "short" }).format(date),
+    total:    revenueByMonth.get(key) ?? 0,
+    enrolled: enrollByMonth.get(key)  ?? 0,
   }));
 
   // Revenue change percentage

@@ -12,6 +12,12 @@ export default function Header({ title, backHref }: { title?: string; backHref?:
   const { data: session } = useSession();
   const [dark, setDark] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [canGoBack, setCanGoBack] = useState(false);
+
+  useEffect(() => {
+    // Trego butonin vetëm nëse ka historik navigimi (jo në faqen e parë)
+    setCanGoBack(window.history.length > 1);
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem("theme");
@@ -32,9 +38,9 @@ export default function Header({ title, backHref }: { title?: string; backHref?:
   return (
     <header className="h-14 flex items-center justify-between px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
       <div className="flex items-center gap-2">
-        {backHref && (
+        {(backHref || canGoBack) && (
           <button
-            onClick={() => window.history.length > 1 ? router.back() : router.push(backHref)}
+            onClick={() => router.back()}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             title="Kthehu"
           >

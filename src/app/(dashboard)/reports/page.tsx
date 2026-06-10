@@ -8,6 +8,7 @@ import {
   ResponsiveContainer, Cell
 } from "recharts";
 import { Download, FileBarChart, AlertCircle, GraduationCap } from "lucide-react";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
 
 const REPORT_TYPES = [
   { value: "monthly", label: "Pagesat Mujore", icon: FileBarChart },
@@ -19,17 +20,28 @@ const COLORS = ["#2563eb", "#7c3aed", "#059669", "#d97706", "#dc2626", "#0891b2"
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState("monthly");
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [data, setData] = useState<unknown>(null);
-  const [loading, setLoading] = useState(true);
+  const [yearType, setYearType]     = useState<YearType>("calendar");
+  const [year, setYear]             = useState(new Date().getFullYear());
+  const [data, setData]             = useState<unknown>(null);
+  const [loading, setLoading]       = useState(true);
+  const [periodLabel, setPeriodLabel] = useState("");
+
+  const years = yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+
+  function switchYearType(yt: YearType) {
+    setYearType(yt);
+    const yrs = yt === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+    if (!yrs.includes(year)) setYear(yrs[yrs.length - 2] ?? yrs[0]);
+  }
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/reports?type=${reportType}&year=${year}`);
+    const res = await fetch(`/api/reports?type=${reportType}&year=${year}&yearType=${yearType}`);
     const json = await res.json();
     setData(json.data);
+    setPeriodLabel(json.label || String(year));
     setLoading(false);
-  }, [reportType, year]);
+  }, [reportType, year, yearType]);
 
   useEffect(() => { fetchReport(); }, [fetchReport]);
 
@@ -40,21 +52,21 @@ export default function ReportsPage() {
     if (reportType === "monthly") {
       const d = data as { month: number; total: number; count: number }[];
       wsData = [
-        ["Muaji", "Të Hyra (Lekë)", "Numri i Pagesave"],
+        ["Muaji", "Të Hyra (€)", "Numri i Pagesave"],
         ...d.map(r => [MONTHS[r.month - 1], r.total, r.count]),
         ["TOTALI", d.reduce((s, r) => s + r.total, 0), d.reduce((s, r) => s + r.count, 0)],
       ];
     } else if (reportType === "debts") {
       const d = data as { name: string; class: string; totalDebt: number }[];
       wsData = [
-        ["Nxënësi", "Klasa", "Borxhi Total (Lekë)"],
+        ["Nxënësi", "Klasa", "Borxhi Total (€)"],
         ...d.map(r => [r.name, r.class, r.totalDebt]),
         ["TOTALI", "", d.reduce((s, r) => s + r.totalDebt, 0)],
       ];
     } else {
       const d = data as { className: string; level: string; studentCount: number; totalRevenue: number }[];
       wsData = [
-        ["Klasa", "Niveli", "Nxënës", "Të Hyra (Lekë)"],
+        ["Klasa", "Niveli", "Nxënës", "Të Hyra (€)"],
         ...d.map(r => [r.className, r.level, r.studentCount, r.totalRevenue]),
       ];
     }
@@ -82,16 +94,16 @@ export default function ReportsPage() {
 
     if (reportType === "monthly") {
       const d = data as { month: number; total: number; count: number }[];
-      head = [["Muaji", "Të Hyra (Lekë)", "Nr. Pagesave"]];
-      body = d.map(r => [MONTHS[r.month - 1], `${r.total.toLocaleString()} Lekë`, r.count]);
+      head = [["Muaji", "Të Hyra (€)", "Nr. Pagesave"]];
+      body = d.map(r => [MONTHS[r.month - 1], `${r.total.toLocaleString()} €`, r.count]);
     } else if (reportType === "debts") {
       const d = data as { name: string; class: string; totalDebt: number }[];
-      head = [["Nxënësi", "Klasa", "Borxhi (Lekë)"]];
-      body = d.map(r => [r.name, r.class, `${r.totalDebt.toLocaleString()} Lekë`]);
+      head = [["Nxënësi", "Klasa", "Borxhi (€)"]];
+      body = d.map(r => [r.name, r.class, `${r.totalDebt.toLocaleString()} €`]);
     } else {
       const d = data as { className: string; level: string; studentCount: number; totalRevenue: number }[];
       head = [["Klasa", "Niveli", "Nxënës", "Të Hyra"]];
-      body = d.map(r => [r.className, r.level, r.studentCount, `${r.totalRevenue.toLocaleString()} Lekë`]);
+      body = d.map(r => [r.className, r.level, r.studentCount, `${r.totalRevenue.toLocaleString()} €`]);
     }
 
     autoTable(doc, {
@@ -130,14 +142,20 @@ export default function ReportsPage() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            <select
-              value={year}
-              onChange={e => setYear(parseInt(e.target.value))}
-              className="form-input w-28"
-            >
-              {[2023, 2024, 2025, 2026].map(y => (
-                <option key={y} value={y}>{y}</option>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Togël Kalendarik / Akademik */}
+            <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 text-xs font-semibold">
+              {([["calendar", "📅 Kalendarik"], ["academic", "🎓 Akademik"]] as [YearType, string][]).map(([yt, lbl]) => (
+                <button key={yt} onClick={() => switchYearType(yt)}
+                  className={`px-3 py-2 transition-colors ${yearType === yt ? "bg-primary-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+            {/* Year selector */}
+            <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-32">
+              {years.map(y => (
+                <option key={y} value={y}>{yearType === "academic" ? `${y}–${y + 1}` : y}</option>
               ))}
             </select>
             <button onClick={exportExcel} className="btn-secondary">
@@ -160,14 +178,24 @@ export default function ReportsPage() {
           </div>
         ) : (
           <>
+            {/* Periudha aktive */}
+            {periodLabel && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                  {yearType === "academic" ? "Vit Akademik" : "Vit Kalendarik"}:
+                </span>
+                <span className="text-sm font-bold text-primary-700 dark:text-primary-400">{periodLabel}</span>
+              </div>
+            )}
+
             {/* Monthly Report */}
             {reportType === "monthly" && data && (
-              <MonthlyReport data={data as { month: number; total: number; count: number }[]} />
+              <MonthlyReport data={data as { month: number; year: number; label: string; total: number; count: number }[]} />
             )}
 
             {/* Debts Report */}
             {reportType === "debts" && data && (
-              <DebtsReport data={data as { id: number; name: string; class: string; totalDebt: number }[]} />
+              <DebtsReport data={data as { id: number; name: string; class: string; totalDebt: number; totalPaid: number; finalPrice: number; noPay: boolean }[]} />
             )}
 
             {/* By Class Report */}
@@ -181,10 +209,10 @@ export default function ReportsPage() {
   );
 }
 
-function MonthlyReport({ data }: { data: { month: number; total: number; count: number }[] }) {
-  const totalRevenue = data.reduce((s, d) => s + d.total, 0);
+function MonthlyReport({ data }: { data: { month: number; year?: number; label?: string; total: number; count: number }[] }) {
+  const totalRevenue  = data.reduce((s, d) => s + d.total, 0);
   const totalPayments = data.reduce((s, d) => s + d.count, 0);
-  const maxMonth = data.reduce((max, d) => d.total > max.total ? d : max, data[0]);
+  const maxMonth      = data.reduce((max, d) => d.total > max.total ? d : max, data[0]);
 
   return (
     <div className="space-y-4">
@@ -200,7 +228,7 @@ function MonthlyReport({ data }: { data: { month: number; total: number; count: 
         <div className="card p-4">
           <p className="text-xs text-slate-400 mb-1">Muaji më i Mirë</p>
           <p className="text-xl font-bold text-green-600">
-            {MONTHS[(maxMonth?.month || 1) - 1]}
+            {maxMonth?.label || MONTHS[(maxMonth?.month || 1) - 1]}
           </p>
         </div>
       </div>
@@ -208,7 +236,7 @@ function MonthlyReport({ data }: { data: { month: number; total: number; count: 
       <div className="card p-5">
         <h3 className="section-title mb-4">Të Hyrat Mujore</h3>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={data.map(d => ({ ...d, name: MONTHS[d.month - 1].slice(0, 3) }))}>
+          <BarChart data={data.map(d => ({ ...d, name: (d.label || MONTHS[d.month - 1]).slice(0, 3) }))}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
             <YAxis
@@ -240,8 +268,8 @@ function MonthlyReport({ data }: { data: { month: number; total: number; count: 
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
             {data.map(row => (
-              <tr key={row.month} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                <td className="table-cell font-medium">{MONTHS[row.month - 1]}</td>
+              <tr key={`${row.month}-${row.year}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                <td className="table-cell font-medium">{row.label || MONTHS[row.month - 1]}</td>
                 <td className="table-cell text-right font-semibold text-primary-600">
                   {formatCurrency(row.total)}
                 </td>
@@ -270,12 +298,14 @@ function MonthlyReport({ data }: { data: { month: number; total: number; count: 
   );
 }
 
-function DebtsReport({ data }: { data: { id: number; name: string; class: string; totalDebt: number }[] }) {
-  const totalDebt = data.reduce((s, d) => s + d.totalDebt, 0);
+function DebtsReport({ data }: { data: { id: number; name: string; class: string; totalDebt: number; totalPaid: number; finalPrice: number; noPay: boolean }[] }) {
+  const totalDebt   = data.reduce((s, d) => s + d.totalDebt, 0);
+  const noPayers    = data.filter(d => d.noPay).length;
+  const partialPay  = data.filter(d => !d.noPay).length;
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="card p-4">
           <p className="text-xs text-slate-400 mb-1">Nxënës me Borxh</p>
           <p className="text-xl font-bold text-red-600">{data.length}</p>
@@ -285,10 +315,12 @@ function DebtsReport({ data }: { data: { id: number; name: string; class: string
           <p className="text-xl font-bold text-red-600">{formatCurrency(totalDebt)}</p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-slate-400 mb-1">Borxhi Mesatar</p>
-          <p className="text-xl font-bold text-slate-900 dark:text-white">
-            {data.length > 0 ? formatCurrency(totalDebt / data.length) : "—"}
-          </p>
+          <p className="text-xs text-slate-400 mb-1">Pa paguar fare</p>
+          <p className="text-xl font-bold text-orange-600">{noPayers}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-slate-400 mb-1">Paguar pjesërisht</p>
+          <p className="text-xl font-bold text-amber-600">{partialPay}</p>
         </div>
       </div>
 
@@ -299,36 +331,57 @@ function DebtsReport({ data }: { data: { id: number; name: string; class: string
               <th className="table-header">#</th>
               <th className="table-header">Nxënësi</th>
               <th className="table-header">Klasa</th>
-              <th className="table-header text-right">Borxhi (Lekë)</th>
+              <th className="table-header">Statusi</th>
+              <th className="table-header text-right">Paguar</th>
+              <th className="table-header text-right">Borxhi</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
             {data.length === 0 ? (
               <tr>
-                <td colSpan={4} className="table-cell text-center py-8 text-slate-400">
+                <td colSpan={6} className="table-cell text-center py-8 text-slate-400">
                   Asnjë borxh i gjetur
                 </td>
               </tr>
-            ) : data.sort((a, b) => b.totalDebt - a.totalDebt).map((row, i) => (
-              <tr key={`${row.name}-${i}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                <td className="table-cell text-slate-400">{i + 1}</td>
+            ) : data.map((row, i) => (
+              <tr key={`${row.name}-${i}`} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${row.noPay ? "bg-orange-50/30 dark:bg-orange-900/5" : ""}`}>
+                <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                 <td className="table-cell font-medium text-slate-900 dark:text-white">{row.name}</td>
                 <td className="table-cell">
                   <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-2 py-0.5 rounded text-xs font-medium">
                     {row.class}
                   </span>
                 </td>
-                <td className="table-cell text-right font-semibold text-red-600 dark:text-red-400">
+                <td className="table-cell">
+                  {row.noPay ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400">
+                      Pa paguar fare
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
+                      Paguar pjesërisht
+                    </span>
+                  )}
+                </td>
+                <td className="table-cell text-right text-sm">
+                  {row.totalPaid > 0
+                    ? <span className="text-emerald-600 dark:text-emerald-400 font-medium">{formatCurrency(row.totalPaid)}</span>
+                    : <span className="text-slate-300">—</span>}
+                </td>
+                <td className="table-cell text-right font-bold text-red-600 dark:text-red-400">
                   {formatCurrency(row.totalDebt)}
                 </td>
               </tr>
             ))}
           </tbody>
           {data.length > 0 && (
-            <tfoot className="bg-slate-50 dark:bg-slate-800/50">
+            <tfoot className="bg-slate-50 dark:bg-slate-800/50 border-t-2 border-slate-200 dark:border-slate-600">
               <tr>
-                <td colSpan={3} className="table-cell font-bold">TOTALI</td>
-                <td className="table-cell text-right font-bold text-red-600">
+                <td colSpan={4} className="table-cell font-bold text-slate-700 dark:text-slate-200">TOTALI</td>
+                <td className="table-cell text-right font-bold text-emerald-600">
+                  {formatCurrency(data.reduce((s, d) => s + d.totalPaid, 0))}
+                </td>
+                <td className="table-cell text-right font-bold text-red-600 text-base">
                   {formatCurrency(totalDebt)}
                 </td>
               </tr>

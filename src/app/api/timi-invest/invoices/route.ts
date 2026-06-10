@@ -51,5 +51,27 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Sinkronizo discountPct te nxënësi kryesor
+  if (Array.isArray(body.timiStudentIds) && body.timiStudentIds.length > 0) {
+    const shkollimi = await prisma.paymentCategory.findFirst({ where: { name: "Shkollimi" } });
+    const globalPrice = shkollimi?.defaultAmount || 2000;
+
+    for (const timiId of body.timiStudentIds) {
+      const rows = await prisma.$queryRawUnsafe<{ studentId: number | null; regularPrice: number; discountPct: number; manualDiscAmt: number }[]>(
+        `SELECT studentId, regularPrice, discountPct, manualDiscAmt FROM TimiInvestStudent WHERE id=?`, Number(timiId)
+      );
+      if (!rows[0]?.studentId) continue;
+
+      const { studentId, regularPrice, discountPct, manualDiscAmt } = rows[0];
+      const effectivePrice = Math.max(0, regularPrice * (1 - discountPct / 100) - (manualDiscAmt || 0));
+      const newDiscountPct = Math.max(0, Math.round((1 - effectivePrice / globalPrice) * 10000) / 100);
+
+      await prisma.student.update({
+        where: { id: studentId },
+        data: { discountPct: newDiscountPct },
+      });
+    }
+  }
+
   return NextResponse.json(invoice, { status: 201 });
 }

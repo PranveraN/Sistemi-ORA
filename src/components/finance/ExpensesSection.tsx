@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
-import { Plus, X, Save, Loader2, Trash2, Pencil } from "lucide-react";
+import { Plus, X, Save, Loader2, Trash2, Pencil, Upload, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 
 interface Expense {
   id: number;
@@ -23,10 +24,14 @@ interface Props {
 }
 
 export default function ExpensesSection({ categoryId, type, month, year }: Props) {
-  const [items, setItems]     = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal]     = useState(false);
+  const [items, setItems]       = useState<Expense[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [modal, setModal]       = useState(false);
   const [editItem, setEditItem] = useState<Expense | null>(null);
+  const [importing, setImporting]   = useState(false);
+  const [importMsg, setImportMsg]   = useState<{ text: string; ok: boolean } | null>(null);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const isHandover = type === "HANDOVER";
   const label      = isHandover ? "Dorezim Parash" : "Shpenzim";
@@ -58,6 +63,114 @@ export default function ExpensesSection({ categoryId, type, month, year }: Props
   function openAdd()             { setEditItem(null); setModal(true); }
   function openEdit(e: Expense)  { setEditItem(e);    setModal(true); }
   async function afterSave()     { setModal(false); await fetchItems(); }
+
+  function downloadTemplate() {
+    const headers = isHandover
+      ? [["DATA", "DORËZUAR TEK", "SHUMA (€)", "MËNYRA", "REFERENCA"]]
+      : [["DATA", "PËRSHKRIMI", "SHUMA (€)", "MËNYRA", "REFERENCA"]];
+    const example = isHandover
+      ? [new Date().toISOString().split("T")[0], "Emri Mbiemri", 500, "Cash", ""]
+      : [new Date().toISOString().split("T")[0], "Shpenzim shembull", 100, "Cash", ""];
+    const ws = XLSX.utils.aoa_to_sheet([...headers, example]);
+    ws["!cols"] = [{ wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 16 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.writeFile(wb, `Template-${label.replace(/\s/g, "-")}.xlsx`);
+  }
+
+  function getCol(row: Record<string, unknown>, ...keys: string[]): string {
+    const lower = Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toLowerCase().trim(), v]));
+    for (const key of keys) {
+      const v = lower[key.toLowerCase().trim()];
+      if (v !== undefined && v !== "") return String(v).trim();
+    }
+    return "";
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !categoryId) return;
+    setImporting(true);
+    setImportMsg(null);
+    setImportErrors([]);
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: "array", cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
+
+      let ok = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rn  = `Rreshti ${i + 2}`; // +2 sepse rreshti 1 = header
+
+        const rawAmt    = getCol(row, "SHUMA (€)", "SHUMA", "shuma", "amount");
+        const rawDate   = getCol(row, "DATA", "data", "date");
+        const recipient = getCol(row, "DORËZUAR TEK", "PËRSHKRIMI", "recipient", "description", "pershkrimi", "dorezuar tek");
+        const rawMethod = getCol(row, "MËNYRA", "menyra", "method") || "CASH";
+        const reference = getCol(row, "REFERENCA", "referenca", "reference");
+
+        // Kapërceje rreshtat bosh
+        if (!rawAmt && !recipient && !rawDate) continue;
+
+        const amount = parseFloat(String(rawAmt).replace(",", "."));
+        if (!amount || isNaN(amount) || amount <= 0) {
+          errors.push(`${rn}: Shuma e pavlefshme ("${rawAmt}")`);
+          continue;
+        }
+
+        let dateStr = rawDate;
+        if (!dateStr) {
+          dateStr = new Date().toISOString().split("T")[0];
+        } else {
+          // Provon të normalizojë datën nëse vjen si numër (Excel serial)
+          const asNum = parseFloat(dateStr);
+          if (!isNaN(asNum) && asNum > 1000) {
+            const d = new Date(Math.round((asNum - 25569) * 86400 * 1000));
+            dateStr = d.toISOString().split("T")[0];
+          }
+        }
+
+        const method = ["CASH", "BANK", "CARD", "ONLINE"].includes(rawMethod.toUpperCase())
+          ? rawMethod.toUpperCase() : "CASH";
+
+        const payload = {
+          categoryId, type, amount,
+          description: isHandover ? "" : recipient,
+          recipient:   isHandover ? recipient : "",
+          method, reference, date: dateStr, month, year,
+        };
+
+        const res = await fetch("/api/expenses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          ok++;
+        } else {
+          const d = await res.json().catch(() => ({}));
+          errors.push(`${rn}: ${d?.error || "Gabim serveri"}`);
+        }
+      }
+
+      setImportErrors(errors);
+      setImportMsg({
+        text: `U importuan ${ok} regjistrime${errors.length > 0 ? `, ${errors.length} me gabim` : " me sukses"}.`,
+        ok: ok > 0,
+      });
+      if (ok > 0) await fetchItems();
+    } catch {
+      setImportMsg({ text: "Gabim gjatë leximit të skedarit Excel.", ok: false });
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
 
   if (!categoryId) {
     return (
@@ -92,17 +205,49 @@ export default function ExpensesSection({ categoryId, type, month, year }: Props
       </div>
 
       {/* Header row */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {items.length === 0
             ? `Nuk ka ${label.toLowerCase()} për ${MONTHS[month - 1]} ${year}`
             : `${items.length} regjistrime`}
         </p>
-        <button onClick={openAdd} className="btn-primary">
-          <Plus className="w-4 h-4" />
-          Shto {label}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={downloadTemplate} className="btn-secondary text-xs">
+            <Download className="w-3.5 h-3.5" />
+            Template Excel
+          </button>
+          <label className={`btn-secondary text-xs cursor-pointer ${importing ? "opacity-60 pointer-events-none" : ""}`}>
+            <Upload className="w-3.5 h-3.5" />
+            {importing ? "Duke importuar..." : "Import Excel"}
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
+          </label>
+          <button onClick={openAdd} className="btn-primary text-sm">
+            <Plus className="w-4 h-4" />
+            Shto {label}
+          </button>
+        </div>
       </div>
+
+      {importMsg && (
+        <div className={`rounded-xl border text-sm ${importMsg.ok ? "bg-green-50 dark:bg-green-900/20 text-green-700 border-green-200" : "bg-red-50 dark:bg-red-900/20 text-red-700 border-red-200"}`}>
+          <div className="flex items-center justify-between p-3 font-medium">
+            <span>{importMsg.text}</span>
+            <button onClick={() => { setImportMsg(null); setImportErrors([]); }}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {importErrors.length > 0 && (
+            <ul className="px-4 pb-3 space-y-1 text-xs border-t border-current/20 pt-2">
+              {importErrors.map((err, i) => (
+                <li key={i} className="flex items-start gap-1.5">
+                  <span className="mt-0.5 shrink-0">⚠</span>
+                  <span>{err}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <div className="card overflow-hidden">

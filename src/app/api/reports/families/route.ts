@@ -18,35 +18,52 @@ export async function GET(req: NextRequest) {
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });
 
-  // Gjenero një çelës familje për secilin nxënës
-  function familyKey(s: typeof students[0]): string {
-    // Prioritet: baba, pastaj nënë, pastaj parentPhone
-    if (s.fatherName && s.fatherPhone)
-      return `F:${s.fatherName.trim().toLowerCase()}|${s.fatherPhone.trim()}`;
-    if (s.motherName && s.motherPhone)
-      return `M:${s.motherName.trim().toLowerCase()}|${s.motherPhone.trim()}`;
-    if (s.fatherPhone)
-      return `FP:${s.fatherPhone.trim()}`;
-    if (s.motherPhone)
-      return `MP:${s.motherPhone.trim()}`;
-    if (s.parentPhone)
-      return `PP:${s.parentPhone.trim()}`;
-    // Nuk ka info prindi — familje e vetme
-    return `SOLO:${s.id}`;
+  // ── Union-Find ──────────────────────────────────────────────
+  // Grupojmë fëmijët e së njëjtës familje duke lidhur çdo nxënës
+  // me çdo nxënës tjetër që ndan të paktën NJË numër telefoni.
+
+  const par = new Map<number, number>();
+  students.forEach(s => par.set(s.id, s.id));
+
+  function find(x: number): number {
+    if (par.get(x) !== x) par.set(x, find(par.get(x)!));
+    return par.get(x)!;
+  }
+  function union(x: number, y: number) {
+    par.set(find(x), find(y));
   }
 
-  const map = new Map<string, typeof students>();
+  // Mbledh të gjitha numrat e telefonit → [studentId]
+  const phoneMap = new Map<string, number[]>();
   for (const s of students) {
-    const k = familyKey(s);
-    if (!map.has(k)) map.set(k, []);
-    map.get(k)!.push(s);
+    const phones = [s.fatherPhone, s.motherPhone, s.parentPhone]
+      .filter((p): p is string => Boolean(p))
+      .map(p => p.trim().replace(/\s+/g, ""));
+    for (const ph of phones) {
+      if (!phoneMap.has(ph)) phoneMap.set(ph, []);
+      phoneMap.get(ph)!.push(s.id);
+    }
   }
 
-  const families = Array.from(map.values())
+  // Lido nxënësit që ndajnë të njëjtin numër
+  for (const ids of phoneMap.values()) {
+    for (let i = 1; i < ids.length; i++) union(ids[0], ids[i]);
+  }
+
+  // Grupe sipas rrënjës (familje)
+  const familyMap = new Map<number, typeof students>();
+  for (const s of students) {
+    const root = find(s.id);
+    if (!familyMap.has(root)) familyMap.set(root, []);
+    familyMap.get(root)!.push(s);
+  }
+
+  const families = Array.from(familyMap.values())
     .map(members => {
       const first = members[0];
-      const fatherName = first.fatherName || null;
-      const motherName = first.motherName || first.parentName || null;
+      const fatherName = members.find(m => m.fatherName)?.fatherName ?? null;
+      const motherName = members.find(m => m.motherName)?.motherName
+        ?? members.find(m => m.parentName)?.parentName ?? null;
       const phone = first.fatherPhone || first.motherPhone || first.parentPhone || "";
       const lastName = first.lastName;
 
@@ -67,20 +84,10 @@ export async function GET(req: NextRequest) {
       });
 
       const totalFinalPrice = children.reduce((s, c) => s + c.finalPrice, 0);
-      const totalPaid = children.reduce((s, c) => s + c.paid, 0);
-      const totalDebt = children.reduce((s, c) => s + c.debt, 0);
+      const totalPaid       = children.reduce((s, c) => s + c.paid, 0);
+      const totalDebt       = children.reduce((s, c) => s + c.debt, 0);
 
-      return {
-        lastName,
-        fatherName,
-        motherName,
-        phone,
-        childCount: members.length,
-        children,
-        totalFinalPrice,
-        totalPaid,
-        totalDebt,
-      };
+      return { lastName, fatherName, motherName, phone, childCount: members.length, children, totalFinalPrice, totalPaid, totalDebt };
     })
     .sort((a, b) => a.lastName.localeCompare(b.lastName, "sq"));
 

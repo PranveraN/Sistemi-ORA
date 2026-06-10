@@ -38,10 +38,15 @@ function PaymentForm() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/students?limit=200").then(r => r.json()),
+      fetch("/api/students?limit=2000&status=ACTIVE").then(r => r.json()),
       fetch("/api/categories").then(r => r.json()),
     ]).then(([s, c]) => {
-      setStudents(s.students);
+      setStudents(
+        [...(s.students || [])].sort((a: Student, b: Student) =>
+          a.lastName.localeCompare(b.lastName, "sq", { sensitivity: "base" }) ||
+          a.firstName.localeCompare(b.firstName, "sq", { sensitivity: "base" })
+        )
+      );
       setCategories(c);
     });
   }, []);

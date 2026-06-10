@@ -113,7 +113,7 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
     // Table
     autoTable(doc, {
       startY: 100,
-      head: [["Përshkrimi", "Sasia", "Çmimi (Lekë)", "Totali (Lekë)"]],
+      head: [["Përshkrimi", "Sasia", "Çmimi (€)", "Totali (€)"]],
       body: invoice.items.map(item => [
         item.description,
         item.quantity.toString(),
@@ -143,13 +143,13 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
     doc.setTextColor(100, 116, 139);
     doc.text("Nëntotali:", 140, finalY);
     doc.setTextColor(15, 23, 42);
-    doc.text(`${invoice.subtotal.toLocaleString()} Lekë`, 190, finalY, { align: "right" });
+    doc.text(`${invoice.subtotal.toLocaleString()} €`, 190, finalY, { align: "right" });
 
     if (invoice.vatRate > 0) {
       doc.setTextColor(100, 116, 139);
       doc.text(`TVSH (${invoice.vatRate}%):`, 140, finalY + 6);
       doc.setTextColor(15, 23, 42);
-      doc.text(`${invoice.vatAmount.toLocaleString()} Lekë`, 190, finalY + 6, { align: "right" });
+      doc.text(`${invoice.vatAmount.toLocaleString()} €`, 190, finalY + 6, { align: "right" });
     }
 
     doc.setDrawColor(226, 232, 240);
@@ -159,7 +159,7 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
     doc.setTextColor(37, 99, 235);
     doc.setFont("helvetica", "bold");
     doc.text("TOTALI:", 140, finalY + 17);
-    doc.text(`${invoice.total.toLocaleString()} Lekë`, 190, finalY + 17, { align: "right" });
+    doc.text(`${invoice.total.toLocaleString()} €`, 190, finalY + 17, { align: "right" });
 
     if (invoice.notes) {
       doc.setFont("helvetica", "normal");
@@ -293,10 +293,10 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
                   <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-200">{item.description}</td>
                   <td className="px-4 py-3 text-sm text-center text-slate-600 dark:text-slate-300">{item.quantity}</td>
                   <td className="px-4 py-3 text-sm text-right text-slate-600 dark:text-slate-300">
-                    {item.unitPrice.toLocaleString()} Lekë
+                    {item.unitPrice.toLocaleString()} €
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-semibold text-slate-800 dark:text-slate-200">
-                    {item.total.toLocaleString()} Lekë
+                    {item.total.toLocaleString()} €
                   </td>
                 </tr>
               ))}
@@ -309,17 +309,17 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
           <div className="w-72 space-y-2">
             <div className="flex justify-between text-sm text-slate-500">
               <span>Nëntotali:</span>
-              <span>{invoice.subtotal.toLocaleString()} Lekë</span>
+              <span>{invoice.subtotal.toLocaleString()} €</span>
             </div>
             {invoice.vatRate > 0 && (
               <div className="flex justify-between text-sm text-slate-500">
                 <span>TVSH ({invoice.vatRate}%):</span>
-                <span>{invoice.vatAmount.toLocaleString()} Lekë</span>
+                <span>{invoice.vatAmount.toLocaleString()} €</span>
               </div>
             )}
             <div className="flex justify-between text-lg font-bold text-primary-600 border-t border-slate-200 dark:border-slate-600 pt-2">
               <span>TOTALI:</span>
-              <span>{invoice.total.toLocaleString()} Lekë</span>
+              <span>{invoice.total.toLocaleString()} €</span>
             </div>
           </div>
         </div>

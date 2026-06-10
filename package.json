@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "prisma generate && next dev",
+    "dev": "next dev",
+    "generate": "prisma generate",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

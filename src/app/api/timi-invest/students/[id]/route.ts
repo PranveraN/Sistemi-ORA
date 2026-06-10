@@ -8,20 +8,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const body = await req.json();
-  const student = await prisma.timiInvestStudent.update({
-    where: { id: parseInt(id) },
-    data: {
-      firstName:    body.firstName    !== undefined ? body.firstName                        : undefined,
-      lastName:     body.lastName     !== undefined ? body.lastName                         : undefined,
-      parentName:   body.parentName   !== undefined ? body.parentName                       : undefined,
-      parentPhone:  body.parentPhone  !== undefined ? body.parentPhone                      : undefined,
-      regularPrice: body.regularPrice !== undefined ? parseFloat(body.regularPrice)         : undefined,
-      discountPct:   body.discountPct   !== undefined ? parseFloat(body.discountPct)          : undefined,
-      manualDiscAmt: body.manualDiscAmt !== undefined ? parseFloat(body.manualDiscAmt)        : undefined,
-      notes:        body.notes        !== undefined ? body.notes                            : undefined,
-      active:       body.active       !== undefined ? body.active                           : undefined,
-    },
-  });
+  const now = new Date().toISOString();
+  const sid = parseInt(id);
+  if (body.firstName    !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET firstName=?, updatedAt=? WHERE id=?`,    body.firstName, now, sid);
+  if (body.lastName     !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET lastName=?, updatedAt=? WHERE id=?`,     body.lastName,  now, sid);
+  if (body.parentName   !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET parentName=?, updatedAt=? WHERE id=?`,   body.parentName, now, sid);
+  if (body.parentPhone  !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET parentPhone=?, updatedAt=? WHERE id=?`,  body.parentPhone, now, sid);
+  if (body.regularPrice !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET regularPrice=?, updatedAt=? WHERE id=?`, parseFloat(body.regularPrice), now, sid);
+  if (body.discountPct  !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET discountPct=?, updatedAt=? WHERE id=?`,  parseFloat(body.discountPct), now, sid);
+  if (body.manualDiscAmt !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET manualDiscAmt=?, updatedAt=? WHERE id=?`, parseFloat(body.manualDiscAmt), now, sid);
+  if (body.notes        !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET notes=?, updatedAt=? WHERE id=?`,        body.notes, now, sid);
+  if (body.active       !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET active=?, updatedAt=? WHERE id=?`,       body.active ? 1 : 0, now, sid);
+  if ("studentId"       in body)       await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET studentId=?, updatedAt=? WHERE id=?`,    body.studentId ? parseInt(body.studentId) : null, now, sid);
+
+  const [student] = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(`SELECT * FROM TimiInvestStudent WHERE id=?`, sid);
   return NextResponse.json(student);
 }
 

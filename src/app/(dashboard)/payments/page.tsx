@@ -27,13 +27,14 @@ export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const limit = 20;
 
-  const fetch_ = useCallback(async () => {
-    setLoading(true);
+  const fetch_ = useCallback(async (isFirst = false) => {
+    if (isFirst) setLoading(true); else setRefreshing(true);
     const params = new URLSearchParams({ search, status, page: String(page), limit: String(limit) });
     const res = await fetch(`/api/payments?${params}`);
     const data = await res.json();
@@ -44,13 +45,15 @@ export default function PaymentsPage() {
     setPayments(sorted);
     setTotal(data.total);
     setLoading(false);
+    setRefreshing(false);
   }, [search, status, page]);
 
   const _firstRender = useRef(true);
   useEffect(() => {
-    const delay = _firstRender.current ? 0 : 300;
+    const isFirst = _firstRender.current;
+    const delay = isFirst ? 0 : 300;
     _firstRender.current = false;
-    const t = setTimeout(fetch_, delay);
+    const t = setTimeout(() => fetch_(isFirst), delay);
     return () => clearTimeout(t);
   }, [fetch_]);
 
@@ -126,7 +129,16 @@ export default function PaymentsPage() {
         </div>
 
         {/* Table */}
-        <div className="card overflow-hidden">
+        <div className={`card overflow-hidden transition-opacity duration-150 ${refreshing ? "opacity-60" : ""}`}>
+          {refreshing && (
+            <div className="flex items-center gap-2 px-5 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+              <svg className="animate-spin w-3.5 h-3.5 text-primary-500" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="text-xs text-slate-400">Duke rifreskuar...</span>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 dark:bg-slate-800/50">

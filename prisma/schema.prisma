@@ -102,6 +102,19 @@ model Expense {
   updatedAt   DateTime        @updatedAt
 }
 
+model Sipartner {
+  id        Int      @id @default(autoincrement())
+  emri      String
+  nrFiskal  String?
+  adresa    String?
+  telefoni  String?
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([emri])
+}
+
 model ShpenzimKategori {
   id        Int        @id @default(autoincrement())
   emri      String
@@ -121,6 +134,12 @@ model Shpenzim {
   data       DateTime         @default(now())
   metoda     String?          // CASH, BANK, CARD
   referenca  String?
+  docType      String           @default("KUPON") // KUPON, FATURE, OFERTE
+  lloji        String           @default("ZYRE")  // ZYRE, BANKE
+  paguar       Boolean          @default(true)     // true = paguar, false = borxh
+  nrFature     String?          // numri i faturës
+  emriBiznesit String?          // emri i biznesit/furnitorit
+  nrFiskal     String?          // numri fiskal i biznesit
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
@@ -280,6 +299,7 @@ model TimiInvestStudent {
   regularPrice    Float
   discountPct     Float    @default(0)
   manualDiscAmt   Float    @default(0)
+  studentId    Int?     // lidhje me Student.id kryesor (opsionale)
   active       Boolean  @default(true)
   notes        String?
   createdAt    DateTime @default(now())
@@ -377,4 +397,21 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+model Hyra {
+  id        Int      @id @default(autoincrement())
+  paguesit  String
+  shuma     Float
+  kategoria String   @default("SHKOLLIMI")
+  muaj      Int
+  vit       Int
+  metoda    String?  // CASH, BANK
+  referenca String?
+  shenime   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([vit, muaj])
+  @@index([paguesit])
 }

@@ -3,12 +3,11 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import * as XLSX from "xlsx";
 
-// Muajt shqip → numër
 const MUAJT: [string[], number][] = [
   [["jan"],          1],  [["shk","feb"],   2],  [["mar"],         3],
   [["pri","apr"],    4],  [["maj","may"],    5],  [["qer","jun"],   6],
   [["kor","jul"],    7],  [["gus","aug"],    8],  [["sht","sep"],   9],
-  [["tet","okt","oct"],10],[["nen","nën","nov"],11],[["dhe","dec"],  12],
+  [["tet","okt","oct"],10],[["nen","nën","nov"],11],[["dhj","dhe","dec"],12],
 ];
 
 function parseMonth(header: string): number | null {
@@ -35,9 +34,10 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const form    = await req.formData();
-    const file    = form.get("file") as File;
-    const year    = parseInt(form.get("year") as string || String(new Date().getFullYear()));
+    const form = await req.formData();
+    const file = form.get("file") as File;
+    const year = parseInt(form.get("year") as string || String(new Date().getFullYear()));
+    const onlyMonth = form.get("month") ? parseInt(form.get("month") as string) : null;
 
     if (!file) return NextResponse.json({ error: "Skedari mungon" }, { status: 400 });
 
@@ -48,9 +48,9 @@ export async function POST(req: NextRequest) {
 
     if (!raw.length) return NextResponse.json({ error: "Skedari është bosh" }, { status: 400 });
 
-    // Gjej rreshtin e headerit (rreshi i parë me 4+ muaj)
     let hRow = -1;
-    let monthCols: { col: number; month: number }[] = [];
+    let monthCols: { col: number; month: number; lloji: "ZYRE" | "BANKE" }[] = [];
+    let dataStartRow = -1;
 
     for (let ri = 0; ri < Math.min(5, raw.length); ri++) {
       const row = raw[ri] as unknown[];
@@ -59,69 +59,120 @@ export async function POST(req: NextRequest) {
         const m = parseMonth(String(row[c] ?? ""));
         if (m) found.push({ col: c, month: m });
       }
-      if (found.length >= 4) { hRow = ri; monthCols = found; break; }
+      if (found.length >= 4) { hRow = ri; break; }
     }
 
-    if (hRow === -1 || monthCols.length === 0) {
+    if (hRow === -1) {
       const sample = raw[0] ? (raw[0] as unknown[]).slice(0, 6).map(c => String(c ?? "")).join(" | ") : "";
       return NextResponse.json({
-        error: `Nuk u gjetën muajt. Headeri: "${sample}". Sigurohu që rreshti i parë ka emrat e muajve (Janar, Shkurt...)`
+        error: `Nuk u gjetën muajt. Headeri: "${sample}". Sigurohu që rreshti i parë ka emrat e muajve.`
       }, { status: 400 });
     }
 
+    // Kontrollo nëse rreshti pasues ka "e zyres"/"e bankes" — format me 2 kolona
+    const subRow = (raw[hRow + 1] ?? []) as unknown[];
+    const isZyreBanke = subRow.some(cell => {
+      const v = String(cell ?? "").toLowerCase().trim();
+      return v.includes("zyre") || v.includes("zyres") || v.includes("banke") || v.includes("bankes");
+    });
+
+    if (isZyreBanke) {
+      // Format i ri: 2 kolona për muaj (e zyres + e bankes)
+      // Muajt janë në hRow, sub-headerat në hRow+1, të dhënat nga hRow+2
+      const monthRow = raw[hRow] as unknown[];
+      let lastMonth = 0;
+      for (let c = 0; c < subRow.length; c++) {
+        const v = String(subRow[c] ?? "").toLowerCase().trim();
+        // Gjej muajin nga rreshti i muajve (mund të jetë në kolonën aktuale ose ndonjë nga ato të mëparshme)
+        const m = parseMonth(String(monthRow[c] ?? ""));
+        if (m) lastMonth = m;
+        if (v.includes("zyre") || v.includes("zyres")) {
+          monthCols.push({ col: c, month: lastMonth, lloji: "ZYRE" });
+        } else if (v.includes("banke") || v.includes("bankes")) {
+          monthCols.push({ col: c, month: lastMonth, lloji: "BANKE" });
+        }
+      }
+      dataStartRow = hRow + 2;
+    } else {
+      // Format i vjetër: 1 kolonë për muaj — të gjitha ZYRE
+      const row = raw[hRow] as unknown[];
+      for (let c = 0; c < row.length; c++) {
+        const m = parseMonth(String(row[c] ?? ""));
+        if (m) monthCols.push({ col: c, month: m, lloji: "ZYRE" });
+      }
+      dataStartRow = hRow + 1;
+    }
+
+    if (monthCols.length === 0) {
+      return NextResponse.json({ error: "Nuk u gjetën kolona muajsh." }, { status: 400 });
+    }
+
+    // Kolona e kategorisë = kolona para kolonës së parë të muajit
+    const firstMonthCol = Math.min(...monthCols.map(m => m.col));
+    const catCol = Math.max(0, firstMonthCol - 1);
+
+    // Cache all categories once to avoid repeated DB calls per row
+    const allKategori = await prisma.shpenzimKategori.findMany();
+
     let created = 0, skipped = 0, errors = 0;
 
-    for (let ri = hRow + 1; ri < raw.length; ri++) {
+    for (let ri = dataStartRow; ri < raw.length; ri++) {
       const row = raw[ri] as unknown[];
       if (!row || row.length === 0) continue;
 
-      const katEmriRaw = String(row[0] ?? "").trim();
+      const katEmriRaw = String(row[catCol] ?? "").trim();
       if (!katEmriRaw) continue;
       const lower = katEmriRaw.toLowerCase();
       if (lower.includes("total") || lower.includes("gjithsej")) continue;
 
-      // Gjej ose krijo kategorinë (case-insensitive)
-      const existing = await prisma.$queryRawUnsafe<{ id: number }[]>(
-        `SELECT id FROM ShpenzimKategori WHERE lower(trim(emri)) = lower(trim(?)) LIMIT 1`,
-        katEmriRaw
+      // Kalo rreshtat e të hyrave — nuk i përkasin shpenzimeve
+      const isIncome = ["hyrat", "të hyrat", "te hyrat", "suficit", "deficit",
+                        "terheqeje", "tërheqje", "arke", "arkë", "fitim"].some(w => lower.includes(w));
+      if (isIncome) { skipped++; continue; }
+
+      // Case-insensitive exact match
+      let kategori = allKategori.find(
+        k => k.emri.trim().toLowerCase() === katEmriRaw.toLowerCase()
       );
 
-      let katId: number;
-      if (existing.length > 0) {
-        katId = existing[0].id;
-      } else {
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO ShpenzimKategori (emri, ngjyra, ikona, createdAt) VALUES (?, '#64748b', '', datetime('now'))`,
-          katEmriRaw
-        );
-        const [nk] = await prisma.$queryRawUnsafe<{ id: number }[]>(
-          `SELECT id FROM ShpenzimKategori ORDER BY id DESC LIMIT 1`
-        );
-        katId = nk.id;
+      if (!kategori) {
+        kategori = await prisma.shpenzimKategori.create({
+          data: { emri: katEmriRaw, ngjyra: "#64748b", ikona: "" },
+        });
+        allKategori.push(kategori);
       }
 
-      for (const { col, month } of monthCols) {
+      for (const { col, month, lloji } of monthCols) {
+        if (onlyMonth !== null && month !== onlyMonth) { skipped++; continue; }
+
         const amount = parseAmount(row[col]);
         if (!amount) { skipped++; continue; }
 
-        // Data si tekst i pastër: YYYY-MM-15
-        const mm    = String(month).padStart(2, "0");
-        const data  = `${year}-${mm}-15`;
-        const ym    = `${year}-${mm}`;
+        const startOfMonth = new Date(year, month - 1, 1);
+        const endOfMonth   = new Date(year, month,     0, 23, 59, 59);
 
-        // Shmang duplikat (e njëjta kategori + muaj)
-        const dup = await prisma.$queryRawUnsafe<{ id: number }[]>(
-          `SELECT id FROM Shpenzim WHERE kategoriId = ? AND substr(data,1,7) = ? LIMIT 1`,
-          katId, ym
-        );
-        if (dup.length > 0) { skipped++; continue; }
+        // Kontrollo duplikat duke përfshirë llojin (ZYRE/BANKE janë rekorde të ndara)
+        const dup = await prisma.shpenzim.findFirst({
+          where: {
+            kategoriId: kategori.id,
+            lloji,
+            data: { gte: startOfMonth, lte: endOfMonth },
+          },
+        });
+        if (dup) { skipped++; continue; }
 
         try {
-          await prisma.$executeRawUnsafe(
-            `INSERT INTO Shpenzim (kategoriId, shuma, pershkrim, marres, data, metoda, docType, referenca, createdAt, updatedAt)
-             VALUES (?, ?, 'Import Excel', NULL, ?, 'BANK', 'FATURE', NULL, datetime('now'), datetime('now'))`,
-            katId, amount, data
-          );
+          await prisma.shpenzim.create({
+            data: {
+              kategoriId: kategori.id,
+              shuma:      Math.round(amount * 100) / 100,
+              pershkrim:  "Import Excel",
+              data:       new Date(year, month - 1, 15),
+              metoda:     lloji === "BANKE" ? "BANK" : "CASH",
+              docType:    "FATURE",
+              lloji,
+            },
+          });
           created++;
         } catch {
           errors++;
@@ -131,7 +182,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       created, skipped, errors,
-      message: `✓ U importuan ${created} shpenzime${skipped > 0 ? ` (${skipped} bosh/duplikat)` : ""}${errors > 0 ? ` — ${errors} gabime` : ""}`
+      message: `✓ U importuan ${created} shpenzime${skipped > 0 ? ` (${skipped} bosh/duplikat)` : ""}${errors > 0 ? ` — ${errors} gabime` : ""}`,
     });
 
   } catch (e) {

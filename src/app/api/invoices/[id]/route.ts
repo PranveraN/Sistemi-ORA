@@ -33,3 +33,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   return NextResponse.json(invoice);
 }
+
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const invoiceId = parseInt(id);
+
+  // Largo lidhjen me pagesat para fshirjes (invoiceId është opsional në Payment)
+  await prisma.payment.updateMany({
+    where: { invoiceId },
+    data:  { invoiceId: null },
+  });
+  // InvoiceItem fshihet automatikisht (onDelete: Cascade në schema)
+  await prisma.invoice.delete({ where: { id: invoiceId } });
+
+  return NextResponse.json({ ok: true });
+}

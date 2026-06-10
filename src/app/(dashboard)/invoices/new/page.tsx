@@ -31,7 +31,12 @@ function InvoiceForm() {
   ]);
 
   useEffect(() => {
-    fetch("/api/students?limit=200").then(r => r.json()).then(d => setStudents(d.students));
+    fetch("/api/students?limit=2000&status=ACTIVE").then(r => r.json()).then(d =>
+      setStudents([...(d.students || [])].sort((a: {firstName:string;lastName:string}, b: {firstName:string;lastName:string}) =>
+        a.lastName.localeCompare(b.lastName, "sq", { sensitivity: "base" }) ||
+        a.firstName.localeCompare(b.firstName, "sq", { sensitivity: "base" })
+      ))
+    );
   }, []);
 
   function setField(field: string, value: string) {
@@ -163,7 +168,7 @@ function InvoiceForm() {
               <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider px-2">
                 <div className="col-span-5">Përshkrimi</div>
                 <div className="col-span-2 text-right">Sasi</div>
-                <div className="col-span-2 text-right">Çmimi (Lekë)</div>
+                <div className="col-span-2 text-right">Çmimi (€)</div>
                 <div className="col-span-2 text-right">Totali</div>
                 <div className="col-span-1" />
               </div>
@@ -222,17 +227,17 @@ function InvoiceForm() {
                 <div className="w-64 space-y-2">
                   <div className="flex justify-between text-sm text-slate-500">
                     <span>Nëntotali:</span>
-                    <span>{subtotal.toLocaleString()} Lekë</span>
+                    <span>{subtotal.toLocaleString()} €</span>
                   </div>
                   {vatRate > 0 && (
                     <div className="flex justify-between text-sm text-slate-500">
                       <span>TVSH ({vatRate}%):</span>
-                      <span>{vatAmount.toLocaleString()} Lekë</span>
+                      <span>{vatAmount.toLocaleString()} €</span>
                     </div>
                   )}
                   <div className="flex justify-between text-base font-bold border-t border-slate-200 dark:border-slate-600 pt-2">
                     <span>TOTALI:</span>
-                    <span className="text-primary-600">{total.toLocaleString()} Lekë</span>
+                    <span className="text-primary-600">{total.toLocaleString()} €</span>
                   </div>
                 </div>
               </div>

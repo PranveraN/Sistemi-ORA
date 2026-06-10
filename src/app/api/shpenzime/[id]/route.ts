@@ -8,27 +8,26 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const body = await req.json();
-  const data = body.data ? new Date(body.data).toISOString() : undefined;
 
-  await prisma.$executeRawUnsafe(
-    `UPDATE Shpenzim SET
-      kategoriId = COALESCE(?, kategoriId),
-      shuma      = COALESCE(?, shuma),
-      pershkrim  = ?,
-      marres     = ?,
-      data       = COALESCE(?, data),
-      metoda     = ?,
-      referenca  = ?,
-      docType    = COALESCE(?, docType),
-      updatedAt  = datetime('now')
-     WHERE id = ?`,
-    body.kategoriId ? parseInt(body.kategoriId) : null,
-    body.shuma ? parseFloat(body.shuma) : null,
-    body.pershkrim ?? null, body.marres ?? null,
-    data ?? null, body.metoda ?? null, body.referenca ?? null,
-    body.docType ?? null,
-    parseInt(id)
-  );
+  await prisma.shpenzim.update({
+    where: { id: parseInt(id) },
+    data: {
+      ...(body.kategoriId != null ? { kategoriId: parseInt(body.kategoriId) } : {}),
+      ...(body.shuma      != null ? { shuma: parseFloat(body.shuma) }         : {}),
+      ...(body.data       != null ? { data: new Date(body.data) }             : {}),
+      ...(body.docType    != null ? { docType: body.docType }                 : {}),
+      ...(body.lloji      != null ? { lloji: body.lloji }                     : {}),
+      pershkrim:    body.pershkrim    ?? null,
+      marres:       body.marres       ?? null,
+      metoda:       body.metoda       ?? null,
+      referenca:    body.referenca    ?? null,
+      nrFature:     body.nrFature     ?? null,
+      emriBiznesit: body.emriBiznesit ?? null,
+      nrFiskal:     body.nrFiskal     ?? null,
+      ...(body.paguar !== undefined ? { paguar: body.paguar !== false } : {}),
+    },
+  });
+
   return NextResponse.json({ success: true });
 }
 
@@ -37,6 +36,6 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  await prisma.$executeRawUnsafe(`DELETE FROM Shpenzim WHERE id = ?`, parseInt(id));
+  await prisma.shpenzim.delete({ where: { id: parseInt(id) } });
   return NextResponse.json({ success: true });
 }

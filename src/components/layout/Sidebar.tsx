@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, FileText,
   GraduationCap, BarChart3, Settings, BookOpen,
   ChevronLeft, ChevronRight, UtensilsCrossed,
-  Shirt, BookMarked, NotebookPen, ClipboardList, Wallet,
+  Shirt, BookMarked, NotebookPen, ClipboardList, Wallet, TrendingUp, Scale, Home,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -21,6 +21,7 @@ const navSections = [
     items: [
       { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard",  roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
       { href: "/students",  icon: Users,           label: "Nxënësit",   roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
+      { href: "/families",  icon: Home,            label: "Familjet",   roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
     ],
   },
   {
@@ -33,6 +34,8 @@ const navSections = [
       { href: "/eshkollori",icon: BookMarked,      label: "Eshkollori", roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/invoices",  icon: FileText,        label: "Faturat",    roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/shpenzime", icon: Wallet,          label: "Shpenzimet", roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/hyrat",     icon: TrendingUp,     label: "Të Hyrat",   roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/bilanci",   icon: Scale,          label: "Bilanci",    roles: ["ADMIN", "FINANCE"] as Role[] },
     ],
   },
   {

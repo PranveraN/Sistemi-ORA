@@ -138,6 +138,61 @@ export default function StudentForm({ initial, studentId }: Props) {
     setForm(f => ({ ...f, [field]: value }));
   }
 
+  // Detektim i llojit të vlerës
+  function looksLikeDate(v: string)    { return /^\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{2,4}$/.test(v.trim()) || /^\d{4}-\d{2}-\d{2}$/.test(v.trim()); }
+  function looksLikePhone(v: string)   { return /^[\+\d\s\-\(\)]{6,}$/.test(v.trim()) && /\d{5,}/.test(v); }
+  function looksLikeEmail(v: string)   { return /@/.test(v); }
+  function looksLikeAddress(v: string) { return /rrug|lagj|rrug|bulevard|sheshi|nr\.|pallat/i.test(v); }
+
+  function autoFixParent(prefix: "father" | "mother") {
+    setForm(prev => {
+      const f = { ...prev };
+      const name  = f[`${prefix}Name`  as keyof StudentFormData] as string;
+      const birth = f[`${prefix}Birth` as keyof StudentFormData] as string;
+      const prof  = f[`${prefix}Prof`  as keyof StudentFormData] as string;
+      const phone = f[`${prefix}Phone` as keyof StudentFormData] as string;
+      const email = f[`${prefix}Email` as keyof StudentFormData] as string;
+
+      let newName  = name, newBirth = birth, newProf = prof, newPhone = phone, newEmail = email;
+
+      // Nëse telefoni ka datë dhe datëlindja është bosh/gabim
+      if (looksLikeDate(phone) && !looksLikeDate(birth)) {
+        newBirth = phone;
+        newPhone = birth || ""; // bosh ose datën e vjetër
+      }
+
+      // Nëse profesioni ka adresë
+      if (looksLikeAddress(prof)) {
+        if (!f.address) f.address = prof;
+        newProf = email || ""; // profesioni ishte në email?
+        if (!looksLikeEmail(email)) newEmail = "";
+      }
+
+      // Nëse email ka profesion (jo format email)
+      if (!looksLikeEmail(email) && email && !looksLikeDate(email) && !looksLikePhone(email)) {
+        if (!newProf || looksLikeAddress(newProf)) {
+          newProf  = email;
+          newEmail = "";
+        }
+      }
+
+      // Nëse emri ka adresë
+      if (looksLikeAddress(name)) {
+        if (!f.address) f.address = name;
+        newName = "";
+      }
+
+      return {
+        ...f,
+        [`${prefix}Name`]:  newName,
+        [`${prefix}Birth`]: newBirth,
+        [`${prefix}Prof`]:  newProf,
+        [`${prefix}Phone`]: newPhone,
+        [`${prefix}Email`]: newEmail,
+      } as StudentFormData;
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
@@ -187,7 +242,13 @@ export default function StudentForm({ initial, studentId }: Props) {
 
       {/* Mother */}
       <div className="card p-5 space-y-4">
-        <h3 className="section-title">Të Dhënat e Nënës</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="section-title">Të Dhënat e Nënës</h3>
+          <button type="button" onClick={() => autoFixParent("mother")}
+            className="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
+            🔧 Rregullo automatikisht
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Emri dhe Mbiemri" placeholder="Emri i nënës" value={form.motherName} onChange={v => set("motherName", v)} />
           <DateField label="Datëlindja" value={form.motherBirth} onChange={v => set("motherBirth", v)} />
@@ -201,7 +262,13 @@ export default function StudentForm({ initial, studentId }: Props) {
 
       {/* Father */}
       <div className="card p-5 space-y-4">
-        <h3 className="section-title">Të Dhënat e Babës</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="section-title">Të Dhënat e Babës</h3>
+          <button type="button" onClick={() => autoFixParent("father")}
+            className="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
+            🔧 Rregullo automatikisht
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Emri dhe Mbiemri" placeholder="Emri i babës" value={form.fatherName} onChange={v => set("fatherName", v)} />
           <DateField label="Datëlindja" value={form.fatherBirth} onChange={v => set("fatherBirth", v)} />

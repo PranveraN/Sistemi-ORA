@@ -224,7 +224,7 @@ export default function Vertetime() {
   const [body, setBody] = useState("");
 
   useEffect(() => {
-    fetch("/api/students?limit=500&status=ACTIVE")
+    fetch("/api/students?limit=2000&status=ACTIVE")
       .then(r => r.json())
       .then(d => setStudents(d.students ?? []));
     fetch("/api/staff")

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Header from "@/components/layout/Header";
-import { Save, Plus, Tag, List, Euro, Pencil, Check, X } from "lucide-react";
+import { Save, Plus, Tag, List, Euro, Pencil, Check, X, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
 interface SchoolInfo {
@@ -26,6 +26,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editAmount, setEditAmount] = useState("");
+  const [editCatId, setEditCatId] = useState<number | null>(null);
+  const [editCatForm, setEditCatForm] = useState({ name: "", type: "monthly", description: "" });
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo>({
     schoolName: "", schoolPhone: "", schoolAddress: "",
   });
@@ -83,6 +85,22 @@ export default function SettingsPage() {
       body: JSON.stringify({ defaultAmount: parseFloat(editAmount) || 0 }),
     });
     setEditingId(null);
+    fetchCats();
+  }
+
+  async function deleteCategory(id: number, name: string) {
+    if (!confirm(`Fshi kategorinë "${name}"?\n\nKJO FSHIHET PËRGJITHMONË — fshihen edhe të gjitha pagesat e lidhura me të.`)) return;
+    await fetch(`/api/categories/${id}`, { method: "DELETE" });
+    fetchCats();
+  }
+
+  async function saveEditCat(id: number) {
+    await fetch(`/api/categories/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editCatForm),
+    });
+    setEditCatId(null);
     fetchCats();
   }
 
@@ -231,19 +249,75 @@ export default function SettingsPage() {
 
           <div className="space-y-2">
             {categories.map(cat => (
-              <div key={cat.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                <div className="flex items-center gap-3">
-                  <List className="w-4 h-4 text-slate-400" />
-                  <div>
-                    <p className="text-sm font-medium text-slate-900 dark:text-white">{cat.name}</p>
-                    {cat.description && <p className="text-xs text-slate-400">{cat.description}</p>}
+              <div key={cat.id} className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                {editCatId === cat.id ? (
+                  /* ── Forma edit inline ── */
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/50 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <label className="form-label text-xs">Emri</label>
+                        <input value={editCatForm.name} onChange={e => setEditCatForm(f => ({ ...f, name: e.target.value }))}
+                          className="form-input" autoFocus />
+                      </div>
+                      <div>
+                        <label className="form-label text-xs">Lloji</label>
+                        <select value={editCatForm.type} onChange={e => setEditCatForm(f => ({ ...f, type: e.target.value }))} className="form-input">
+                          <option value="monthly">Mujore</option>
+                          <option value="annual">Vjetore</option>
+                          <option value="one-time">Njëherësh</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="form-label text-xs">Përshkrimi</label>
+                        <input value={editCatForm.description} onChange={e => setEditCatForm(f => ({ ...f, description: e.target.value }))}
+                          className="form-input" placeholder="Opsionale" />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => setEditCatId(null)} className="btn-secondary text-xs px-3 py-1.5">
+                        <X className="w-3.5 h-3.5" /> Anulo
+                      </button>
+                      <button onClick={() => saveEditCat(cat.id)} className="btn-primary text-xs px-3 py-1.5">
+                        <Check className="w-3.5 h-3.5" /> Ruaj
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <span className="text-xs bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 px-2 py-0.5 rounded-full font-medium">
-                  {typeLabels[cat.type] || cat.type}
-                </span>
+                ) : (
+                  /* ── Rreshti normal ── */
+                  <div className="flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <List className="w-4 h-4 text-slate-400" />
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-white">{cat.name}</p>
+                        {cat.description && <p className="text-xs text-slate-400">{cat.description}</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 px-2 py-0.5 rounded-full font-medium">
+                        {typeLabels[cat.type] || cat.type}
+                      </span>
+                      <button
+                        onClick={() => { setEditCatId(cat.id); setEditCatForm({ name: cat.name, type: cat.type, description: cat.description || "" }); }}
+                        className="p-1.5 rounded-lg text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 dark:text-slate-500 dark:hover:text-primary-400 transition-colors"
+                        title="Modifiko"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => deleteCategory(cat.id, cat.name)}
+                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-500 transition-colors"
+                        title="Fshi"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
+            {categories.length === 0 && (
+              <p className="text-slate-400 text-sm text-center py-4">Nuk ka kategori</p>
+            )}
           </div>
         </div>
 
