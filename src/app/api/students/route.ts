@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
   const siblingFatherName = searchParams.get("siblingFatherName") || "";
   const siblingMotherPhone = searchParams.get("siblingMotherPhone") || "";
   const siblingMotherName = searchParams.get("siblingMotherName") || "";
+  const siblingByParentName = searchParams.get("siblingByParentName") || ""; // "fatherName|lastName" ose "motherName|lastName"
+  const siblingLastName = searchParams.get("siblingLastName") || "";
   const excludeId = searchParams.get("excludeId") || "";
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "20");
@@ -61,6 +63,13 @@ export async function GET(req: NextRequest) {
       orConditions.push({ motherPhone: siblingMotherPhone });
     }
     if (orConditions.length > 0) where.OR = orConditions;
+  } else if (siblingByParentName && siblingLastName) {
+    // Fallback: kërko sipas emrit të prindit + mbiemrit (kur telefoni mungon)
+    where.OR = [
+      { lastName: siblingLastName, fatherName: siblingByParentName },
+      { lastName: siblingLastName, motherName: siblingByParentName },
+      { lastName: siblingLastName, parentName: siblingByParentName },
+    ];
   } else if (siblingPhone) {
     where.OR = [
       { parentPhone: siblingPhone },

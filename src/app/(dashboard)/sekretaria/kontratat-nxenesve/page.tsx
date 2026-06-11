@@ -35,6 +35,7 @@ interface ContractData {
   price: string;
   sib2Name: string; sib2Personal: string; sib2Birth: string; sib2Class: string; sib2Price: string;
   sib3Name: string; sib3Personal: string; sib3Birth: string; sib3Class: string; sib3Price: string;
+  sib4Name: string; sib4Personal: string; sib4Birth: string; sib4Class: string; sib4Price: string;
   motherName: string; motherAddress: string; motherBirth: string; motherProf: string; motherPhone: string; motherEmail: string;
   fatherName: string; fatherAddress: string; fatherBirth: string; fatherProf: string; fatherPhone: string; fatherEmail: string;
   respName: string; respAddress: string; respBirth: string; respProf: string; respPhone: string; respEmail: string;
@@ -211,6 +212,80 @@ Prindi nuk mund të tërhjek dokumentacionin e fëmijës, nëse nuk ka përmbush
   },
 ];
 
+function SiblingSearch({
+  value, onChange, onSelect,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSelect: (s: Student) => void;
+}) {
+  const [results, setResults] = useState<Student[]>([]);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const handleChange = (v: string) => {
+    onChange(v);
+    if (timer.current) clearTimeout(timer.current);
+    if (!v || v.length < 2) { setResults([]); setOpen(false); return; }
+    timer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/students?search=${encodeURIComponent(v)}&status=ACTIVE&limit=8`);
+        const data = await res.json();
+        const list: Student[] = data.students || [];
+        setResults(list);
+        setOpen(list.length > 0);
+      } catch { setOpen(false); }
+    }, 300);
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative", width: "100%" }}>
+      <input
+        type="text"
+        value={value}
+        onChange={e => handleChange(e.target.value)}
+        style={{
+          fontFamily: "inherit", fontSize: "inherit", width: "100%",
+          background: value ? "transparent" : "#fffbeb",
+          border: "none", outline: "none", padding: "1px 2px",
+          borderBottom: "1px dashed #bbb",
+        }}
+      />
+      {open && results.length > 0 && (
+        <div className="no-print" style={{
+          position: "absolute", top: "calc(100% + 2px)", left: 0, zIndex: 200,
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: "6px",
+          boxShadow: "0 4px 14px rgba(0,0,0,0.12)", minWidth: "220px", maxHeight: "200px", overflowY: "auto",
+        }}>
+          {results.map(s => (
+            <div
+              key={s.id}
+              onMouseDown={() => { onSelect(s); setOpen(false); }}
+              style={{ padding: "7px 10px", cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
+              onMouseLeave={e => (e.currentTarget.style.background = "")}
+            >
+              <div style={{ fontWeight: 600, fontSize: "10pt" }}>{s.firstName} {s.lastName}</div>
+              <div style={{ fontSize: "9pt", color: "#94a3b8" }}>
+                {s.class ? `${s.class.level} — ${s.class.name}` : ""}{s.personalNumber ? ` · ${s.personalNumber}` : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ContractModal({ student, onClose }: { student: Student; onClose: () => void }) {
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -221,6 +296,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
     price: "",
     sib2Name: "", sib2Personal: "", sib2Birth: "", sib2Class: "", sib2Price: "",
     sib3Name: "", sib3Personal: "", sib3Birth: "", sib3Class: "", sib3Price: "",
+    sib4Name: "", sib4Personal: "", sib4Birth: "", sib4Class: "", sib4Price: "",
     motherName: student.motherName || "",
     motherAddress: student.address || "",
     motherBirth: student.motherBirth ? fmtDate(student.motherBirth) : "",
@@ -243,57 +319,70 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
   const [articles, setArticles] = useState<Article[]>(DEFAULT_ARTICLES);
   const [siblings, setSiblings] = useState<Student[]>([]);
   const [siblingsAdded, setSiblingsAdded] = useState(false);
+  const [basePrice, setBasePrice] = useState(2000);
 
   useEffect(() => {
-    // Normalizimi i numrave: mbajmë vetëm shifrat (pa +, hapësira, etj.)
     function normPhone(p: string) { return p.replace(/\D/g, ""); }
 
     const rawPhones = [student.fatherPhone, student.motherPhone, student.parentPhone]
       .filter((p): p is string => Boolean(p));
-    // Për çdo numër, gjeneroj variante: me shifra të plota + pa prefiksin e vendit (3 shifrat e para)
     const phones = [...new Set(
       rawPhones.flatMap(p => {
         const digits = normPhone(p);
-        return [digits, digits.slice(-9)]; // p.sh. "38344123456" dhe "44123456" / 9 shifra
+        return [digits, digits.slice(-9)];
       }).filter(Boolean)
     )];
 
-    const fetchAll = async () => {
-      const catsFetch = fetch("/api/categories");
-      const sibFetch = phones.length > 0
-        ? fetch(`/api/students?siblingAnyPhone=${encodeURIComponent(phones.join(","))}&excludeId=${student.id}&status=ACTIVE&limit=5`)
-        : null;
+    // Emrat unikë të prindërve për kërkim paralel sipas emrit
+    const parentNames = [...new Set(
+      [student.fatherName, student.motherName, student.parentName].filter((p): p is string => Boolean(p))
+    )];
 
-      const [catsRes, sibRes] = await Promise.all([catsFetch, sibFetch ?? Promise.resolve(null)]);
+    const fetchAll = async () => {
+      // Kërkesat paralele: kategorit + telefoni + të gjithë emrat e prindërve
+      const catsFetch = fetch("/api/categories");
+      const sibPhoneFetch = phones.length > 0
+        ? fetch(`/api/students?siblingAnyPhone=${encodeURIComponent(phones.join(","))}&excludeId=${student.id}&status=ACTIVE&limit=10`)
+        : Promise.resolve(null);
+      const sibNameFetches = parentNames.map(pn =>
+        fetch(`/api/students?siblingByParentName=${encodeURIComponent(pn)}&siblingLastName=${encodeURIComponent(student.lastName)}&excludeId=${student.id}&status=ACTIVE&limit=10`)
+      );
+
+      const [catsRes, sibPhoneRes, ...sibNameReses] = await Promise.all([
+        catsFetch, sibPhoneFetch, ...sibNameFetches,
+      ]);
       const cats: { name: string; defaultAmount: number }[] = await catsRes.json();
       const shkollimi = cats.find(c => c.name === "Shkollimi");
       const base = shkollimi?.defaultAmount || 2000;
+      setBasePrice(base);
       const mainPrice = Math.round(base * (1 - (student.discountPct || 0) / 100));
 
-      let found: Student[] = [];
-      if (sibRes) {
-        const sibData = await sibRes.json();
-        found = sibData.students || [];
-      }
-      const [s2, s3] = found;
+      // Bashko të gjitha rezultatet, hiq dublikatat sipas id
+      const seenIds = new Set<number>();
+      const found: Student[] = [];
+      const addUnique = (list: Student[]) => {
+        for (const s of list) {
+          if (!seenIds.has(s.id)) { seenIds.add(s.id); found.push(s); }
+        }
+      };
+      if (sibPhoneRes) { const d = await sibPhoneRes.json(); addUnique(d.students || []); }
+      for (const res of sibNameReses) { const d = await res.json(); addUnique(d.students || []); }
+
+      const [s2, s3, s4] = found;
+      const sibData = (s: Student) => ({
+        Name:     `${s.firstName} ${s.lastName}`,
+        Personal: s.personalNumber || "",
+        Birth:    s.birthDate ? fmtDate(s.birthDate) : "",
+        Class:    s.class ? `${s.class.level} — ${s.class.name}` : "",
+        Price:    String(Math.round(base * (1 - (s.discountPct || 0) / 100))),
+      });
 
       setD(prev => ({
         ...prev,
         price: String(mainPrice),
-        ...(s2 ? {
-          sib2Name:     `${s2.firstName} ${s2.lastName}`,
-          sib2Personal: s2.personalNumber || "",
-          sib2Birth:    s2.birthDate ? fmtDate(s2.birthDate) : "",
-          sib2Class:    s2.class ? `${s2.class.level} — ${s2.class.name}` : "",
-          sib2Price:    String(Math.round(base * (1 - (s2.discountPct || 0) / 100))),
-        } : {}),
-        ...(s3 ? {
-          sib3Name:     `${s3.firstName} ${s3.lastName}`,
-          sib3Personal: s3.personalNumber || "",
-          sib3Birth:    s3.birthDate ? fmtDate(s3.birthDate) : "",
-          sib3Class:    s3.class ? `${s3.class.level} — ${s3.class.name}` : "",
-          sib3Price:    String(Math.round(base * (1 - (s3.discountPct || 0) / 100))),
-        } : {}),
+        ...(s2 ? { sib2Name: sibData(s2).Name, sib2Personal: sibData(s2).Personal, sib2Birth: sibData(s2).Birth, sib2Class: sibData(s2).Class, sib2Price: sibData(s2).Price } : {}),
+        ...(s3 ? { sib3Name: sibData(s3).Name, sib3Personal: sibData(s3).Personal, sib3Birth: sibData(s3).Birth, sib3Class: sibData(s3).Class, sib3Price: sibData(s3).Price } : {}),
+        ...(s4 ? { sib4Name: sibData(s4).Name, sib4Personal: sibData(s4).Personal, sib4Birth: sibData(s4).Birth, sib4Class: sibData(s4).Class, sib4Price: sibData(s4).Price } : {}),
       }));
 
       if (found.length > 0) {
@@ -305,27 +394,21 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
     fetchAll().catch(() => {});
   }, [student]);
 
-  // Buton manual si fallback (nëse user dëshiron t'i ri-shtojë)
   const addSiblings = () => {
-    const [s2, s3] = siblings;
+    const [s2, s3, s4] = siblings;
     setD(prev => {
       const base = parseFloat(prev.price) || 2000;
+      const sd = (s: Student) => ({
+        Name: `${s.firstName} ${s.lastName}`, Personal: s.personalNumber || "",
+        Birth: s.birthDate ? fmtDate(s.birthDate) : "",
+        Class: s.class ? `${s.class.level} — ${s.class.name}` : "",
+        Price: String(Math.round(base * (1 - (s.discountPct || 0) / 100))),
+      });
       return {
         ...prev,
-        ...(s2 ? {
-          sib2Name:     `${s2.firstName} ${s2.lastName}`,
-          sib2Personal: s2.personalNumber || "",
-          sib2Birth:    s2.birthDate ? fmtDate(s2.birthDate) : "",
-          sib2Class:    s2.class ? `${s2.class.level} — ${s2.class.name}` : "",
-          sib2Price:    String(Math.round(base * (1 - (s2.discountPct || 0) / 100))),
-        } : {}),
-        ...(s3 ? {
-          sib3Name:     `${s3.firstName} ${s3.lastName}`,
-          sib3Personal: s3.personalNumber || "",
-          sib3Birth:    s3.birthDate ? fmtDate(s3.birthDate) : "",
-          sib3Class:    s3.class ? `${s3.class.level} — ${s3.class.name}` : "",
-          sib3Price:    String(Math.round(base * (1 - (s3.discountPct || 0) / 100))),
-        } : {}),
+        ...(s2 ? { sib2Name: sd(s2).Name, sib2Personal: sd(s2).Personal, sib2Birth: sd(s2).Birth, sib2Class: sd(s2).Class, sib2Price: sd(s2).Price } : {}),
+        ...(s3 ? { sib3Name: sd(s3).Name, sib3Personal: sd(s3).Personal, sib3Birth: sd(s3).Birth, sib3Class: sd(s3).Class, sib3Price: sd(s3).Price } : {}),
+        ...(s4 ? { sib4Name: sd(s4).Name, sib4Personal: sd(s4).Personal, sib4Birth: sd(s4).Birth, sib4Class: sd(s4).Class, sib4Price: sd(s4).Price } : {}),
       };
     });
     setSiblingsAdded(true);
@@ -351,6 +434,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
         const shkollimi = cats.find(c => c.name === "Shkollimi");
         if (shkollimi?.defaultAmount) {
           const base = shkollimi.defaultAmount;
+          setBasePrice(base);
           const finalPrice = Math.round(base * (1 - (student.discountPct || 0) / 100));
           setD(prev => ({ ...prev, price: String(finalPrice) }));
         }
@@ -415,14 +499,37 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
   .no-print { display: none !important; }
   .art-print { display: block !important; }
   .art-nr-print { display: block !important; }
-  .page-break { page-break-before: always; padding-top: 16px; }
-  .copy-1 { page-break-after: always; break-after: page; }
+  .page-break { page-break-before: always; break-before: page; padding-top: 16px; }
+  .contract-copy { display: block; }
+  .copy-separator {
+    display: block;
+    page-break-before: always !important;
+    break-before: page !important;
+    page-break-after: avoid;
+    break-after: avoid;
+    height: 0;
+    overflow: hidden;
+  }
+  .print-notice {
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 6px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    font-family: Arial, sans-serif;
+    font-size: 12pt;
+    color: #92400e;
+    text-align: center;
+  }
+  @media print { .print-notice { display: none !important; } }
 </style></head><body>
-<div class="copy-1">${content}</div>
-<div class="copy-2">${content}</div>
+<div class="print-notice">⚠️ Brenda janë <strong>2 kopje</strong> — në dialog-un e printerit lini <strong>Kopje: 1</strong></div>
+<div class="contract-copy">${content}</div>
+<div class="copy-separator"></div>
+<div class="contract-copy">${content}</div>
 </body></html>`);
     w.document.close();
-    setTimeout(() => { w.print(); }, 500);
+    setTimeout(() => { w.print(); }, 600);
   };
 
   const sb = fmtDate(student.birthDate);
@@ -520,49 +627,98 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                 onError={(e) => { e.currentTarget.style.display = "none"; }} />
             </div>
 
-            {/* Student table */}
-            <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: "8px" }}>
-              <thead>
-                <tr><th colSpan={3} style={HS}>Të dhënat e nxënësit/ve</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  {[
-                    <><span style={LB}>Emri dhe mbiemri i nxënësit:</span>{student.firstName} {student.lastName}</>,
-                    <><span style={LB}>Emri dhe mbiemri i nxënësit:</span><EF value={d.sib2Name} onChange={set("sib2Name")} /></>,
-                    <><span style={LB}>Emri dhe mbiemri i nxënësit:</span><EF value={d.sib3Name} onChange={set("sib3Name")} /></>,
-                  ].map((cell, i) => <td key={i} style={{ ...CS, width: "33.33%" }}>{cell}</td>)}
-                </tr>
-                <tr>
-                  {[
-                    <><span style={LB}>Nr. personal:</span><EF value={d.personalNumber} onChange={set("personalNumber")} /></>,
-                    <><span style={LB}>Nr. personal:</span><EF value={d.sib2Personal} onChange={set("sib2Personal")} /></>,
-                    <><span style={LB}>Nr. personal:</span><EF value={d.sib3Personal} onChange={set("sib3Personal")} /></>,
-                  ].map((cell, i) => <td key={i} style={CS}>{cell}</td>)}
-                </tr>
-                <tr>
-                  {[
-                    <><span style={LB}>Data e lindjes:</span>{sb}</>,
-                    <><span style={LB}>Data e lindjes:</span><EF value={d.sib2Birth} onChange={set("sib2Birth")} placeholder="DD.MM.YYYY" /></>,
-                    <><span style={LB}>Data e lindjes:</span><EF value={d.sib3Birth} onChange={set("sib3Birth")} placeholder="DD.MM.YYYY" /></>,
-                  ].map((cell, i) => <td key={i} style={CS}>{cell}</td>)}
-                </tr>
-                <tr>
-                  {[
-                    <><span style={LB}>Klasa:</span>{student.class ? `${student.class.level} — ${student.class.name}` : ""}</>,
-                    <><span style={LB}>Klasa:</span><EF value={d.sib2Class} onChange={set("sib2Class")} /></>,
-                    <><span style={LB}>Klasa:</span><EF value={d.sib3Class} onChange={set("sib3Class")} /></>,
-                  ].map((cell, i) => <td key={i} style={CS}>{cell}</td>)}
-                </tr>
-                <tr>
-                  {[
-                    <><span style={{ ...LB, fontWeight: "bold" }}>Çmimi:</span><EF value={d.price} onChange={set("price")} placeholder="0" suffix="€" /></>,
-                    <><span style={{ ...LB, fontWeight: "bold" }}>Çmimi:</span><EF value={d.sib2Price} onChange={set("sib2Price")} placeholder="0" suffix="€" /></>,
-                    <><span style={{ ...LB, fontWeight: "bold" }}>Çmimi:</span><EF value={d.sib3Price} onChange={set("sib3Price")} placeholder="0" suffix="€" /></>,
-                  ].map((cell, i) => <td key={i} style={CS}>{cell}</td>)}
-                </tr>
-              </tbody>
-            </table>
+            {/* Student table — dinamike 3 ose 4 kolona */}
+            {(() => {
+              const has4 = Boolean(d.sib4Name || d.sib4Personal);
+              const numCols = has4 ? 4 : 3;
+              const colW = `${(100 / numCols).toFixed(2)}%`;
+              const sibFill = (prefix: "sib2" | "sib3" | "sib4") => (s: Student) => {
+                setD(prev => ({
+                  ...prev,
+                  [`${prefix}Name`]:     `${s.firstName} ${s.lastName}`,
+                  [`${prefix}Personal`]: s.personalNumber || "",
+                  [`${prefix}Birth`]:    s.birthDate ? fmtDate(s.birthDate) : "",
+                  [`${prefix}Class`]:    s.class ? `${s.class.level} — ${s.class.name}` : "",
+                  [`${prefix}Price`]:    String(Math.round(basePrice * (1 - (s.discountPct || 0) / 100))),
+                }));
+              };
+
+              const rows: { label: string; cells: React.ReactNode[] }[] = [
+                {
+                  label: "emri",
+                  cells: [
+                    <>{student.firstName} {student.lastName}</>,
+                    <SiblingSearch key="s2n" value={d.sib2Name} onChange={set("sib2Name")} onSelect={sibFill("sib2")} />,
+                    <SiblingSearch key="s3n" value={d.sib3Name} onChange={set("sib3Name")} onSelect={sibFill("sib3")} />,
+                    ...(has4 ? [<SiblingSearch key="s4n" value={d.sib4Name} onChange={set("sib4Name")} onSelect={sibFill("sib4")} />] : []),
+                  ],
+                },
+                {
+                  label: "personal",
+                  cells: [
+                    <EF key="p1" value={d.personalNumber} onChange={set("personalNumber")} />,
+                    <EF key="p2" value={d.sib2Personal} onChange={set("sib2Personal")} />,
+                    <EF key="p3" value={d.sib3Personal} onChange={set("sib3Personal")} />,
+                    ...(has4 ? [<EF key="p4" value={d.sib4Personal} onChange={set("sib4Personal")} />] : []),
+                  ],
+                },
+                {
+                  label: "lindje",
+                  cells: [
+                    <>{sb}</>,
+                    <EF key="b2" value={d.sib2Birth} onChange={set("sib2Birth")} placeholder="DD.MM.YYYY" />,
+                    <EF key="b3" value={d.sib3Birth} onChange={set("sib3Birth")} placeholder="DD.MM.YYYY" />,
+                    ...(has4 ? [<EF key="b4" value={d.sib4Birth} onChange={set("sib4Birth")} placeholder="DD.MM.YYYY" />] : []),
+                  ],
+                },
+                {
+                  label: "klasa",
+                  cells: [
+                    <>{student.class ? `${student.class.level} — ${student.class.name}` : ""}</>,
+                    <EF key="k2" value={d.sib2Class} onChange={set("sib2Class")} />,
+                    <EF key="k3" value={d.sib3Class} onChange={set("sib3Class")} />,
+                    ...(has4 ? [<EF key="k4" value={d.sib4Class} onChange={set("sib4Class")} />] : []),
+                  ],
+                },
+                {
+                  label: "cmimi",
+                  cells: [
+                    <EF key="c1" value={d.price} onChange={set("price")} placeholder="0" suffix="€" />,
+                    <EF key="c2" value={d.sib2Price} onChange={set("sib2Price")} placeholder="0" suffix="€" />,
+                    <EF key="c3" value={d.sib3Price} onChange={set("sib3Price")} placeholder="0" suffix="€" />,
+                    ...(has4 ? [<EF key="c4" value={d.sib4Price} onChange={set("sib4Price")} placeholder="0" suffix="€" />] : []),
+                  ],
+                },
+              ];
+              const labelMap: Record<string, string> = {
+                emri: "Emri dhe mbiemri i nxënësit:",
+                personal: "Nr. personal:",
+                lindje: "Data e lindjes:",
+                klasa: "Klasa:",
+                cmimi: "Çmimi:",
+              };
+              return (
+                <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: "8px" }}>
+                  <thead>
+                    <tr><th colSpan={numCols} style={HS}>Të dhënat e nxënësit/ve</th></tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(row => (
+                      <tr key={row.label}>
+                        {row.cells.map((cell, i) => (
+                          <td key={i} style={{ ...CS, width: colW, ...(row.label === "cmimi" ? {} : {}) }}>
+                            <span style={row.label === "cmimi" ? { ...LB, fontWeight: "bold" } : LB}>
+                              {labelMap[row.label]}
+                            </span>
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })()}
 
             {/* Parents table */}
             <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: "8px" }}>
@@ -747,14 +903,44 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                 <table style={{ borderCollapse: "collapse", width: "100%", border: "none" }}>
                   <tbody>
                     <tr>
-                      <td style={{ border: "none", width: "48%", verticalAlign: "bottom", paddingRight: "10px" }}>
-                        <div style={{ fontSize: "10.5pt", marginBottom: "40px" }}>Prindi/personi përgjegjës:</div>
-                        <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }}></div>
+                      {/* Prindi */}
+                      <td style={{ border: "none", width: "48%", verticalAlign: "top", paddingRight: "10px" }}>
+                        <div style={{ height: "300px", position: "relative" }}>
+                          <div style={{ position: "absolute", bottom: "8px", fontSize: "10.5pt" }}>
+                            Prindi/personi përgjegjës:
+                          </div>
+                          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, borderBottom: "1px solid #000" }}></div>
+                        </div>
                       </td>
+
+                      {/* v.v */}
                       <td style={{ border: "none", width: "4%", textAlign: "center", verticalAlign: "bottom", paddingBottom: "4px", fontSize: "10pt" }}>v.v</td>
-                      <td style={{ border: "none", width: "48%", verticalAlign: "bottom", paddingLeft: "10px" }}>
-                        <div style={{ fontSize: "10.5pt", marginBottom: "40px" }}>Drejtori i shkollës:</div>
-                        <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }}></div>
+
+                      {/* Drejtori + nënshkrimi krahas */}
+                      <td style={{ border: "none", width: "48%", verticalAlign: "top", paddingLeft: "10px" }}>
+                        <div style={{ height: "300px", position: "relative" }}>
+                          <div style={{
+                            position: "absolute", bottom: "8px", left: 0,
+                            display: "flex", alignItems: "flex-end", gap: "10px"
+                          }}>
+                            <span style={{ fontSize: "10.5pt", whiteSpace: "nowrap", lineHeight: 1 }}>
+                              Drejtori i shkollës:
+                            </span>
+                            <img
+                              src="/Nenshkrimi.png"
+                              alt=""
+                              style={{
+                                height: "275px",
+                                width: "auto",
+                                display: "block",
+                                pointerEvents: "none",
+                                userSelect: "none",
+                                transform: "translateY(80px)",
+                              }}
+                            />
+                          </div>
+                          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, borderBottom: "1px solid #000" }}></div>
+                        </div>
                       </td>
                     </tr>
                   </tbody>
