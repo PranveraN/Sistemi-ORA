@@ -18,7 +18,7 @@ const cards = [
     ring: "hover:ring-blue-300 dark:hover:ring-blue-700",
   },
   {
-    href: "/sekretaria/kontratat-mesimdhënesve",
+    href: "/sekretaria/kontratat-mesimdhnesve",
     icon: FilePen,
     label: "Kontratat e Mësimdhënësve",
     desc: "Menaxho kontratat e stafit mësimdhënës",

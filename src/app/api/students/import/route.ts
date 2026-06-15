@@ -37,30 +37,33 @@ export async function POST(req: NextRequest) {
         classId = cls?.id ?? null;
       }
 
-      // Parso datën (DD/MM/YYYY ose YYYY-MM-DD)
-      let birthDate = new Date("2015-01-01");
+      // Parso datën (DD/MM/YYYY ose YYYY-MM-DD) — null nëse mungon ose është e pavlefshme
+      let birthDate: Date | null = null;
       if (row.birthDate) {
         const raw = String(row.birthDate).trim();
         if (raw.includes("/")) {
           const [d, m, y] = raw.split("/");
-          birthDate = new Date(`${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`);
+          const dt = new Date(`${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`);
+          if (!isNaN(dt.getTime())) birthDate = dt;
         } else {
-          birthDate = new Date(raw);
+          const dt = new Date(raw);
+          if (!isNaN(dt.getTime())) birthDate = dt;
         }
-        if (isNaN(birthDate.getTime())) birthDate = new Date("2015-01-01");
       }
 
-      // Nëse ekziston, përditëso vetëm classId (nëse ka klasa)
+      // Nëse ekziston, përditëso classId dhe birthDate (nëse ka)
       const existing = personalNumber
         ? await prisma.student.findUnique({ where: { personalNumber } })
         : null;
       if (existing) {
-        if (classId && existing.classId !== classId) {
-          await prisma.student.update({
-            where: { id: existing.id },
-            data: { classId },
-          });
-          results.created++; // count as processed
+        const needsUpdate: Record<string, unknown> = {};
+        if (classId && existing.classId !== classId) needsUpdate.classId = classId;
+        if (birthDate && (!existing.birthDate || existing.birthDate.toISOString().startsWith("2015-01-01"))) {
+          needsUpdate.birthDate = birthDate;
+        }
+        if (Object.keys(needsUpdate).length > 0) {
+          await prisma.student.update({ where: { id: existing.id }, data: needsUpdate });
+          results.created++;
         } else {
           results.skipped++;
         }
