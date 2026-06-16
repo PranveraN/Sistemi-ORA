@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
   const tipi = searchParams.get("tipi") || "";
+  const status = searchParams.get("status") || "";
 
   const where: Record<string, unknown> = {};
   if (search) {
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
     ];
   }
   if (tipi) where.tipi = tipi;
+  if (status) where.status = status;
 
   const staff = await prisma.staff.findMany({
     where,
@@ -42,8 +44,12 @@ export async function POST(req: NextRequest) {
       nrLlogarise: body.nrLlogarise || null,
       banka:       body.banka       || null,
       totalBruto:  body.totalBruto  != null ? parseFloat(body.totalBruto) : null,
-      kontrata:    body.kontrata    || null,
-      kodi:        body.kodi        || null,
+      kontrata:        body.kontrata        || null,
+      llojiKontrates:  body.llojiKontrates  || null,
+      cmimOres:        body.cmimOres  != null && body.cmimOres !== "" ? parseFloat(body.cmimOres) : null,
+      oreMuaj:         body.oreMuaj   != null && body.oreMuaj  !== "" ? parseInt(body.oreMuaj)   : null,
+      adresa:          body.adresa          ?? null,
+      kodi:            body.kodi            || null,
       tipi:        body.tipi        || null,
       status:      body.status      || "ACTIVE",
     },

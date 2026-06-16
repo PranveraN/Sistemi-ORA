@@ -390,6 +390,29 @@ export default function ShpenzimePage() {
     }
   }
 
+  function exportFatureExcel() {
+    const fatura = shpenzime.filter(s => s.docType === "FATURE");
+    if (fatura.length === 0) {
+      alert("Nuk ka shpenzime të llojit Faturë për periudhën e zgjedhur.");
+      return;
+    }
+    const headers = ["Data", "Emërtimi", "Kategoria", "Nr. Fiskal", "Nr. i Faturës", "Shuma (€)"];
+    const rows = fatura.map(s => [
+      new Date(s.data).toLocaleDateString("sq-AL"),
+      s.emriBiznesit || s.pershkrim || "—",
+      s.kategori?.emri || "—",
+      s.nrFiskal || "—",
+      s.nrFature || "—",
+      s.shuma,
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws["!cols"] = [{ wch: 13 }, { wch: 30 }, { wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    const muajiLabel = month === 0 ? "gjitha" : `${month}-${year}`;
+    XLSX.utils.book_append_sheet(wb, ws, "Faturat");
+    XLSX.writeFile(wb, `Faturat-${muajiLabel}.xlsx`);
+  }
+
   function exportRaportExcel() {
     if (!raport) return;
     const headers = ["Kategoria", ...MONTHS, "Total"];
@@ -531,6 +554,9 @@ export default function ShpenzimePage() {
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700">
                 <h3 className="font-semibold text-slate-800 dark:text-white text-sm">Lista e Shpenzimeve</h3>
                 <div className="flex items-center gap-2">
+                  <button onClick={exportFatureExcel} className="btn-secondary text-sm" title="Exporto vetëm faturat e rregullta si Excel">
+                    <Download className="w-4 h-4" /> Faturat Excel
+                  </button>
                   <button onClick={openPartnerModal} className="btn-secondary text-sm">
                     <Plus className="w-4 h-4" /> Regjistro Partner
                   </button>

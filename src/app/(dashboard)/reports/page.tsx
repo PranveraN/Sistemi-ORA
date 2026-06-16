@@ -7,13 +7,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from "recharts";
-import { Download, FileBarChart, AlertCircle, GraduationCap } from "lucide-react";
+import { Download, FileBarChart, AlertCircle, GraduationCap, Receipt } from "lucide-react";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
 
 const REPORT_TYPES = [
-  { value: "monthly", label: "Pagesat Mujore", icon: FileBarChart },
-  { value: "debts", label: "Borxhet", icon: AlertCircle },
-  { value: "byClass", label: "Sipas Klasës", icon: GraduationCap },
+  { value: "monthly",  label: "Pagesat Mujore", icon: FileBarChart },
+  { value: "invoices", label: "Faturat",         icon: Receipt },
+  { value: "debts",    label: "Borxhet",         icon: AlertCircle },
+  { value: "byClass",  label: "Sipas Klasës",    icon: GraduationCap },
 ];
 
 const COLORS = ["#2563eb", "#7c3aed", "#059669", "#d97706", "#dc2626", "#0891b2", "#c026d3", "#16a34a", "#ea580c", "#0d9488", "#9333ea", "#e11d48"];
@@ -23,6 +24,7 @@ export default function ReportsPage() {
   const [yearType, setYearType]     = useState<YearType>("calendar");
   const [year, setYear]             = useState(new Date().getFullYear());
   const [data, setData]             = useState<unknown>(null);
+  const [invMeta, setInvMeta]       = useState<{ totalAmount: number; paidAmount: number; pendingAmount: number } | null>(null);
   const [loading, setLoading]       = useState(true);
   const [periodLabel, setPeriodLabel] = useState("");
 
@@ -40,6 +42,11 @@ export default function ReportsPage() {
     const json = await res.json();
     setData(json.data);
     setPeriodLabel(json.label || String(year));
+    if (json.totalAmount !== undefined) {
+      setInvMeta({ totalAmount: json.totalAmount, paidAmount: json.paidAmount, pendingAmount: json.pendingAmount });
+    } else {
+      setInvMeta(null);
+    }
     setLoading(false);
   }, [reportType, year, yearType]);
 
@@ -55,6 +62,13 @@ export default function ReportsPage() {
         ["Muaji", "Të Hyra (€)", "Numri i Pagesave"],
         ...d.map(r => [MONTHS[r.month - 1], r.total, r.count]),
         ["TOTALI", d.reduce((s, r) => s + r.total, 0), d.reduce((s, r) => s + r.count, 0)],
+      ];
+    } else if (reportType === "invoices") {
+      const d = data as { number: string; studentName: string; className: string; total: number; status: string; date: string }[];
+      wsData = [
+        ["Nr. Faturës", "Nxënësi", "Klasa", "Data", "Statusi", "Totali (€)"],
+        ...d.map(r => [r.number, r.studentName, r.className, new Date(r.date).toLocaleDateString("sq-AL"), r.status, r.total]),
+        ["TOTALI", "", "", "", "", d.reduce((s, r) => s + r.total, 0)],
       ];
     } else if (reportType === "debts") {
       const d = data as { name: string; class: string; totalDebt: number }[];
@@ -96,6 +110,10 @@ export default function ReportsPage() {
       const d = data as { month: number; total: number; count: number }[];
       head = [["Muaji", "Të Hyra (€)", "Nr. Pagesave"]];
       body = d.map(r => [MONTHS[r.month - 1], `${r.total.toLocaleString()} €`, r.count]);
+    } else if (reportType === "invoices") {
+      const d = data as { number: string; studentName: string; className: string; total: number; status: string; date: string }[];
+      head = [["Nr. Faturës", "Nxënësi", "Klasa", "Data", "Statusi", "Totali (€)"]];
+      body = d.map(r => [r.number, r.studentName, r.className, new Date(r.date).toLocaleDateString("sq-AL"), r.status, `${r.total.toLocaleString()} €`]);
     } else if (reportType === "debts") {
       const d = data as { name: string; class: string; totalDebt: number }[];
       head = [["Nxënësi", "Klasa", "Borxhi (€)"]];
@@ -191,6 +209,14 @@ export default function ReportsPage() {
             {/* Monthly Report */}
             {reportType === "monthly" && data && (
               <MonthlyReport data={data as { month: number; year: number; label: string; total: number; count: number }[]} />
+            )}
+
+            {/* Invoices Report */}
+            {reportType === "invoices" && data && invMeta && (
+              <InvoicesReport
+                data={data as { id: number; number: string; studentName: string; className: string; total: number; status: string; date: string; paidDate: string | null }[]}
+                meta={invMeta}
+              />
             )}
 
             {/* Debts Report */}
@@ -447,6 +473,113 @@ function ByClassReport({ data, colors }: {
               </tr>
             ))}
           </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const STATUS_MAP: Record<string, { label: string; cls: string }> = {
+  DRAFT:     { label: "Draft",    cls: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
+  SENT:      { label: "Dërguar", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
+  PAID:      { label: "Paguar",  cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  CANCELLED: { label: "Anuluar", cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" },
+};
+
+function InvoicesReport({
+  data,
+  meta,
+}: {
+  data: { id: number; number: string; studentName: string; className: string; total: number; status: string; date: string; paidDate: string | null }[];
+  meta: { totalAmount: number; paidAmount: number; pendingAmount: number };
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = data.filter(r =>
+    r.studentName.toLowerCase().includes(search.toLowerCase()) ||
+    r.number.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="card p-4">
+          <p className="text-xs text-slate-400 mb-1">Nr. Faturave</p>
+          <p className="text-xl font-bold text-slate-900 dark:text-white">{data.length}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-slate-400 mb-1">Totali i Faturuar</p>
+          <p className="text-xl font-bold text-primary-600">{formatCurrency(meta.totalAmount)}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-slate-400 mb-1">Paguar</p>
+          <p className="text-xl font-bold text-emerald-600">{formatCurrency(meta.paidAmount)}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-slate-400 mb-1">Gjendje e Papaguar</p>
+          <p className="text-xl font-bold text-amber-600">{formatCurrency(meta.pendingAmount)}</p>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="card p-3 flex items-center gap-3">
+        <input
+          className="input flex-1 max-w-xs"
+          placeholder="Kërko nxënës ose nr. fature..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <span className="text-xs text-slate-400">{filtered.length} fatura</span>
+      </div>
+
+      {/* Table */}
+      <div className="card overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-slate-50 dark:bg-slate-800/50">
+            <tr>
+              <th className="table-header">Nr. Faturës</th>
+              <th className="table-header">Nxënësi</th>
+              <th className="table-header">Klasa</th>
+              <th className="table-header">Data</th>
+              <th className="table-header">Statusi</th>
+              <th className="table-header text-right">Totali</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="table-cell text-center py-8 text-slate-400">Asnjë faturë e gjetur</td>
+              </tr>
+            ) : filtered.map(row => {
+              const st = STATUS_MAP[row.status] ?? { label: row.status, cls: "bg-slate-100 text-slate-600" };
+              return (
+                <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                  <td className="table-cell font-mono text-xs text-primary-600 dark:text-primary-400">{row.number}</td>
+                  <td className="table-cell font-medium text-slate-900 dark:text-white">{row.studentName}</td>
+                  <td className="table-cell">
+                    <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-2 py-0.5 rounded text-xs font-medium">
+                      {row.className}
+                    </span>
+                  </td>
+                  <td className="table-cell text-slate-500 text-sm">{new Date(row.date).toLocaleDateString("sq-AL")}</td>
+                  <td className="table-cell">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${st.cls}`}>{st.label}</span>
+                  </td>
+                  <td className="table-cell text-right font-semibold text-slate-900 dark:text-white">{formatCurrency(row.total)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          {filtered.length > 0 && (
+            <tfoot className="bg-slate-50 dark:bg-slate-800/50 border-t-2 border-slate-200 dark:border-slate-600">
+              <tr>
+                <td colSpan={5} className="table-cell font-bold text-slate-700 dark:text-slate-200">TOTALI</td>
+                <td className="table-cell text-right font-bold text-primary-600">
+                  {formatCurrency(filtered.reduce((s, r) => s + r.total, 0))}
+                </td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </div>

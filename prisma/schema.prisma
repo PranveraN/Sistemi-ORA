@@ -385,10 +385,14 @@ model Staff {
   nrLlogarise String?
   banka       String?
   totalBruto  Float?
-  kontrata    String?
-  kodi        String?
-  tipi        String?
-  status      String   @default("ACTIVE")
+  kontrata        String?
+  llojiKontrates  String?
+  cmimOres        Float?
+  oreMuaj         Int?
+  adresa          String?
+  kodi            String?
+  tipi            String?
+  status          String   @default("ACTIVE")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

@@ -124,5 +124,41 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ type: "debts", data: result });
   }
 
+  if (type === "invoices") {
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        type: "INVOICE",
+        createdAt: { gte: start, lte: end },
+      },
+      include: {
+        student: {
+          select: {
+            firstName: true,
+            lastName: true,
+            class: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const data = invoices.map(inv => ({
+      id:          inv.id,
+      number:      inv.number,
+      studentName: `${inv.student.lastName} ${inv.student.firstName}`,
+      className:   inv.student.class?.name || "—",
+      total:       inv.total,
+      status:      inv.status,
+      date:        inv.createdAt.toISOString(),
+      paidDate:    inv.paidDate?.toISOString() ?? null,
+    }));
+
+    const totalAmount  = data.reduce((s, d) => s + d.total, 0);
+    const paidAmount   = data.filter(d => d.status === "PAID").reduce((s, d) => s + d.total, 0);
+    const pendingAmount = data.filter(d => d.status !== "PAID" && d.status !== "CANCELLED").reduce((s, d) => s + d.total, 0);
+
+    return NextResponse.json({ type: "invoices", year, label, data, totalAmount, paidAmount, pendingAmount });
+  }
+
   return NextResponse.json({ error: "Unknown report type" }, { status: 400 });
 }

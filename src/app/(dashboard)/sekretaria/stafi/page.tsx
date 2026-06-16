@@ -18,6 +18,10 @@ interface StaffMember {
   banka: string | null;
   totalBruto: number | null;
   kontrata: string | null;
+  llojiKontrates: string | null;
+  cmimOres: number | null;
+  oreMuaj: number | null;
+  adresa: string | null;
   kodi: string | null;
   tipi: string | null;
   status: string;
@@ -26,7 +30,8 @@ interface StaffMember {
 const EMPTY: Omit<StaffMember, "id"> = {
   emri: "", telefoni: null, lenda: null, nrPersonal: null,
   nrLlogarise: null, banka: null, totalBruto: null,
-  kontrata: null, kodi: null, tipi: "Primar", status: "ACTIVE",
+  kontrata: null, llojiKontrates: null, cmimOres: null, oreMuaj: null,
+  adresa: null, kodi: null, tipi: "Primar", status: "ACTIVE",
 };
 
 const TIPI_OPTIONS = ["", "Primar", "Sekundar", "Menaxhment"];
@@ -38,11 +43,6 @@ function tipiBadge(tipi: string | null) {
   return "bg-slate-100 text-slate-600";
 }
 
-function kontrataColor(k: string | null) {
-  if (!k || k === "Nuk ka" || k === "Nuk e ka kthy" || k === "Nuk eshte staf") return "text-red-500";
-  if (k === "Po" || k === "Nenshkruar") return "text-green-600 dark:text-green-400";
-  return "text-slate-400";
-}
 
 export default function StafiPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -74,9 +74,13 @@ export default function StafiPage() {
 
   const openAdd = () => { setForm(EMPTY); setModal("add"); };
   const openEdit = (m: StaffMember) => {
-    setForm({ emri: m.emri, telefoni: m.telefoni, lenda: m.lenda, nrPersonal: m.nrPersonal,
+    setForm({
+      emri: m.emri, telefoni: m.telefoni, lenda: m.lenda, nrPersonal: m.nrPersonal,
       nrLlogarise: m.nrLlogarise, banka: m.banka, totalBruto: m.totalBruto,
-      kontrata: m.kontrata, kodi: m.kodi, tipi: m.tipi, status: m.status });
+      kontrata: m.kontrata, llojiKontrates: m.llojiKontrates,
+      cmimOres: m.cmimOres, oreMuaj: m.oreMuaj,
+      adresa: m.adresa, kodi: m.kodi, tipi: m.tipi, status: m.status,
+    });
     setEditId(m.id);
     setModal("edit");
   };
@@ -98,6 +102,17 @@ export default function StafiPage() {
     await fetch(`/api/staff/${deleteId}`, { method: "DELETE" });
     setDeleteId(null);
     load();
+  };
+
+  const saveAdresa = async (id: number, adresa: string) => {
+    const member = staff.find(s => s.id === id);
+    if (!member) return;
+    setStaff(prev => prev.map(s => s.id === id ? { ...s, adresa: adresa || null } : s));
+    await fetch(`/api/staff/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...member, adresa: adresa || null }),
+    });
   };
 
   const menaxhment = staff.filter(s => s.tipi === "Menaxhment");
@@ -162,11 +177,11 @@ export default function StafiPage() {
           <>
             {/* Management table */}
             {(tipiFilter === "" || tipiFilter === "Menaxhment") && menaxhment.length > 0 && (
-              <StaffTable title="Menaxhment" rows={menaxhment} onEdit={openEdit} onDelete={setDeleteId} />
+              <StaffTable title="Menaxhment" rows={menaxhment} onEdit={openEdit} onDelete={setDeleteId} onAdresaChange={saveAdresa} />
             )}
             {/* Teaching staff table */}
             {(tipiFilter === "" || tipiFilter !== "Menaxhment") && mesimdhenes.length > 0 && (
-              <StaffTable title="Stafi Mësimdhënës" rows={mesimdhenes} onEdit={openEdit} onDelete={setDeleteId} />
+              <StaffTable title="Stafi Mësimdhënës" rows={mesimdhenes} onEdit={openEdit} onDelete={setDeleteId} onAdresaChange={saveAdresa} />
             )}
             {staff.length === 0 && (
               <div className="card p-12 text-center text-slate-400">
@@ -201,7 +216,7 @@ export default function StafiPage() {
                 <input className="input w-full" value={form.telefoni ?? ""} onChange={e => setForm(f => ({ ...f, telefoni: e.target.value || null }))} />
               </div>
               <div>
-                <label className="label">Lënda</label>
+                <label className="label">Lënda / Roli</label>
                 <input className="input w-full" value={form.lenda ?? ""} onChange={e => setForm(f => ({ ...f, lenda: e.target.value || null }))} />
               </div>
               <div>
@@ -220,16 +235,78 @@ export default function StafiPage() {
                 <label className="label">Banka</label>
                 <input className="input w-full" value={form.banka ?? ""} onChange={e => setForm(f => ({ ...f, banka: e.target.value || null }))} />
               </div>
-              <div>
-                <label className="label">Total Bruto (€)</label>
-                <input className="input w-full" type="number" step="0.01" value={form.totalBruto ?? ""} onChange={e => setForm(f => ({ ...f, totalBruto: e.target.value ? parseFloat(e.target.value) : null }))} />
+
+              {/* Lloji i Kontratës */}
+              <div className="col-span-2">
+                <label className="label">Lloji i Kontratës</label>
+                <div className="flex gap-2">
+                  {["Orar i Plotë", "Gjysmë Orari", "Me Orë"].map(opt => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, llojiKontrates: f.llojiKontrates === opt ? null : opt }))}
+                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                        form.llojiKontrates === opt
+                          ? "bg-primary-600 border-primary-600 text-white"
+                          : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {/* Orar i Plotë — paga bruto */}
+              {(!form.llojiKontrates || form.llojiKontrates === "Orar i Plotë") && (
+                <div className="col-span-2">
+                  <label className="label">Total Bruto (€/muaj)</label>
+                  <input className="input w-full" type="number" step="0.01" placeholder="p.sh. 900"
+                    value={form.totalBruto ?? ""}
+                    onChange={e => setForm(f => ({ ...f, totalBruto: e.target.value ? parseFloat(e.target.value) : null }))} />
+                </div>
+              )}
+
+              {/* Gjysmë Orari / Me Orë — çmim ore + numër orësh */}
+              {(form.llojiKontrates === "Gjysmë Orari" || form.llojiKontrates === "Me Orë") && (
+                <>
+                  <div>
+                    <label className="label">Çmimi i Orës (€)</label>
+                    <input className="input w-full" type="number" step="0.01" placeholder="p.sh. 8.50"
+                      value={form.cmimOres ?? ""}
+                      onChange={e => setForm(f => {
+                        const c = e.target.value ? parseFloat(e.target.value) : null;
+                        const total = c && f.oreMuaj ? Math.round(c * f.oreMuaj * 100) / 100 : f.totalBruto;
+                        return { ...f, cmimOres: c, totalBruto: total };
+                      })} />
+                  </div>
+                  <div>
+                    <label className="label">Orë / Muaj</label>
+                    <input className="input w-full" type="number" step="1" placeholder="p.sh. 80"
+                      value={form.oreMuaj ?? ""}
+                      onChange={e => setForm(f => {
+                        const o = e.target.value ? parseInt(e.target.value) : null;
+                        const total = f.cmimOres && o ? Math.round(f.cmimOres * o * 100) / 100 : f.totalBruto;
+                        return { ...f, oreMuaj: o, totalBruto: total };
+                      })} />
+                  </div>
+                  <div className="col-span-2 bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-3 flex items-center justify-between">
+                    <span className="text-sm text-slate-500">Total Bruto i llogaritur</span>
+                    <span className="text-lg font-bold text-primary-600">
+                      {form.cmimOres && form.oreMuaj
+                        ? `€ ${(form.cmimOres * form.oreMuaj).toFixed(2)}`
+                        : "—"}
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {/* Statusi kontratës + tipi + statusi */}
               <div>
-                <label className="label">Kontrata</label>
+                <label className="label">Statusi Kontratës</label>
                 <select className="input w-full" value={form.kontrata ?? ""} onChange={e => setForm(f => ({ ...f, kontrata: e.target.value || null }))}>
                   <option value="">—</option>
-                  <option>Po</option>
-                  <option>Nenshkruar</option>
+                  <option>Po/Nënshkruar</option>
                   <option>Nuk e ka kthy</option>
                   <option>Nuk ka</option>
                   <option>Nuk eshte staf</option>
@@ -284,12 +361,23 @@ export default function StafiPage() {
   );
 }
 
-function StaffTable({ title, rows, onEdit, onDelete }: {
+function StaffTable({ title, rows, onEdit, onDelete, onAdresaChange }: {
   title: string;
   rows: StaffMember[];
   onEdit: (m: StaffMember) => void;
   onDelete: (id: number) => void;
+  onAdresaChange: (id: number, adresa: string) => void;
 }) {
+  const [editing, setEditing] = useState<{ id: number; value: string } | null>(null);
+
+  const startEdit = (m: StaffMember) => setEditing({ id: m.id, value: m.adresa || "" });
+
+  const commitEdit = () => {
+    if (!editing) return;
+    onAdresaChange(editing.id, editing.value);
+    setEditing(null);
+  };
+
   return (
     <div className="space-y-2">
       <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1">{title} — {rows.length}</h2>
@@ -303,7 +391,7 @@ function StaffTable({ title, rows, onEdit, onDelete }: {
                 <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Telefoni</th>
                 <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Kodi</th>
                 <th className="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Total Bruto</th>
-                <th className="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Kontrata</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Adresa</th>
                 <th className="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Tipi</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -320,8 +408,25 @@ function StaffTable({ title, rows, onEdit, onDelete }: {
                   <td className="px-4 py-3 text-center font-semibold text-slate-700 dark:text-slate-200">
                     {m.totalBruto != null ? `€${m.totalBruto.toLocaleString()}` : "—"}
                   </td>
-                  <td className={`px-4 py-3 text-center text-xs font-semibold ${kontrataColor(m.kontrata)}`}>
-                    {m.kontrata || "—"}
+                  <td className="px-2 py-2 min-w-[180px]">
+                    {editing?.id === m.id ? (
+                      <input
+                        autoFocus
+                        className="w-full px-2 py-1 text-sm border border-primary-400 rounded-lg outline-none bg-white dark:bg-slate-800 dark:text-white"
+                        value={editing.value}
+                        onChange={e => setEditing(prev => prev ? { ...prev, value: e.target.value } : prev)}
+                        onBlur={commitEdit}
+                        onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditing(null); }}
+                      />
+                    ) : (
+                      <button
+                        onClick={() => startEdit(m)}
+                        className="w-full text-left px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors group"
+                        title="Kliko për të edituar"
+                      >
+                        {m.adresa || <span className="text-slate-300 dark:text-slate-600 group-hover:text-slate-400 text-xs italic">+ shto adresë</span>}
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-center">
                     {m.tipi && (

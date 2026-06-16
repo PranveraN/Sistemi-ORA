@@ -116,7 +116,13 @@ export default function ExpensesSection({ categoryId, type, month, year }: Props
         // Kapërceje rreshtat bosh
         if (!rawAmt && !recipient && !rawDate) continue;
 
-        const amount = parseFloat(String(rawAmt).replace(",", "."));
+        const amount = parseFloat(
+          String(rawAmt)
+            .replace(/[$€£¥]/g, "")   // hiq simbolet e monedhës
+            .replace(/,(?=\d{3})/g, "") // hiq presjet si ndarës mijësh (1,000 → 1000)
+            .replace(",", ".")          // presjen decimale shqipe → pikë
+            .trim()
+        );
         if (!amount || isNaN(amount) || amount <= 0) {
           errors.push(`${rn}: Shuma e pavlefshme ("${rawAmt}")`);
           continue;

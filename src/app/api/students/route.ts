@@ -125,9 +125,23 @@ export async function GET(req: NextRequest) {
   });
   const sumMap = new Map(paymentSums.map(p => [p.studentId, p._sum.paidAmount ?? 0]));
 
+  // Merr lidhjet Timi Invest për këta nxënës
+  type TIRow = { id: number; studentId: number; regularPrice: number; discountPct: number; manualDiscAmt: number };
+  const tiRows: TIRow[] = studentIds.length > 0
+    ? await prisma.$queryRawUnsafe<TIRow[]>(
+        `SELECT id, studentId, regularPrice, discountPct, manualDiscAmt FROM TimiInvestStudent WHERE studentId IN (${studentIds.map(() => "?").join(",")}) AND active = 1`,
+        ...studentIds
+      )
+    : [];
+  const tiMap = new Map(tiRows.map(ti => [
+    Number(ti.studentId),
+    { id: Number(ti.id), regularPrice: Number(ti.regularPrice), discountPct: Number(ti.discountPct), manualDiscAmt: Number(ti.manualDiscAmt) },
+  ]));
+
   const students = rawStudents.map(s => ({
     ...s,
     totalPaid: sumMap.get(s.id) ?? 0,
+    timiInvest: tiMap.get(s.id) ?? null,
   }));
 
   return NextResponse.json({ students, total, activeCount, debtCount, page, limit });

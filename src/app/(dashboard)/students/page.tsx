@@ -7,7 +7,7 @@ import Link from "next/link";
 import { formatDate, getStatusColor, getStatusLabel, formatCurrency } from "@/lib/utils";
 import {
   UserPlus, Search, ChevronLeft, ChevronRight,
-  Eye, Edit, Users, AlertCircle, Upload, FileSignature, Trash2, Download,
+  Eye, Edit, Users, AlertCircle, Upload, FileSignature, Trash2, Download, X, Plus,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -32,6 +32,7 @@ interface Student {
   enrollDate: string;
   class: { name: string; level: string } | null;
   totalPaid: number;
+  timiInvest: { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number } | null;
 }
 
 export default function StudentsPage() {
@@ -55,6 +56,66 @@ export default function StudentsPage() {
   /* Inline price editing */
   const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
   const [editingPriceVal, setEditingPriceVal] = useState("");
+
+  /* Timi Invest link modal */
+  const [tiModal, setTiModal] = useState<{
+    student: Student;
+    price: string;
+    saving: boolean;
+  } | null>(null);
+
+  function openTiModal(s: Student) {
+    setTiModal({ student: s, price: s.timiInvest ? String(s.timiInvest.regularPrice) : "", saving: false });
+  }
+
+  async function saveTiLink() {
+    if (!tiModal) return;
+    const price = parseFloat(tiModal.price);
+    if (isNaN(price) || price <= 0) return;
+    setTiModal(m => m ? { ...m, saving: true } : null);
+    const s = tiModal.student;
+
+    if (s.timiInvest) {
+      // Update existing TI record
+      await fetch(`/api/timi-invest/students/${s.timiInvest.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regularPrice: price }),
+      });
+    } else {
+      // Create new TI record linked to this student
+      await fetch("/api/timi-invest/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName:   s.firstName,
+          lastName:    s.lastName,
+          parentName:  s.parentName || "",
+          parentPhone: s.parentPhone || "",
+          regularPrice: price,
+          studentId:   s.id,
+        }),
+      });
+    }
+    // Refresh row optimistically
+    setStudents(prev => prev.map(x =>
+      x.id === s.id
+        ? { ...x, timiInvest: { id: x.timiInvest?.id ?? 0, regularPrice: price, discountPct: 0, manualDiscAmt: 0 } }
+        : x
+    ));
+    setTiModal(null);
+  }
+
+  async function removeTiLink(s: Student) {
+    if (!s.timiInvest) return;
+    if (!confirm(`Hiq lidhjen Timi Invest për ${s.firstName} ${s.lastName}?`)) return;
+    await fetch(`/api/timi-invest/students/${s.timiInvest.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ studentId: null }),
+    });
+    setStudents(prev => prev.map(x => x.id === s.id ? { ...x, timiInvest: null } : x));
+  }
 
   function startEditPrice(s: Student) {
     const fp = Math.round(tuitionPrice * (1 - s.discountPct / 100));
@@ -395,6 +456,12 @@ export default function StudentsPage() {
                   <th className="table-header">Klasa</th>
                   <th className="table-header">Kontrata</th>
                   <th className="table-header">Çmimi Final</th>
+                  <th className="table-header">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-violet-500 inline-block"></span>
+                      Çmimi TI
+                    </span>
+                  </th>
                   <th className="table-header">Paguar</th>
                   <th className="table-header">Borxhi</th>
                   <th className="table-header">Statusi</th>
@@ -405,7 +472,7 @@ export default function StudentsPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                 {loading ? (
                   <tr>
-                    <td colSpan={11} className="table-cell text-center py-12 text-slate-400">
+                    <td colSpan={12} className="table-cell text-center py-12 text-slate-400">
                       <svg className="animate-spin w-5 h-5 mx-auto mb-2" viewBox="0 0 24 24" fill="none">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -415,7 +482,7 @@ export default function StudentsPage() {
                   </tr>
                 ) : students.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="table-cell text-center py-12 text-slate-400">
+                    <td colSpan={12} className="table-cell text-center py-12 text-slate-400">
                       Asnjë nxënës nuk u gjet
                     </td>
                   </tr>
@@ -492,6 +559,38 @@ export default function StudentsPage() {
                               <p className="text-[10px] text-slate-400 line-through">{formatCurrency(tuitionPrice)}</p>
                             )}
                           </div>
+                        )}
+                      </td>
+                      {/* Çmimi TI */}
+                      <td className="table-cell">
+                        {s.timiInvest ? (
+                          <div className="flex items-center gap-1">
+                            <span className="font-semibold text-violet-600 dark:text-violet-400 text-sm">
+                              {formatCurrency(s.timiInvest.regularPrice)}
+                            </span>
+                            <button
+                              onClick={() => openTiModal(s)}
+                              title="Modifiko çmimin TI"
+                              className="p-0.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-violet-400 hover:text-violet-600 transition-colors"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => removeTiLink(s)}
+                              title="Hiq lidhjen TI"
+                              className="p-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-500 transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => openTiModal(s)}
+                            title="Lidh me Timi Invest"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border border-dashed border-slate-300 dark:border-slate-600 text-slate-400 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+                          >
+                            <Plus className="w-3 h-3" /> TI
+                          </button>
                         )}
                       </td>
                       {/* Paguar */}
@@ -581,6 +680,57 @@ export default function StudentsPage() {
           )}
         </div>
       </div>
+
+      {/* ── Timi Invest Link Modal ─────────────────────────── */}
+      {tiModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+              <div>
+                <h3 className="font-semibold text-slate-800 dark:text-white text-sm">
+                  {tiModal.student.timiInvest ? "Modifiko Çmimin TI" : "Lidh me Timi Invest"}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {tiModal.student.firstName} {tiModal.student.lastName}
+                </p>
+              </div>
+              <button onClick={() => setTiModal(null)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="form-label">Çmimi mujor TI (€)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  placeholder="p.sh. 150"
+                  value={tiModal.price}
+                  autoFocus
+                  min={0}
+                  onChange={e => setTiModal(m => m ? { ...m, price: e.target.value } : null)}
+                  onKeyDown={e => { if (e.key === "Enter") saveTiLink(); if (e.key === "Escape") setTiModal(null); }}
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  Ky çmim do të ruhet si "Çmim i Rregullt" te Timi Invest
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setTiModal(null)} className="btn-secondary flex-1 justify-center">
+                  Anulo
+                </button>
+                <button
+                  onClick={saveTiLink}
+                  disabled={tiModal.saving || !tiModal.price}
+                  className="btn-primary flex-1 justify-center disabled:opacity-50"
+                >
+                  {tiModal.saving ? "Duke ruajtur..." : "Ruaj"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
