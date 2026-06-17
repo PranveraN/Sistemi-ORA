@@ -3,8 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
-import { BarChart3, TrendingUp, TrendingDown, Wallet, ArrowRightLeft, Package, ShoppingBag, ArrowLeft, Download } from "lucide-react";
+import { BarChart3, TrendingUp, TrendingDown, Wallet, ArrowRightLeft, Package, ShoppingBag, ArrowLeft, Download, Medal } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+
+interface ProductSale {
+  name: string; qty: number; revenue: number; cost: number; profit: number;
+}
 
 interface Stats {
   totalRevenue: number; totalCost: number; totalProfit: number;
@@ -13,6 +17,7 @@ interface Stats {
   stockValue: number; totalItems: number;
   lowStock: { name: string; stock: number }[];
   salesCount: number; paidCount: number; partialCount: number; pendingCount: number;
+  productSales: ProductSale[];
 }
 
 async function exportToExcel(stats: Stats) {
@@ -73,7 +78,25 @@ async function exportToExcel(stats: Stats) {
     XLSX.utils.book_append_sheet(wb, ws2, "Shitjet");
   }
 
-  // Sheet 3: Stok i ulët
+  // Sheet 3: Shitjet sipas produktit
+  if (stats.productSales.length > 0) {
+    const totQty = stats.productSales.reduce((s, p) => s + p.qty, 0);
+    const totRev = stats.productSales.reduce((s, p) => s + p.revenue, 0);
+    const totPro = stats.productSales.reduce((s, p) => s + p.profit, 0);
+    const rows = [
+      ["Produkti", "Sasia", "Shitje (€)", "Fitimi (€)", "Marzha (%)"],
+      ...stats.productSales.map(p => [
+        p.name, p.qty, p.revenue, p.profit,
+        p.revenue > 0 ? `${(p.profit / p.revenue * 100).toFixed(1)}%` : "0.0%",
+      ]),
+      ["TOTALI", totQty, totRev, totPro, totRev > 0 ? `${(totPro / totRev * 100).toFixed(1)}%` : "0.0%"],
+    ];
+    const ws3 = XLSX.utils.aoa_to_sheet(rows);
+    ws3["!cols"] = [{ wch: 26 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws3, "Sipas Produktit");
+  }
+
+  // Sheet 4: Stok i ulët
   if (stats.lowStock.length > 0) {
     const rows = [
       ["Produkti", "Stoku (cope)"],
@@ -269,6 +292,91 @@ export default function RaportPage() {
           </div>
         </div>
       </div>
+
+      {/* Tabela e shitjeve sipas produktit */}
+      {stats.productSales.length > 0 && (() => {
+        const totQty = stats.productSales.reduce((s, p) => s + p.qty, 0);
+        const totRev = stats.productSales.reduce((s, p) => s + p.revenue, 0);
+        const totPro = stats.productSales.reduce((s, p) => s + p.profit, 0);
+        const maxRev = stats.productSales[0]?.revenue ?? 1;
+        return (
+          <div className="card overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+              <h2 className="font-semibold text-slate-800 dark:text-white text-sm flex items-center gap-2">
+                <Medal className="w-4 h-4 text-amber-500" /> Shitjet sipas Produktit
+              </h2>
+              <span className="text-xs text-slate-400">{stats.productSales.length} produkte</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/50 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    <th className="px-5 py-3 text-left w-8">#</th>
+                    <th className="px-5 py-3 text-left">Produkti</th>
+                    <th className="px-5 py-3 text-right">Sasia</th>
+                    <th className="px-5 py-3 text-right">Shitje</th>
+                    <th className="px-5 py-3 text-right">Fitimi</th>
+                    <th className="px-5 py-3 text-right">Marzha</th>
+                    <th className="px-5 py-3 text-left w-40">Pjesa e shitjeve</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                  {stats.productSales.map((p, i) => {
+                    const margin = p.revenue > 0 ? (p.profit / p.revenue * 100) : 0;
+                    const barPct = (p.revenue / maxRev * 100).toFixed(1);
+                    const rankColors = ["text-amber-500", "text-slate-400", "text-orange-400"];
+                    return (
+                      <tr key={p.name} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                        <td className="px-5 py-3">
+                          <span className={`text-xs font-bold ${rankColors[i] ?? "text-slate-300"}`}>
+                            {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 font-medium text-slate-800 dark:text-slate-200">{p.name}</td>
+                        <td className="px-5 py-3 text-right text-slate-600 dark:text-slate-400 font-mono">{p.qty}</td>
+                        <td className="px-5 py-3 text-right font-semibold text-slate-800 dark:text-slate-200">{formatCurrency(p.revenue)}</td>
+                        <td className="px-5 py-3 text-right font-semibold text-green-600">{formatCurrency(p.profit)}</td>
+                        <td className="px-5 py-3 text-right">
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                            margin >= 20 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            : margin >= 10 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                            : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
+                          }`}>{margin.toFixed(1)}%</span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                              <div className="h-full bg-gradient-to-r from-primary-400 to-primary-600 rounded-full transition-all"
+                                style={{ width: `${barPct}%` }} />
+                            </div>
+                            <span className="text-xs text-slate-400 w-8 text-right">{barPct}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-50 dark:bg-slate-800/50 font-bold border-t-2 border-slate-200 dark:border-slate-600">
+                    <td className="px-5 py-3" colSpan={2}>
+                      <span className="text-slate-700 dark:text-slate-200 text-sm">TOTALI</span>
+                    </td>
+                    <td className="px-5 py-3 text-right text-slate-700 dark:text-slate-200 font-mono">{totQty}</td>
+                    <td className="px-5 py-3 text-right text-slate-800 dark:text-white">{formatCurrency(totRev)}</td>
+                    <td className="px-5 py-3 text-right text-green-600">{formatCurrency(totPro)}</td>
+                    <td className="px-5 py-3 text-right">
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                        {totRev > 0 ? (totPro / totRev * 100).toFixed(1) : "0.0"}%
+                      </span>
+                    </td>
+                    <td className="px-5 py-3" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
