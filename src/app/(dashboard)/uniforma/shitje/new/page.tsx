@@ -112,7 +112,8 @@ export default function NewSalePage() {
       router.push(`/uniforma/shitje/${sale.id}`);
     } else {
       setSaving(false);
-      alert("Gabim gjatë ruajtjes");
+      const data = await res.json().catch(() => ({}));
+      alert("Gabim gjatë ruajtjes:\n" + (data.error || res.statusText || res.status));
     }
   };
 
