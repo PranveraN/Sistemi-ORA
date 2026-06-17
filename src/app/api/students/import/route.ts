@@ -37,60 +37,82 @@ export async function POST(req: NextRequest) {
         classId = cls?.id ?? null;
       }
 
-      // Parso datën (DD/MM/YYYY ose YYYY-MM-DD) — null nëse mungon ose është e pavlefshme
-      let birthDate: Date | null = null;
-      if (row.birthDate) {
-        const raw = String(row.birthDate).trim();
-        if (raw.includes("/")) {
-          const [d, m, y] = raw.split("/");
-          const dt = new Date(`${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`);
-          if (!isNaN(dt.getTime())) birthDate = dt;
-        } else {
-          const dt = new Date(raw);
-          if (!isNaN(dt.getTime())) birthDate = dt;
-        }
-      }
-
-      // Nëse ekziston, përditëso classId dhe birthDate (nëse ka)
-      const existing = personalNumber
-        ? await prisma.student.findUnique({ where: { personalNumber } })
-        : null;
-      if (existing) {
-        const needsUpdate: Record<string, unknown> = {};
-        if (classId && existing.classId !== classId) needsUpdate.classId = classId;
-        if (birthDate && (!existing.birthDate || existing.birthDate.toISOString().startsWith("2015-01-01"))) {
-          needsUpdate.birthDate = birthDate;
-        }
-        if (Object.keys(needsUpdate).length > 0) {
-          await prisma.student.update({ where: { id: existing.id }, data: needsUpdate });
-          results.created++;
-        } else {
-          results.skipped++;
-        }
-        continue;
-      }
-
-      function str(v: unknown): string | null {
-        const s = String(v ?? "").trim();
-        return s || null;
-      }
-
-      function parseParentDate(v: unknown): Date | null {
+      // Parso datën — mbështet: DD/MM/YYYY, D.M.YYYY, DD.MM.YYYY, YYYY-MM-DD
+      function parseDate(v: unknown): Date | null {
         if (!v) return null;
         const raw = String(v).trim();
-        if (raw.includes("/")) {
-          const [d, m, y] = raw.split("/");
-          const dt = new Date(`${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`);
+        const sepMatch = raw.match(/^(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{4})$/);
+        if (sepMatch) {
+          const dt = new Date(`${sepMatch[3]}-${sepMatch[2].padStart(2, "0")}-${sepMatch[1].padStart(2, "0")}`);
           return isNaN(dt.getTime()) ? null : dt;
         }
         const dt = new Date(raw);
         return isNaN(dt.getTime()) ? null : dt;
       }
 
+      let birthDate: Date | null = parseDate(row.birthDate);
+
+      function str(v: unknown): string | null {
+        const s = String(v ?? "").trim();
+        return s || null;
+      }
+
       const fatherPhone = str(row.fatherPhone);
       const motherPhone = str(row.motherPhone);
       const fatherName  = str(row.fatherName);
       const motherName  = str(row.motherName);
+
+      // Gjej nxënësin ekzistues:
+      // 1. Sipas nr. personal (nëse ka)
+      // 2. Fallback sipas emrit+mbiemrit (edhe kur DB nuk ka nr. personal ende)
+      let existing = personalNumber
+        ? await prisma.student.findUnique({ where: { personalNumber } })
+        : null;
+
+      if (!existing) {
+        const firstName = String(row.firstName).trim();
+        const lastName  = String(row.lastName).trim();
+        if (firstName && lastName) {
+          existing = await prisma.student.findFirst({
+            where: { firstName, lastName },
+          });
+        }
+      }
+
+      if (existing) {
+        const upd: Record<string, unknown> = {};
+        if (classId && existing.classId !== classId) upd.classId = classId;
+        // Nr. personal — plotëso vetëm nëse mungon në DB
+        if (personalNumber && !existing.personalNumber) upd.personalNumber = personalNumber;
+        // Datëlindja — nëse mungon ose është placeholder 01.01.2015 / 02.01.2015
+        const isBirthPlaceholder = existing.birthDate &&
+          (existing.birthDate.toISOString().startsWith("2015-01-01") ||
+           existing.birthDate.toISOString().startsWith("2015-01-02"));
+        if (birthDate && (!existing.birthDate || isBirthPlaceholder)) upd.birthDate = birthDate;
+        // Plotëso fushat e tjera bosh
+        if (!existing.address     && str(row.address))     upd.address     = str(row.address);
+        if (!existing.diaryNumber && str(row.diaryNumber)) upd.diaryNumber = str(row.diaryNumber);
+        if (!existing.motherName  && motherName)           upd.motherName  = motherName;
+        if (!existing.motherPhone && motherPhone)          upd.motherPhone = motherPhone;
+        if (!existing.motherEmail && str(row.motherEmail)) upd.motherEmail = str(row.motherEmail);
+        if (!existing.motherProf  && str(row.motherProf))  upd.motherProf  = str(row.motherProf);
+        if (!existing.motherBirth && str(row.motherBirth)) upd.motherBirth = parseDate(row.motherBirth);
+        if (!existing.fatherName  && fatherName)           upd.fatherName  = fatherName;
+        if (!existing.fatherPhone && fatherPhone)          upd.fatherPhone = fatherPhone;
+        if (!existing.fatherEmail && str(row.fatherEmail)) upd.fatherEmail = str(row.fatherEmail);
+        if (!existing.fatherProf  && str(row.fatherProf))  upd.fatherProf  = str(row.fatherProf);
+        if (!existing.fatherBirth && str(row.fatherBirth)) upd.fatherBirth = parseDate(row.fatherBirth);
+        if (!existing.parentName  && (fatherName || motherName))     upd.parentName  = fatherName || motherName;
+        if (!existing.parentPhone && (fatherPhone || motherPhone))   upd.parentPhone = fatherPhone || motherPhone;
+
+        if (Object.keys(upd).length > 0) {
+          await prisma.student.update({ where: { id: existing.id }, data: upd });
+          results.created++;
+        } else {
+          results.skipped++;
+        }
+        continue;
+      }
 
       await prisma.student.create({
         data: {
@@ -106,13 +128,13 @@ export async function POST(req: NextRequest) {
           status:       String(row.status || "ACTIVE").toLowerCase() === "joaktiv" ? "INACTIVE" : "ACTIVE",
           // Nëna
           motherName,
-          motherBirth:  parseParentDate(row.motherBirth),
+          motherBirth:  parseDate(row.motherBirth),
           motherProf:   str(row.motherProf),
           motherPhone,
           motherEmail:  str(row.motherEmail),
           // Baba
           fatherName,
-          fatherBirth:  parseParentDate(row.fatherBirth),
+          fatherBirth:  parseDate(row.fatherBirth),
           fatherProf:   str(row.fatherProf),
           fatherPhone,
           fatherEmail:  str(row.fatherEmail),
