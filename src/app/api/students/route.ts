@@ -125,24 +125,38 @@ export async function GET(req: NextRequest) {
   });
   const sumMap = new Map(paymentSums.map(p => [p.studentId, p._sum.paidAmount ?? 0]));
 
-  // Merr lidhjet Timi Invest për këta nxënës
-  type TIRow = { id: number; studentId: number; regularPrice: number; discountPct: number; manualDiscAmt: number };
-  const tiRows: TIRow[] = studentIds.length > 0
-    ? await prisma.$queryRawUnsafe<TIRow[]>(
-        `SELECT id, studentId, regularPrice, discountPct, manualDiscAmt FROM TimiInvestStudent WHERE studentId IN (${studentIds.map(() => "?").join(",")}) AND active = 1`,
-        ...studentIds
-      )
-    : [];
-  const tiMap = new Map(tiRows.map(ti => [
-    Number(ti.studentId),
-    { id: Number(ti.id), regularPrice: Number(ti.regularPrice), discountPct: Number(ti.discountPct), manualDiscAmt: Number(ti.manualDiscAmt) },
-  ]));
+  // Merr TË GJITHË nxënësit aktivë të Timi Invest (me ose pa studentId)
+  type TIRow = { id: number; studentId: number | null; firstName: string; lastName: string; regularPrice: number; discountPct: number; manualDiscAmt: number };
+  const allTiRows: TIRow[] = await prisma.$queryRawUnsafe<TIRow[]>(
+    `SELECT id, studentId, firstName, lastName, regularPrice, discountPct, manualDiscAmt FROM TimiInvestStudent WHERE active = 1`
+  );
 
-  const students = rawStudents.map(s => ({
-    ...s,
-    totalPaid: sumMap.get(s.id) ?? 0,
-    timiInvest: tiMap.get(s.id) ?? null,
-  }));
+  // Map 1: sipas studentId (lidhje direkte)
+  const tiByStudentId = new Map<number, { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number }>();
+  // Map 2: sipas "firstName|lastName" (fallback për ata pa studentId)
+  const tiByName = new Map<string, { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number }>();
+
+  for (const ti of allTiRows) {
+    const val = { id: Number(ti.id), regularPrice: Number(ti.regularPrice), discountPct: Number(ti.discountPct), manualDiscAmt: Number(ti.manualDiscAmt) };
+    if (ti.studentId) {
+      tiByStudentId.set(Number(ti.studentId), val);
+    } else {
+      const nameKey = `${String(ti.firstName).trim().toLowerCase()}|${String(ti.lastName).trim().toLowerCase()}`;
+      tiByName.set(nameKey, val);
+    }
+  }
+
+  const students = rawStudents.map(s => {
+    const tiDirect = tiByStudentId.get(s.id);
+    const tiByNameMatch = !tiDirect
+      ? tiByName.get(`${s.firstName.trim().toLowerCase()}|${s.lastName.trim().toLowerCase()}`)
+      : undefined;
+    return {
+      ...s,
+      totalPaid: sumMap.get(s.id) ?? 0,
+      timiInvest: tiDirect ?? tiByNameMatch ?? null,
+    };
+  });
 
   return NextResponse.json({ students, total, activeCount, debtCount, page, limit });
 }
