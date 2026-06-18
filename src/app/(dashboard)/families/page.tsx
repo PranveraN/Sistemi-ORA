@@ -8,7 +8,27 @@ import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/li
 import {
   Users, Phone, MapPin, Eye, FileSignature,
   CheckCircle, AlertCircle, Clock, ChevronDown, ChevronUp,
+  Receipt, X, Plus, Trash2, Loader2,
 } from "lucide-react";
+
+interface InvoiceItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  studentId: number | null;
+  checked: boolean;
+}
+
+interface InvoiceModal {
+  open: boolean;
+  clientName: string;
+  vatRate: string;
+  dueDate: string;
+  notes: string;
+  items: InvoiceItem[];
+  saving: boolean;
+  createdId: number | null;
+}
 
 interface Child {
   id: number;
@@ -91,6 +111,81 @@ export default function FamiliesPage() {
   function toggleExpand(id: number) {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   }
+
+  /* ── Fatura e familjes ── */
+  const [inv, setInv] = useState<InvoiceModal>({
+    open: false, clientName: "", vatRate: "0", dueDate: "", notes: "",
+    items: [], saving: false, createdId: null,
+  });
+
+  function openInvoiceModal() {
+    if (!data) return;
+    const p = data.parent;
+    const parentName = p.fatherName || p.motherName || p.name || "";
+    const items: InvoiceItem[] = data.children.map(ch => ({
+      description: `Shkollimi — ${ch.firstName} ${ch.lastName}${ch.class ? ` (${ch.class.name})` : ""}`,
+      quantity: 1,
+      unitPrice: ch.finalPrice,
+      studentId: ch.id,
+      checked: true,
+    }));
+    setInv({ open: true, clientName: parentName, vatRate: "0", dueDate: "", notes: "", items, saving: false, createdId: null });
+  }
+
+  function updItem(i: number, field: keyof InvoiceItem, val: string | number | boolean) {
+    setInv(prev => ({
+      ...prev,
+      items: prev.items.map((it, idx) => idx !== i ? it : { ...it, [field]: val }),
+    }));
+  }
+
+  function addItem() {
+    setInv(prev => ({ ...prev, items: [...prev.items, { description: "", quantity: 1, unitPrice: 0, studentId: null, checked: true }] }));
+  }
+
+  function removeItem(i: number) {
+    setInv(prev => ({ ...prev, items: prev.items.filter((_, idx) => idx !== i) }));
+  }
+
+  async function submitInvoice() {
+    const activeItems = inv.items.filter(it => it.checked && it.description.trim() && it.unitPrice > 0);
+    if (!activeItems.length || !inv.clientName.trim()) return;
+    setInv(prev => ({ ...prev, saving: true }));
+
+    // Gjej studentId-in e parë për lidhje (fatura regjistrohet te nxënësi i parë)
+    const primaryStudentId = activeItems.find(it => it.studentId)?.studentId
+      ?? data?.children[0]?.id;
+
+    const res = await fetch("/api/invoices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "INVOICE",
+        studentId: primaryStudentId,
+        vatRate: parseFloat(inv.vatRate) || 0,
+        dueDate: inv.dueDate || null,
+        notes: inv.notes || null,
+        clientName: inv.clientName,
+        items: activeItems.map(it => ({
+          description: it.description,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          total: it.quantity * it.unitPrice,
+        })),
+      }),
+    });
+
+    if (res.ok) {
+      const created = await res.json();
+      setInv(prev => ({ ...prev, saving: false, createdId: created.id }));
+    } else {
+      setInv(prev => ({ ...prev, saving: false }));
+      alert("Gabim gjatë krijimit të faturës.");
+    }
+  }
+
+  const invTotal = inv.items.filter(it => it.checked).reduce((s, it) => s + it.quantity * it.unitPrice, 0);
+  const invVat   = invTotal * (parseFloat(inv.vatRate) || 0) / 100;
 
   const p = data?.parent;
 
@@ -197,6 +292,9 @@ export default function FamiliesPage() {
                     </div>
                   </div>
                   <p className="text-xs text-slate-400">Totali familjes: {formatCurrency(data.summary.totalFinal)}</p>
+                  <button onClick={openInvoiceModal} className="btn-primary text-xs mt-1">
+                    <Receipt className="w-3.5 h-3.5" /> Gjenero Faturë
+                  </button>
                 </div>
               </div>
             </div>
@@ -317,6 +415,186 @@ export default function FamiliesPage() {
           </div>
         )}
       </div>
+
+      {/* ── Modali i faturës ── */}
+      {inv.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-primary-50 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
+                  <Receipt className="w-4.5 h-4.5 text-primary-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 dark:text-white text-sm">Gjenero Faturë Familjeje</h3>
+                  <p className="text-xs text-slate-400">Faturë e rregullt — INVOICE</p>
+                </div>
+              </div>
+              <button onClick={() => setInv(prev => ({ ...prev, open: false }))}
+                className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Success state */}
+            {inv.createdId ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-5 p-10 text-center">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-8 h-8 text-green-600" />
+                </div>
+                <div>
+                  <h4 className="text-xl font-bold text-slate-900 dark:text-white mb-1">Fatura u krijua!</h4>
+                  <p className="text-sm text-slate-400">Fatura është gati dhe mund ta shikosh ose printosh.</p>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setInv(prev => ({ ...prev, open: false, createdId: null }))}
+                    className="btn-secondary">Mbyll</button>
+                  <Link href={`/invoices/${inv.createdId}`} className="btn-primary">
+                    <Eye className="w-4 h-4" /> Shiko Faturën
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Body */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+                  {/* Emri i klientit + data */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="form-label">Emri i klientit (prindi) *</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={inv.clientName}
+                        onChange={e => setInv(prev => ({ ...prev, clientName: e.target.value }))}
+                        placeholder="Emri i prindit..."
+                      />
+                    </div>
+                    <div>
+                      <label className="form-label">Afati i pagesës</label>
+                      <input
+                        type="date"
+                        className="form-input"
+                        value={inv.dueDate}
+                        onChange={e => setInv(prev => ({ ...prev, dueDate: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Zërat */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="form-label mb-0">Zërat e faturës</label>
+                      <button onClick={addItem} className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 font-medium">
+                        <Plus className="w-3.5 h-3.5" /> Shto zë
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {/* Header kolonat */}
+                      <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider px-1">
+                        <div className="col-span-1" />
+                        <div className="col-span-5">Përshkrimi</div>
+                        <div className="col-span-2 text-center">Sasi</div>
+                        <div className="col-span-3 text-right">Çmimi (€)</div>
+                        <div className="col-span-1" />
+                      </div>
+
+                      {inv.items.map((it, i) => (
+                        <div key={i} className={`grid grid-cols-12 gap-2 items-center rounded-lg p-1.5 transition-colors ${it.checked ? "" : "opacity-40"}`}>
+                          <div className="col-span-1 flex justify-center">
+                            <input type="checkbox" checked={it.checked}
+                              onChange={e => updItem(i, "checked", e.target.checked)}
+                              className="w-4 h-4 rounded accent-primary-600 cursor-pointer" />
+                          </div>
+                          <div className="col-span-5">
+                            <input type="text" value={it.description}
+                              onChange={e => updItem(i, "description", e.target.value)}
+                              className="form-input text-sm py-1.5"
+                              placeholder="Përshkrimi..." />
+                          </div>
+                          <div className="col-span-2">
+                            <input type="number" value={it.quantity} min={1}
+                              onChange={e => updItem(i, "quantity", parseInt(e.target.value) || 1)}
+                              className="form-input text-sm py-1.5 text-center" />
+                          </div>
+                          <div className="col-span-3">
+                            <input type="number" value={it.unitPrice} min={0}
+                              onChange={e => updItem(i, "unitPrice", parseFloat(e.target.value) || 0)}
+                              className="form-input text-sm py-1.5 text-right" />
+                          </div>
+                          <div className="col-span-1 flex justify-center">
+                            <button onClick={() => removeItem(i)}
+                              className="p-1 text-slate-300 hover:text-red-500 transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* TVSH + shënime */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="form-label">TVSH (%)</label>
+                      <input type="number" min={0} max={100} className="form-input"
+                        value={inv.vatRate}
+                        onChange={e => setInv(prev => ({ ...prev, vatRate: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="form-label">Shënime</label>
+                      <input type="text" className="form-input"
+                        placeholder="opsionale..."
+                        value={inv.notes}
+                        onChange={e => setInv(prev => ({ ...prev, notes: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer me totalet */}
+                <div className="border-t border-slate-200 dark:border-slate-700 px-6 py-4 bg-slate-50 dark:bg-slate-800/50 shrink-0">
+                  <div className="flex items-end justify-between">
+                    <div className="space-y-1 text-sm">
+                      <div className="flex gap-8">
+                        <span className="text-slate-500">Nëntotali:</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{formatCurrency(invTotal)}</span>
+                      </div>
+                      {invVat > 0 && (
+                        <div className="flex gap-8">
+                          <span className="text-slate-500">TVSH ({inv.vatRate}%):</span>
+                          <span className="font-semibold text-slate-600">{formatCurrency(invVat)}</span>
+                        </div>
+                      )}
+                      <div className="flex gap-8 pt-1 border-t border-slate-200 dark:border-slate-600">
+                        <span className="font-bold text-slate-700 dark:text-slate-200">TOTALI:</span>
+                        <span className="font-bold text-primary-600 text-base">{formatCurrency(invTotal + invVat)}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={() => setInv(prev => ({ ...prev, open: false }))} className="btn-secondary">
+                        Anulo
+                      </button>
+                      <button
+                        onClick={submitInvoice}
+                        disabled={inv.saving || !inv.clientName.trim() || inv.items.filter(it => it.checked).length === 0}
+                        className="btn-primary"
+                      >
+                        {inv.saving
+                          ? <><Loader2 className="w-4 h-4 animate-spin" /> Duke krijuar...</>
+                          : <><Receipt className="w-4 h-4" /> Krijo Faturën</>}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
