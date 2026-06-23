@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+async function generateReceiptNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const last = await prisma.payment.findFirst({
+    where: { receiptNumber: { startsWith: `DEP-${year}-` } },
+    orderBy: { receiptNumber: "desc" },
+  });
+  const lastSeq = last ? parseInt(last.receiptNumber!.split("-").pop() || "0") : 0;
+  return `DEP-${year}-${String(lastSeq + 1).padStart(4, "0")}`;
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -27,6 +37,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   else if (paidAmount > 0) status = "PARTIAL";
   else if (new Date(body.dueDate) < new Date()) status = "OVERDUE";
 
+  // Gjej rekordin ekzistues për të ruajtur receiptNumber nëse ka
+  const existing = await prisma.payment.findUnique({ where: { id: parseInt(id) }, select: { receiptNumber: true } });
+  const needsReceipt = paidAmount > 0 && !existing?.receiptNumber;
+  const receiptNumber = needsReceipt ? await generateReceiptNumber() : undefined;
+
   const payment = await prisma.payment.update({
     where: { id: parseInt(id) },
     data: {
@@ -42,6 +57,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       method: body.method || null,
       status,
       description: body.description || null,
+      ...(receiptNumber ? { receiptNumber } : {}),
     },
   });
 

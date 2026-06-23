@@ -57,10 +57,14 @@ export async function GET(req: NextRequest) {
   const search  = searchParams.get("search")  || "";
   const classId = searchParams.get("classId") || "";
 
-  const category = await prisma.paymentCategory.findFirst({
+  let category = await prisma.paymentCategory.findFirst({
     where: { name: { equals: categoryName } },
   });
-  if (!category) return NextResponse.json({ error: "Kategoria nuk u gjet" }, { status: 404 });
+  if (!category) {
+    category = await prisma.paymentCategory.create({
+      data: { name: categoryName, type: "one-time", defaultAmount: 0 },
+    });
+  }
 
   const where: Record<string, unknown> = { status: "ACTIVE" };
   if (search) {
@@ -80,18 +84,41 @@ export async function GET(req: NextRequest) {
   const isNarrow = (month && month > 0) && (year && year > 0);
   const takeLimit = isNarrow ? 2 : 60;
 
-  const students = await prisma.student.findMany({
-    where,
-    include: {
-      class: { select: { id: true, name: true } },
-      payments: {
-        where: paymentFilter,
-        orderBy: { createdAt: "asc" },
-        take: takeLimit,
+  const [students, allTiRows] = await Promise.all([
+    prisma.student.findMany({
+      where,
+      include: {
+        class: { select: { id: true, name: true } },
+        payments: {
+          where: paymentFilter,
+          orderBy: { createdAt: "asc" },
+          take: takeLimit,
+          select: {
+            id: true, amount: true, finalAmount: true, paidAmount: true,
+            balance: true, status: true, method: true, dueDate: true,
+            paidDate: true, discount: true, discountType: true,
+            scholarship: true, description: true, receiptNumber: true,
+          },
+        },
       },
-    },
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-  });
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    }),
+    prisma.$queryRawUnsafe<{ id: number; studentId: number | null; firstName: string; lastName: string; regularPrice: number; discountPct: number; manualDiscAmt: number }[]>(
+      `SELECT id, studentId, firstName, lastName, regularPrice, discountPct, manualDiscAmt FROM TimiInvestStudent WHERE active = 1`
+    ),
+  ]);
+
+  // Build TI lookup maps (by studentId and by name fallback)
+  const tiByStudentId = new Map<number, { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number }>();
+  const tiByName      = new Map<string, { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number }>();
+  for (const ti of allTiRows) {
+    const val = { id: Number(ti.id), regularPrice: Number(ti.regularPrice), discountPct: Number(ti.discountPct), manualDiscAmt: Number(ti.manualDiscAmt) };
+    if (ti.studentId) {
+      tiByStudentId.set(Number(ti.studentId), val);
+    } else {
+      tiByName.set(`${String(ti.firstName).trim().toLowerCase()}|${String(ti.lastName).trim().toLowerCase()}`, val);
+    }
+  }
 
   const statuses = students.map(s => aggregateStatus(s.payments as PrismaPayment[]));
 
@@ -109,16 +136,21 @@ export async function GET(req: NextRequest) {
   // For installments display: return up to 2 (K1/K2); for aggregated view return all
   return NextResponse.json({
     category,
-    students: students.map((s) => ({
-      id:           s.id,
-      firstName:    s.firstName,
-      lastName:     s.lastName,
-      parentPhone:  s.parentPhone,
-      class:        s.class,
-      discountPct:  s.discountPct,
-      payment:      aggregatePayment(s.payments as PrismaPayment[]),
-      installments: s.payments,
-    })),
+    students: students.map((s) => {
+      const tiDirect = tiByStudentId.get(s.id);
+      const tiName   = !tiDirect ? tiByName.get(`${s.firstName.trim().toLowerCase()}|${s.lastName.trim().toLowerCase()}`) : undefined;
+      return {
+        id:           s.id,
+        firstName:    s.firstName,
+        lastName:     s.lastName,
+        parentPhone:  s.parentPhone,
+        class:        s.class,
+        discountPct:  s.discountPct,
+        payment:      aggregatePayment(s.payments as PrismaPayment[]),
+        installments: s.payments,
+        timiInvest:   tiDirect ?? tiName ?? null,
+      };
+    }),
     stats: {
       total:    students.length,
       paid:     statuses.filter(st => st === "PAID").length,

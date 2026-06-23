@@ -38,6 +38,7 @@ model Student {
   personalNumber String?   @unique
   classId        Int?
   class          Class?    @relation(fields: [classId], references: [id])
+  libriAme       LibriAme?
   familyId       String?   // FAM-001, FAM-002, etj.
   discountPct    Float     @default(0) // Zbritja % (vëlla/motër)
   guardian       String?
@@ -169,6 +170,7 @@ model Payment {
   invoice       Invoice?         @relation(fields: [invoiceId], references: [id])
   month         Int?             // 1-12 for monthly payments
   year          Int?
+  receiptNumber String?          @unique // DEP-YYYY-NNNN
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 }
@@ -418,4 +420,21 @@ model Hyra {
 
   @@index([vit, muaj])
   @@index([paguesit])
+}
+
+model LibriAme {
+  id            Int      @id @default(autoincrement())
+  studentId     Int      @unique
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  vendiLindjes  String?
+  shteti        String?
+  shtetas       String?
+  komuna        String?
+  adresaPrindit String?
+  notat         String?  // JSON: grades Kl.6-9
+  levizjet      String?  // JSON: page 2 Kl.6-9
+  notatFillore  String?  // JSON: grades Kl.1-5
+  levizjetFillore String? // JSON: page 2 Kl.1-5
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

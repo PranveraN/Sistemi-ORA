@@ -54,6 +54,7 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
 
     const win = window.open("", "_blank", "width=800,height=900");
     if (!win) return;
+    const origin = window.location.origin;
 
     win.document.write(`
       <!DOCTYPE html>
@@ -66,8 +67,7 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
           body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; background: #fff; padding: 40px; }
           .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
           .logo-wrap { display: flex; align-items: center; gap: 14px; }
-          .logo-box { width: 48px; height: 48px; background: #2563eb; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-          .logo-box span { color: #fff; font-weight: 900; font-size: 16px; }
+          .logo-img { height: 52px; width: auto; object-fit: contain; }
           .school-name { font-size: 22px; font-weight: 800; color: #2563eb; }
           .school-sub  { font-size: 12px; color: #64748b; margin-top: 2px; }
           .inv-meta { text-align: right; }
@@ -104,6 +104,7 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
             button { display: none !important; }
           }
         </style>
+        <base href="${origin}/">
       </head>
       <body>${content.innerHTML}</body>
       </html>
@@ -120,22 +121,34 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
       const { default: autoTable } = await import("jspdf-autotable");
       const doc = new jsPDF({ unit: "mm", format: "a4" });
 
-      // Header
-      doc.setFillColor(37, 99, 235);
-      doc.roundedRect(14, 14, 22, 22, 4, 4, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.text("AO", 25, 27, { align: "center" });
+      // Logo
+      try {
+        const logoImg = await new Promise<HTMLImageElement>((res, rej) => {
+          const img = new Image(); img.crossOrigin = "anonymous";
+          img.onload = () => res(img); img.onerror = rej;
+          img.src = "/logo.png";
+        });
+        const canvas = document.createElement("canvas");
+        canvas.width = logoImg.naturalWidth; canvas.height = logoImg.naturalHeight;
+        canvas.getContext("2d")!.drawImage(logoImg, 0, 0);
+        doc.addImage(canvas.toDataURL("image/png"), "PNG", 14, 12, 0, 18);
+      } catch {
+        doc.setFillColor(37, 99, 235);
+        doc.roundedRect(14, 12, 22, 18, 3, 3, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10); doc.setFont("helvetica", "bold");
+        doc.text("AO", 25, 23, { align: "center" });
+      }
 
       doc.setTextColor(37, 99, 235);
       doc.setFontSize(18);
-      doc.text("AKADEMIA ORA", 40, 22);
+      doc.setFont("helvetica", "bold");
+      doc.text("AKADEMIA ORA", 40, 20);
       doc.setFontSize(9);
       doc.setTextColor(100, 116, 139);
       doc.setFont("helvetica", "normal");
-      doc.text("Shkollë Private", 40, 28);
-      doc.text("Tel: +383 XX XXX XXX", 40, 33);
+      doc.text("Shkollë Private", 40, 26);
+      doc.text("Tel: +383 46 505 055", 40, 31);
 
       doc.setFontSize(16);
       doc.setTextColor(15, 23, 42);
@@ -295,13 +308,11 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-primary-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <span className="text-white font-black text-sm">AO</span>
-                </div>
+                <img src="/logo.png" alt="Akademia Ora" className="h-14 w-auto object-contain" onError={e => { e.currentTarget.style.display = "none"; }} />
                 <div>
                   <p className="font-black text-primary-600 text-xl leading-tight">AKADEMIA ORA</p>
                   <p className="text-xs text-slate-400">Shkollë Private</p>
-                  <p className="text-xs text-slate-400">Tel: +383 XX XXX XXX</p>
+                  <p className="text-xs text-slate-400">Tel: +383 46 505 055</p>
                 </div>
               </div>
               <div className="text-right">

@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     const year = new Date().getFullYear();
     const lastInvoice = await prisma.invoice.findFirst({
       where: { number: { startsWith: `${prefix}-${year}-` } },
-      orderBy: { id: "desc" },
+      orderBy: { number: "desc" },
     });
     const lastSeq = lastInvoice
       ? parseInt(lastInvoice.number.split("-").pop() || "0")

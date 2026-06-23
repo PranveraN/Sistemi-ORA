@@ -2,10 +2,39 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import Header from "@/components/layout/Header";
+import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
 import { MONTHS } from "@/lib/utils";
-import { Plus, Trash2, Edit, X, Check, TrendingUp, Upload, Download, BarChart3 } from "lucide-react";
+import {
+  Plus, Trash2, Edit, X, Check, TrendingUp, Upload, Download,
+  BarChart3, GraduationCap, UtensilsCrossed, BookMarked, Shirt, Loader2,
+} from "lucide-react";
 import * as XLSX from "xlsx";
+
+/* ─── Types ───────────────────────────────────────────────── */
+interface CategoryStat {
+  totalRevenue: number;
+  totalDebt: number;
+  count: number;
+}
+interface UniformaStat {
+  totalRevenue: number;
+  totalCollected: number;
+  totalDebt: number;
+  count: number;
+}
+interface TjeraStat {
+  totalShuma: number;
+  count: number;
+}
+interface Summary {
+  shkollimi:  CategoryStat;
+  ushqimi:    CategoryStat;
+  eshkollori: CategoryStat;
+  uniforma:   UniformaStat;
+  tjera:      TjeraStat;
+  grandTotal: number;
+}
 
 interface Hyra {
   id: number;
@@ -23,34 +52,104 @@ type RaportRow = { paguesit: string; muajt: Record<number, number>; total: numbe
 
 const VITET = [2023, 2024, 2025, 2026, 2027];
 
+/* ─── Board Card ──────────────────────────────────────────── */
+function BoardCard({
+  href,
+  icon,
+  label,
+  amount,
+  sub,
+  color,
+  loading,
+}: {
+  href?: string;
+  icon: React.ReactNode;
+  label: string;
+  amount: number;
+  sub: string;
+  color: string;
+  loading?: boolean;
+}) {
+  const inner = (
+    <div className={`card p-5 flex flex-col gap-3 transition-all hover:shadow-lg ${href ? "cursor-pointer hover:-translate-y-0.5" : ""}`}>
+      <div className="flex items-center justify-between">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
+          {icon}
+        </div>
+        {href && (
+          <span className="text-xs text-slate-400 hover:text-primary-600 transition-colors font-medium">
+            Shiko →
+          </span>
+        )}
+      </div>
+      <div>
+        <p className="text-xs text-slate-400 mb-1">{label}</p>
+        {loading ? (
+          <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
+        ) : (
+          <p className="text-2xl font-bold text-slate-800 dark:text-white">
+            {formatCurrency(amount)}
+          </p>
+        )}
+      </div>
+      <p className="text-xs text-slate-400">{sub}</p>
+    </div>
+  );
+
+  if (href) return <Link href={href}>{inner}</Link>;
+  return inner;
+}
+
+/* ═══════════════════════════════════════════════════════════ */
 export default function HyratPage() {
   const now = new Date();
-  const [muaj, setMuaj]   = useState(now.getMonth() + 1);
-  const [vit, setVit]     = useState(now.getFullYear());
-  const [hyrat, setHyrat] = useState<Hyra[]>([]);
-  const [totalShuma, setTotalShuma] = useState(0);
-  const [loading, setLoading]   = useState(true);
-  const [tab, setTab] = useState<"lista" | "raport">("lista");
+  const [muaj, setMuaj] = useState(now.getMonth() + 1);
+  const [vit,  setVit]  = useState(now.getFullYear());
 
-  // Raport
-  const [raportVit, setRaportVit]   = useState(now.getFullYear());
-  const [raportData, setRaportData] = useState<RaportRow[]>([]);
+  /* ── Summary boards ── */
+  const [summary, setSummary]       = useState<Summary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+
+  /* ── Të Hyrat e Tjera (lista) ── */
+  const [hyrat, setHyrat]           = useState<Hyra[]>([]);
+  const [totalShuma, setTotalShuma] = useState(0);
+  const [loading, setLoading]       = useState(true);
+  const [tab, setTab]               = useState<"lista" | "raport">("lista");
+
+  /* ── Raport ── */
+  const [raportVit,   setRaportVit]   = useState(now.getFullYear());
+  const [raportData,  setRaportData]  = useState<RaportRow[]>([]);
   const [raportTotal, setRaportTotal] = useState<Record<number, number>>({});
   const [raportLoading, setRaportLoading] = useState(false);
 
-  // Import
-  const [importing, setImporting]   = useState(false);
-  const [importMsg, setImportMsg]   = useState<{ text: string; ok: boolean } | null>(null);
+  /* ── Import ── */
+  const [importing,  setImporting]  = useState(false);
+  const [importMsg,  setImportMsg]  = useState<{ text: string; ok: boolean } | null>(null);
   const [importMuaj, setImportMuaj] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Modal
+  /* ── Modal ── */
   const [showModal, setShowModal] = useState(false);
-  const [editId, setEditId]       = useState<number | null>(null);
-  const [saving, setSaving]       = useState(false);
-  const emptyForm = { paguesit: "", shuma: "", muaj: String(now.getMonth() + 1), vit: String(now.getFullYear()), metoda: "BANK", referenca: "", shenime: "" };
+  const [editId,    setEditId]    = useState<number | null>(null);
+  const [saving,    setSaving]    = useState(false);
+  const emptyForm = {
+    paguesit: "", shuma: "",
+    muaj: String(now.getMonth() + 1), vit: String(now.getFullYear()),
+    metoda: "BANK", referenca: "", shenime: "",
+  };
   const [form, setForm] = useState(emptyForm);
 
+  /* ── Fetch summary boards ── */
+  const fetchSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    try {
+      const res = await fetch(`/api/income-summary?month=${muaj}&year=${vit}`);
+      if (res.ok) setSummary(await res.json());
+    } catch { /* rrjet */ }
+    finally { setSummaryLoading(false); }
+  }, [muaj, vit]);
+
+  /* ── Fetch lista ── */
   const fetchLista = useCallback(async () => {
     setLoading(true);
     try {
@@ -67,10 +166,11 @@ export default function HyratPage() {
   useEffect(() => {
     if (tab !== "lista") return;
     const isFirst = _first.current; _first.current = false;
-    const t = setTimeout(fetchLista, isFirst ? 0 : 300);
+    const t = setTimeout(() => { fetchSummary(); fetchLista(); }, isFirst ? 0 : 300);
     return () => clearTimeout(t);
-  }, [fetchLista, tab]);
+  }, [fetchSummary, fetchLista, tab]);
 
+  /* ── Raport ── */
   const fetchRaport = useCallback(async () => {
     setRaportLoading(true);
     try {
@@ -79,7 +179,6 @@ export default function HyratPage() {
       const data = await res.json();
       const map = new Map<string, RaportRow>();
       const totalet: Record<number, number> = {};
-
       for (const h of (data.hyrat || []) as Hyra[]) {
         if (!map.has(h.paguesit)) map.set(h.paguesit, { paguesit: h.paguesit, muajt: {}, total: 0 });
         const r = map.get(h.paguesit)!;
@@ -132,7 +231,7 @@ export default function HyratPage() {
     ws["!cols"] = [{ wch: 28 }, ...Array(13).fill({ wch: 12 })];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `Te Hyrat ${raportVit}`);
-    XLSX.writeFile(wb, `TeHyrat-${raportVit}.xlsx`);
+    XLSX.writeFile(wb, `TeHyrat-Tjera-${raportVit}.xlsx`);
   }
 
   async function handleSave() {
@@ -144,6 +243,7 @@ export default function HyratPage() {
       await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       setShowModal(false);
       fetchLista();
+      fetchSummary();
     } finally { setSaving(false); }
   }
 
@@ -151,16 +251,18 @@ export default function HyratPage() {
     if (!confirm("Fshi këtë të hyrë?")) return;
     await fetch(`/api/hyrat/${id}`, { method: "DELETE" });
     fetchLista();
+    fetchSummary();
   }
 
   const grandTotal = Object.values(raportTotal).reduce((s, v) => s + v, 0);
+  const periodLabel = muaj === 0 ? `Të gjitha ${vit}` : `${MONTHS[muaj - 1]} ${vit}`;
 
   return (
     <>
-      <Header title="Të Hyrat — Shkollimi" />
+      <Header title="Të Hyrat" />
       <div className="p-6 space-y-5 animate-fade-in">
 
-        {/* Filter bar */}
+        {/* ── Filter bar ── */}
         <div className="flex items-center gap-3 flex-wrap">
           <select value={muaj} onChange={e => setMuaj(parseInt(e.target.value))} className="form-input w-36">
             <option value={0}>Të gjitha</option>
@@ -169,41 +271,121 @@ export default function HyratPage() {
           <select value={vit} onChange={e => setVit(parseInt(e.target.value))} className="form-input w-24">
             {VITET.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <div className="flex gap-1 ml-auto flex-wrap">
-            <button onClick={() => setTab("lista")} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === "lista" ? "bg-primary-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"}`}>
+          <div className="ml-auto flex gap-1">
+            <button
+              onClick={() => setTab("lista")}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === "lista" ? "bg-primary-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"}`}
+            >
               Lista
             </button>
-            <button onClick={() => setTab("raport")} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === "raport" ? "bg-primary-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"}`}>
+            <button
+              onClick={() => setTab("raport")}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === "raport" ? "bg-primary-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"}`}
+            >
               <BarChart3 className="w-3.5 h-3.5" /> Raport Vjetor
             </button>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="card p-5 sm:col-span-2">
-            <p className="text-xs text-slate-400 mb-1">
-              Të Hyra Totale — {muaj === 0 ? `Të gjitha ${vit}` : `${MONTHS[muaj - 1]} ${vit}`}
-            </p>
-            <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(totalShuma)}</p>
-          </div>
+        {/* ── Grand Total ── */}
+        {tab === "lista" && (
           <div className="card p-5">
-            <p className="text-xs text-slate-400 mb-1">Nr. Paguesve</p>
-            <p className="text-3xl font-bold text-slate-800 dark:text-white">{hyrat.length}</p>
+            <p className="text-xs text-slate-400 mb-1">Të Hyra Totale — {periodLabel}</p>
+            {summaryLoading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-slate-300" />
+            ) : (
+              <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+                {formatCurrency(summary?.grandTotal ?? 0)}
+              </p>
+            )}
           </div>
-        </div>
+        )}
 
-        {/* Lista */}
+        {/* ── 5 Category Boards ── */}
+        {tab === "lista" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+            <BoardCard
+              href="/shkollimi"
+              icon={<GraduationCap className="w-5 h-5 text-blue-600" />}
+              label={`Shkollimi — ${periodLabel}`}
+              amount={summary?.shkollimi.totalRevenue ?? 0}
+              sub={`${summary?.shkollimi.count ?? 0} pagesa`}
+              color="bg-blue-50 dark:bg-blue-900/30"
+              loading={summaryLoading}
+            />
+
+            <BoardCard
+              href="/ushqimi"
+              icon={<UtensilsCrossed className="w-5 h-5 text-green-600" />}
+              label={`Ushqimi — ${periodLabel}`}
+              amount={summary?.ushqimi.totalRevenue ?? 0}
+              sub={`${summary?.ushqimi.count ?? 0} pagesa`}
+              color="bg-green-50 dark:bg-green-900/30"
+              loading={summaryLoading}
+            />
+
+            <BoardCard
+              href="/uniforma/shitje"
+              icon={<Shirt className="w-5 h-5 text-violet-600" />}
+              label={`Uniforma — ${periodLabel}`}
+              amount={summary?.uniforma.totalCollected ?? 0}
+              sub={`${summary?.uniforma.count ?? 0} shitje`}
+              color="bg-violet-50 dark:bg-violet-900/30"
+              loading={summaryLoading}
+            />
+
+            <BoardCard
+              href="/eshkollori"
+              icon={<BookMarked className="w-5 h-5 text-teal-600" />}
+              label={`Eshkollori — ${periodLabel}`}
+              amount={summary?.eshkollori.totalRevenue ?? 0}
+              sub={`${summary?.eshkollori.count ?? 0} pagesa`}
+              color="bg-teal-50 dark:bg-teal-900/30"
+              loading={summaryLoading}
+            />
+
+            {/* Të Hyrat e Tjera — inline board */}
+            <div className="card p-5 flex flex-col gap-3 sm:col-span-2 lg:col-span-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Të Hyrat e Tjera — {periodLabel}</p>
+                    {summaryLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-slate-300 mt-0.5" />
+                    ) : (
+                      <p className="text-2xl font-bold text-slate-800 dark:text-white">
+                        {formatCurrency(summary?.tjera.totalShuma ?? 0)}
+                      </p>
+                    )}
+                    <p className="text-xs text-slate-400">{summary?.tjera.count ?? 0} regjistrime</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setEditId(null); setForm(emptyForm); setShowModal(true); }}
+                  className="btn-primary text-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Shto
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Lista e Të Hyrave e Tjera ── */}
         {tab === "lista" && (
           <div className="card overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-700">
               <h3 className="font-semibold text-slate-800 dark:text-white text-sm flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-emerald-500" />
-                Lista e të Hyrave — Shkollimi
+                <TrendingUp className="w-4 h-4 text-amber-500" />
+                Lista e Të Hyrave të Tjera
               </h3>
-              <button onClick={() => { setEditId(null); setForm(emptyForm); setShowModal(true); }} className="btn-primary text-xs">
-                <Plus className="w-3.5 h-3.5" /> Shto
-              </button>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>Total: <strong className="text-emerald-600">{formatCurrency(totalShuma)}</strong></span>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -219,9 +401,13 @@ export default function HyratPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                   {loading ? (
-                    <tr><td colSpan={6} className="table-cell text-center py-10 text-slate-400">Duke ngarkuar...</td></tr>
+                    <tr><td colSpan={6} className="table-cell text-center py-10 text-slate-400">
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                    </td></tr>
                   ) : hyrat.length === 0 ? (
-                    <tr><td colSpan={6} className="table-cell text-center py-10 text-slate-400">Nuk ka të hyra për këtë periudhë</td></tr>
+                    <tr><td colSpan={6} className="table-cell text-center py-10 text-slate-400">
+                      Nuk ka të hyra të tjera për këtë periudhë
+                    </td></tr>
                   ) : hyrat.map(h => (
                     <tr key={h.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                       <td className="table-cell font-medium text-slate-900 dark:text-white">{h.paguesit}</td>
@@ -229,17 +415,24 @@ export default function HyratPage() {
                       <td className="table-cell text-slate-500">{h.vit}</td>
                       <td className="table-cell">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${h.metoda === "BANK" ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" : "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"}`}>
-                          {h.metoda === "BANK" ? "🏦 Bankë" : "💵 Cash"}
+                          {h.metoda === "BANK" ? "Bankë" : "Cash"}
                         </span>
                       </td>
-                      <td className="table-cell text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(h.shuma)}</td>
+                      <td className="table-cell text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency(h.shuma)}
+                      </td>
                       <td className="table-cell">
                         <div className="flex gap-1 justify-end">
-                          <button onClick={() => { setEditId(h.id); setForm({ paguesit: h.paguesit, shuma: String(h.shuma), muaj: String(h.muaj), vit: String(h.vit), metoda: h.metoda || "BANK", referenca: h.referenca || "", shenime: h.shenime || "" }); setShowModal(true); }}
-                            className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600">
+                          <button
+                            onClick={() => { setEditId(h.id); setForm({ paguesit: h.paguesit, shuma: String(h.shuma), muaj: String(h.muaj), vit: String(h.vit), metoda: h.metoda || "BANK", referenca: h.referenca || "", shenime: h.shenime || "" }); setShowModal(true); }}
+                            className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600"
+                          >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => handleDelete(h.id)} className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500">
+                          <button
+                            onClick={() => handleDelete(h.id)}
+                            className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500"
+                          >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -252,18 +445,18 @@ export default function HyratPage() {
           </div>
         )}
 
-        {/* Raport Vjetor */}
+        {/* ── Raport Vjetor (vetëm për Të Tjera) ── */}
         {tab === "raport" && (
           <div className="card overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700">
               <div className="flex items-center gap-3 flex-wrap">
                 <h3 className="font-semibold text-slate-800 dark:text-white text-sm flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-emerald-500" /> Raport Vjetor — Shkollimi
+                  <BarChart3 className="w-4 h-4 text-amber-500" /> Raport Vjetor — Të Hyrat e Tjera
                 </h3>
                 <div className="flex gap-1">
                   {VITET.map(y => (
                     <button key={y} onClick={() => setRaportVit(y)}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${raportVit === y ? "bg-emerald-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200"}`}>
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${raportVit === y ? "bg-amber-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200"}`}>
                       {y}
                     </button>
                   ))}
@@ -306,7 +499,7 @@ export default function HyratPage() {
                       {MONTHS.map((m, i) => (
                         <th key={i} className="px-2 py-2 font-semibold text-slate-500 text-right min-w-[80px] whitespace-nowrap">{m}</th>
                       ))}
-                      <th className="px-3 py-2 font-bold text-slate-700 dark:text-slate-200 text-right min-w-[90px] bg-emerald-50 dark:bg-emerald-900/20">Total</th>
+                      <th className="px-3 py-2 font-bold text-slate-700 dark:text-slate-200 text-right min-w-[90px] bg-amber-50 dark:bg-amber-900/20">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
@@ -321,24 +514,24 @@ export default function HyratPage() {
                             </td>
                           );
                         })}
-                        <td className="px-3 py-2 text-right font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-900/10">
+                        <td className="px-3 py-2 text-right font-bold text-amber-700 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-900/10">
                           {formatCurrency(r.total)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-emerald-50 dark:bg-emerald-900/20 border-t-2 border-emerald-200 dark:border-emerald-800">
+                  <tfoot className="bg-amber-50 dark:bg-amber-900/20 border-t-2 border-amber-200 dark:border-amber-800">
                     <tr>
-                      <td className="px-3 py-2.5 font-bold text-slate-800 dark:text-white sticky left-0 bg-emerald-50 dark:bg-emerald-900/20">TOTALI</td>
+                      <td className="px-3 py-2.5 font-bold text-slate-800 dark:text-white sticky left-0 bg-amber-50 dark:bg-amber-900/20">TOTALI</td>
                       {Array.from({ length: 12 }, (_, i) => {
                         const val = raportTotal[i + 1];
                         return (
-                          <td key={i} className={`px-2 py-2.5 text-right font-bold ${val ? "text-emerald-700 dark:text-emerald-400" : "text-slate-300"}`}>
+                          <td key={i} className={`px-2 py-2.5 text-right font-bold ${val ? "text-amber-700 dark:text-amber-400" : "text-slate-300"}`}>
                             {val ? formatCurrency(val) : "—"}
                           </td>
                         );
                       })}
-                      <td className="px-3 py-2.5 text-right font-bold text-emerald-700 dark:text-emerald-400 text-sm bg-emerald-100 dark:bg-emerald-900/30">
+                      <td className="px-3 py-2.5 text-right font-bold text-amber-700 dark:text-amber-400 text-sm bg-amber-100 dark:bg-amber-900/30">
                         {formatCurrency(grandTotal)}
                       </td>
                     </tr>
@@ -350,14 +543,14 @@ export default function HyratPage() {
         )}
       </div>
 
-      {/* Modal shto/modifiko */}
+      {/* ── Modal shto / modifiko ── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm animate-fade-in" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
               <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-emerald-500" />
-                {editId ? "Modifiko të Hyrën" : "Shto të Hyrë"}
+                <TrendingUp className="w-4 h-4 text-amber-500" />
+                {editId ? "Modifiko të Hyrën" : "Shto të Hyrë Tjetër"}
               </h3>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>

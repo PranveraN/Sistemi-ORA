@@ -6,7 +6,13 @@ const DEFAULTS: Record<string, string> = {
   schoolName:    "Akademia Ora",
   schoolPhone:   "+383 XX XXX XXX",
   schoolAddress: "",
+  schoolEmail:   "",
+  schoolNipt:    "",
+  schoolYear:    "2025/2026",
+  schoolWebsite: "",
 };
+
+const ALLOWED = Object.keys(DEFAULTS);
 
 export async function GET() {
   const session = await auth();
@@ -25,10 +31,9 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body: Record<string, string> = await req.json();
-  const allowed = ["schoolName", "schoolPhone", "schoolAddress"];
 
   await Promise.all(
-    allowed
+    ALLOWED
       .filter((key) => key in body)
       .map((key) =>
         prisma.setting.upsert({

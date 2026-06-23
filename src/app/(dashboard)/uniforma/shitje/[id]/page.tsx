@@ -48,61 +48,134 @@ const STATUS_MAP: Record<string, { label: string; cls: string }> = {
 
 const METHOD_LABEL: Record<string, string> = { CASH: "Cash", BANK: "Bankë", CARD: "Kartë" };
 
-function printReceipt(sale: Sale) {
-  const win = window.open("", "_blank", "width=400,height=700");
-  if (!win) return;
+function buildUniformReceiptHTML(sale: Sale, copy: "prind" | "shkolla"): string {
+  const dateStr = new Date(sale.saleDate).toLocaleDateString("sq-AL");
   const itemRows = sale.items.map(item =>
     `<tr>
-      <td style="padding:4px 0">${item.product.name}</td>
-      <td style="text-align:right;padding:4px 0">${item.quantity}×${formatCurrency(item.sellPrice)}</td>
-      <td style="text-align:right;padding:4px 0;font-weight:600">${formatCurrency(item.total)}</td>
+      <td class="td">${item.product.name}${item.size ? ` <span class="size">${item.size}</span>` : ""}</td>
+      <td class="td-r">${item.quantity} × ${formatCurrency(item.sellPrice)}</td>
+      <td class="td-r bold">${formatCurrency(item.total)}</td>
     </tr>`
   ).join("");
   const payRows = sale.payments.map(p =>
-    `<tr>
-      <td style="padding:2px 0">${new Date(p.paidAt).toLocaleDateString("sq-AL")} · ${METHOD_LABEL[p.method] ?? p.method}</td>
-      <td style="text-align:right;padding:2px 0;color:#16a34a;font-weight:600">${formatCurrency(p.amount)}</td>
-    </tr>`
+    `<div class="pay-row">
+      <span>${new Date(p.paidAt).toLocaleDateString("sq-AL")} · ${METHOD_LABEL[p.method] ?? p.method}${p.notes ? ` · ${p.notes}` : ""}</span>
+      <span class="green bold">${formatCurrency(p.amount)}</span>
+    </div>`
   ).join("");
-  win.document.write(`<!DOCTYPE html><html lang="sq"><head><meta charset="UTF-8"/><title>Dëftesë #${sale.id}</title>
+
+  return `
+<div class="receipt">
+  <div class="header">
+    <div class="logo">AO</div>
+    <div class="school-info">
+      <div class="school-name">Akademia Ora</div>
+      <div class="school-sub">Uniforma &bull; Dëftesë Pagese</div>
+    </div>
+    <div class="meta">
+      <div class="meta-title">DËFTESË</div>
+      <div class="meta-num">#${sale.id}</div>
+      <div class="meta-date">${dateStr}</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="customer">
+    <span class="lbl">Klienti</span>
+    <span class="bold">${sale.customerName}</span>
+    ${sale.customerPhone ? `<span class="sub">${sale.customerPhone}</span>` : ""}
+  </div>
+
+  <div class="divider"></div>
+
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th class="th">Artikulli</th>
+        <th class="th-r">Sasi × Çmimi</th>
+        <th class="th-r">Total</th>
+      </tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+
+  <div class="amounts-box">
+    <div class="amount-row total-row"><span>TOTALI</span><span>${formatCurrency(sale.totalAmount)}</span></div>
+    ${sale.payments.length > 0 ? `<div class="divider-thin"></div><div class="pays-label">Pagesat:</div>${payRows}` : ""}
+    <div class="divider-thin"></div>
+    <div class="amount-row paid-row"><span>E paguar</span><span>${formatCurrency(sale.paidAmount)}</span></div>
+    ${sale.balance > 0 ? `<div class="amount-row debt-row"><span>Borxhi i mbetur</span><span>${formatCurrency(sale.balance)}</span></div>` : `<div class="amount-row paid-row"><span>Borxhi i mbetur</span><span>&#10003; Pa borxh</span></div>`}
+  </div>
+
+  <div class="footer-grid">
+    <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">Nënshkrimi i klientit</div></div>
+    <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">Vula dhe nënshkrimi i shkollës</div></div>
+  </div>
+
+  <div class="copy-label">${copy === "prind" ? "Kopja e Klientit" : "Kopja e Shkollës — Arkiv"}</div>
+</div>`;
+}
+
+function printReceipt(sale: Sale) {
+  const win = window.open("", "_blank", "width=820,height=1200");
+  if (!win) return;
+  const html1 = buildUniformReceiptHTML(sale, "prind");
+  const html2 = buildUniformReceiptHTML(sale, "shkolla");
+  win.document.write(`<!DOCTYPE html><html lang="sq"><head>
+<meta charset="UTF-8"/>
+<title>Dëftesë #${sale.id}</title>
 <style>
+@page { size: A4 portrait; margin: 8mm; }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#0f172a; padding:32px 24px; max-width:360px; }
-h1 { font-size:18px; font-weight:700; }
-.sub { color:#64748b; font-size:11px; }
-hr { border:none; border-top:1px dashed #cbd5e1; margin:14px 0; }
-table { width:100%; border-collapse:collapse; }
-.total-row { font-weight:700; font-size:15px; }
-.paid-row { color:#16a34a; font-weight:600; }
-.debt-row { color:#dc2626; font-weight:700; }
-.footer { color:#94a3b8; font-size:11px; text-align:center; margin-top:24px; }
-@media print { body { padding:16px; } }
+html, body { height:100%; font-family:Arial,Helvetica,sans-serif; background:#fff; color:#000; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.page { width:100%; height:100%; display:flex; flex-direction:column; }
+.receipt { flex:1 1 0; min-height:0; padding:7mm 13mm 5mm; overflow:hidden; }
+.cut-line { flex:0 0 auto; border:none; border-top:1px dashed #888; margin:3mm 13mm; position:relative; text-align:center; }
+.cut-line::after { content:"✂"; position:absolute; top:-9px; left:50%; transform:translateX(-50%); background:#fff; padding:0 5px; font-size:13px; color:#aaa; }
+.header { display:flex; align-items:flex-start; gap:10px; margin-bottom:6px; }
+.logo { width:36px; height:36px; background:#7c3aed; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:13px; flex-shrink:0; }
+.school-info { flex:1; }
+.school-name { font-size:14px; font-weight:800; color:#4c1d95; }
+.school-sub { font-size:8.5px; color:#64748b; margin-top:1px; }
+.meta { text-align:right; }
+.meta-title { font-size:12px; font-weight:800; letter-spacing:.06em; color:#4c1d95; text-transform:uppercase; }
+.meta-num { font-size:10px; font-family:monospace; color:#475569; margin-top:2px; }
+.meta-date { font-size:8.5px; color:#94a3b8; margin-top:1px; }
+.divider { border:none; border-top:2px solid #e2e8f0; margin:5px 0; }
+.divider-thin { border:none; border-top:1px solid #e2e8f0; margin:3px 0; }
+.customer { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; font-size:10px; margin-bottom:5px; }
+.lbl { color:#64748b; }
+.bold { font-weight:700; color:#0f172a; }
+.sub { color:#64748b; font-size:8.5px; }
+.green { color:#047857; }
+.items-table { width:100%; border-collapse:collapse; font-size:9.5px; margin-bottom:7px; }
+.th { text-align:left; color:#64748b; font-size:8px; padding-bottom:4px; font-weight:600; text-transform:uppercase; }
+.th-r { text-align:right; color:#64748b; font-size:8px; padding-bottom:4px; font-weight:600; text-transform:uppercase; }
+.td { padding:2px 0; color:#0f172a; }
+.td-r { text-align:right; padding:2px 0; color:#475569; }
+.size { display:inline-block; background:#ede9fe; color:#6d28d9; border-radius:3px; padding:0 4px; font-size:8px; font-weight:700; margin-left:3px; }
+.amounts-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:7px 10px; margin-bottom:7px; }
+.amount-row { display:flex; justify-content:space-between; font-size:10px; padding:2px 0; }
+.total-row { font-weight:800; font-size:12px; color:#0f172a; }
+.paid-row { font-weight:700; color:#047857; }
+.debt-row { font-weight:700; color:#dc2626; }
+.pays-label { font-size:8px; color:#94a3b8; margin:2px 0; }
+.pay-row { display:flex; justify-content:space-between; font-size:9px; color:#64748b; padding:1px 0; }
+.footer-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+.sig-box { }
+.sig-line { border-top:1px solid #94a3b8; margin-bottom:3px; margin-top:16px; }
+.sig-lbl { font-size:7.5px; color:#64748b; text-align:center; }
+.copy-label { display:inline-block; margin-top:6px; font-size:7.5px; font-weight:700; color:#fff; background:#7c3aed; padding:2px 7px; border-radius:3px; letter-spacing:.06em; text-transform:uppercase; }
 </style></head><body>
-<div style="text-align:center;margin-bottom:20px">
-  <h1>Akademia Ora</h1>
-  <p class="sub">Dëftesë Pagese — Uniforma</p>
-  <p class="sub">#${sale.id} · ${new Date(sale.saleDate).toLocaleDateString("sq-AL", { dateStyle: "long" })}</p>
+<div class="page">
+  ${html1}
+  <div class="cut-line"></div>
+  ${html2}
 </div>
-<div style="margin-bottom:12px">
-  <strong>${sale.customerName}</strong>
-  ${sale.customerPhone ? `<br><span class="sub">${sale.customerPhone}</span>` : ""}
-</div>
-<hr/>
-<table>
-  <thead><tr><th style="text-align:left;color:#64748b;font-size:11px;padding-bottom:6px">Artikulli</th><th style="text-align:right;color:#64748b;font-size:11px">Sasi</th><th style="text-align:right;color:#64748b;font-size:11px">Total</th></tr></thead>
-  <tbody>${itemRows}</tbody>
-</table>
-<hr/>
-<table>
-  <tr class="total-row"><td>TOTALI</td><td style="text-align:right">${formatCurrency(sale.totalAmount)}</td></tr>
-  ${payRows ? `<tr><td colspan="2" style="padding-top:8px;font-size:11px;color:#64748b">Pagesat:</td></tr>${payRows}` : ""}
-  <tr class="paid-row" style="border-top:1px dashed #cbd5e1;margin-top:4px"><td style="padding-top:8px">E paguar</td><td style="text-align:right;padding-top:8px">${formatCurrency(sale.paidAmount)}</td></tr>
-  ${sale.balance > 0 ? `<tr class="debt-row"><td>Borxhi</td><td style="text-align:right">${formatCurrency(sale.balance)}</td></tr>` : ""}
-</table>
-<div class="footer" style="margin-top:20px"><hr style="margin-bottom:12px"/>Faleminderit! · Akademia Ora, Prishtinë</div>
+<script>window.onload=()=>{window.print();}<\/script>
 </body></html>`);
   win.document.close();
-  setTimeout(() => { win.focus(); win.print(); }, 300);
 }
 
 export default function SaleDetailPage() {

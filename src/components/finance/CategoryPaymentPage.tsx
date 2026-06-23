@@ -8,10 +8,11 @@ import {
   Search, CheckCircle, AlertCircle, Clock,
   Plus, X, Save, Users, Loader2, Printer,
   TrendingUp, TrendingDown, ArrowLeftRight, FileUp,
-  CalendarDays, Download, Trash2,
+  CalendarDays, Download, Trash2, Calculator,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
+import PaymentReceiptModal from "./PaymentReceiptModal";
 import ExpensesSection from "./ExpensesSection";
 
 interface Payment {
@@ -28,6 +29,7 @@ interface Payment {
   discountType: string | null;
   scholarship: number;
   description: string | null;
+  receiptNumber: string | null;
 }
 
 interface StudentRow {
@@ -38,6 +40,7 @@ interface StudentRow {
   discountPct: number;
   payment: Payment | null;        // aggregated (for table stats)
   installments: Payment[];        // raw (0, 1, or 2 records)
+  timiInvest: { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number } | null;
 }
 
 interface Stats {
@@ -63,6 +66,7 @@ interface Props {
   icon: React.ReactNode;
   color: string;
   isMonthly?: boolean;
+  showCalculator?: boolean;
 }
 
 type Tab = "income" | "expense" | "handover";
@@ -138,7 +142,7 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "handover", label: "Dorezim Parash",   icon: <ArrowLeftRight className="w-4 h-4" /> },
 ];
 
-export default function CategoryPaymentPage({ categoryName, title, icon, color, isMonthly = true }: Props) {
+export default function CategoryPaymentPage({ categoryName, title, icon, color, isMonthly = true, showCalculator = false }: Props) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year,  setYear]  = useState(now.getFullYear());
@@ -149,6 +153,10 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [loading,  setLoading]  = useState(true);
   const [modal,        setModal]        = useState<StudentRow | null>(null);
   const [printModal,   setPrintModal]   = useState<StudentRow | null>(null);
+  const [receiptPaymentId, setReceiptPaymentId] = useState<number | null>(null);
+  const [pickerOpen,       setPickerOpen]       = useState(false);
+  const [calcModal,        setCalcModal]        = useState<StudentRow | null>(null);
+  const [calcAmount,       setCalcAmount]       = useState<number | undefined>();
   const [tab,          setTab]          = useState<Tab>("income");
   const [statusFilter, setStatusFilter] = useState<string>("");
 
@@ -235,6 +243,16 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
             <Download className="w-4 h-4" />
             Exporto Excel
           </button>
+
+          {tab === "income" && (
+            <button
+              onClick={() => setPickerOpen(true)}
+              className="btn-primary text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Regjistro Pagesë
+            </button>
+          )}
 
           <div className="flex items-center gap-2 ml-auto">
             {isMonthly && (
@@ -427,9 +445,19 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                         <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${rowBg}`}>
                           <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                           <td className="table-cell">
-                            <Link href={`/students/${s.id}`} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
-                              {s.firstName} {s.lastName}
-                            </Link>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Link href={`/students/${s.id}`} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
+                                {s.firstName} {s.lastName}
+                              </Link>
+                              {s.timiInvest && (() => {
+                                const tiPrice = Math.max(0, s.timiInvest.regularPrice * (1 - s.timiInvest.discountPct / 100) - (s.timiInvest.manualDiscAmt || 0));
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-[10px] font-semibold" title={`Çmimi TI: ${tiPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €`}>
+                                    ● TI {tiPrice > 0 ? `${tiPrice.toLocaleString("de-DE", { minimumFractionDigits: 0 })} €` : ""}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                             {hasMonthly && (
                               <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-medium">
                                 <CalendarDays className="w-3 h-3" />
@@ -544,13 +572,38 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                             </button>
                           </td>
                           <td className="table-cell">
-                            <button
-                              onClick={() => setPrintModal(s)}
-                              title="Gjenero faturë"
-                              className="p-1.5 rounded-lg text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 dark:text-slate-500 dark:hover:text-primary-400 transition-colors"
-                            >
-                              <Printer className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              {showCalculator && (
+                                <button
+                                  onClick={() => setCalcModal(s)}
+                                  title="Kalkulator i Shkollimit"
+                                  className="p-1.5 rounded-lg text-amber-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                                >
+                                  <Calculator className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setPrintModal(s)}
+                                title="Gjenero faturë"
+                                className="p-1.5 rounded-lg text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 dark:text-slate-500 dark:hover:text-primary-400 transition-colors"
+                              >
+                                <Printer className="w-4 h-4" />
+                              </button>
+                              {(() => {
+                                const receiptId = s.payment?.receiptNumber
+                                  ? s.payment.id
+                                  : s.installments.find(i => i.receiptNumber)?.id;
+                                return receiptId ? (
+                                  <button
+                                    onClick={() => setReceiptPaymentId(receiptId)}
+                                    title="Riprinto Dëshminë e Pagesës"
+                                    className="p-1.5 rounded-lg text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                                  >
+                                    <CheckCircle className="w-4 h-4" />
+                                  </button>
+                                ) : null;
+                              })()}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -594,8 +647,14 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           category={category}
           month={isMonthly && month > 0 ? month : undefined}
           year={year}
-          onClose={() => setModal(null)}
-          onSave={async () => { setModal(null); await fetchData(); }}
+          overrideAmount={calcAmount}
+          onClose={() => { setModal(null); setCalcAmount(undefined); }}
+          onSave={async (rid) => {
+            setModal(null);
+            setCalcAmount(undefined);
+            await fetchData();
+            if (rid) setReceiptPaymentId(rid);
+          }}
         />
       )}
 
@@ -609,7 +668,117 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           onClose={() => setPrintModal(null)}
         />
       )}
+
+      {receiptPaymentId && (
+        <PaymentReceiptModal
+          paymentId={receiptPaymentId}
+          onClose={() => setReceiptPaymentId(null)}
+        />
+      )}
+
+      {pickerOpen && (
+        <StudentPickerModal
+          students={students}
+          onSelect={(s) => { setPickerOpen(false); setModal(s); }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {calcModal && category && (
+        <SchoolFeeCalculatorModal
+          student={calcModal}
+          categoryDefaultAmount={category.defaultAmount}
+          onClose={() => setCalcModal(null)}
+          onApply={(s, amount) => {
+            setCalcModal(null);
+            setCalcAmount(amount);
+            setModal(s);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/*  Student Picker Modal                                       */
+/* ─────────────────────────────────────────────────────────── */
+function StudentPickerModal({
+  students, onSelect, onClose,
+}: {
+  students: StudentRow[];
+  onSelect: (s: StudentRow) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+
+  const filtered = students
+    .filter(s => `${s.firstName} ${s.lastName}`.toLowerCase().includes(q.toLowerCase())
+      || (s.class?.name || "").toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => a.lastName.localeCompare(b.lastName, "sq", { sensitivity: "base" }));
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-white">Regjistro Pagesë</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Zgjidh nxënësin</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+            <X className="w-4 h-4 text-slate-400" />
+          </button>
+        </div>
+
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              autoFocus
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Kërko emrin ose klasën..."
+              className="form-input pl-9 w-full"
+            />
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          {filtered.length === 0 ? (
+            <p className="text-center text-slate-400 text-sm py-10">Asnjë nxënës u gjet</p>
+          ) : (
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filtered.map(s => (
+                <li key={s.id}>
+                  <button
+                    onClick={() => onSelect(s)}
+                    className="w-full flex items-center gap-3 px-5 py-3 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors text-left"
+                  >
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
+                        {s.firstName} {s.lastName}
+                      </p>
+                      {s.payment && (
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {s.payment.status === "PAID" ? "✓ Paguar" : `Borxh: ${s.payment.balance.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €`}
+                        </p>
+                      )}
+                    </div>
+                    {s.class && (
+                      <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-2 py-0.5 rounded text-xs font-medium flex-shrink-0">
+                        {s.class.name}
+                      </span>
+                    )}
+                    <Plus className="w-4 h-4 text-primary-500 flex-shrink-0" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -639,10 +808,11 @@ interface ModalProps {
   month?: number;
   year: number;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (receiptPaymentId?: number) => void;
+  overrideAmount?: number;
 }
 
-function PaymentModal({ student, category, month, year, onClose, onSave }: ModalProps) {
+function PaymentModal({ student, category, month, year, onClose, onSave, overrideAmount }: ModalProps) {
   const today = new Date().toISOString().split("T")[0];
   const installments = student.installments;
 
@@ -665,7 +835,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
 
   // ── Common form (gross amount + discounts) ──
   const [form, setForm] = useState({
-    amount:       String(singleExisting?.amount      ?? k1Existing?.amount ?? ""),
+    amount:       overrideAmount != null ? String(overrideAmount) : String(singleExisting?.amount ?? k1Existing?.amount ?? ""),
     discount:     String(singleExisting?.discount    ?? "0"),
     discountType: singleExisting?.discountType       ?? "fixed",
     scholarship:  String(singleExisting?.scholarship ?? "0"),
@@ -773,8 +943,9 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
     onSave();
   }
 
-  async function handleSave() {
+  async function handleSave(withPrint = false) {
     setSaving(true);
+    let receiptPaymentId: number | undefined;
 
     if (mode === "single") {
       // If switching from two-installment to single: delete both old ones
@@ -797,17 +968,22 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
         year,
       };
       if (singleExisting) {
-        await fetch(`/api/payments/${singleExisting.id}`, {
+        const r = await fetch(`/api/payments/${singleExisting.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (r.ok && parseFloat(sForm.paidAmount) > 0) receiptPaymentId = singleExisting.id;
       } else {
-        await fetch("/api/payments", {
+        const r = await fetch("/api/payments", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (r.ok && parseFloat(sForm.paidAmount) > 0) {
+          const created = await r.json();
+          receiptPaymentId = created.id;
+        }
       }
     } else if (mode === "two") {
       // Two-installment mode
@@ -889,7 +1065,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
     }
 
     setSaving(false);
-    onSave();
+    onSave(withPrint ? receiptPaymentId : undefined);
   }
 
   function quickPay() {
@@ -1267,13 +1443,175 @@ function PaymentModal({ student, category, month, year, onClose, onSave }: Modal
           })()}
         </div>
 
-        <div className="flex gap-3 p-5 pt-0 sticky bottom-0 bg-white dark:bg-slate-800">
-          <button onClick={onClose} className="btn-secondary flex-1 justify-center">
+        <div className="flex flex-wrap gap-2 p-5 pt-0 sticky bottom-0 bg-white dark:bg-slate-800">
+          <button onClick={onClose} className="btn-secondary">
             <X className="w-4 h-4" />Anulo
           </button>
-          <button onClick={handleSave} disabled={saving} className="btn-primary flex-1 justify-center">
+          <button onClick={() => handleSave(false)} disabled={saving} className="btn-secondary">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? "Duke ruajtur..." : mode === "two" ? "Ruaj të Dyja Këste" : mode === "monthly" ? "Ruaj 10 Muajt" : "Ruaj"}
+            {saving ? "Duke ruajtur..." : mode === "two" ? "Ruaj Këste" : mode === "monthly" ? "Ruaj Muajt" : "Ruaj"}
+          </button>
+          {mode === "single" && (
+            <button
+              onClick={() => handleSave(true)}
+              disabled={saving || parseFloat(sForm.paidAmount || "0") <= 0}
+              className="btn-primary flex-1 justify-center whitespace-nowrap"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+              Ruaj &amp; Printo Dëshminë
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── School Fee Calculator Modal ───────────────────────────── */
+const ACADEMIC_MONTHS = ["Shtator", "Tetor", "Nëntor", "Dhjetor", "Janar", "Shkurt", "Mars", "Prill", "Maj", "Qershor"];
+
+function SchoolFeeCalculatorModal({ student, categoryDefaultAmount, onClose, onApply }: {
+  student: StudentRow;
+  categoryDefaultAmount: number;
+  onClose: () => void;
+  onApply: (student: StudentRow, amount: number) => void;
+}) {
+  const baseAmount = student.payment?.amount || student.payment?.finalAmount || categoryDefaultAmount;
+  const [fee, setFee] = useState(String(Math.round(baseAmount || categoryDefaultAmount)));
+  const [selected, setSelected] = useState<boolean[]>(Array(10).fill(true));
+
+  const feeNum = parseFloat(fee) || 0;
+  const monthlyRate = feeNum / 10;
+  const attendedCount = selected.filter(Boolean).length;
+  const calculatedAmount = Math.round(monthlyRate * attendedCount * 100) / 100;
+
+  function selectFirst(n: number) {
+    setSelected(Array(10).fill(false).map((_, i) => i < n));
+  }
+  function selectLast(n: number) {
+    setSelected(Array(10).fill(false).map((_, i) => i >= 10 - n));
+  }
+  function toggleMonth(i: number) {
+    setSelected(prev => prev.map((v, j) => j === i ? !v : v));
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Calculator className="w-5 h-5 text-amber-500" />
+              Kalkulator i Shkollimit
+            </h3>
+            <p className="text-sm text-slate-400 mt-0.5">
+              {student.firstName} {student.lastName}
+              {student.class && <span> • Klasa {student.class.name}</span>}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          <div>
+            <label className="form-label">Çmimi vjetor (€)</label>
+            <input
+              type="number"
+              value={fee}
+              onChange={e => setFee(e.target.value)}
+              className="form-input"
+              min="0"
+              step="1"
+              placeholder="0"
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              Norma mujore:{" "}
+              <span className="font-semibold text-slate-600 dark:text-slate-300">
+                {monthlyRate.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €/muaj
+              </span>
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Nxënës largohet pas:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
+                <button key={n} onClick={() => selectFirst(n)}
+                  className="px-2.5 py-1 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-600 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700 dark:hover:bg-amber-900/20 transition-colors">
+                  {n} muaj
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Nxënës vjen vonë (muajt e fundit):</p>
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
+                <button key={n} onClick={() => selectLast(n)}
+                  className="px-2.5 py-1 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 dark:hover:bg-blue-900/20 transition-colors">
+                  {n} muaj
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Muajt e ndjekur</p>
+              <div className="flex gap-2">
+                <button onClick={() => setSelected(Array(10).fill(true))} className="text-xs text-primary-600 hover:underline">Të gjithë</button>
+                <button onClick={() => setSelected(Array(10).fill(false))} className="text-xs text-slate-400 hover:underline">Asnjë</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-5 gap-1.5">
+              {ACADEMIC_MONTHS.map((m, i) => (
+                <button key={i} onClick={() => toggleMonth(i)}
+                  className={`py-2 rounded-lg text-xs font-medium transition-all border ${
+                    selected[i]
+                      ? "bg-amber-500 border-amber-500 text-white shadow-sm"
+                      : "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"
+                  }`}>
+                  {m.slice(0, 3)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4">
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className="text-slate-500">Muaj të ndjekur</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-200">{attendedCount} / 10</span>
+            </div>
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className="text-slate-500">Norma mujore</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {monthlyRate.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €
+              </span>
+            </div>
+            <div className="flex items-center justify-between border-t border-amber-200 dark:border-amber-700 pt-2 mt-2">
+              <span className="font-bold text-slate-800 dark:text-white">Total për t&apos;u paguar</span>
+              <span className="text-xl font-bold text-amber-600">
+                {calculatedAmount.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 p-5 pt-0">
+          <button onClick={onClose} className="btn-secondary flex-1 justify-center">Anulo</button>
+          <button
+            onClick={() => onApply(student, calculatedAmount)}
+            disabled={attendedCount === 0 || feeNum <= 0}
+            className="btn-primary flex-1 justify-center"
+          >
+            <Calculator className="w-4 h-4" />
+            Apliko si Pagesë
           </button>
         </div>
       </div>

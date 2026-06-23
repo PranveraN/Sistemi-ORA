@@ -9,6 +9,7 @@ export default function ShkollimiPage() {
       icon={<GraduationCap className="w-5 h-5" />}
       color="primary"
       isMonthly={true}
+      showCalculator={true}
     />
   );
 }

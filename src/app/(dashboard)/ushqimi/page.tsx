@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
+import PaymentReceiptModal from "@/components/finance/PaymentReceiptModal";
 
 type Tab = "income" | "expense" | "handover" | "report";
 
@@ -87,6 +88,7 @@ interface Payment {
   balance: number; discount: number; discountType: string | null;
   scholarship: number; method: string | null; paidDate: string | null;
   dueDate: string; status: string; description: string | null;
+  receiptNumber: string | null;
 }
 interface StudentRow {
   id: number; firstName: string; lastName: string;
@@ -168,10 +170,13 @@ export default function UshqimiPage() {
   const [copyResult, setCopyResult] = useState<string | null>(null);
 
   // Modals
-  const [payModal,    setPayModal]    = useState<StudentRow | null>(null);
-  const [printModal,  setPrintModal]  = useState<StudentRow | null>(null);
+  const [payModal,         setPayModal]         = useState<StudentRow | null>(null);
+  const [printModal,       setPrintModal]        = useState<StudentRow | null>(null);
+  const [receiptPaymentId, setReceiptPaymentId] = useState<number | null>(null);
   const [statFilter,  setStatFilter]  = useState<StatFilter | null>(null);
   const [enrollModal, setEnrollModal] = useState(false);
+  const [calcModal,   setCalcModal]   = useState<StudentRow | null>(null);
+  const [calcAmount,  setCalcAmount]  = useState<number | undefined>();
 
   const prices = calcPrices(price2Meals, workingDays, monthsPerYear);
 
@@ -747,6 +752,13 @@ export default function UshqimiPage() {
                             <Plus className="w-3 h-3" />
                             {p ? (p.status === "PAID" ? "Modifiko" : "Plotëso") : "Shto"}
                           </button>
+                          <button
+                            onClick={() => setCalcModal(s)}
+                            title="Kalkulator i Ushqimit"
+                            className="p-1.5 rounded-lg text-amber-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                          >
+                            <Calculator className="w-4 h-4" />
+                          </button>
                           {p && (
                             <button
                               onClick={() => handleRemoveEnrollment(s)}
@@ -763,6 +775,15 @@ export default function UshqimiPage() {
                           >
                             <Printer className="w-4 h-4" />
                           </button>
+                          {p?.receiptNumber && (
+                            <button
+                              onClick={() => setReceiptPaymentId(p.id)}
+                              title="Riprinto Dëshminë e Pagesës"
+                              className="p-1.5 rounded-lg text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -783,8 +804,22 @@ export default function UshqimiPage() {
           month={month} year={year}
           prices={prices}
           workingDays={workingDays}
-          onClose={() => setPayModal(null)}
-          onSave={async () => { setPayModal(null); await fetchData(); }}
+          overrideAmount={calcAmount}
+          onClose={() => { setPayModal(null); setCalcAmount(undefined); }}
+          onSave={async (rid) => { setPayModal(null); setCalcAmount(undefined); await fetchData(); if (rid) setReceiptPaymentId(rid); }}
+        />
+      )}
+      {calcModal && (
+        <UshqimiCalcModal
+          student={calcModal}
+          price2Meals={price2Meals}
+          periods={periods}
+          onClose={() => setCalcModal(null)}
+          onApply={(s, amount) => {
+            setCalcModal(null);
+            setCalcAmount(amount);
+            setPayModal(s);
+          }}
         />
       )}
       {printModal && (
@@ -794,6 +829,12 @@ export default function UshqimiPage() {
           categoryName="Ushqimi"
           month={month} year={year}
           onClose={() => setPrintModal(null)}
+        />
+      )}
+      {receiptPaymentId && (
+        <PaymentReceiptModal
+          paymentId={receiptPaymentId}
+          onClose={() => setReceiptPaymentId(null)}
         />
       )}
       {statFilter && (
@@ -817,16 +858,17 @@ export default function UshqimiPage() {
 /* ═══════════════════════════════════════════════════════ */
 /*  Payment Modal — specialized for meals                 */
 /* ═══════════════════════════════════════════════════════ */
-function UshqimiPayModal({ student, month, year, prices, workingDays, onClose, onSave }: {
+function UshqimiPayModal({ student, month, year, prices, workingDays, onClose, onSave, overrideAmount }: {
   student: StudentRow; month: number; year: number;
   prices: Record<string, number>; workingDays: number;
-  onClose: () => void; onSave: () => void;
+  overrideAmount?: number;
+  onClose: () => void; onSave: (receiptPaymentId?: number) => void;
 }) {
   const existing = student.payment;
-  const [plan,        setPlan]        = useState("2_shujta_muaj");
+  const [plan,        setPlan]        = useState(overrideAmount != null ? "__calc__" : "2_shujta_muaj");
   const [specificDays,setSpecificDays]= useState(workingDays);
   const [numMonths,   setNumMonths]   = useState(1);
-  const [customPrice, setCustomPrice] = useState(0);
+  const [customPrice] = useState(0);
   const [paidAmount,  setPaidAmount]  = useState(String(existing?.paidAmount ?? ""));
   const [method,      setMethod]      = useState(existing?.method ?? "CASH");
   const [dueDate,     setDueDate]     = useState(
@@ -843,6 +885,7 @@ function UshqimiPayModal({ student, month, year, prices, workingDays, onClose, o
 
   // Calculate final amount based on plan
   const calcAmount = (): number => {
+    if (plan === "__calc__")       return overrideAmount ?? 0;
     if (plan === "dite_specifike") return prices["dite_specifike"] * specificDays;
     if (plan === "periudhe")       return prices["periudhe"] * numMonths;
     if (plan === "custom")         return customPrice;
@@ -860,11 +903,11 @@ function UshqimiPayModal({ student, month, year, prices, workingDays, onClose, o
     ? `${planLabel} × ${numMonths} muaj (nga ${MONTHS[month - 1]} ${year})`
     : `${planLabel} — ${MONTHS[month - 1]} ${year}`;
 
-  async function handleSave() {
+  async function handleSave(withPrint = false) {
     setSaving(true);
     const payload = {
       studentId: student.id,
-      categoryId: 2, // Ushqimi category ID — will be resolved by API
+      categoryId: 2,
       amount: finalAmount,
       discount: 0, discountType: null, scholarship: 0,
       finalAmount,
@@ -876,27 +919,33 @@ function UshqimiPayModal({ student, month, year, prices, workingDays, onClose, o
       description,
     };
 
-    // Get real category ID
     const catRes = await fetch("/api/categories");
     const cats = await catRes.json();
     const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
     if (cat) payload.categoryId = cat.id;
 
+    let receiptPaymentId: number | undefined;
+
     if (existing) {
-      await fetch(`/api/payments/${existing.id}`, {
+      const r = await fetch(`/api/payments/${existing.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (r.ok && paid > 0) receiptPaymentId = existing.id;
     } else {
-      await fetch("/api/payments", {
+      const r = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (r.ok && paid > 0) {
+        const created = await r.json();
+        receiptPaymentId = created.id;
+      }
     }
     setSaving(false);
-    onSave();
+    onSave(withPrint ? receiptPaymentId : undefined);
   }
 
   return (
@@ -917,31 +966,47 @@ function UshqimiPayModal({ student, month, year, prices, workingDays, onClose, o
         </div>
 
         <div className="p-5 space-y-4">
-          {/* Plan selector */}
-          <div>
-            <label className="form-label">Lloji i Planit <span className="text-red-500">*</span></label>
-            <div className="grid grid-cols-2 gap-2 mt-1">
-              {MEAL_PLANS.map(p => (
-                <button
-                  key={p.value}
-                  type="button"
-                  onClick={() => setPlan(p.value)}
-                  className={`text-left px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
-                    plan === p.value
-                      ? "border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
-                      : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary-200 dark:hover:border-primary-700"
-                  }`}
-                >
-                  <span className="block">{p.label}</span>
-                  {p.value !== "dite_specifike" && p.value !== "periudhe" && (
-                    <span className={`text-xs font-bold mt-0.5 block ${plan === p.value ? "text-primary-600" : "text-slate-400"}`}>
-                      {formatCurrency(prices[p.value] || 0)}
-                    </span>
-                  )}
-                </button>
-              ))}
+          {/* Calculator override notice */}
+          {plan === "__calc__" && (
+            <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl">
+              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm font-medium">
+                <Calculator className="w-4 h-4" />
+                Shumë e llogaritur nga Kalkulatori
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-black text-amber-600">{formatCurrency(overrideAmount ?? 0)}</span>
+                <button onClick={() => setPlan("2_shujta_muaj")} className="text-xs text-slate-400 hover:text-slate-600 underline">Ndrysho</button>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Plan selector */}
+          {plan !== "__calc__" && (
+            <div>
+              <label className="form-label">Lloji i Planit <span className="text-red-500">*</span></label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                {MEAL_PLANS.map(p => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setPlan(p.value)}
+                    className={`text-left px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
+                      plan === p.value
+                        ? "border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
+                        : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary-200 dark:hover:border-primary-700"
+                    }`}
+                  >
+                    <span className="block">{p.label}</span>
+                    {p.value !== "dite_specifike" && p.value !== "periudhe" && (
+                      <span className={`text-xs font-bold mt-0.5 block ${plan === p.value ? "text-primary-600" : "text-slate-400"}`}>
+                        {formatCurrency(prices[p.value] || 0)}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Extra inputs for variable plans */}
           {plan === "dite_specifike" && (
@@ -1023,11 +1088,19 @@ function UshqimiPayModal({ student, month, year, prices, workingDays, onClose, o
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 p-5 pt-0">
-          <button onClick={onClose} className="btn-secondary flex-1 justify-center"><X className="w-4 h-4" />Anulo</button>
-          <button onClick={handleSave} disabled={saving || finalAmount === 0} className="btn-primary flex-1 justify-center">
+        <div className="flex flex-wrap gap-2 p-5 pt-0">
+          <button onClick={onClose} className="btn-secondary"><X className="w-4 h-4" />Anulo</button>
+          <button onClick={() => { handleSave(false); }} disabled={saving || finalAmount === 0} className="btn-secondary">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             {saving ? "Duke ruajtur..." : "Ruaj"}
+          </button>
+          <button
+            onClick={() => { handleSave(true); }}
+            disabled={saving || finalAmount === 0 || paid <= 0}
+            className="btn-primary flex-1 justify-center whitespace-nowrap"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+            Ruaj &amp; Printo Dëshminë
           </button>
         </div>
       </div>
@@ -1219,3 +1292,162 @@ function StatListModal({ filter, students, onClose }: {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════ */
+/*  Ushqimi Fee Calculator Modal                              */
+/* ═══════════════════════════════════════════════════════════ */
+const USHQIMI_PERIODS = ["Shtator/Tetor", "Nëntor/Dhjetor", "Janar/Shkurt", "Mars/Prill", "Maj/Qershor"];
+
+function UshqimiCalcModal({ student, price2Meals, periods, onClose, onApply }: {
+  student: StudentRow;
+  price2Meals: number;
+  periods: Period[];
+  onClose: () => void;
+  onApply: (student: StudentRow, amount: number) => void;
+}) {
+  const [mealsPerDay, setMealsPerDay] = useState<1 | 2>(2);
+  const [selected, setSelected] = useState<boolean[]>(Array(5).fill(true));
+  const [daysAttended, setDaysAttended] = useState<number[]>(periods.map(p => p.days));
+
+  const pricePerDay = mealsPerDay === 1 ? price2Meals / 2 : price2Meals;
+  const calculatedAmount = selected.reduce(
+    (total, sel, i) => sel ? total + daysAttended[i] * pricePerDay : total,
+    0
+  );
+
+  function togglePeriod(i: number) {
+    setSelected(prev => prev.map((v, j) => j === i ? !v : v));
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg animate-fade-in overflow-y-auto max-h-[92vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Calculator className="w-5 h-5 text-amber-500" />
+              Kalkulator i Ushqimit
+            </h3>
+            <p className="text-sm text-slate-400 mt-0.5">
+              {student.firstName} {student.lastName}
+              {student.class && <span> • Klasa {student.class.name}</span>}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {/* Meal type */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Lloji i vaktit</p>
+            <div className="flex gap-2">
+              {([1, 2] as const).map(n => (
+                <button
+                  key={n}
+                  onClick={() => setMealsPerDay(n)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
+                    mealsPerDay === n
+                      ? "border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300"
+                      : "border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"
+                  }`}
+                >
+                  {n === 1 ? "1 shujtë / ditë" : "2 shujta / ditë"}
+                  <span className="block text-xs font-bold mt-0.5 opacity-70">
+                    {formatCurrency(n === 1 ? price2Meals / 2 : price2Meals)}/ditë
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Period grid */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Periudhat e ndjekura</p>
+              <div className="flex gap-2">
+                <button onClick={() => setSelected(Array(5).fill(true))} className="text-xs text-primary-600 hover:underline">Të gjitha</button>
+                <button onClick={() => setSelected(Array(5).fill(false))} className="text-xs text-slate-400 hover:underline">Asnjë</button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {USHQIMI_PERIODS.map((label, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                    selected[i]
+                      ? "border-amber-400 bg-amber-50 dark:bg-amber-900/10"
+                      : "border-slate-200 dark:border-slate-700 opacity-60"
+                  }`}
+                >
+                  <button
+                    onClick={() => togglePeriod(i)}
+                    className={`w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center border-2 transition-all ${
+                      selected[i]
+                        ? "bg-amber-500 border-amber-500 text-white"
+                        : "border-slate-300 dark:border-slate-600"
+                    }`}
+                  >
+                    {selected[i] && <span className="text-xs font-bold">✓</span>}
+                  </button>
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200 flex-1">{label}</span>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      value={daysAttended[i]}
+                      onChange={e => {
+                        const val = Math.max(0, parseInt(e.target.value) || 0);
+                        setDaysAttended(prev => prev.map((d, j) => j === i ? val : d));
+                      }}
+                      disabled={!selected[i]}
+                      className="w-14 text-center border border-slate-200 dark:border-slate-600 rounded-lg px-1.5 py-1 text-sm bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-40"
+                      min="0"
+                      max="60"
+                    />
+                    <span className="text-xs text-slate-400">ditë</span>
+                    <span className="text-xs font-semibold text-amber-600 w-16 text-right">
+                      {selected[i] ? formatCurrency(daysAttended[i] * pricePerDay) : "—"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Result */}
+          <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4">
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className="text-slate-500">Çmimi / ditë</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-200">{formatCurrency(pricePerDay)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className="text-slate-500">Ditë gjithsej</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {selected.reduce((t, s, i) => s ? t + daysAttended[i] : t, 0)} ditë
+              </span>
+            </div>
+            <div className="flex items-center justify-between border-t border-amber-200 dark:border-amber-700 pt-2 mt-2">
+              <span className="font-bold text-slate-800 dark:text-white">Total për t&apos;u paguar</span>
+              <span className="text-xl font-bold text-amber-600">{formatCurrency(calculatedAmount)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 p-5 pt-0">
+          <button onClick={onClose} className="btn-secondary flex-1 justify-center">Anulo</button>
+          <button
+            onClick={() => onApply(student, Math.round(calculatedAmount * 100) / 100)}
+            disabled={calculatedAmount <= 0}
+            className="btn-primary flex-1 justify-center"
+          >
+            <Calculator className="w-4 h-4" />
+            Apliko si Pagesë
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

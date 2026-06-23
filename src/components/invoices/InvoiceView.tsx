@@ -59,15 +59,28 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
 
     const doc = new jsPDF();
 
-    // Header
-    doc.setFontSize(20);
-    doc.setTextColor(37, 99, 235);
-    doc.text("AKADEMIA ORA", 20, 25);
+    // Logo
+    try {
+      const logoImg = await new Promise<HTMLImageElement>((res, rej) => {
+        const img = new Image(); img.crossOrigin = "anonymous";
+        img.onload = () => res(img); img.onerror = rej;
+        img.src = "/logo.png";
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = logoImg.naturalWidth; canvas.height = logoImg.naturalHeight;
+      canvas.getContext("2d")!.drawImage(logoImg, 0, 0);
+      doc.addImage(canvas.toDataURL("image/png"), "PNG", 14, 12, 0, 18);
+    } catch { /* fallback to text */ }
 
-    doc.setFontSize(10);
+    doc.setFontSize(16);
+    doc.setTextColor(37, 99, 235);
+    doc.setFont("helvetica", "bold");
+    doc.text("AKADEMIA ORA", 40, 20);
+    doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
-    doc.text("Shkollë Private", 20, 32);
-    doc.text("Tel: +383 XX XXX XXX", 20, 38);
+    doc.setFont("helvetica", "normal");
+    doc.text("Shkollë Private", 40, 26);
+    doc.text("Tel: +383 46 505 055", 40, 32);
 
     // Invoice type
     doc.setFontSize(16);
@@ -229,15 +242,13 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
         <div className="flex items-start justify-between mb-8">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-sm">AO</span>
-              </div>
+              <img src="/logo.png" alt="Akademia Ora" className="h-12 w-auto object-contain" onError={e => { e.currentTarget.style.display = "none"; }} />
               <div>
                 <h2 className="text-xl font-bold text-primary-600">AKADEMIA ORA</h2>
                 <p className="text-xs text-slate-400">Shkollë Private</p>
               </div>
             </div>
-            <p className="text-sm text-slate-500">Tel: +383 XX XXX XXX</p>
+            <p className="text-sm text-slate-500">Tel: +383 46 505 055</p>
           </div>
           <div className="text-right">
             <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">

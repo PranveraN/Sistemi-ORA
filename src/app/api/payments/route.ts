@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+async function generateReceiptNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const last = await prisma.payment.findFirst({
+    where: { receiptNumber: { startsWith: `DEP-${year}-` } },
+    orderBy: { receiptNumber: "desc" },
+  });
+  const lastSeq = last ? parseInt(last.receiptNumber!.split("-").pop() || "0") : 0;
+  return `DEP-${year}-${String(lastSeq + 1).padStart(4, "0")}`;
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -71,6 +81,8 @@ export async function POST(req: NextRequest) {
   else if (new Date(body.dueDate) < new Date()) status = "OVERDUE";
 
   try {
+    const receiptNumber = paidAmount > 0 ? await generateReceiptNumber() : undefined;
+
     const payment = await prisma.payment.create({
       data: {
         studentId: parseInt(body.studentId),
@@ -89,6 +101,7 @@ export async function POST(req: NextRequest) {
         description: body.description || null,
         month: body.month ? parseInt(body.month) : null,
         year: body.year ? parseInt(body.year) : new Date().getFullYear(),
+        receiptNumber,
       },
     });
 

@@ -79,6 +79,7 @@ function buildProfatureHTML(inv: {
   finalAmount: number;
   notes?: string;
   schoolYear?: string;
+  origin?: string;
 }) {
   const rows = Array.from({ length: 5 }, (_, i) => inv.items[i] || null);
   const dateStr = new Date(inv.date).toLocaleDateString("sq-AL");
@@ -153,7 +154,11 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;padding:20
 <div class="top-bar">Profatur&euml; nr: ${inv.number}</div>
 
 <div class="school-block">
-  <h2>${SCHOOL.name}</h2>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+    <img src="${inv.origin || ''}/logo.png" alt="Akademia Ora"
+         style="height:48px;width:auto;object-fit:contain" onerror="this.style.display='none'"/>
+    <h2 style="margin:0">${SCHOOL.name}</h2>
+  </div>
   <div class="school-info">
     <span class="lbl">${SCHOOL.contact}</span><span>${SCHOOL.phone}</span>
     <span class="lbl">P&euml;rroi i njelmët</span><span>${SCHOOL.email}</span>
@@ -454,6 +459,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
       finalAmount: inv.finalAmount,
       notes: inv.notes || undefined,
       schoolYear: inv.schoolYear || undefined,
+      origin: window.location.origin,
     });
     const win = window.open("", "_blank", "width=800,height=960");
     if (!win) return;
@@ -475,6 +481,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
       finalAmount: inv.finalAmount,
       notes: inv.notes || undefined,
       schoolYear: inv.schoolYear || undefined,
+      origin: window.location.origin,
     });
 
     const iframe = document.createElement("iframe");
