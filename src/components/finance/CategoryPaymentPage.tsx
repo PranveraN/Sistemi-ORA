@@ -206,6 +206,21 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
     return sum + s.payment.balance;
   }, 0);
 
+  // Mesatare e ponderuar: Σ(çmimi_i × nxënës_i) / total_nxënës
+  const weightedAvgData = (() => {
+    if (!students.length || !category) return null;
+    const base = category.defaultAmount;
+    const groups: Record<number, number> = {};
+    let totalExpected = 0;
+    for (const s of students) {
+      const price = s.payment?.finalAmount ?? Math.round(base * (1 - (s.discountPct ?? 0) / 100));
+      groups[price] = (groups[price] ?? 0) + 1;
+      totalExpected += price;
+    }
+    const avg = Math.round((totalExpected / students.length) * 100) / 100;
+    return { avg, groups, totalExpected };
+  })();
+
   return (
     <>
       <Header title={title} />
@@ -355,6 +370,43 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                 <div className="card p-3 sm:col-span-2 lg:col-span-2 hidden lg:block">
                   <p className="text-xs text-slate-400 mb-0.5">Borxhe</p>
                   <p className="text-lg font-bold text-red-500">{formatCurrency(stats.totalDebt)}</p>
+                </div>
+
+                <div className="card p-3 sm:col-span-2 lg:col-span-2">
+                  <p className="text-xs text-slate-400 mb-2">Mesatarja e Ponderuar</p>
+                  {weightedAvgData ? (
+                    <div className="space-y-1.5">
+                      {/* Grupet e çmimeve: çmimi × nxënës */}
+                      <div className="space-y-0.5 max-h-20 overflow-y-auto pr-1">
+                        {Object.entries(weightedAvgData.groups)
+                          .sort(([a], [b]) => Number(b) - Number(a))
+                          .map(([price, count]) => (
+                            <div key={price} className="flex justify-between items-center text-[11px]">
+                              <span className="text-slate-500">
+                                {formatCurrency(Number(price))} × <span className="font-medium text-slate-700 dark:text-slate-300">{count}</span> nxënës
+                              </span>
+                              <span className="text-slate-400 font-mono">
+                                = {formatCurrency(Number(price) * count)}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                      <div className="border-t border-slate-100 dark:border-slate-700 pt-1.5 space-y-0.5">
+                        <div className="flex justify-between items-center text-[11px] text-slate-400">
+                          <span>Σ / {stats.total} nxënës</span>
+                          <span className="font-mono">{formatCurrency(weightedAvgData.totalExpected)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Mesatare e ponderuar</span>
+                          <span className="font-bold text-amber-600 dark:text-amber-400 text-sm">
+                            {formatCurrency(weightedAvgData.avg)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-400">—</p>
+                  )}
                 </div>
               </div>
             )}

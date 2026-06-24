@@ -49,6 +49,11 @@ function methodLabel(m: string | null) {
   return m || "—";
 }
 
+function categoryLabel(c: string): string {
+  if (c === "Librat & Shkollorja") return "Shkollimi";
+  return c;
+}
+
 function periodLabel(month: number | null, year: number | null, description: string | null): string {
   if (description?.startsWith("KESTI_")) {
     const k = description.replace("KESTI_", "Kësti ");
@@ -93,7 +98,7 @@ function buildReceiptHTML(d: ReceiptData, copy: "prind" | "shkolla", origin: str
     <div class="info-row"><span class="lbl">Nxënësi</span><span class="val bold">${d.student.name}</span></div>
     <div class="info-row"><span class="lbl">Prindi</span><span class="val">${d.student.parentName || "—"}</span></div>
     <div class="info-row"><span class="lbl">Klasa</span><span class="val">${d.student.class || "—"}</span></div>
-    <div class="info-row"><span class="lbl">Kategoria</span><span class="val">${d.category}${period ? ` — ${period}` : ""}</span></div>
+    <div class="info-row"><span class="lbl">Kategoria</span><span class="val">${categoryLabel(d.category)}${period ? ` — ${period}` : ""}</span></div>
     ${d.invoiceNumber ? `<div class="info-row"><span class="lbl">Nr. Faturës</span><span class="val mono">${d.invoiceNumber}</span></div>` : ""}
     <div class="info-row"><span class="lbl">Mënyra</span><span class="val">${methodLabel(d.method)}</span></div>
   </div>
@@ -258,7 +263,7 @@ html, body { height:100%; font-family: Arial, Helvetica, sans-serif; background:
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 mb-0.5">Kategoria</p>
-                  <p className="font-medium text-slate-700 dark:text-slate-200">{data.category}</p>
+                  <p className="font-medium text-slate-700 dark:text-slate-200">{categoryLabel(data.category)}</p>
                 </div>
               </div>
 

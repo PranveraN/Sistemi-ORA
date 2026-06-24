@@ -69,18 +69,20 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
       const canvas = document.createElement("canvas");
       canvas.width = logoImg.naturalWidth; canvas.height = logoImg.naturalHeight;
       canvas.getContext("2d")!.drawImage(logoImg, 0, 0);
-      doc.addImage(canvas.toDataURL("image/png"), "PNG", 14, 12, 0, 18);
+      const logoH = 14;
+      const logoW = Math.min(20, (logoImg.naturalWidth / logoImg.naturalHeight) * logoH);
+      doc.addImage(canvas.toDataURL("image/png"), "PNG", 14, 11, logoW, logoH);
     } catch { /* fallback to text */ }
 
     doc.setFontSize(16);
     doc.setTextColor(37, 99, 235);
     doc.setFont("helvetica", "bold");
-    doc.text("AKADEMIA ORA", 40, 20);
+    doc.text("AKADEMIA ORA", 38, 19);
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
     doc.setFont("helvetica", "normal");
-    doc.text("Shkollë Private", 40, 26);
-    doc.text("Tel: +383 46 505 055", 40, 32);
+    doc.text("Shkollë Private", 38, 25);
+    doc.text("Tel: +383 46 505 055", 38, 31);
 
     // Invoice type
     doc.setFontSize(16);

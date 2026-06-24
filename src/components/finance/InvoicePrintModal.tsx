@@ -131,7 +131,9 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
         const canvas = document.createElement("canvas");
         canvas.width = logoImg.naturalWidth; canvas.height = logoImg.naturalHeight;
         canvas.getContext("2d")!.drawImage(logoImg, 0, 0);
-        doc.addImage(canvas.toDataURL("image/png"), "PNG", 14, 12, 0, 18);
+        const logoH = 14;
+        const logoW = Math.min(20, (logoImg.naturalWidth / logoImg.naturalHeight) * logoH);
+        doc.addImage(canvas.toDataURL("image/png"), "PNG", 14, 11, logoW, logoH);
       } catch {
         doc.setFillColor(37, 99, 235);
         doc.roundedRect(14, 12, 22, 18, 3, 3, "F");
@@ -143,12 +145,12 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
       doc.setTextColor(37, 99, 235);
       doc.setFontSize(18);
       doc.setFont("helvetica", "bold");
-      doc.text("AKADEMIA ORA", 40, 20);
+      doc.text("AKADEMIA ORA", 38, 19);
       doc.setFontSize(9);
       doc.setTextColor(100, 116, 139);
       doc.setFont("helvetica", "normal");
-      doc.text("Shkollë Private", 40, 26);
-      doc.text("Tel: +383 46 505 055", 40, 31);
+      doc.text("Shkollë Private", 38, 25);
+      doc.text("Tel: +383 46 505 055", 38, 31);
 
       doc.setFontSize(16);
       doc.setTextColor(15, 23, 42);
