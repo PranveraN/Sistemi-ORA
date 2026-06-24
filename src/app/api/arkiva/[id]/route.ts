@@ -10,7 +10,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   if (!row) return NextResponse.json({ error: "Nuk u gjet" }, { status: 404 });
 
-  return NextResponse.json({ ...row, data: JSON.parse(row.data) });
+  return NextResponse.json({
+    ...row,
+    id: Number(row.id),
+    studentId: row.studentId != null ? Number(row.studentId) : null,
+    data: JSON.parse(row.data),
+  });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

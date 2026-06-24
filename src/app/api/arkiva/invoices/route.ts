@@ -27,12 +27,12 @@ export async function GET(req: NextRequest) {
     LIMIT ${limit} OFFSET ${offset}
   `);
 
-  const [{ total }] = await prisma.$queryRawUnsafe<{ total: number }[]>(`
+  const [countRow] = await prisma.$queryRawUnsafe<{ total: bigint | number }[]>(`
     SELECT COUNT(*) as total
     FROM Invoice i
     JOIN Student s ON s.id = i.studentId
     WHERE 1=1 ${searchFilter}
   `);
 
-  return NextResponse.json({ invoices: rows, total, page, limit });
+  return NextResponse.json({ invoices: rows, total: Number(countRow.total), page, limit });
 }

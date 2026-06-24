@@ -25,11 +25,17 @@ export async function GET(req: NextRequest) {
     LIMIT ${limit} OFFSET ${offset}
   `);
 
-  const [{ total }] = await prisma.$queryRawUnsafe<{ total: number }[]>(`
+  const [countRow] = await prisma.$queryRawUnsafe<{ total: bigint | number }[]>(`
     SELECT COUNT(*) as total FROM DocArchive WHERE 1=1 ${typeFilter} ${searchFilter}
   `);
 
-  return NextResponse.json({ docs: rows, total, page, limit });
+  const safeRows = rows.map(r => ({
+    ...r,
+    id: Number(r.id),
+    studentId: r.studentId != null ? Number(r.studentId) : null,
+  }));
+
+  return NextResponse.json({ docs: safeRows, total: Number(countRow.total), page, limit });
 }
 
 export async function POST(req: NextRequest) {
@@ -43,7 +49,7 @@ export async function POST(req: NextRequest) {
   const dataJson = typeof data === "string" ? data : JSON.stringify(data);
   const sid = studentId ? parseInt(String(studentId)) : null;
 
-  const [row] = await prisma.$queryRawUnsafe<{ id: number }[]>(`
+  const [row] = await prisma.$queryRawUnsafe<{ id: bigint | number }[]>(`
     INSERT INTO DocArchive (type, studentId, studentName, className, data, generatedBy, createdAt)
     VALUES (
       '${type.replace(/'/g, "''")}',
@@ -57,5 +63,5 @@ export async function POST(req: NextRequest) {
     RETURNING id
   `);
 
-  return NextResponse.json({ id: row.id }, { status: 201 });
+  return NextResponse.json({ id: Number(row.id) }, { status: 201 });
 }
