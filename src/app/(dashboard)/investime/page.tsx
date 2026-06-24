@@ -35,7 +35,7 @@ const TIPI_COLORS: Record<string, string> = {
 };
 const METODAT = ["CASH", "BANK", "CARD", "TRANSFER"];
 const KATEGORITE_KAPITAL    = ["Pajisje", "Teknologji", "Objekte", "Automjete", "Inventar", "Asete", "Tjetër"];
-const KATEGORITE_PERKOHSHEM = ["Depozitë", "Huadhënie", "Blerje për rishitje", "Fond rezervë", "Tjetër"];
+const KATEGORITE_PERKOHSHEM = ["Depozitë", "Huadhënie", "Blerje për rishitje", "Inventar", "Fond rezervë", "Tjetër"];
 
 function fmt(iso: string) {
   return new Date(iso).toLocaleDateString("sq-AL", { day: "2-digit", month: "short", year: "numeric" });

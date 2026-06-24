@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Archive, FileText, Receipt, BookOpen, Search, Trash2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { Archive, FileText, Receipt, BookOpen, Search, Trash2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import Link from "next/link";
 import PaymentReceiptModal from "@/components/finance/PaymentReceiptModal";
 
@@ -412,7 +412,7 @@ export default function ArkivaPage() {
                     <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Shuma</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Metoda</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Data</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Printo</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Veprimet</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-700/50">
@@ -443,10 +443,10 @@ export default function ArkivaPage() {
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={() => setReceiptPaymentId(r.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 transition-colors"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
                         >
-                          <Receipt className="w-3.5 h-3.5" />
-                          Printo
+                          <Eye className="w-3.5 h-3.5" />
+                          Shiko / Printo
                         </button>
                       </td>
                     </tr>
