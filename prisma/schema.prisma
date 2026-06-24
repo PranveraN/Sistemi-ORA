@@ -405,6 +405,23 @@ model Setting {
   updatedAt DateTime @updatedAt
 }
 
+model Investim {
+  id             Int      @id @default(autoincrement())
+  tipi           String   // KAPITAL, PERKOHSHEM
+  data           DateTime @default(now())
+  pershkrim      String
+  kategoria      String?
+  vlera          Float
+  metoda         String   @default("CASH") // CASH, BANK, CARD, TRANSFER
+  dokumenti      String?
+  regjistruarNga String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tipi])
+  @@index([data])
+}
+
 model Hyra {
   id        Int      @id @default(autoincrement())
   paguesit  String
