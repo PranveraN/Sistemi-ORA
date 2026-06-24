@@ -114,7 +114,7 @@ function GC({ value, onChange }: { value: string; onChange: (v: string) => void 
 }
 
 /* ─── Main modal ─────────────────────────────────────────── */
-function FletekalimCLModal({ student, onClose }: { student: Student; onClose: () => void }) {
+function FletekalimCLModal({ student, onClose, initialData }: { student: Student; onClose: () => void; initialData?: Partial<FKData> }) {
   const today = new Date();
   const todayFmt = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
   const fmtBirth = (iso: string | null) => {
@@ -125,7 +125,7 @@ function FletekalimCLModal({ student, onClose }: { student: Student; onClose: ()
     } catch { return ""; }
   };
 
-  const [d, setD] = useState<FKData>({
+  const [d, setD] = useState<FKData>(() => ({
     nrProtokolit: "",
     nrProtokolPart2: "",
     data: todayFmt,
@@ -147,7 +147,8 @@ function FletekalimCLModal({ student, onClose }: { student: Student; onClose: ()
     rKomuna: "",
     rNrLibritAme: "",
     rKujdestar: "",
-  });
+    ...initialData,
+  }));
 
   const set = (k: keyof FKData) => (v: string) => setD(p => ({ ...p, [k]: v }));
   const setGrade = (subject: string, col: GradeCol, v: string) =>
@@ -187,6 +188,18 @@ function FletekalimCLModal({ student, onClose }: { student: Student; onClose: ()
 </body></html>`);
     w.document.close();
     setTimeout(() => w.print(), 600);
+    // Save to archive (fire-and-forget)
+    fetch("/api/arkiva", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "FLETEKALIM_CL",
+        studentId: student.id || null,
+        studentName: `${student.firstName} ${student.lastName}`,
+        className: student.class?.name || null,
+        data: d,
+      }),
+    }).catch(() => {});
   };
 
   /* shared header */
@@ -559,7 +572,7 @@ interface FKDataCU {
   rNrLibritAme: string; rKujdestar: string;
 }
 
-function FletekalimCUModal({ student, onClose }: { student: Student; onClose: () => void }) {
+function FletekalimCUModal({ student, onClose, initialData }: { student: Student; onClose: () => void; initialData?: Partial<FKDataCU> }) {
   const today = new Date();
   const todayFmt = `${String(today.getDate()).padStart(2,"0")}/${String(today.getMonth()+1).padStart(2,"0")}/${today.getFullYear()}`;
   const fmtBirth = (iso: string | null) => {
@@ -570,7 +583,7 @@ function FletekalimCUModal({ student, onClose }: { student: Student; onClose: ()
 
   const yr = `${String(today.getFullYear()-1).slice(2)}/${String(today.getFullYear()).slice(2)}`;
 
-  const [d, setD] = useState<FKDataCU>({
+  const [d, setD] = useState<FKDataCU>(() => ({
     nrProtokolit:"", nrProtokolPart2:"", data:todayFmt,
     emri:`${student.firstName} ${student.lastName}`,
     ditelindja:fmtBirth(student.birthDate), vendlindja:"",
@@ -584,7 +597,8 @@ function FletekalimCUModal({ student, onClose }: { student: Student; onClose: ()
     rNrFletekalimit:"", rData:todayFmt, rKlasa:"", rParalela:"",
     rDataHyrjes:"", rShkolla:"", rQyteti:"", rKomuna:"",
     rNrLibritAme:"", rKujdestar:"",
-  });
+    ...initialData,
+  }));
 
   const set = (k: keyof FKDataCU) => (v: string) => setD(p => ({ ...p, [k]: v }));
   const setCol = (col: keyof FKDataCU["colLabels"], v: string) =>
@@ -609,6 +623,18 @@ function FletekalimCUModal({ student, onClose }: { student: Student; onClose: ()
     if (!p1||!p2) return;
     const w = window.open("","_blank","width=900,height=750");
     if (!w) return;
+    // Save to archive (fire-and-forget)
+    fetch("/api/arkiva", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "FLETEKALIM_CU",
+        studentId: student.id || null,
+        studentName: `${student.firstName} ${student.lastName}`,
+        className: student.class?.name || null,
+        data: d,
+      }),
+    }).catch(() => {});
     w.document.open();
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <base href="${window.location.origin}/">
@@ -927,7 +953,7 @@ interface FKDataVCL {
   periudha: string;
 }
 
-function VërtëtimCLModal({ student, onClose }: { student: Student; onClose: () => void }) {
+function VërtëtimCLModal({ student, onClose, initialData }: { student: Student; onClose: () => void; initialData?: Partial<FKDataVCL> }) {
   const today = new Date();
   const todayFmt = `${String(today.getDate()).padStart(2,"0")}/${String(today.getMonth()+1).padStart(2,"0")}/${today.getFullYear()}`;
   const fmtBirth = (iso: string | null) => {
@@ -935,7 +961,7 @@ function VërtëtimCLModal({ student, onClose }: { student: Student; onClose: ()
     try { const d=new Date(iso); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`; } catch { return ""; }
   };
 
-  const [d, setD] = useState<FKDataVCL>({
+  const [d, setD] = useState<FKDataVCL>(() => ({
     nrProtokolit:"", data:todayFmt,
     emri:`${student.firstName} ${student.lastName}`,
     ditelindja:fmtBirth(student.birthDate), qyteti:"Prishtinë",
@@ -945,7 +971,8 @@ function VërtëtimCLModal({ student, onClose }: { student: Student; onClose: ()
     zgjNames:[...ZGJ_VCL_DEFAULT],
     grades:emptyVCLGrades(),
     periudha:"",
-  });
+    ...initialData,
+  }));
 
   const set = (k: keyof FKDataVCL) => (v: string) => setD(p => ({ ...p, [k]: v }));
   const setCol = (col: keyof FKDataVCL["colLabels"], v: string) =>
@@ -967,6 +994,18 @@ function VërtëtimCLModal({ student, onClose }: { student: Student; onClose: ()
     if (!p1) return;
     const w = window.open("","_blank","width=900,height=750");
     if (!w) return;
+    // Save to archive
+    fetch("/api/arkiva", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "VERTETIM_CL",
+        studentId: student.id || null,
+        studentName: `${student.firstName} ${student.lastName}`,
+        className: student.class?.name || null,
+        data: d,
+      }),
+    }).catch(() => {});
     w.document.open();
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <base href="${window.location.origin}/">
@@ -1218,7 +1257,7 @@ interface FKDataPN {
   periudhaFillim: string; periudhaMbarim: string;
 }
 
-function PasqyreNotaveCUModal({ student, onClose }: { student: Student; onClose: () => void }) {
+function PasqyreNotaveCUModal({ student, onClose, initialData }: { student: Student; onClose: () => void; initialData?: Partial<FKDataPN> }) {
   const today = new Date();
   const todayFmt = `${String(today.getDate()).padStart(2,"0")}/${String(today.getMonth()+1).padStart(2,"0")}/${today.getFullYear()}`;
   const fmtBirth = (iso: string | null) => {
@@ -1227,7 +1266,7 @@ function PasqyreNotaveCUModal({ student, onClose }: { student: Student; onClose:
   };
   const yr = `${today.getFullYear()-1}/${today.getFullYear()}`;
 
-  const [d, setD] = useState<FKDataPN>({
+  const [d, setD] = useState<FKDataPN>(() => ({
     nrProtokolit:"", data:todayFmt,
     emri:`${student.firstName} ${student.lastName}`,
     ditelindja:fmtBirth(student.birthDate), vendlindja:"",
@@ -1238,7 +1277,8 @@ function PasqyreNotaveCUModal({ student, onClose }: { student: Student; onClose:
     zgjNames:[...ZGJ_PN_DEFAULT],
     grades:emptyPNGrades(),
     periudhaFillim:"", periudhaMbarim:"",
-  });
+    ...initialData,
+  }));
 
   const set = (k: keyof FKDataPN) => (v: string) =>
     setD(p => ({ ...p, [k]: v }));
@@ -1261,6 +1301,18 @@ function PasqyreNotaveCUModal({ student, onClose }: { student: Student; onClose:
     if (!p1) return;
     const w = window.open("","_blank","width=900,height=750");
     if (!w) return;
+    // Save to archive
+    fetch("/api/arkiva", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "PASQYRE_CU",
+        studentId: student.id || null,
+        studentName: `${student.firstName} ${student.lastName}`,
+        className: student.class?.name || null,
+        data: d,
+      }),
+    }).catch(() => {});
     w.document.open();
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <base href="${window.location.origin}/">
@@ -1490,12 +1542,45 @@ const CARDS = [
 export default function FletkaliметPage() {
   const [activeDoc, setActiveDoc] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [archiveInitialData, setArchiveInitialData] = useState<any>(null);
+
+  // Load archive entry from URL param ?archiveId=X
+  useEffect(() => {
+    const archiveId = new URLSearchParams(window.location.search).get("archiveId");
+    if (!archiveId) return;
+    fetch(`/api/arkiva/${archiveId}`)
+      .then(r => r.json())
+      .then(entry => {
+        if (!entry?.type) return;
+        const typeMap: Record<string, string> = {
+          FLETEKALIM_CL: "fletekalim-cl",
+          FLETEKALIM_CU: "fletekalim-cu",
+          PASQYRE_CU:    "pasyqre-notave-cu",
+          VERTETIM_CL:   "pasyqre-notave-cl",
+        };
+        const parts = entry.studentName?.split(" ") || ["—"];
+        const fakeStu: Student = {
+          id: entry.studentId || 0,
+          firstName: parts[0] || "—",
+          lastName: parts.slice(1).join(" ") || "",
+          birthDate: null,
+          personalNumber: null,
+          class: entry.className ? { name: entry.className, level: "" } : null,
+          diaryNumber: null,
+        };
+        setArchiveInitialData(entry.data);
+        setSelectedStudent(fakeStu);
+        setActiveDoc(typeMap[entry.type] || null);
+      })
+      .catch(() => {});
+  }, []);
 
   if (selectedStudent && activeDoc === "fletekalim-cl") {
     return (
       <>
         <Header title="Fletëkalimet" backHref="/sekretaria/fletkalimet" />
-        <FletekalimCLModal student={selectedStudent} onClose={() => setSelectedStudent(null)} />
+        <FletekalimCLModal student={selectedStudent} onClose={() => { setSelectedStudent(null); setArchiveInitialData(null); }} initialData={archiveInitialData} />
       </>
     );
   }
@@ -1514,7 +1599,7 @@ export default function FletkaliметPage() {
     return (
       <>
         <Header title="Fletëkalimet" backHref="/sekretaria/fletkalimet" />
-        <FletekalimCUModal student={selectedStudent} onClose={() => setSelectedStudent(null)} />
+        <FletekalimCUModal student={selectedStudent} onClose={() => { setSelectedStudent(null); setArchiveInitialData(null); }} initialData={archiveInitialData} />
       </>
     );
   }
@@ -1533,7 +1618,7 @@ export default function FletkaliметPage() {
     return (
       <>
         <Header title="Fletëkalimet" backHref="/sekretaria/fletkalimet" />
-        <VërtëtimCLModal student={selectedStudent} onClose={() => setSelectedStudent(null)} />
+        <VërtëtimCLModal student={selectedStudent} onClose={() => { setSelectedStudent(null); setArchiveInitialData(null); }} initialData={archiveInitialData} />
       </>
     );
   }
@@ -1552,7 +1637,7 @@ export default function FletkaliметPage() {
     return (
       <>
         <Header title="Fletëkalimet" backHref="/sekretaria/fletkalimet" />
-        <PasqyreNotaveCUModal student={selectedStudent} onClose={() => setSelectedStudent(null)} />
+        <PasqyreNotaveCUModal student={selectedStudent} onClose={() => { setSelectedStudent(null); setArchiveInitialData(null); }} initialData={archiveInitialData} />
       </>
     );
   }

@@ -422,6 +422,21 @@ model Hyra {
   @@index([paguesit])
 }
 
+model DocArchive {
+  id          Int      @id @default(autoincrement())
+  type        String   // FLETEKALIM_CL, FLETEKALIM_CU, PASQYRE_CU, VERTETIM_CL
+  studentId   Int?
+  studentName String
+  className   String?
+  data        String   // JSON: të gjitha fushat e modalit
+  generatedBy String?
+  createdAt   DateTime @default(now())
+
+  @@index([type])
+  @@index([studentId])
+  @@index([createdAt])
+}
+
 model LibriAme {
   id            Int      @id @default(autoincrement())
   studentId     Int      @unique
