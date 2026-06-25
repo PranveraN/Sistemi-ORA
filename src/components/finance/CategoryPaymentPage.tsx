@@ -38,6 +38,8 @@ interface StudentRow {
   lastName: string;
   class: { id: number; name: string } | null;
   discountPct: number;
+  status: string;
+  inactiveDate: string | null;
   payment: Payment | null;        // aggregated (for table stats)
   installments: Payment[];        // raw (0, 1, or 2 records)
   timiInvest: { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number } | null;
@@ -186,18 +188,24 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   }, [fetchData]);
 
   const statusOrder = ["OVERDUE", "PARTIAL", "PENDING", "PAID"];
-  const sorted = [...students]
-    .filter(s => {
-      if (!statusFilter) return true;
-      if (statusFilter === "NONE") return !s.payment;
-      if (statusFilter === "WITH_PAYMENT") return !!s.payment && s.payment.paidAmount > 0;
-      return (s.payment?.status || "PENDING") === statusFilter;
-    })
-    .sort((a, b) => {
-      const ai = statusOrder.indexOf(a.payment?.status || "PENDING");
-      const bi = statusOrder.indexOf(b.payment?.status || "PENDING");
-      return ai - bi;
-    });
+  const activeStudents   = students.filter(s => s.status !== "INACTIVE");
+  const inactiveStudents = students.filter(s => s.status === "INACTIVE");
+
+  const sorted = [
+    ...[...activeStudents]
+      .filter(s => {
+        if (!statusFilter) return true;
+        if (statusFilter === "NONE") return !s.payment;
+        if (statusFilter === "WITH_PAYMENT") return !!s.payment && s.payment.paidAmount > 0;
+        return (s.payment?.status || "PENDING") === statusFilter;
+      })
+      .sort((a, b) => {
+        const ai = statusOrder.indexOf(a.payment?.status || "PENDING");
+        const bi = statusOrder.indexOf(b.payment?.status || "PENDING");
+        return ai - bi;
+      }),
+    ...inactiveStudents, // joaktivët gjithmonë në fund
+  ];
 
   const totalPaidVisible = sorted.reduce((sum, s) => sum + (s.payment?.paidAmount ?? 0), 0);
   const totalDebtVisible = sorted.reduce((sum, s) => {
@@ -206,18 +214,18 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
     return sum + s.payment.balance;
   }, 0);
 
-  // Mesatare e ponderuar: Σ(çmimi_i × nxënës_i) / total_nxënës
+  // Mesatare e ponderuar: vetëm nxënës AKTIV
   const weightedAvgData = (() => {
-    if (!students.length || !category) return null;
+    if (!activeStudents.length || !category) return null;
     const base = category.defaultAmount;
     const groups: Record<number, number> = {};
     let totalExpected = 0;
-    for (const s of students) {
+    for (const s of activeStudents) {
       const price = s.payment?.finalAmount ?? Math.round(base * (1 - (s.discountPct ?? 0) / 100));
       groups[price] = (groups[price] ?? 0) + 1;
       totalExpected += price;
     }
-    const avg = Math.round((totalExpected / students.length) * 100) / 100;
+    const avg = Math.round((totalExpected / activeStudents.length) * 100) / 100;
     return { avg, groups, totalExpected };
   })();
 
@@ -483,24 +491,54 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                       </tr>
                     ) : sorted.map((s, i) => {
                       const p = s.payment;
+                      const isInactive = s.status === "INACTIVE";
+                      const isFirstInactive = isInactive && (i === 0 || sorted[i - 1]?.status !== "INACTIVE");
                       const hasMonthly = s.installments.some(p => p.description?.startsWith("MUAJI_"));
                       const hasTwo = !hasMonthly && s.installments.length >= 2;
                       const k1 = hasTwo ? s.installments[0] : null;
                       const k2 = hasTwo ? s.installments[1] : null;
                       const statusKey = p?.status || "PENDING";
-                      const rowBg = statusKey === "OVERDUE" ? "bg-red-50/40 dark:bg-red-900/10" : "";
                       const basePrice = category?.defaultAmount ?? 0;
                       const expectedPrice = Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100));
                       const debt = p?.status === "PAID" ? 0 : p ? p.balance : expectedPrice;
 
+                      // Pro-rate për joaktivët
+                      const prorated = isInactive && s.inactiveDate && basePrice > 0 && year > 0
+                        ? calcProrated(basePrice, s.discountPct ?? 0, new Date(s.inactiveDate), year)
+                        : null;
+
+                      const rowBg = isInactive
+                        ? "bg-slate-50/80 dark:bg-slate-800/20 opacity-70"
+                        : statusKey === "OVERDUE" ? "bg-red-50/40 dark:bg-red-900/10" : "";
+
                       return (
+                        <>
+                        {isFirstInactive && inactiveStudents.length > 0 && (
+                          <tr key="inactive-separator">
+                            <td colSpan={11} className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800/60 border-t-2 border-slate-300 dark:border-slate-600">
+                              <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                                ✕ Joaktiv — {inactiveStudents.length} nxënës · të përjashtuar nga statistikat dhe mesatarja
+                              </span>
+                            </td>
+                          </tr>
+                        )}
                         <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${rowBg}`}>
                           <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                           <td className="table-cell">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Link href={`/students/${s.id}`} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
+                              <Link href={`/students/${s.id}`} className={`font-semibold hover:text-primary-600 dark:hover:text-primary-400 ${isInactive ? "text-slate-400 dark:text-slate-500 line-through" : "text-slate-900 dark:text-white"}`}>
                                 {s.firstName} {s.lastName}
                               </Link>
+                              {isInactive && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-semibold">
+                                  ✕ Joaktiv
+                                  {s.inactiveDate && (
+                                    <span className="text-slate-400">
+                                      {new Date(s.inactiveDate).toLocaleDateString("sq-AL")}
+                                    </span>
+                                  )}
+                                </span>
+                              )}
                               {s.timiInvest && (() => {
                                 const tiPrice = Math.max(0, s.timiInvest.regularPrice * (1 - s.timiInvest.discountPct / 100) - (s.timiInvest.manualDiscAmt || 0));
                                 return (
@@ -529,7 +567,19 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                               : <span className="text-slate-300">—</span>}
                           </td>
                           <td className="table-cell font-medium text-slate-800 dark:text-slate-200">
-                            {p ? (
+                            {isInactive && prorated ? (
+                              <div>
+                                <span className="font-semibold text-amber-600 dark:text-amber-400">
+                                  {formatCurrency(prorated.amount)}
+                                </span>
+                                <p className="text-[10px] text-slate-400">
+                                  {prorated.attended}/10 muaj
+                                  {prorated.effectivePrice !== prorated.amount && (
+                                    <span className="line-through ml-1">{formatCurrency(prorated.effectivePrice)}</span>
+                                  )}
+                                </p>
+                              </div>
+                            ) : p ? (
                               formatCurrency(p.finalAmount)
                             ) : basePrice > 0 ? (
                               <div>
@@ -658,6 +708,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                             </div>
                           </td>
                         </tr>
+                        </>
                       );
                     })}
                   </tbody>
@@ -852,6 +903,25 @@ function StatCard({ label, value, icon, bg, text }: {
 
 const SCHOOL_MONTHS_LBL = ["Shtator", "Tetor", "Nëntor", "Dhjetor", "Janar", "Shkurt", "Mars", "Prill", "Maj", "Qershor"];
 const SCHOOL_MONTH_CALS = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6];
+
+// Llogarit pro-rate: muajt e ndjekur deri në datën e joaktivizimit
+function calcProrated(baseAmount: number, discountPct: number, inactiveDate: Date, schoolYear: number) {
+  const effectivePrice = Math.round(baseAmount * (1 - discountPct / 100));
+  const SM = [
+    { m: 9, y: schoolYear }, { m: 10, y: schoolYear }, { m: 11, y: schoolYear }, { m: 12, y: schoolYear },
+    { m: 1, y: schoolYear + 1 }, { m: 2, y: schoolYear + 1 }, { m: 3, y: schoolYear + 1 },
+    { m: 4, y: schoolYear + 1 }, { m: 5, y: schoolYear + 1 }, { m: 6, y: schoolYear + 1 },
+  ];
+  const inM = inactiveDate.getMonth() + 1;
+  const inY = inactiveDate.getFullYear();
+  let attended = 0;
+  for (const sm of SM) {
+    if (sm.y > inY || (sm.y === inY && sm.m >= inM)) break;
+    attended++;
+  }
+  const amount = Math.round((attended / 10) * effectivePrice * 100) / 100;
+  return { attended, amount, effectivePrice };
+}
 
 /* ─── Payment Modal ──────────────────────────────────────── */
 interface ModalProps {

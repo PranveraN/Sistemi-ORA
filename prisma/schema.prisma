@@ -61,6 +61,7 @@ model Student {
   kontrata       String?   // Po, Nuk e ka kthy, Nuk ka
   status         String    @default("ACTIVE") // ACTIVE, INACTIVE
   enrollDate     DateTime  @default(now())
+  inactiveDate   DateTime?
   notes          String?
   payments       Payment[]
   invoices       Invoice[]

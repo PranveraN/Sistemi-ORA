@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const where: Record<string, unknown> = { status: "ACTIVE" };
+  const where: Record<string, unknown> = { status: { in: ["ACTIVE", "INACTIVE"] } };
   if (search) {
     where.OR = [
       { firstName: { contains: search } },
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
   const isNarrow = (month && month > 0) && (year && year > 0);
   const takeLimit = isNarrow ? 2 : 60;
 
-  const [students, allTiRows] = await Promise.all([
+  const [students, allTiRows, inactiveDates] = await Promise.all([
     prisma.student.findMany({
       where,
       include: {
@@ -106,6 +106,9 @@ export async function GET(req: NextRequest) {
     prisma.$queryRawUnsafe<{ id: number; studentId: number | null; firstName: string; lastName: string; regularPrice: number; discountPct: number; manualDiscAmt: number }[]>(
       `SELECT id, studentId, firstName, lastName, regularPrice, discountPct, manualDiscAmt FROM TimiInvestStudent WHERE active = 1`
     ),
+    prisma.$queryRawUnsafe<{ id: number; inactiveDate: string | null }[]>(
+      `SELECT id, inactiveDate FROM Student WHERE status = 'INACTIVE'`
+    ),
   ]);
 
   // Build TI lookup maps (by studentId and by name fallback)
@@ -120,39 +123,54 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const statuses = students.map(s => aggregateStatus(s.payments as PrismaPayment[]));
+  // Ndaj ACTIVE nga INACTIVE
+  const activeStudents   = students.filter(s => s.status === "ACTIVE");
+  const inactiveStudents = students.filter(s => s.status === "INACTIVE");
 
-  const totalRevenue = students.reduce(
+  const statuses = activeStudents.map(s => aggregateStatus(s.payments as PrismaPayment[]));
+
+  const totalRevenue = activeStudents.reduce(
     (sum, s) => sum + s.payments.reduce((ps, p) => ps + p.paidAmount, 0), 0
   );
-  const totalDebt = students.reduce((sum, s) => {
+  const totalDebt = activeStudents.reduce((sum, s) => {
     const agg = aggregatePayment(s.payments as PrismaPayment[]);
     if (agg) return sum + (agg.balance || 0);
-    // Nxënës pa asnjë pagesë — borxhi është çmimi i pritshëm
     const expectedPrice = Math.round(category.defaultAmount * (1 - (s.discountPct ?? 0) / 100));
     return sum + expectedPrice;
   }, 0);
 
-  // For installments display: return up to 2 (K1/K2); for aggregated view return all
+  // Mapa e inactiveDate nga raw SQL
+  const inactiveDateMap = new Map<number, string | null>();
+  for (const row of inactiveDates) {
+    inactiveDateMap.set(Number(row.id), row.inactiveDate ?? null);
+  }
+
+  const mapStudent = (s: typeof students[0]) => {
+    const tiDirect = tiByStudentId.get(s.id);
+    const tiName   = !tiDirect ? tiByName.get(`${s.firstName.trim().toLowerCase()}|${s.lastName.trim().toLowerCase()}`) : undefined;
+    return {
+      id:           s.id,
+      firstName:    s.firstName,
+      lastName:     s.lastName,
+      parentPhone:  s.parentPhone,
+      class:        s.class,
+      discountPct:  s.discountPct,
+      status:       s.status,
+      inactiveDate: inactiveDateMap.get(s.id) ?? null,
+      payment:      aggregatePayment(s.payments as PrismaPayment[]),
+      installments: s.payments,
+      timiInvest:   tiDirect ?? tiName ?? null,
+    };
+  };
+
   return NextResponse.json({
     category,
-    students: students.map((s) => {
-      const tiDirect = tiByStudentId.get(s.id);
-      const tiName   = !tiDirect ? tiByName.get(`${s.firstName.trim().toLowerCase()}|${s.lastName.trim().toLowerCase()}`) : undefined;
-      return {
-        id:           s.id,
-        firstName:    s.firstName,
-        lastName:     s.lastName,
-        parentPhone:  s.parentPhone,
-        class:        s.class,
-        discountPct:  s.discountPct,
-        payment:      aggregatePayment(s.payments as PrismaPayment[]),
-        installments: s.payments,
-        timiInvest:   tiDirect ?? tiName ?? null,
-      };
-    }),
+    students: [
+      ...activeStudents.map(mapStudent),
+      ...inactiveStudents.map(mapStudent),
+    ],
     stats: {
-      total:    students.length,
+      total:    activeStudents.length,
       paid:     statuses.filter(st => st === "PAID").length,
       partial:  statuses.filter(st => st === "PARTIAL").length,
       overdue:  statuses.filter(st => st === "OVERDUE").length,

@@ -77,6 +77,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     });
 
+    // inactiveDate via raw SQL (Prisma client nuk e njeh fushën e re pa generate)
+    if (body.status === "INACTIVE") {
+      await prisma.$executeRawUnsafe(
+        `UPDATE Student SET inactiveDate = datetime('now') WHERE id = ${parseInt(id)}`
+      );
+    } else if (body.status === "ACTIVE") {
+      await prisma.$executeRawUnsafe(
+        `UPDATE Student SET inactiveDate = NULL WHERE id = ${parseInt(id)}`
+      );
+    }
+
     const userId = parseInt((session?.user as { id?: string } | undefined)?.id ?? "0");
     if (userId > 0) {
       await prisma.auditLog.create({
@@ -140,6 +151,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       where: { id: studentId },
       data: { status: "INACTIVE" },
     });
+    await prisma.$executeRawUnsafe(
+      `UPDATE Student SET inactiveDate = datetime('now') WHERE id = ${studentId}`
+    );
   }
 
   return NextResponse.json({ success: true });
