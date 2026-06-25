@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
@@ -512,9 +512,9 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                         : statusKey === "OVERDUE" ? "bg-red-50/40 dark:bg-red-900/10" : "";
 
                       return (
-                        <>
+                        <React.Fragment key={s.id}>
                         {isFirstInactive && inactiveStudents.length > 0 && (
-                          <tr key="inactive-separator">
+                          <tr>
                             <td colSpan={11} className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800/60 border-t-2 border-slate-300 dark:border-slate-600">
                               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                                 ✕ Joaktiv — {inactiveStudents.length} nxënës · të përjashtuar nga statistikat dhe mesatarja
@@ -522,7 +522,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                             </td>
                           </tr>
                         )}
-                        <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${rowBg}`}>
+                        <tr className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${rowBg}`}>
                           <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                           <td className="table-cell">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -708,7 +708,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                             </div>
                           </td>
                         </tr>
-                        </>
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
