@@ -161,6 +161,19 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [calcAmount,       setCalcAmount]       = useState<number | undefined>();
   const [tab,          setTab]          = useState<Tab>("income");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [sortCol,  setSortCol]  = useState<string | null>(null);
+  const [sortDir,  setSortDir]  = useState<"asc" | "desc">("asc");
+  const [colKlasa,  setColKlasa]  = useState("");
+  const [colMetoda, setColMetoda] = useState("");
+
+  function toggleSort(col: string) {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  }
+  function SortIcon({ col }: { col: string }) {
+    if (sortCol !== col) return <span className="text-slate-300 ml-1 text-[10px]">⇅</span>;
+    return <span className="text-primary-500 ml-1 text-[10px]">{sortDir === "asc" ? "▲" : "▼"}</span>;
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -191,20 +204,57 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const activeStudents   = students.filter(s => s.status !== "INACTIVE");
   const inactiveStudents = students.filter(s => s.status === "INACTIVE");
 
+  // Vlerat unike për dropdown filtrat
+  const uniqueKlasa  = [...new Set(students.map(s => s.class?.name).filter(Boolean) as string[])].sort();
+  const uniqueMetoda = [...new Set(students.flatMap(s =>
+    s.installments.length ? s.installments.map(p => p.method).filter(Boolean) : [s.payment?.method].filter(Boolean)
+  ) as string[])].sort();
+
+  function applyColFilters(list: StudentRow[]) {
+    return list
+      .filter(s => !colKlasa  || s.class?.name === colKlasa)
+      .filter(s => !colMetoda || s.payment?.method === colMetoda ||
+        s.installments.some(p => p.method === colMetoda));
+  }
+
+  function applySort(list: StudentRow[]) {
+    if (!sortCol) return list;
+    return [...list].sort((a, b) => {
+      const base = category?.defaultAmount ?? 0;
+      const expA = Math.round(base * (1 - (a.discountPct ?? 0) / 100));
+      const expB = Math.round(base * (1 - (b.discountPct ?? 0) / 100));
+      let av = 0, bv = 0;
+      if (sortCol === "shuma")  { av = a.payment?.finalAmount ?? expA; bv = b.payment?.finalAmount ?? expB; }
+      if (sortCol === "paguar") { av = a.payment?.paidAmount  ?? 0;    bv = b.payment?.paidAmount  ?? 0; }
+      if (sortCol === "borxhi") { av = a.payment?.balance     ?? expA; bv = b.payment?.balance     ?? expB; }
+      if (sortCol === "data") {
+        av = new Date(a.payment?.paidDate || a.payment?.dueDate || 0).getTime();
+        bv = new Date(b.payment?.paidDate || b.payment?.dueDate || 0).getTime();
+      }
+      return sortDir === "asc" ? av - bv : bv - av;
+    });
+  }
+
+  const filteredActives = applyColFilters(
+    activeStudents.filter(s => {
+      if (!statusFilter) return true;
+      if (statusFilter === "NONE") return !s.payment;
+      if (statusFilter === "WITH_PAYMENT") return !!s.payment && s.payment.paidAmount > 0;
+      return (s.payment?.status || "PENDING") === statusFilter;
+    })
+  );
+  const sortedActives = applySort(
+    [...filteredActives].sort((a, b) => {
+      if (sortCol) return 0; // sort handled by applySort
+      const ai = statusOrder.indexOf(a.payment?.status || "PENDING");
+      const bi = statusOrder.indexOf(b.payment?.status || "PENDING");
+      return ai - bi;
+    })
+  );
+
   const sorted = [
-    ...[...activeStudents]
-      .filter(s => {
-        if (!statusFilter) return true;
-        if (statusFilter === "NONE") return !s.payment;
-        if (statusFilter === "WITH_PAYMENT") return !!s.payment && s.payment.paidAmount > 0;
-        return (s.payment?.status || "PENDING") === statusFilter;
-      })
-      .sort((a, b) => {
-        const ai = statusOrder.indexOf(a.payment?.status || "PENDING");
-        const bi = statusOrder.indexOf(b.payment?.status || "PENDING");
-        return ai - bi;
-      }),
-    ...inactiveStudents, // joaktivët gjithmonë në fund
+    ...sortedActives,
+    ...applyColFilters(inactiveStudents), // joaktivët gjithmonë në fund
   ];
 
   const totalPaidVisible = sorted.reduce((sum, s) => sum + (s.payment?.paidAmount ?? 0), 0);
@@ -429,7 +479,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                   className="form-input pl-9"
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {statusFilter && (
                   <button onClick={() => setStatusFilter("")}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100 transition-colors">
@@ -437,8 +487,28 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                     {statusFilter === "PAID" ? "Paguar" : statusFilter === "PARTIAL" ? "Pjesërisht" : statusFilter === "OVERDUE" ? "Vonuar" : statusFilter === "WITH_PAYMENT" ? "Me pagesë" : "Filtri"}
                   </button>
                 )}
+                {colKlasa && (
+                  <button onClick={() => setColKlasa("")}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 transition-colors">
+                    <X className="w-3 h-3" />Klasa: {colKlasa}
+                  </button>
+                )}
+                {colMetoda && (
+                  <button onClick={() => setColMetoda("")}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 transition-colors">
+                    <X className="w-3 h-3" />
+                    {colMetoda === "CASH" ? "Cash" : colMetoda === "BANK" ? "Bankë" : colMetoda === "CARD" ? "Kartelë" : colMetoda}
+                  </button>
+                )}
+                {sortCol && (
+                  <button onClick={() => { setSortCol(null); setSortDir("asc"); }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-colors">
+                    <X className="w-3 h-3" />
+                    Sort: {sortCol} {sortDir === "asc" ? "▲" : "▼"}
+                  </button>
+                )}
                 <span className="text-sm text-slate-400">
-                  {sorted.length}{statusFilter ? ` / ${students.length}` : ""} nxënës
+                  {sorted.length}{(statusFilter || colKlasa || colMetoda) ? ` / ${students.length}` : ""} nxënës
                 </span>
               </div>
             </div>
@@ -463,14 +533,67 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                 <table className="w-full">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
-                      <th className="table-header">#</th>
+                      <th className="table-header w-8">#</th>
                       <th className="table-header">Nxënësi</th>
-                      <th className="table-header">Klasa</th>
-                      <th className="table-header">Shuma</th>
-                      <th className="table-header">Paguar</th>
-                      <th className="table-header">Borxhi</th>
-                      <th className="table-header">Metoda</th>
-                      <th className="table-header">Data / Afati</th>
+
+                      {/* KLASA — dropdown filter */}
+                      <th className="table-header p-0">
+                        <div className="flex items-center gap-1 px-3 py-2">
+                          <span>Klasa</span>
+                          <select
+                            value={colKlasa}
+                            onChange={e => setColKlasa(e.target.value)}
+                            className="ml-1 text-[10px] border border-slate-200 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
+                            title="Filtro sipas klasës"
+                          >
+                            <option value="">Të gjitha</option>
+                            {uniqueKlasa.map(k => <option key={k} value={k}>{k}</option>)}
+                          </select>
+                          {colKlasa && <button onClick={() => setColKlasa("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
+                        </div>
+                      </th>
+
+                      {/* SHUMA — sortable */}
+                      <th className="table-header cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort("shuma")}>
+                        <div className="flex items-center gap-1">Shuma <SortIcon col="shuma" /></div>
+                      </th>
+
+                      {/* PAGUAR — sortable */}
+                      <th className="table-header cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort("paguar")}>
+                        <div className="flex items-center gap-1">Paguar <SortIcon col="paguar" /></div>
+                      </th>
+
+                      {/* BORXHI — sortable */}
+                      <th className="table-header cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort("borxhi")}>
+                        <div className="flex items-center gap-1">Borxhi <SortIcon col="borxhi" /></div>
+                      </th>
+
+                      {/* METODA — dropdown filter */}
+                      <th className="table-header p-0">
+                        <div className="flex items-center gap-1 px-3 py-2">
+                          <span>Metoda</span>
+                          <select
+                            value={colMetoda}
+                            onChange={e => setColMetoda(e.target.value)}
+                            className="ml-1 text-[10px] border border-slate-200 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
+                            title="Filtro sipas metodës"
+                          >
+                            <option value="">Të gjitha</option>
+                            {uniqueMetoda.map(m => (
+                              <option key={m} value={m}>
+                                {m === "CASH" ? "Cash" : m === "BANK" ? "Bankë" : m === "CARD" ? "Kartelë" : m === "ONLINE" ? "Online" : m}
+                              </option>
+                            ))}
+                          </select>
+                          {colMetoda && <button onClick={() => setColMetoda("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
+                        </div>
+                      </th>
+
+                      {/* DATA — sortable */}
+                      <th className="table-header cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort("data")}>
+                        <div className="flex items-center gap-1">Data / Afati <SortIcon col="data" /></div>
+                      </th>
+
                       <th className="table-header">Statusi</th>
                       <th className="table-header text-right">Veprime</th>
                       <th className="table-header w-10"></th>
