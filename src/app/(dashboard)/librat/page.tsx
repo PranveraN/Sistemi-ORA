@@ -41,89 +41,124 @@ function methodLabel(m: string) {
 }
 
 /* ── Receipt print ──────────────────────────────────────── */
-function printReceipt(sale: Sale) {
-  const origin = window.location.origin;
+function buildBookReceiptHTML(sale: Sale, copy: "prind" | "shkolla", origin: string): string {
   const dateStr = new Date(sale.saleDate).toLocaleDateString("sq-AL");
+  const recNum  = sale.receiptNumber || `#${sale.id}`;
   const itemRows = (sale.items || []).map(it => `
     <tr>
       <td>${it.productName}</td>
       <td class="center">${it.quantity}</td>
-      <td class="right">${fmt(it.sellPrice)} €</td>
-      <td class="right bold">${fmt(it.total)} €</td>
+      <td class="right">${fmt(it.sellPrice)} &euro;</td>
+      <td class="right bold">${fmt(it.total)} &euro;</td>
     </tr>`).join("");
 
-  const html = `<!DOCTYPE html><html lang="sq"><head>
-<meta charset="UTF-8"/><title>Fletëpagesë ${sale.receiptNumber||""}</title>
+  return `
+<div class="receipt">
+  <div class="receipt-header">
+    <img src="${origin}/logo.png" class="school-logo-img" alt="Akademia Ora" onerror="this.style.display='none'"/>
+    <div class="school-info">
+      <div class="school-name">Akademia Ora</div>
+      <div class="school-sub">Shkollë Private &bull; Prishtinë</div>
+      <div class="school-sub">+383 46 505 055</div>
+    </div>
+    <div class="receipt-meta">
+      <div class="receipt-title">FLETËPAGESË</div>
+      <div class="receipt-num">${recNum}</div>
+      <div class="receipt-date">${dateStr}</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="info-grid">
+    <div class="info-row"><span class="lbl">Nxënësi</span><span class="val bold">${sale.studentName}</span></div>
+    <div class="info-row"><span class="lbl">Klasa</span><span class="val">${sale.studentClass || "—"}</span></div>
+    <div class="info-row"><span class="lbl">Kategoria</span><span class="val">Librat e Anglishtes</span></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <table>
+    <thead><tr><th>Libri</th><th class="center">Sasia</th><th class="right">Çmimi</th><th class="right">Totali</th></tr></thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+
+  <div class="amounts-box">
+    <div class="amount-row"><span>Shuma totale</span><span>&euro; ${fmt(sale.totalAmount)}</span></div>
+    <div class="amount-row current"><span>Paguar</span><span>&euro; ${fmt(sale.paidAmount)}</span></div>
+    <div class="divider-thin"></div>
+    <div class="amount-row ${sale.balance > 0 ? "debt" : "paid"}">
+      <span>Borxhi i mbetur</span>
+      <span>${sale.balance > 0 ? `&euro; ${fmt(sale.balance)}` : "&#10003; Pa borxh"}</span>
+    </div>
+  </div>
+
+  <div class="footer-grid">
+    <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">Nënshkrimi i nxënësit / prindit</div></div>
+    <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">Vula dhe nënshkrimi i shkollës</div></div>
+  </div>
+
+  <div class="copy-label">${copy === "prind" ? "Kopja e Prindit / Nxënësit" : "Kopja e Shkollës — Arkiv"}</div>
+</div>`;
+}
+
+function printReceipt(sale: Sale) {
+  const origin = window.location.origin;
+  const html1  = buildBookReceiptHTML(sale, "prind",   origin);
+  const html2  = buildBookReceiptHTML(sale, "shkolla", origin);
+
+  const w = window.open("", "_blank", "width=820,height=1200");
+  if (!w) return;
+
+  w.document.write(`<!DOCTYPE html><html lang="sq"><head>
+<meta charset="UTF-8"/>
+<title>Fletëpagesë ${sale.receiptNumber || ""}</title>
 <style>
-@page{size:A5 portrait;margin:10mm}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,sans-serif;font-size:11px;color:#000}
-.header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.logo{height:36px;width:auto;object-fit:contain}
-.school-name{font-size:14px;font-weight:800;color:#1e3a8a}
-.school-sub{font-size:8px;color:#64748b}
-.receipt-meta{margin-left:auto;text-align:right}
-.receipt-title{font-size:13px;font-weight:800;color:#1e3a8a;letter-spacing:.05em}
-.receipt-num{font-size:9px;font-family:monospace;color:#475569}
-hr{border:none;border-top:1.5px solid #e2e8f0;margin:6px 0}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 16px;margin:7px 0}
-.info-row{display:flex;gap:4px;font-size:9.5px}
-.lbl{color:#64748b;min-width:60px}
-.val{font-weight:600}
-table{width:100%;border-collapse:collapse;margin:7px 0;font-size:10px}
-thead tr{background:#1e3a8a;color:#fff}
-th{padding:4px 6px;font-weight:600;text-align:left}
-td{padding:3px 6px;border-bottom:1px solid #e2e8f0}
-.center{text-align:center}.right{text-align:right}.bold{font-weight:700}
-.totals{margin:6px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:6px 10px}
-.total-row{display:flex;justify-content:space-between;font-size:10px;padding:2px 0}
-.total-row.main{font-size:13px;font-weight:800;color:#1e3a8a;border-top:1px solid #e2e8f0;padding-top:5px;margin-top:3px}
-.total-row.debt{color:#dc2626;font-weight:700}
-.total-row.paid-row{color:#059669;font-weight:700}
-.footer{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.sig-line{border-top:1px solid #94a3b8;margin-top:14px;margin-bottom:3px}
-.sig-lbl{font-size:7.5px;color:#64748b;text-align:center}
-.category-badge{display:inline-block;background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:3px;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+@page { size: A4 portrait; margin: 8mm; }
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; font-family:Arial,Helvetica,sans-serif; background:#fff; color:#000; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.page { width:100%; height:100%; display:flex; flex-direction:column; }
+.receipt { flex:1 1 0; min-height:0; padding:7mm 13mm 5mm; overflow:hidden; }
+.cut-line { flex:0 0 auto; border:none; border-top:1px dashed #888; margin:3mm 13mm; position:relative; text-align:center; }
+.cut-line::after { content:"✂"; position:absolute; top:-9px; left:50%; transform:translateX(-50%); background:#fff; padding:0 5px; font-size:13px; color:#aaa; }
+.receipt-header { display:flex; align-items:flex-start; gap:10px; margin-bottom:7px; }
+.school-logo-img { height:40px; width:auto; object-fit:contain; flex-shrink:0; }
+.school-info { flex:1; }
+.school-name { font-size:14px; font-weight:800; color:#1e3a8a; }
+.school-sub { font-size:8.5px; color:#64748b; margin-top:1px; }
+.receipt-meta { text-align:right; }
+.receipt-title { font-size:12px; font-weight:800; letter-spacing:.06em; color:#1e3a8a; text-transform:uppercase; }
+.receipt-num { font-size:10px; font-family:monospace; color:#475569; margin-top:2px; }
+.receipt-date { font-size:8.5px; color:#94a3b8; margin-top:1px; }
+.divider { border:none; border-top:2px solid #e2e8f0; margin:5px 0; }
+.divider-thin { border:none; border-top:1px solid #e2e8f0; margin:3px 0; }
+.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:2px 14px; margin-bottom:7px; }
+.info-row { display:flex; gap:5px; align-items:baseline; font-size:9.5px; }
+.lbl { color:#64748b; white-space:nowrap; min-width:70px; }
+.val { font-weight:600; color:#0f172a; }
+.val.bold { font-weight:700; }
+table { width:100%; border-collapse:collapse; margin:6px 0; font-size:10px; }
+thead tr { background:#1e3a8a; color:#fff; }
+th { padding:4px 6px; font-weight:600; text-align:left; }
+td { padding:3px 6px; border-bottom:1px solid #e2e8f0; }
+.center { text-align:center; } .right { text-align:right; } .bold { font-weight:700; }
+.amounts-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:7px 10px; margin:6px 0; }
+.amount-row { display:flex; justify-content:space-between; font-size:10px; padding:2px 0; }
+.amount-row.current { font-weight:700; color:#1d4ed8; font-size:12px; border-top:1px solid #dbeafe; padding-top:5px; margin-top:2px; }
+.amount-row.debt { font-weight:700; color:#dc2626; }
+.amount-row.paid { font-weight:700; color:#059669; }
+.footer-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:7px; }
+.sig-line { border-top:1px solid #94a3b8; margin-bottom:3px; margin-top:16px; }
+.sig-lbl { font-size:7.5px; color:#64748b; text-align:center; }
+.copy-label { display:inline-block; margin-top:6px; font-size:7.5px; font-weight:700; color:#fff; background:#475569; padding:2px 7px; border-radius:3px; letter-spacing:.06em; text-transform:uppercase; }
 </style></head><body>
-<div class="header">
-  <img src="${origin}/logo.png" class="logo" alt="Logo" onerror="this.style.display='none'"/>
-  <div>
-    <div class="school-name">Akademia Ora</div>
-    <div class="school-sub">Shkollë Private &bull; +383 46 505 055</div>
-  </div>
-  <div class="receipt-meta">
-    <div class="receipt-title">FLETËPAGESË</div>
-    <div class="receipt-num">${sale.receiptNumber||`#${sale.id}`}</div>
-    <div class="receipt-num">${dateStr}</div>
-  </div>
-</div>
-<hr/>
-<div class="info-grid">
-  <div class="info-row"><span class="lbl">Nxënësi</span><span class="val">${sale.studentName}</span></div>
-  <div class="info-row"><span class="lbl">Klasa</span><span class="val">${sale.studentClass||"—"}</span></div>
-</div>
-<div style="margin-bottom:5px"><span class="category-badge">Librat e Anglishtes</span></div>
-<hr/>
-<table>
-  <thead><tr><th>Libri</th><th class="center">Sasia</th><th class="right">Çmimi</th><th class="right">Totali</th></tr></thead>
-  <tbody>${itemRows}</tbody>
-</table>
-<div class="totals">
-  <div class="total-row"><span>Shuma totale</span><span>${fmt(sale.totalAmount)} €</span></div>
-  <div class="total-row paid-row"><span>Paguar</span><span>${fmt(sale.paidAmount)} €</span></div>
-  ${sale.balance > 0 ? `<div class="total-row debt"><span>Borxhi i mbetur</span><span>${fmt(sale.balance)} €</span></div>` : ""}
-  <div class="total-row main"><span>TOTALI</span><span>${fmt(sale.totalAmount)} €</span></div>
-</div>
-<div class="footer">
-  <div><div class="sig-line"></div><div class="sig-lbl">Nënshkrimi i nxënësit / prindit</div></div>
-  <div><div class="sig-line"></div><div class="sig-lbl">Vula dhe nënshkrimi i shkollës</div></div>
+<div class="page">
+  ${html1}
+  <div class="cut-line"></div>
+  ${html2}
 </div>
 <script>window.onload=()=>window.print()</script>
-</body></html>`;
-
-  const w = window.open("", "_blank", "width=700,height=900");
-  if (!w) return;
-  w.document.write(html);
+</body></html>`);
   w.document.close();
 }
 
