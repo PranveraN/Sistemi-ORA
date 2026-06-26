@@ -31,6 +31,7 @@ const navSections = [
       { href: "/shkollimi", icon: GraduationCap,   label: "Shkollimi",  roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/ushqimi",   icon: UtensilsCrossed, label: "Ushqimi",    roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/uniforma",  icon: Shirt,           label: "Uniforma",   roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/librat",    icon: BookOpen,        label: "Librat Angl.", roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/eshkollori",icon: BookMarked,      label: "Eshkollori", roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/invoices",  icon: FileText,        label: "Faturat",    roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/shpenzime", icon: Wallet,          label: "Shpenzimet", roles: ["ADMIN", "FINANCE"] as Role[] },
