@@ -164,7 +164,7 @@ export default function PaymentReceiptModal({ paymentId, onClose }: Props) {
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body { height:100%; font-family: Arial, Helvetica, sans-serif; background:#fff; color:#000; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 .page { width:100%; height:100%; display:flex; flex-direction:column; }
-.receipt { flex:1 1 0; min-height:0; padding:7mm 13mm 5mm; overflow:hidden; }
+.receipt { flex:1 1 0; min-height:0; padding:11mm 13mm 9mm; overflow:hidden; }
 .cut-line {
   flex:0 0 auto; border:none; border-top:1px dashed #888;
   margin:3mm 13mm; position:relative; text-align:center;
