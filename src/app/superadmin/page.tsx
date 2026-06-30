@@ -1,8 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 
 interface OrgUser {
   id: number;
@@ -23,8 +21,6 @@ interface Org {
 }
 
 export default function SuperAdminPage() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -34,23 +30,16 @@ export default function SuperAdminPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const role = (session?.user as { role?: string })?.role;
-
-  useEffect(() => {
-    if (status === "unauthenticated") { router.push("/login"); return; }
-    if (status === "authenticated" && role !== "SUPERADMIN") { router.push("/dashboard"); return; }
-    if (status === "authenticated" && role === "SUPERADMIN") fetchOrgs();
-  }, [status, role]);
+  useEffect(() => { fetchOrgs(); }, []);
 
   async function fetchOrgs() {
     setLoading(true);
     const res = await fetch("/api/organizations");
-    const data = await res.json();
-    setOrgs(data);
+    if (res.ok) setOrgs(await res.json());
     setLoading(false);
   }
 
-  async function createOrg(e: React.FormEvent) {
+  async function createOrg(e: { preventDefault: () => void }) {
     e.preventDefault();
     setSaving(true);
     setMsg("");
@@ -71,8 +60,8 @@ export default function SuperAdminPage() {
     setSaving(false);
   }
 
-  if (status === "loading" || loading) {
-    return <div className="flex items-center justify-center h-screen bg-gray-900 text-white">Duke ngarkuar...</div>;
+  if (loading) {
+    return <div className="flex items-center justify-center h-screen bg-gray-900 text-white text-xl">Duke ngarkuar...</div>;
   }
 
   return (
@@ -80,12 +69,12 @@ export default function SuperAdminPage() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-white">Super Admin</h1>
+            <h1 className="text-3xl font-bold">Super Admin</h1>
             <p className="text-gray-400 mt-1">Menaxho të gjitha institucionet</p>
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition"
+            className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-medium transition"
           >
             + Institucion i Ri
           </button>
@@ -112,7 +101,7 @@ export default function SuperAdminPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Slug (URL)</label>
+                <label className="block text-sm text-gray-400 mb-1">Slug</label>
                 <input
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
                   placeholder="shkolla-abc"
@@ -165,18 +154,12 @@ export default function SuperAdminPage() {
                 </select>
               </div>
               <div className="col-span-2 flex gap-3 mt-2">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition disabled:opacity-50"
-                >
+                <button type="submit" disabled={saving}
+                  className="bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg font-medium transition disabled:opacity-50">
                   {saving ? "Duke krijuar..." : "Krijo Institucionin"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="bg-gray-600 hover:bg-gray-500 text-white px-6 py-2 rounded-lg font-medium transition"
-                >
+                <button type="button" onClick={() => setShowForm(false)}
+                  className="bg-gray-600 hover:bg-gray-500 px-6 py-2 rounded-lg font-medium transition">
                   Anulo
                 </button>
               </div>
@@ -197,8 +180,7 @@ export default function SuperAdminPage() {
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                     org.plan === "pro" ? "bg-purple-900 text-purple-300" :
                     org.plan === "basic" ? "bg-blue-900 text-blue-300" :
-                    "bg-yellow-900 text-yellow-300"
-                  }`}>
+                    "bg-yellow-900 text-yellow-300"}`}>
                     {org.plan.toUpperCase()}
                   </span>
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${org.active ? "bg-green-900 text-green-300" : "bg-red-900 text-red-300"}`}>
@@ -212,8 +194,8 @@ export default function SuperAdminPage() {
                   {org.users.map(u => (
                     <div key={u.id} className="bg-gray-700 rounded-lg px-3 py-1 text-sm">
                       <span className="text-white">{u.name}</span>
-                      <span className="text-gray-400 ml-2">({u.role})</span>
-                      <span className="text-gray-500 ml-2">— {u.email}</span>
+                      <span className="text-gray-400 ml-1">({u.role})</span>
+                      <span className="text-gray-500 ml-1">— {u.email}</span>
                     </div>
                   ))}
                 </div>
