@@ -4,8 +4,6 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  // Required when running behind a reverse proxy (nginx) / Cloudflare in
-  // production, so NextAuth trusts the forwarded Host/X-Forwarded-Proto headers.
   trustHost: true,
   session: { strategy: "jwt" },
   pages: {
@@ -39,6 +37,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           name: user.name,
           role: user.role,
+          organizationId: user.organizationId,
         };
       },
     }),
@@ -46,15 +45,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as { role?: string }).role;
+        token.role = (user as { role?: string; organizationId?: number }).role;
         token.id = user.id;
+        token.organizationId = (user as { role?: string; organizationId?: number }).organizationId;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as { role?: string; id?: string }).role = token.role as string;
-        (session.user as { role?: string; id?: string }).id = token.id as string;
+        (session.user as { role?: string; id?: string; organizationId?: number }).role = token.role as string;
+        (session.user as { role?: string; id?: string; organizationId?: number }).id = token.id as string;
+        (session.user as { role?: string; id?: string; organizationId?: number }).organizationId = token.organizationId as number;
       }
       return session;
     },

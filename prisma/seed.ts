@@ -15,6 +15,28 @@ async function main() {
   await prisma.paymentCategory.deleteMany();
   await prisma.class.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.organization.deleteMany();
+
+  // Krijo organizatën demo
+  const org = await prisma.organization.create({
+    data: {
+      id: 1,
+      name: "Akademia Ora",
+      slug: "akademia-ora",
+      plan: "pro",
+    },
+  });
+
+  // Super Admin (menaxhon të gjitha institucionet)
+  await prisma.user.create({
+    data: {
+      email: "superadmin@sistemi-ora.com",
+      name: "Super Admin",
+      password: await bcrypt.hash("superadmin123", 10),
+      role: "SUPERADMIN",
+      organizationId: org.id,
+    },
+  });
 
   // Users
   const admin = await prisma.user.create({
@@ -23,6 +45,7 @@ async function main() {
       name: "Admin Sistemi",
       password: await bcrypt.hash("admin123", 10),
       role: "ADMIN",
+      organizationId: org.id,
     },
   });
 
@@ -32,6 +55,7 @@ async function main() {
       name: "Financiere Ora",
       password: await bcrypt.hash("finance123", 10),
       role: "FINANCE",
+      organizationId: org.id,
     },
   });
 
@@ -41,6 +65,7 @@ async function main() {
       name: "Sekretaria Ora",
       password: await bcrypt.hash("secret123", 10),
       role: "SECRETARY",
+      organizationId: org.id,
     },
   });
 
