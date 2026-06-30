@@ -6,7 +6,7 @@
     "dev": "next dev",
     "generate": "prisma generate",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p ${PORT:-3000}",
     "lint": "next lint",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
