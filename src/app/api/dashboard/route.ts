@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
   const now = new Date();
   const thisYear  = now.getFullYear();
@@ -30,27 +31,27 @@ export async function GET() {
     allMonthlyPayments,
     allEnrollments,
   ] = await Promise.all([
-    prisma.student.count(),
-    prisma.student.count({ where: { status: "ACTIVE" } }),
+    prisma.student.count({ where: { organizationId: orgId } }),
+    prisma.student.count({ where: { organizationId: orgId, status: "ACTIVE" } }),
 
     prisma.payment.groupBy({
       by: ["studentId"],
-      where: { balance: { gt: 0 }, status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } },
+      where: { organizationId: orgId, balance: { gt: 0 }, status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } },
       _count: true,
     }),
 
-    // Revenue this month
     prisma.payment.aggregate({
       where: {
+        organizationId: orgId,
         paidDate: { gte: firstDayThisMonth, lte: lastDayThisMonth },
         status: { in: ["PAID", "PARTIAL"] },
       },
       _sum: { paidAmount: true },
     }),
 
-    // Revenue previous month
     prisma.payment.aggregate({
       where: {
+        organizationId: orgId,
         paidDate: { gte: firstDayPrevMonth, lte: lastDayPrevMonth },
         status: { in: ["PAID", "PARTIAL"] },
       },
@@ -58,12 +59,12 @@ export async function GET() {
     }),
 
     prisma.payment.aggregate({
-      where: { status: "PAID" },
+      where: { organizationId: orgId, status: "PAID" },
       _sum: { paidAmount: true },
     }),
 
     prisma.payment.findMany({
-      where: { paidDate: { not: null } },
+      where: { organizationId: orgId, paidDate: { not: null } },
       orderBy: { paidDate: "desc" },
       take: 8,
       include: {
@@ -73,42 +74,39 @@ export async function GET() {
     }),
 
     prisma.payment.aggregate({
-      where: { status: "OVERDUE" },
+      where: { organizationId: orgId, status: "OVERDUE" },
       _sum: { balance: true },
       _count: true,
     }),
 
-    // New students enrolled this month
     prisma.student.count({
-      where: { enrollDate: { gte: firstDayThisMonth, lte: lastDayThisMonth } },
+      where: { organizationId: orgId, enrollDate: { gte: firstDayThisMonth, lte: lastDayThisMonth } },
     }),
 
-    // Payments expiring in next 7 days
     prisma.payment.count({
       where: {
+        organizationId: orgId,
         dueDate: { gte: now, lte: weekEnd },
         status: { in: ["PENDING", "PARTIAL"] },
         balance: { gt: 0 },
       },
     }),
 
-    // Të gjitha pagesat e 6 muajve të fundit — 1 query në vend të 6
     prisma.payment.findMany({
       where: {
+        organizationId: orgId,
         paidDate: { gte: new Date(thisYear, thisMonth - 5, 1) },
         status: { in: ["PAID", "PARTIAL"] },
       },
       select: { paidDate: true, paidAmount: true },
     }),
 
-    // Të gjithë nxënësit e regjistruar në 6 muajt e fundit — 1 query në vend të 6
     prisma.student.findMany({
-      where: { enrollDate: { gte: new Date(thisYear, thisMonth - 5, 1) } },
+      where: { organizationId: orgId, enrollDate: { gte: new Date(thisYear, thisMonth - 5, 1) } },
       select: { enrollDate: true },
     }),
   ]);
 
-  // Ndërtoj chart data duke grupuar 2 query-t në JavaScript (ishte 12 query)
   const months = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(thisYear, thisMonth - (5 - i), 1);
     return { date: d, key: `${d.getFullYear()}-${d.getMonth()}` };
@@ -133,7 +131,6 @@ export async function GET() {
     enrolled: enrollByMonth.get(key)  ?? 0,
   }));
 
-  // Revenue change percentage
   const thisMonthRev = monthlyPaid._sum.paidAmount || 0;
   const prevMonthRev = prevMonthPaid._sum.paidAmount || 0;
   const revenueChangePct = prevMonthRev > 0

@@ -73,29 +73,29 @@ async function main() {
 
   // Payment Categories
   const catShkollimi = await prisma.paymentCategory.create({
-    data: { name: "Shkollimi", type: "monthly", description: "Pagesa mujore e shkollimit" },
+    data: { name: "Shkollimi", type: "monthly", description: "Pagesa mujore e shkollimit", organizationId: org.id },
   });
   const catUshqimi = await prisma.paymentCategory.create({
-    data: { name: "Ushqimi", type: "monthly", description: "Menuja ditore" },
+    data: { name: "Ushqimi", type: "monthly", description: "Menuja ditore", organizationId: org.id },
   });
   await prisma.paymentCategory.create({
-    data: { name: "Uniforma", type: "one-time", description: "Uniforma shkollore" },
+    data: { name: "Uniforma", type: "one-time", description: "Uniforma shkollore", organizationId: org.id },
   });
   await prisma.paymentCategory.create({
-    data: { name: "Librat & Shkollorja", type: "annual", description: "Materialet shkollore" },
+    data: { name: "Librat & Shkollorja", type: "annual", description: "Materialet shkollore", organizationId: org.id },
   });
   await prisma.paymentCategory.create({
-    data: { name: "Aktivitete Shtesë", type: "one-time", description: "Ekskursione, ngjarje" },
+    data: { name: "Aktivitete Shtesë", type: "one-time", description: "Ekskursione, ngjarje", organizationId: org.id },
   });
 
   console.log("✅ Kategoritë u krijuan");
 
   // Classes — ruaj ID-të reale
-  const cls1 = await prisma.class.create({ data: { name: "1A", level: "Klasa 1", teacher: "Msc. Ardita Berisha" } });
-  const cls2 = await prisma.class.create({ data: { name: "2A", level: "Klasa 2", teacher: "Msc. Besnik Hoxha" } });
-  const cls3 = await prisma.class.create({ data: { name: "3A", level: "Klasa 3", teacher: "Msc. Fatmire Krasniqi" } });
-  const cls4 = await prisma.class.create({ data: { name: "4A", level: "Klasa 4", teacher: "Msc. Gentian Murati" } });
-  const cls5 = await prisma.class.create({ data: { name: "5A", level: "Klasa 5", teacher: "Msc. Hana Ahmeti" } });
+  const cls1 = await prisma.class.create({ data: { name: "1A", level: "Klasa 1", teacher: "Msc. Ardita Berisha", organizationId: org.id } });
+  const cls2 = await prisma.class.create({ data: { name: "2A", level: "Klasa 2", teacher: "Msc. Besnik Hoxha", organizationId: org.id } });
+  const cls3 = await prisma.class.create({ data: { name: "3A", level: "Klasa 3", teacher: "Msc. Fatmire Krasniqi", organizationId: org.id } });
+  const cls4 = await prisma.class.create({ data: { name: "4A", level: "Klasa 4", teacher: "Msc. Gentian Murati", organizationId: org.id } });
+  const cls5 = await prisma.class.create({ data: { name: "5A", level: "Klasa 5", teacher: "Msc. Hana Ahmeti", organizationId: org.id } });
 
   console.log("✅ Klasat u krijuan");
 
@@ -130,6 +130,7 @@ async function main() {
         guardian: s.parentName,
         status: "ACTIVE",
         enrollDate: new Date("2024-09-01"),
+        organizationId: org.id,
       },
     });
     students.push(student);
@@ -159,6 +160,7 @@ async function main() {
         data: {
           studentId: student.id,
           categoryId: catShkollimi.id,
+          organizationId: org.id,
           amount: 150,
           discount: i === 2 ? 15 : 0,
           discountType: i === 2 ? "percentage" : null,
@@ -183,6 +185,7 @@ async function main() {
         data: {
           studentId: student.id,
           categoryId: catUshqimi.id,
+          organizationId: org.id,
           amount: 60,
           discount: 0,
           discountType: null,
@@ -210,6 +213,7 @@ async function main() {
       number: `FAT-${currentYear}-0001`,
       type: "INVOICE",
       studentId: students[0].id,
+      organizationId: org.id,
       subtotal: 210,
       vatRate: 0,
       vatAmount: 0,

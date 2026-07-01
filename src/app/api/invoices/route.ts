@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
   const { searchParams } = new URL(req.url);
   const studentId = searchParams.get("studentId") || "";
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "20");
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { organizationId: orgId };
   if (studentId) where.studentId = parseInt(studentId);
   if (type) where.type = type;
   if (status) where.status = status;
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
   try {
     const body = await req.json();
@@ -50,7 +52,7 @@ export async function POST(req: NextRequest) {
     const prefix = body.type === "INVOICE" ? "FAT" : body.type === "PROFORMA" ? "PRO" : "OFR";
     const year = new Date().getFullYear();
     const lastInvoice = await prisma.invoice.findFirst({
-      where: { number: { startsWith: `${prefix}-${year}-` } },
+      where: { number: { startsWith: `${prefix}-${year}-` }, organizationId: orgId },
       orderBy: { number: "desc" },
     });
     const lastSeq = lastInvoice
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
         number,
         type: body.type,
         studentId: parseInt(body.studentId),
+        organizationId: orgId,
         subtotal,
         vatRate,
         vatAmount,

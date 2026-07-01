@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-async function generateReceiptNumber(): Promise<string> {
+async function generateReceiptNumber(orgId: number): Promise<string> {
   const year = new Date().getFullYear();
   const last = await prisma.payment.findFirst({
-    where: { receiptNumber: { startsWith: `DEP-${year}-` } },
+    where: { organizationId: orgId, receiptNumber: { startsWith: `DEP-${year}-` } },
     orderBy: { receiptNumber: "desc" },
   });
   const lastSeq = last ? parseInt(last.receiptNumber!.split("-").pop() || "0") : 0;
@@ -15,6 +15,7 @@ async function generateReceiptNumber(): Promise<string> {
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "20");
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { organizationId: orgId };
   if (status) where.status = status;
   if (studentId) where.studentId = parseInt(studentId);
   if (month) where.month = parseInt(month);
@@ -59,6 +60,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
   const body = await req.json();
 
@@ -81,12 +83,13 @@ export async function POST(req: NextRequest) {
   else if (new Date(body.dueDate) < new Date()) status = "OVERDUE";
 
   try {
-    const receiptNumber = paidAmount > 0 ? await generateReceiptNumber() : undefined;
+    const receiptNumber = paidAmount > 0 ? await generateReceiptNumber(orgId) : undefined;
 
     const payment = await prisma.payment.create({
       data: {
         studentId: parseInt(body.studentId),
         categoryId: parseInt(body.categoryId),
+        organizationId: orgId,
         amount,
         discount,
         discountType: body.discountType || null,

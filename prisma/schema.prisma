@@ -8,14 +8,19 @@ datasource db {
 }
 
 model Organization {
-  id        Int      @id @default(autoincrement())
-  name      String
-  slug      String   @unique
-  active    Boolean  @default(true)
-  plan      String   @default("trial") // trial, basic, pro
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  users     User[]
+  id               Int               @id @default(autoincrement())
+  name             String
+  slug             String            @unique
+  active           Boolean           @default(true)
+  plan             String            @default("trial") // trial, basic, pro
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  users            User[]
+  classes          Class[]
+  students         Student[]
+  paymentCategories PaymentCategory[]
+  payments         Payment[]
+  invoices         Invoice[]
 }
 
 model User {
@@ -33,13 +38,15 @@ model User {
 }
 
 model Class {
-  id        Int       @id @default(autoincrement())
-  name      String    // "1A", "2B", etj.
-  level     String    // "Klasa 1", "Klasa 2"
-  teacher   String?
-  students  Student[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id             Int          @id @default(autoincrement())
+  name           String
+  level          String
+  teacher        String?
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  students       Student[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }
 
 model Student {
@@ -48,7 +55,7 @@ model Student {
   lastName       String
   parentName     String?
   birthDate      DateTime?
-  personalNumber String?   @unique
+  personalNumber String?
   classId        Int?
   class          Class?    @relation(fields: [classId], references: [id])
   libriAme       LibriAme?
@@ -76,10 +83,12 @@ model Student {
   enrollDate     DateTime  @default(now())
   inactiveDate   DateTime?
   notes          String?
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
   payments       Payment[]
   invoices       Invoice[]
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([lastName, firstName])
   @@index([status])
@@ -90,14 +99,16 @@ model Student {
 }
 
 model PaymentCategory {
-  id            Int       @id @default(autoincrement())
-  name          String
-  description   String?
-  type          String    @default("monthly") // monthly, annual, one-time
-  defaultAmount Float     @default(0)
-  payments      Payment[]
-  expenses      Expense[]
-  createdAt     DateTime  @default(now())
+  id             Int          @id @default(autoincrement())
+  name           String
+  description    String?
+  type           String       @default("monthly")
+  defaultAmount  Float        @default(0)
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  payments       Payment[]
+  expenses       Expense[]
+  createdAt      DateTime     @default(now())
 }
 
 model Expense {
@@ -184,9 +195,11 @@ model Payment {
   invoice       Invoice?         @relation(fields: [invoiceId], references: [id])
   month         Int?             // 1-12 for monthly payments
   year          Int?
-  receiptNumber String?          @unique // DEP-YYYY-NNNN
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  receiptNumber  String?          @unique
+  organizationId Int              @default(1)
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 }
 
 model Invoice {
@@ -204,9 +217,11 @@ model Invoice {
   dueDate     DateTime?
   paidDate    DateTime?
   notes       String?
-  payments    Payment[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  payments       Payment[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }
 
 model InvoiceItem {
