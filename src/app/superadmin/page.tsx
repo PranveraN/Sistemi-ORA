@@ -1,7 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
-import Link from "next/link";
 
 interface OrgUser {
   id: number;
@@ -171,7 +170,7 @@ export default function SuperAdminPage() {
         <div className="space-y-4">
           <h2 className="text-xl font-semibold text-gray-300">{orgs.length} Institucione</h2>
           {orgs.map(org => (
-            <Link key={org.id} href={`/superadmin/${org.id}`} className="block bg-gray-800 rounded-xl p-6 border border-gray-700 hover:border-blue-500 transition-colors cursor-pointer">
+            <a key={org.id} href={`/superadmin/${org.id}`} className="block bg-gray-800 rounded-xl p-6 border border-gray-700 hover:border-blue-500 transition-colors cursor-pointer no-underline text-white">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold">{org.name}</h3>
@@ -201,7 +200,7 @@ export default function SuperAdminPage() {
                   ))}
                 </div>
               </div>
-            </Link>
+            </a>
           ))}
         </div>
       </div>
