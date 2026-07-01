@@ -1,6 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface OrgUser {
   id: number;
@@ -21,6 +22,7 @@ interface Org {
 }
 
 export default function SuperAdminPage() {
+  const router = useRouter();
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -170,7 +172,7 @@ export default function SuperAdminPage() {
         <div className="space-y-4">
           <h2 className="text-xl font-semibold text-gray-300">{orgs.length} Institucione</h2>
           {orgs.map(org => (
-            <div key={org.id} className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+            <div key={org.id} onClick={() => router.push(`/superadmin/${org.id}`)} className="bg-gray-800 rounded-xl p-6 border border-gray-700 cursor-pointer hover:border-blue-500 transition-colors">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold">{org.name}</h3>
