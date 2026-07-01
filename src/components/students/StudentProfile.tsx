@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2 } from "lucide-react";
+import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Pencil, X, Loader2 } from "lucide-react";
 
 interface Payment {
   id: number;
@@ -67,8 +67,21 @@ interface Student {
 
 export default function StudentProfile({ student }: { student: Student }) {
   const router = useRouter();
-  const totalDebt = student.payments.reduce((sum, p) => sum + p.balance, 0);
-  const totalPaid = student.payments.reduce((sum, p) => sum + p.paidAmount, 0);
+  const [payments, setPayments] = useState<Payment[]>(student.payments);
+  const [editPayment, setEditPayment] = useState<Payment | null>(null);
+  const totalDebt = payments.reduce((sum, p) => sum + p.balance, 0);
+  const totalPaid = payments.reduce((sum, p) => sum + p.paidAmount, 0);
+
+  async function handleDeletePayment(id: number) {
+    if (!confirm("Fshi këtë pagesë? Ky veprim nuk mund të kthehet.")) return;
+    const r = await fetch(`/api/payments/${id}`, { method: "DELETE" });
+    if (r.ok) setPayments(prev => prev.filter(p => p.id !== id));
+  }
+
+  async function handleSavePayment(updated: Payment) {
+    setPayments(prev => prev.map(p => p.id === updated.id ? updated : p));
+    setEditPayment(null);
+  }
 
   async function handleDelete() {
     const ok = window.confirm(
@@ -109,6 +122,7 @@ export default function StudentProfile({ student }: { student: Student }) {
   }, [student]);
 
   return (
+    <>
     <div className="p-6 max-w-5xl mx-auto animate-fade-in space-y-5">
       {/* Header */}
       <div className="flex items-start justify-between">
@@ -272,10 +286,10 @@ export default function StudentProfile({ student }: { student: Student }) {
               </Link>
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-              {student.payments.length === 0 ? (
+              {payments.length === 0 ? (
                 <p className="text-center text-slate-400 py-8 text-sm">Asnjë pagesë e regjistruar</p>
-              ) : student.payments.slice(0, 10).map((p) => (
-                <div key={p.id} className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30">
+              ) : payments.slice(0, 10).map((p) => (
+                <div key={p.id} className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 group">
                   <div>
                     <p className="text-sm font-medium text-slate-900 dark:text-white">{p.category.name}</p>
                     <p className="text-xs text-slate-400">
@@ -284,18 +298,36 @@ export default function StudentProfile({ student }: { student: Student }) {
                       {p.method && ` • ${getStatusLabel(p.method)}`}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <div className="flex items-center gap-2">
-                      <span className={`badge ${getStatusColor(p.status)}`}>
-                        {getStatusLabel(p.status)}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-900 dark:text-white">
-                        {formatCurrency(p.amount)}
-                      </span>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="flex items-center gap-2">
+                        <span className={`badge ${getStatusColor(p.status)}`}>
+                          {getStatusLabel(p.status)}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                          {formatCurrency(p.amount)}
+                        </span>
+                      </div>
+                      {p.balance > 0 && (
+                        <p className="text-xs text-red-500 mt-0.5">Borxh: {formatCurrency(p.balance)}</p>
+                      )}
                     </div>
-                    {p.balance > 0 && (
-                      <p className="text-xs text-red-500 mt-0.5">Borxh: {formatCurrency(p.balance)}</p>
-                    )}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => setEditPayment(p)}
+                        title="Edito"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeletePayment(p.id)}
+                        title="Fshi"
+                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -342,6 +374,114 @@ export default function StudentProfile({ student }: { student: Student }) {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    {editPayment && (
+      <PaymentEditModal
+        payment={editPayment}
+        onClose={() => setEditPayment(null)}
+        onSave={handleSavePayment}
+      />
+    )}
+    </>
+  );
+}
+
+function PaymentEditModal({ payment, onClose, onSave }: {
+  payment: Payment;
+  onClose: () => void;
+  onSave: (updated: Payment) => void;
+}) {
+  const [amount, setAmount]       = useState(String(payment.amount));
+  const [paidAmount, setPaid]     = useState(String(payment.paidAmount));
+  const [method, setMethod]       = useState(payment.method || "CASH");
+  const [dueDate, setDueDate]     = useState(payment.dueDate?.slice(0, 10) || "");
+  const [paidDate, setPaidDate]   = useState(payment.paidDate?.slice(0, 10) || "");
+  const [saving, setSaving]       = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    const body = {
+      amount: parseFloat(amount),
+      paidAmount: parseFloat(paidAmount || "0"),
+      discount: 0,
+      discountType: null,
+      scholarship: 0,
+      method,
+      dueDate,
+      paidDate: paidDate || null,
+      description: payment.description || null,
+    };
+    const r = await fetch(`/api/payments/${payment.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) {
+      const updated = await r.json();
+      onSave({ ...payment, ...updated, category: payment.category });
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+          <div>
+            <h3 className="font-bold text-slate-800 dark:text-white">Edito Pagesën</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{payment.category.name}</p>
+          </div>
+          <button onClick={onClose}><X className="w-4 h-4 text-slate-400" /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="form-label">Shuma (€)</label>
+              <input type="number" min="0" step="0.01" value={amount}
+                onChange={e => setAmount(e.target.value)} className="form-input" />
+            </div>
+            <div>
+              <label className="form-label">Paguar (€)</label>
+              <input type="number" min="0" step="0.01" value={paidAmount}
+                onChange={e => setPaid(e.target.value)} className="form-input" />
+            </div>
+          </div>
+          <div>
+            <label className="form-label">Mënyra e Pagesës</label>
+            <select value={method} onChange={e => setMethod(e.target.value)} className="form-input">
+              <option value="CASH">Cash</option>
+              <option value="BANK">Bankë</option>
+              <option value="CARD">Kartelë</option>
+              <option value="ONLINE">Online</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="form-label">Afati</label>
+              <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="form-input" />
+            </div>
+            <div>
+              <label className="form-label">Data e Pagesës</label>
+              <input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} className="form-input" />
+            </div>
+          </div>
+          {parseFloat(paidAmount || "0") > 0 && (
+            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs flex justify-between">
+              <span className="text-slate-400">Borxhi i mbetur:</span>
+              <span className={`font-bold ${Math.max(0, parseFloat(amount) - parseFloat(paidAmount)) > 0 ? "text-red-500" : "text-green-600"}`}>
+                {parseFloat(amount) - parseFloat(paidAmount) <= 0 ? "✓ Pa borxh" : `${(parseFloat(amount) - parseFloat(paidAmount)).toFixed(2)} €`}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
+          <button onClick={onClose} className="btn-secondary">Anulo</button>
+          <button onClick={handleSave} disabled={saving || !amount} className="btn-primary">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ruaj Ndryshimet"}
+          </button>
         </div>
       </div>
     </div>
