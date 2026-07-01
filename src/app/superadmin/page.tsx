@@ -20,12 +20,6 @@ interface Org {
   users: OrgUser[];
 }
 
-const PLAN_CONFIG = {
-  pro:   { label: "Pro",   color: "from-violet-500 to-purple-600",  badge: "bg-violet-500/20 text-violet-300 border border-violet-500/30" },
-  basic: { label: "Basic", color: "from-blue-500 to-cyan-600",      badge: "bg-blue-500/20 text-blue-300 border border-blue-500/30" },
-  trial: { label: "Trial", color: "from-amber-500 to-orange-500",   badge: "bg-amber-500/20 text-amber-300 border border-amber-500/30" },
-};
-
 const ROLE_ICONS: Record<string, string> = {
   ADMIN: "⚡", FINANCE: "💰", SECRETARY: "📋", SUPERADMIN: "👑",
 };
@@ -35,7 +29,7 @@ export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    name: "", slug: "", adminEmail: "", adminName: "", adminPassword: "", plan: "trial"
+    name: "", slug: "", adminEmail: "", adminName: "", adminPassword: ""
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -56,137 +50,140 @@ export default function SuperAdminPage() {
     const res = await fetch("/api/organizations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, plan: "demo" }),
     });
     const data = await res.json();
     if (res.ok) {
       setMsg("success");
-      setForm({ name: "", slug: "", adminEmail: "", adminName: "", adminPassword: "", plan: "trial" });
+      setForm({ name: "", slug: "", adminEmail: "", adminName: "", adminPassword: "" });
       setShowForm(false);
       fetchOrgs();
     } else {
-      setMsg("❌ " + data.error);
+      setMsg(data.error || "Gabim");
     }
     setSaving(false);
   }
 
-  const totalUsers = orgs.reduce((s, o) => s + o.users.length, 0);
-  const activeOrgs = orgs.filter(o => o.active).length;
+  const licensed = orgs.filter(o => o.plan === "licensed").length;
+  const demos    = orgs.filter(o => o.plan !== "licensed").length;
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#0a0a0f]">
-        <div className="text-center">
-          <div className="w-12 h-12 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400 text-sm">Duke ngarkuar...</p>
-        </div>
+        <div className="w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
-      {/* Header */}
-      <div className="border-b border-white/5 bg-white/[0.02] backdrop-blur-xl">
-        <div className="max-w-6xl mx-auto px-8 py-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-lg shadow-lg shadow-violet-500/25">
+
+      {/* Top bar */}
+      <div className="border-b border-white/5 bg-white/[0.02]">
+        <div className="max-w-5xl mx-auto px-8 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center shadow-lg shadow-violet-500/25 text-base">
               👑
             </div>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">Super Admin</h1>
-              <p className="text-gray-500 text-xs mt-0.5">Platforma SaaS — Sistemi ORA</p>
+              <p className="font-semibold text-sm">Sistemi ORA</p>
+              <p className="text-gray-600 text-xs">Paneli i Menaxhimit</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02]"
-          >
-            <span className="text-lg leading-none">+</span>
-            Institucion i Ri
+          <button onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-violet-500/20 hover:scale-[1.02]">
+            + Institucion i Ri
           </button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-8 py-8">
+      <div className="max-w-5xl mx-auto px-8 py-8">
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-8">
-          {[
-            { label: "Institucione", value: orgs.length, icon: "🏫", color: "violet" },
-            { label: "Aktive", value: activeOrgs, icon: "✅", color: "emerald" },
-            { label: "Përdorues", value: totalUsers, icon: "👤", color: "blue" },
-          ].map(s => (
-            <div key={s.label} className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5 hover:bg-white/[0.05] transition">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-2xl">{s.icon}</span>
-                <span className="text-3xl font-bold tracking-tight">{s.value}</span>
-              </div>
-              <p className="text-gray-500 text-sm">{s.label}</p>
+          <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
+            <p className="text-3xl font-bold mb-1">{orgs.length}</p>
+            <p className="text-gray-500 text-sm">Gjithsej institucione</p>
+          </div>
+          <div className="bg-emerald-500/5 border border-emerald-500/15 rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-3xl font-bold text-emerald-400">{licensed}</p>
+              <span className="text-emerald-500 text-lg">✓</span>
             </div>
-          ))}
+            <p className="text-gray-500 text-sm">Me licencë aktive</p>
+          </div>
+          <div className="bg-amber-500/5 border border-amber-500/15 rounded-2xl p-5">
+            <p className="text-3xl font-bold text-amber-400 mb-1">{demos}</p>
+            <p className="text-gray-500 text-sm">Në periudhë demo</p>
+          </div>
         </div>
 
-        {/* Success message */}
+        {/* Notifications */}
         {msg === "success" && (
-          <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-sm flex items-center gap-2">
-            <span>✓</span> Institucioni u krijua me sukses
+          <div className="mb-5 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-sm flex items-center gap-2">
+            <span className="text-base">✓</span> Institucioni u shtua. Statusi fillestar: <strong>Demo</strong>.
           </div>
         )}
         {msg && msg !== "success" && (
-          <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm flex items-center gap-2">
-            <span>✕</span> {msg.replace("❌ ", "")}
+          <div className="mb-5 p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm">
+            {msg}
           </div>
         )}
 
         {/* Create form */}
         {showForm && (
-          <div className="mb-8 bg-white/[0.03] border border-white/[0.08] rounded-2xl p-6 backdrop-blur-xl">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center text-sm">🏫</div>
-              <h2 className="text-base font-semibold">Institucion i Ri</h2>
-            </div>
+          <div className="mb-8 bg-white/[0.03] border border-white/[0.07] rounded-2xl p-6">
+            <h2 className="font-semibold text-sm mb-5 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-lg bg-violet-500/20 flex items-center justify-center text-xs">🏫</span>
+              Institucion i Ri
+            </h2>
             <form onSubmit={createOrg} className="grid grid-cols-2 gap-4">
-              {[
-                { label: "Emri i Institucionit", key: "name", placeholder: "Shkolla ABC", type: "text",
-                  onChange: (v: string) => setForm(f => ({...f, name: v, slug: v.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")})) },
-                { label: "Slug (URL)", key: "slug", placeholder: "shkolla-abc", type: "text",
-                  onChange: (v: string) => setForm(f => ({...f, slug: v})) },
-                { label: "Email Admin", key: "adminEmail", placeholder: "admin@shkolla.al", type: "email",
-                  onChange: (v: string) => setForm(f => ({...f, adminEmail: v})) },
-                { label: "Emri Admin", key: "adminName", placeholder: "Admin Shkolla", type: "text",
-                  onChange: (v: string) => setForm(f => ({...f, adminName: v})) },
-                { label: "Fjalëkalimi", key: "adminPassword", placeholder: "••••••••", type: "password",
-                  onChange: (v: string) => setForm(f => ({...f, adminPassword: v})) },
-              ].map(field => (
-                <div key={field.key}>
-                  <label className="block text-xs text-gray-500 mb-1.5 font-medium uppercase tracking-wide">{field.label}</label>
-                  <input
-                    type={field.type}
-                    className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-violet-500/50 focus:bg-white/[0.06] transition"
-                    placeholder={field.placeholder}
-                    value={form[field.key as keyof typeof form]}
-                    onChange={e => field.onChange(e.target.value)}
-                    required={field.key !== "adminName"}
-                  />
-                </div>
-              ))}
               <div>
-                <label className="block text-xs text-gray-500 mb-1.5 font-medium uppercase tracking-wide">Paketa</label>
-                <select
-                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50 transition"
-                  value={form.plan}
-                  onChange={e => setForm({...form, plan: e.target.value})}
-                >
-                  <option value="trial">Trial — 30 ditë falas</option>
-                  <option value="basic">Basic — 49€/muaj</option>
-                  <option value="pro">Pro — 89€/muaj</option>
-                </select>
+                <label className="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Emri i Institucionit</label>
+                <input className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/40 transition"
+                  placeholder="Shkolla ABC"
+                  value={form.name}
+                  onChange={e => setForm(f => ({...f, name: e.target.value, slug: e.target.value.toLowerCase().replace(/\s+/g,"-").replace(/[^a-z0-9-]/g,"")}))}
+                  required />
               </div>
-              <div className="col-span-2 flex gap-3 pt-2">
+              <div>
+                <label className="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Slug (URL)</label>
+                <input className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/40 transition"
+                  placeholder="shkolla-abc"
+                  value={form.slug}
+                  onChange={e => setForm(f => ({...f, slug: e.target.value}))}
+                  required />
+              </div>
+              <div>
+                <label className="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Email Admin</label>
+                <input type="email" className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/40 transition"
+                  placeholder="admin@shkolla.al"
+                  value={form.adminEmail}
+                  onChange={e => setForm(f => ({...f, adminEmail: e.target.value}))}
+                  required />
+              </div>
+              <div>
+                <label className="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Emri Admin</label>
+                <input className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/40 transition"
+                  placeholder="Admin Shkolla"
+                  value={form.adminName}
+                  onChange={e => setForm(f => ({...f, adminName: e.target.value}))} />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Fjalëkalimi</label>
+                <input type="password" className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/40 transition"
+                  placeholder="••••••••"
+                  value={form.adminPassword}
+                  onChange={e => setForm(f => ({...f, adminPassword: e.target.value}))}
+                  required />
+              </div>
+              <div className="col-span-2 bg-amber-500/8 border border-amber-500/15 rounded-xl p-3 text-xs text-amber-400/80">
+                ℹ️ Institucioni do të fillojë si <strong>Demo</strong>. Pas blerjes, e aktivizon manualisht si <strong>Licencuar</strong>.
+              </div>
+              <div className="col-span-2 flex gap-3 pt-1">
                 <button type="submit" disabled={saving}
                   className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 px-6 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 shadow-lg shadow-violet-500/20">
-                  {saving ? "Duke krijuar..." : "Krijo Institucionin"}
+                  {saving ? "Duke shtuar..." : "Shto Institucionin"}
                 </button>
                 <button type="button" onClick={() => setShowForm(false)}
                   className="bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] px-6 py-2.5 rounded-xl text-sm font-medium transition">
@@ -197,29 +194,36 @@ export default function SuperAdminPage() {
           </div>
         )}
 
-        {/* Orgs list */}
+        {/* Institutions list */}
         <div>
-          <p className="text-xs text-gray-600 uppercase tracking-widest font-medium mb-4">Institucionet</p>
-          <div className="space-y-3">
+          <p className="text-[11px] text-gray-600 uppercase tracking-widest font-medium mb-4">Institucionet ({orgs.length})</p>
+          <div className="space-y-2">
             {orgs.map(org => {
-              const plan = PLAN_CONFIG[org.plan as keyof typeof PLAN_CONFIG] ?? PLAN_CONFIG.trial;
+              const isLicensed = org.plan === "licensed";
               return (
                 <a key={org.id} href={`/superadmin/${org.id}`}
-                  className="group flex items-center justify-between bg-white/[0.03] hover:bg-white/[0.055] border border-white/[0.06] hover:border-white/[0.12] rounded-2xl px-6 py-5 transition-all duration-200 no-underline text-white cursor-pointer">
+                  className="group flex items-center justify-between bg-white/[0.025] hover:bg-white/[0.05] border border-white/[0.05] hover:border-white/[0.1] rounded-2xl px-5 py-4 transition-all no-underline text-white cursor-pointer">
 
-                  {/* Left: avatar + info */}
                   <div className="flex items-center gap-4">
-                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center text-lg shadow-lg flex-shrink-0`}>
+                    {/* Avatar */}
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-base flex-shrink-0 ${isLicensed ? "bg-gradient-to-br from-emerald-500/30 to-teal-600/30 border border-emerald-500/20" : "bg-white/[0.06] border border-white/[0.07]"}`}>
                       🏫
                     </div>
+                    {/* Info */}
                     <div>
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-semibold text-sm">{org.name}</span>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${plan.badge}`}>
-                          {plan.label}
-                        </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{org.name}</span>
+                        {isLicensed ? (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                            ✓ Licencuar
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            Demo
+                          </span>
+                        )}
                         {!org.active && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
                             Joaktiv
                           </span>
                         )}
@@ -228,27 +232,25 @@ export default function SuperAdminPage() {
                     </div>
                   </div>
 
-                  {/* Right: users + arrow */}
-                  <div className="flex items-center gap-6">
-                    <div className="text-right hidden sm:block">
-                      <p className="text-sm font-medium">{org.users.length}</p>
-                      <p className="text-gray-600 text-xs">përdorues</p>
-                    </div>
-                    <div className="flex -space-x-2">
-                      {org.users.slice(0, 4).map(u => (
+                  <div className="flex items-center gap-5">
+                    {/* User avatars */}
+                    <div className="flex -space-x-1.5">
+                      {org.users.slice(0, 5).map(u => (
                         <div key={u.id} title={`${u.name} (${u.role})`}
-                          className="w-7 h-7 rounded-full bg-gradient-to-br from-gray-600 to-gray-700 border-2 border-[#0a0a0f] flex items-center justify-center text-[10px] font-bold">
+                          className="w-6 h-6 rounded-full bg-gradient-to-br from-gray-600 to-gray-800 border-2 border-[#0a0a0f] flex items-center justify-center text-[9px]">
                           {ROLE_ICONS[u.role] ?? u.name[0]}
                         </div>
                       ))}
-                      {org.users.length > 4 && (
-                        <div className="w-7 h-7 rounded-full bg-white/10 border-2 border-[#0a0a0f] flex items-center justify-center text-[9px] text-gray-400 font-medium">
-                          +{org.users.length - 4}
+                      {org.users.length > 5 && (
+                        <div className="w-6 h-6 rounded-full bg-white/10 border-2 border-[#0a0a0f] flex items-center justify-center text-[8px] text-gray-400">
+                          +{org.users.length - 5}
                         </div>
                       )}
                     </div>
-                    <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-300 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    <span className="text-gray-600 text-xs hidden sm:block">{org.users.length} user</span>
+                    {/* Arrow */}
+                    <svg className="w-4 h-4 text-gray-700 group-hover:text-gray-400 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
                     </svg>
                   </div>
                 </a>
