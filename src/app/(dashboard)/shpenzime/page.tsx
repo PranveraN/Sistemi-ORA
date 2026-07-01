@@ -390,6 +390,19 @@ export default function ShpenzimePage() {
     }
   }
 
+  function downloadFatureTemplate() {
+    const headers = [["Data", "Kategoria", "Nr. Fiskal", "Nr. i Faturës", "Emri Biznesit", "Shuma (€)", "Metoda", "Lloji", "Përshkrimi"]];
+    const example = [
+      ["15/04/2026", "Pagat", "811234567", "F-2026-001", "Kompania ABC", "1500", "CASH", "ZYRE", "Pagat Prill"],
+      ["15/04/2026", "Qiraja", "", "F-2026-002", "Pronari XY", "2000", "BANK", "BANKE", "Qiraja Prill"],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([...headers, ...example]);
+    ws["!cols"] = [{ wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Faturat");
+    XLSX.writeFile(wb, "Template-Faturat-Shpenzime.xlsx");
+  }
+
   function exportFatureExcel() {
     const fatura = shpenzime.filter(s => s.docType === "FATURE");
     if (fatura.length === 0) {
@@ -782,6 +795,9 @@ export default function ShpenzimePage() {
                     {importing ? "Duke importuar..." : `Importo ${raportYear}`}
                     <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
                   </label>
+                  <button onClick={downloadFatureTemplate} className="btn-secondary text-xs flex items-center gap-1.5" title="Shkarko template Excel për import me Nr. Fiskal dhe Nr. Faturës">
+                    <Download className="w-3.5 h-3.5" /> Template Fatura
+                  </button>
                 </div>
                 <button onClick={exportRaportExcel} disabled={!raport || raportLoading} className="btn-secondary text-xs flex items-center gap-1.5">
                   <Download className="w-3.5 h-3.5" /> Exporto Excel
