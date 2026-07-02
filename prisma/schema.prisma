@@ -197,13 +197,15 @@ model Invoice {
 }
 
 model InvoiceItem {
-  id          Int     @id @default(autoincrement())
-  invoiceId   Int
-  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  description String
-  quantity    Float   @default(1)
-  unitPrice   Float
-  total       Float
+  id            Int     @id @default(autoincrement())
+  invoiceId     Int
+  invoice       Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description   String
+  quantity      Float   @default(1)
+  regularPrice  Float   @default(0)
+  discountPct   Float   @default(0)
+  unitPrice     Float
+  total         Float
 }
 
 // ── Sistemi i Uniformave ──────────────────────────────────

@@ -9,6 +9,8 @@ interface InvoiceItem {
   id: number;
   description: string;
   quantity: number;
+  regularPrice: number;
+  discountPct: number;
   unitPrice: number;
   total: number;
 }
@@ -56,13 +58,19 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
   function printInvoice() {
     const origin = window.location.origin;
     const typeLabel = invoice.type === "INVOICE" ? "FATURË" : invoice.type === "PROFORMA" ? "PROFATURË" : "OFERTË";
-    const itemRows = invoice.items.map(item => `
+    const itemRows = invoice.items.map(item => {
+      const hasDiscount = item.regularPrice > 0 && item.discountPct > 0;
+      const discAmt = hasDiscount ? Math.round(item.regularPrice * (item.discountPct / 100) * 100) / 100 : 0;
+      return `
       <tr>
         <td class="desc">${item.description}</td>
         <td class="center">${item.quantity}</td>
+        <td class="right" style="color:#64748b">${item.regularPrice > 0 ? `${item.regularPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €` : "—"}</td>
+        <td class="right" style="color:#16a34a">${hasDiscount ? `−${item.discountPct}%<br><small style="font-size:8px">(${discAmt.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €)</small>` : "—"}</td>
         <td class="right">${item.unitPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</td>
         <td class="right bold">${item.total.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</td>
-      </tr>`).join("");
+      </tr>`;
+    }).join("");
 
     const vatRow = invoice.vatRate > 0
       ? `<div class="total-row"><span>TVSH (${invoice.vatRate}%)</span><span>${invoice.vatAmount.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</span></div>`
@@ -151,9 +159,11 @@ tr:nth-child(even) td { background: #f8fafc; }
 <table>
   <thead><tr>
     <th>Përshkrimi</th>
-    <th class="center" style="width:60px">Sasia</th>
-    <th class="right" style="width:100px">Çmimi</th>
-    <th class="right" style="width:100px">Totali</th>
+    <th class="center" style="width:40px">Sasi</th>
+    <th class="right" style="width:85px">Çm. Rregullt</th>
+    <th class="right" style="width:75px">Zbritja</th>
+    <th class="right" style="width:75px">Çm. Final</th>
+    <th class="right" style="width:80px">Totali</th>
   </tr></thead>
   <tbody>${itemRows}</tbody>
 </table>
@@ -421,24 +431,39 @@ ${notesBlock}
             <thead className="bg-primary-600 text-white">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold">Përshkrimi</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold w-20">Sasia</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold w-36">Çmimi</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold w-36">Totali</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold w-16">Sasi</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold w-32">Çm. Rregullt</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold w-28">Zbritja</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold w-32">Çm. Final</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold w-32">Totali</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-              {invoice.items.map((item, i) => (
-                <tr key={item.id} className={i % 2 === 0 ? "" : "bg-slate-50 dark:bg-slate-800/30"}>
-                  <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-200">{item.description}</td>
-                  <td className="px-4 py-3 text-sm text-center text-slate-600 dark:text-slate-300">{item.quantity}</td>
-                  <td className="px-4 py-3 text-sm text-right text-slate-600 dark:text-slate-300">
-                    {item.unitPrice.toLocaleString()} €
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold text-slate-800 dark:text-slate-200">
-                    {item.total.toLocaleString()} €
-                  </td>
-                </tr>
-              ))}
+              {invoice.items.map((item, i) => {
+                const hasDiscount = item.regularPrice > 0 && item.discountPct > 0;
+                const discAmt = hasDiscount ? Math.round(item.regularPrice * (item.discountPct / 100) * 100) / 100 : 0;
+                return (
+                  <tr key={item.id} className={i % 2 === 0 ? "" : "bg-slate-50 dark:bg-slate-800/30"}>
+                    <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-200">{item.description}</td>
+                    <td className="px-4 py-3 text-sm text-center text-slate-600 dark:text-slate-300">{item.quantity}</td>
+                    <td className="px-4 py-3 text-sm text-right text-slate-500">
+                      {item.regularPrice > 0 ? `${item.regularPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €` : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right">
+                      {hasDiscount
+                        ? <span className="text-green-600 font-medium">−{item.discountPct}% <span className="text-xs text-green-500">({discAmt.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €)</span></span>
+                        : <span className="text-slate-300">—</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right text-slate-600 dark:text-slate-300">
+                      {item.unitPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right font-bold text-slate-800 dark:text-slate-200">
+                      {item.total.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
