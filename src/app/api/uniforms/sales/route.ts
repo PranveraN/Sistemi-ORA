@@ -43,6 +43,10 @@ export async function POST(req: NextRequest) {
   const productIds = items.map((i: { productId: number }) => i.productId);
   const products = await prisma.uniProduct.findMany({ where: { id: { in: productIds } } });
 
+  // Shitjet e regjistruara për data të kaluara (p.sh. rakordim historik) nuk e kufizojnë
+  // stokun aktual — vetëm shitjet e ditës së sotme validohen kundrejt stokut në kohë reale.
+  const isBackdated = saleDate && new Date(saleDate).toDateString() !== new Date().toDateString();
+
   let totalAmount = 0, totalCost = 0;
   const saleItems: {
     productId: number; size: string | null; quantity: number;
@@ -54,7 +58,7 @@ export async function POST(req: NextRequest) {
     if (!product) continue;
     const qty = parseInt(item.quantity);
 
-    if (product.stock < qty) {
+    if (!isBackdated && product.stock < qty) {
       return NextResponse.json(
         { error: `Stoku i pamjaftueshëm për "${product.name}". Disponibël: ${product.stock}, kërkuar: ${qty}.` },
         { status: 400 }

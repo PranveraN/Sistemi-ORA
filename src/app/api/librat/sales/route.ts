@@ -61,6 +61,10 @@ export async function POST(req: NextRequest) {
     `SELECT * FROM BookProduct WHERE id IN (${ids})`
   );
 
+  // Shitjet e regjistruara për data të kaluara (p.sh. rakordim historik) nuk e kufizojnë
+  // stokun aktual — vetëm shitjet e ditës së sotme validohen kundrejt stokut në kohë reale.
+  const isBackdated = saleDate && new Date(saleDate).toDateString() !== new Date().toDateString();
+
   let totalAmount = 0, totalCost = 0;
   const saleItems: { productId: number; quantity: number; buyPrice: number; sellPrice: number; total: number; profit: number }[] = [];
 
@@ -70,7 +74,7 @@ export async function POST(req: NextRequest) {
     const qty  = parseInt(item.quantity);
     const buy  = Number(prod.buyPrice);
     const sell = item.sellPrice ? parseFloat(item.sellPrice) : Number(prod.sellPrice);
-    if (Number(prod.stock) < qty)
+    if (!isBackdated && Number(prod.stock) < qty)
       return NextResponse.json({ error: `Stoku i pamjaftueshëm për "${prod.name}". Disponibël: ${prod.stock}` }, { status: 400 });
     totalAmount += sell * qty;
     totalCost   += buy  * qty;
