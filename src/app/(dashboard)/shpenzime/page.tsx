@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Trash2, Edit, X, Save, Settings, TrendingDown, Calendar, BarChart3, Download, Upload, Loader2 } from "lucide-react";
+import { Plus, Trash2, Edit, X, Save, Settings, TrendingDown, Calendar, BarChart3, Download, Upload, Loader2, History, Undo2 } from "lucide-react";
 import { MONTHS } from "@/lib/utils";
 import * as XLSX from "xlsx";
 
@@ -30,6 +30,15 @@ interface Shpenzim {
   emriBiznesit: string | null;
   nrFiskal: string | null;
   kategori: Kategori;
+}
+
+interface BulkActionRow {
+  id: number;
+  action: string;
+  count: number;
+  undone: boolean;
+  createdAt: string;
+  userName: string;
 }
 
 interface Sipartner {
@@ -254,6 +263,10 @@ export default function ShpenzimePage() {
   /* ── Bulk selection ── */
   const [selectedSh, setSelectedSh] = useState<Set<number>>(new Set());
   const [showBulkKat, setShowBulkKat] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<BulkActionRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [lastBulkAction, setLastBulkAction] = useState<{ id: number; count: number } | null>(null);
 
   function toggleSelectSh(id: number) {
     setSelectedSh(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -263,16 +276,50 @@ export default function ShpenzimePage() {
       ? new Set()
       : new Set(shpenzimeFiltruara.map(s => s.id)));
   }
+
+  async function fetchHistory() {
+    setHistoryLoading(true);
+    const res = await fetch("/api/shpenzime/bulk");
+    if (res.ok) setHistory(await res.json());
+    setHistoryLoading(false);
+  }
+
+  function openHistory() {
+    setShowHistory(true);
+    fetchHistory();
+  }
+
+  async function undoBulkAction(id: number) {
+    if (!confirm("Rikthe gjendjen përpara këtij veprimi masiv?")) return;
+    const res = await fetch(`/api/shpenzime/bulk/${id}`, { method: "POST" });
+    if (res.ok) {
+      fetchHistory();
+      fetchData();
+    } else {
+      const data = await res.json();
+      alert(data.error || "Gabim gjatë zhbërjes");
+    }
+  }
+
   async function bulkDelete() {
-    if (!confirm(`Fshi ${selectedSh.size} shpenzime të zgjedhura?`)) return;
-    await Promise.all([...selectedSh].map(id => fetch(`/api/shpenzime/${id}`, { method: "DELETE" })));
+    if (!confirm(`Fshi ${selectedSh.size} shpenzime të zgjedhura? Ky veprim mund të zhbëhet nga "Historia".`)) return;
+    const res = await fetch("/api/shpenzime/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [...selectedSh], action: "DELETE" }),
+    });
+    if (res.ok) setLastBulkAction(await res.json());
     setSelectedSh(new Set());
     fetchData();
   }
-  async function bulkPatch(patch: Record<string, unknown>) {
-    await Promise.all([...selectedSh].map(id =>
-      fetch(`/api/shpenzime/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
-    ));
+  async function bulkPatch(patch: Record<string, unknown>, label: string) {
+    if (!confirm(`${label} për ${selectedSh.size} shpenzime të zgjedhura? Ky veprim mund të zhbëhet nga "Historia".`)) return;
+    const res = await fetch("/api/shpenzime/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [...selectedSh], patch }),
+    });
+    if (res.ok) setLastBulkAction(await res.json());
     setSelectedSh(new Set());
     setShowBulkKat(false);
     fetchData();
@@ -560,11 +607,32 @@ export default function ShpenzimePage() {
                   <button onClick={openPartnerModal} className="btn-secondary text-sm">
                     <Plus className="w-4 h-4" /> Regjistro Partner
                   </button>
+                  <button onClick={openHistory} className="btn-secondary text-sm" title="Historia e veprimeve masive dhe zhbërja e tyre">
+                    <History className="w-4 h-4" /> Historia
+                  </button>
                   <button onClick={openNew} className="btn-primary text-sm">
                     <Plus className="w-4 h-4" /> Shto Shpenzim
                   </button>
                 </div>
               </div>
+
+              {/* Njoftim pas veprimit të fundit masiv — zhbërje e shpejtë */}
+              {lastBulkAction && (
+                <div className="flex items-center justify-between gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 text-xs">
+                  <span className="text-emerald-700 dark:text-emerald-300">
+                    U aplikua veprimi mbi {lastBulkAction.count} shpenzime.
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { undoBulkAction(lastBulkAction.id); setLastBulkAction(null); }}
+                      className="font-semibold text-emerald-700 dark:text-emerald-300 underline hover:no-underline">
+                      Zhbëj
+                    </button>
+                    <button onClick={() => setLastBulkAction(null)} className="text-emerald-400 hover:text-emerald-600">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Bulk actions toolbar */}
               {selectedSh.size > 0 && (
@@ -582,7 +650,7 @@ export default function ShpenzimePage() {
                     {showBulkKat && (
                       <div className="absolute top-full left-0 mt-1 z-30 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-xl min-w-[200px] max-h-64 overflow-y-auto">
                         {kategorite.map(k => (
-                          <button key={k.id} onMouseDown={() => bulkPatch({ kategoriId: k.id })}
+                          <button key={k.id} onMouseDown={() => bulkPatch({ kategoriId: k.id }, `Ndrysho kategorinë në "${k.emri}"`)}
                             className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 transition-colors">
                             <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: k.ngjyra || "#64748b" }} />
                             {k.ikona && <span>{k.ikona}</span>}
@@ -595,11 +663,11 @@ export default function ShpenzimePage() {
 
                   {/* Lloji */}
                   <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 text-xs font-semibold">
-                    <button onClick={() => bulkPatch({ lloji: "ZYRE" })}
+                    <button onClick={() => bulkPatch({ lloji: "ZYRE" }, "Ndrysho llojin në Zyrë")}
                       className="px-2.5 py-1 bg-white dark:bg-slate-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors">
                       🏢 Zyrë
                     </button>
-                    <button onClick={() => bulkPatch({ lloji: "BANKE" })}
+                    <button onClick={() => bulkPatch({ lloji: "BANKE" }, "Ndrysho llojin në Bankë")}
                       className="px-2.5 py-1 bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 border-l border-slate-200 dark:border-slate-600 transition-colors">
                       🏦 Bankë
                     </button>
@@ -607,11 +675,11 @@ export default function ShpenzimePage() {
 
                   {/* Statusi */}
                   <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 text-xs font-semibold">
-                    <button onClick={() => bulkPatch({ paguar: true })}
+                    <button onClick={() => bulkPatch({ paguar: true }, "Shëno si Paguar")}
                       className="px-2.5 py-1 bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors">
                       ✓ Paguar
                     </button>
-                    <button onClick={() => bulkPatch({ paguar: false })}
+                    <button onClick={() => bulkPatch({ paguar: false }, "Shëno si Borxh")}
                       className="px-2.5 py-1 bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/30 border-l border-slate-200 dark:border-slate-600 transition-colors">
                       ⏳ Borxh
                     </button>
@@ -1364,6 +1432,46 @@ export default function ShpenzimePage() {
               <button onClick={handleSaveKategori} disabled={saving || !katForm.emri} className="btn-primary flex-1 justify-center">
                 {saving ? "Duke ruajtur..." : editKatId ? "Ruaj Ndryshimet" : "Shto"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Historia e Veprimeve Masive */}
+      {showHistory && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowHistory(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg animate-fade-in max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <History className="w-4 h-4 text-primary-500" /> Historia e Veprimeve Masive
+              </h3>
+              <button onClick={() => setShowHistory(false)}><X className="w-5 h-5 text-slate-400" /></button>
+            </div>
+            <div className="overflow-y-auto p-5 space-y-2">
+              {historyLoading ? (
+                <div className="py-10 text-center text-slate-400 text-sm">Duke ngarkuar...</div>
+              ) : history.length === 0 ? (
+                <div className="py-10 text-center text-slate-400 text-sm">Ende s&apos;ka veprime masive të regjistruara</div>
+              ) : (
+                history.map(h => (
+                  <div key={h.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                        {h.action === "DELETE" ? "Fshirje" : "Ndryshim"} e {h.count} shpenzime{h.undone && <span className="ml-2 text-xs text-slate-400">(e zhbërë)</span>}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {h.userName} · {new Date(h.createdAt).toLocaleString("sq")}
+                      </p>
+                    </div>
+                    {!h.undone && (
+                      <button onClick={() => undoBulkAction(h.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/50 flex-shrink-0 transition-colors">
+                        <Undo2 className="w-3.5 h-3.5" /> Zhbëj
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

@@ -7,6 +7,7 @@ import {
   Save, Plus, Euro, Pencil, Check, X, Trash2,
   School, Users, BookOpen, ShoppingBag, Eye, EyeOff,
   Loader2, AlertTriangle, GraduationCap, KeyRound,
+  DatabaseBackup, Download, RefreshCw,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -36,6 +37,10 @@ interface UserRow {
   role: string; active: boolean; createdAt: string;
 }
 
+interface BackupRow {
+  filename: string; size: number; createdAt: string; manual: boolean;
+}
+
 /* ─── Constants ───────────────────────────────────────────── */
 const typeLabels: Record<string, string> = {
   monthly: "Mujore", annual: "Vjetore", "one-time": "Njëherësh",
@@ -59,6 +64,7 @@ const TABS = [
   { key: "klasat",     label: "Klasat",        icon: GraduationCap },
   { key: "shpenzime",  label: "Shpenzime",     icon: ShoppingBag },
   { key: "perdoruesit",label: "Përdoruesit",   icon: Users },
+  { key: "backup",     label: "Backup",        icon: DatabaseBackup },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -78,7 +84,7 @@ export default function SettingsPage() {
         {/* Tab bar */}
         <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-fit flex-wrap">
           {TABS.map(t => {
-            if (t.key === "perdoruesit" && !isAdmin) return null;
+            if ((t.key === "perdoruesit" || t.key === "backup") && !isAdmin) return null;
             const Icon = t.icon;
             return (
               <button
@@ -102,6 +108,7 @@ export default function SettingsPage() {
         {tab === "klasat"      && <ClassesSection />}
         {tab === "shpenzime"   && <ExpenseCatsSection />}
         {tab === "perdoruesit" && isAdmin && <UsersSection />}
+        {tab === "backup"     && isAdmin && <BackupSection />}
       </div>
     </>
   );
@@ -931,6 +938,80 @@ function UsersSection() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  6. BACKUP                                                   */
+/* ═══════════════════════════════════════════════════════════ */
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function BackupSection() {
+  const [backups, setBackups] = useState<BackupRow[]>([]);
+  const [loading, setLoading]  = useState(true);
+  const [creating, setCreating] = useState(false);
+
+  const fetchBackups = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch("/api/backups");
+    if (r.ok) setBackups((await r.json()).backups);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchBackups(); }, [fetchBackups]);
+
+  async function handleCreateNow() {
+    setCreating(true);
+    await fetch("/api/backups", { method: "POST" });
+    setCreating(false);
+    fetchBackups();
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-teal-50 dark:bg-teal-900/30 rounded-xl flex items-center justify-center">
+            <DatabaseBackup className="w-5 h-5 text-teal-500" />
+          </div>
+          <div>
+            <h2 className="font-bold text-slate-900 dark:text-white">Backup i Bazës së të Dhënave</h2>
+            <p className="text-xs text-slate-400">Kopje automatike çdo ditë · mbahen 30 ditët e fundit</p>
+          </div>
+        </div>
+        <button onClick={handleCreateNow} disabled={creating} className="btn-primary text-sm">
+          {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          {creating ? "Duke krijuar..." : "Bëj Backup Tani"}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="py-10 text-center text-slate-400 text-sm">Duke ngarkuar...</div>
+      ) : backups.length === 0 ? (
+        <div className="py-10 text-center text-slate-400 text-sm">Ende s&apos;ka backup-e. Kliko &quot;Bëj Backup Tani&quot;.</div>
+      ) : (
+        <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          {backups.map(b => (
+            <div key={b.filename} className="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                  {new Date(b.createdAt).toLocaleString("sq")}
+                  {b.manual && <span className="text-[10px] font-medium bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 px-1.5 py-0.5 rounded-full">Manual</span>}
+                </p>
+                <p className="text-xs text-slate-400">{formatSize(b.size)}</p>
+              </div>
+              <a href={`/api/backups/${b.filename}`} className="btn-secondary text-xs px-3 py-1.5 flex-shrink-0">
+                <Download className="w-3.5 h-3.5" /> Shkarko
+              </a>
+            </div>
+          ))}
         </div>
       )}
     </div>

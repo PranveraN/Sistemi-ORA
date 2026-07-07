@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -35,6 +35,7 @@ model User {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   auditLogs      AuditLog[]
+  shpenzimBulkActions ShpenzimBulkAction[]
 }
 
 model Class {
@@ -171,6 +172,21 @@ model Shpenzim {
 
   @@index([kategoriId])
   @@index([data])
+}
+
+// Historik i veprimeve masive (bulk) mbi Shpenzim — lejon "Zhbëj" kur një
+// ndryshim/fshirje masive aplikohet gabimisht mbi rreshta të gabuar.
+model ShpenzimBulkAction {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  action    String   // "PATCH" ose "DELETE"
+  snapshot  String   // JSON: gjendja e plotë e rreshtave përpara veprimit
+  count     Int
+  undone    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 model Payment {
