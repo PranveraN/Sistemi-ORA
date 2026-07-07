@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import Header from "@/components/layout/Header";
+import { useSession } from "next-auth/react";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Trash2, Edit, X, Save, Settings, TrendingDown, Calendar, BarChart3, Download, Upload, Loader2, History, Undo2 } from "lucide-react";
+import { Plus, Trash2, Edit, X, Save, Settings, TrendingDown, Calendar, BarChart3, Download, Upload, Loader2, History, Undo2, FileUp, Check } from "lucide-react";
 import { MONTHS } from "@/lib/utils";
 import * as XLSX from "xlsx";
 
@@ -41,6 +42,16 @@ interface BulkActionRow {
   userName: string;
 }
 
+interface RestoreMatch {
+  id: number;
+  data: string;
+  shuma: number;
+  lloji: string;
+  currentKategoriEmri: string;
+  matchedKategoriEmri: string | null;
+  candidates: string[];
+}
+
 interface Sipartner {
   id?: number;
   emri: string;
@@ -53,6 +64,8 @@ interface Sipartner {
 const NGJYRAT = ["#ef4444","#f97316","#eab308","#22c55e","#3b82f6","#8b5cf6","#ec4899","#64748b"];
 
 export default function ShpenzimePage() {
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "ADMIN";
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1); // 0 = të gjitha muajt
   const [year, setYear] = useState(now.getFullYear());
@@ -268,6 +281,16 @@ export default function ShpenzimePage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [lastBulkAction, setLastBulkAction] = useState<{ id: number; count: number } | null>(null);
 
+  /* ── Rikthe nga Excel ── */
+  const [showRestore, setShowRestore] = useState(false);
+  const [restoreKat, setRestoreKat] = useState("");
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreResults, setRestoreResults] = useState<RestoreMatch[] | null>(null);
+  const [restoreApplying, setRestoreApplying] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const restoreFileRef = useRef<HTMLInputElement>(null);
+
   function toggleSelectSh(id: number) {
     setSelectedSh(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
@@ -298,6 +321,61 @@ export default function ShpenzimePage() {
     } else {
       const data = await res.json();
       alert(data.error || "Gabim gjatë zhbërjes");
+    }
+  }
+
+  function openRestore() {
+    setRestoreKat(kategorite.find(k => k.emri.trim().toLowerCase() === "pastrimi")?.emri || "");
+    setRestoreFile(null);
+    setRestoreResults(null);
+    setRestoreMsg(null);
+    setShowRestore(true);
+  }
+
+  async function handleRestorePreview() {
+    if (!restoreFile || !restoreKat) return;
+    setRestoreLoading(true);
+    setRestoreMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", restoreFile);
+      fd.append("kategoriaGabuar", restoreKat);
+      fd.append("apply", "false");
+      const res = await fetch("/api/shpenzime/restore", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) { setRestoreMsg({ text: data.error || "Gabim", ok: false }); return; }
+      setRestoreResults(data.results);
+    } catch {
+      setRestoreMsg({ text: "Gabim rrjeti.", ok: false });
+    } finally {
+      setRestoreLoading(false);
+    }
+  }
+
+  async function handleRestoreApply() {
+    if (!restoreFile || !restoreKat) return;
+    const matched = restoreResults?.filter(r => r.matchedKategoriEmri && r.matchedKategoriEmri !== r.currentKategoriEmri).length || 0;
+    if (!matched) return;
+    if (!confirm(`Ndrysho kategorinë për ${matched} shpenzime sipas përputhjeve të gjetura? Ky veprim mund të zhbëhet nga "Historia".`)) return;
+    setRestoreApplying(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", restoreFile);
+      fd.append("kategoriaGabuar", restoreKat);
+      fd.append("apply", "true");
+      const res = await fetch("/api/shpenzime/restore", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) { setRestoreMsg({ text: data.error || "Gabim", ok: false }); return; }
+      setRestoreMsg({ text: `U ndryshuan ${data.changed} shpenzime.`, ok: true });
+      if (data.bulkActionId) setLastBulkAction({ id: data.bulkActionId, count: data.changed });
+      setRestoreResults(null);
+      setRestoreFile(null);
+      if (restoreFileRef.current) restoreFileRef.current.value = "";
+      fetchData();
+    } catch {
+      setRestoreMsg({ text: "Gabim rrjeti.", ok: false });
+    } finally {
+      setRestoreApplying(false);
     }
   }
 
@@ -610,6 +688,11 @@ export default function ShpenzimePage() {
                   <button onClick={openHistory} className="btn-secondary text-sm" title="Historia e veprimeve masive dhe zhbërja e tyre">
                     <History className="w-4 h-4" /> Historia
                   </button>
+                  {isAdmin && (
+                    <button onClick={openRestore} className="btn-secondary text-sm" title="Rikthe kategoritë e sakta nga një skedar Excel i eksportuar më parë">
+                      <FileUp className="w-4 h-4" /> Rikthe nga Excel
+                    </button>
+                  )}
                   <button onClick={openNew} className="btn-primary text-sm">
                     <Plus className="w-4 h-4" /> Shto Shpenzim
                   </button>
@@ -1471,6 +1554,95 @@ export default function ShpenzimePage() {
                     )}
                   </div>
                 ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Rikthe nga Excel */}
+      {showRestore && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowRestore(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl animate-fade-in max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <FileUp className="w-4 h-4 text-primary-500" /> Rikthe Kategoritë nga Excel
+              </h3>
+              <button onClick={() => setShowRestore(false)}><X className="w-5 h-5 text-slate-400" /></button>
+            </div>
+
+            <div className="overflow-y-auto p-5 space-y-4">
+              <p className="text-xs text-slate-400">
+                Ngarko skedarin Excel të eksportuar përpara gabimit (formati muaj/kategori). Sistemi krahason muajin dhe shumën e çdo shpenzimi aktualisht në kategorinë e zgjedhur, dhe propozon kategorinë e saktë. Asgjë s&apos;ndryshon derisa të klikosh &quot;Apliko&quot;.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label text-xs">Kategoria e gabuar</label>
+                  <select value={restoreKat} onChange={e => { setRestoreKat(e.target.value); setRestoreResults(null); }} className="form-input">
+                    <option value="">Zgjidh...</option>
+                    {kategorite.map(k => <option key={k.id} value={k.emri}>{k.emri}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label text-xs">Skedari Excel</label>
+                  <input ref={restoreFileRef} type="file" accept=".xlsx,.xls"
+                    onChange={e => { setRestoreFile(e.target.files?.[0] || null); setRestoreResults(null); }}
+                    className="form-input text-xs" />
+                </div>
+              </div>
+
+              {restoreMsg && (
+                <div className={`p-3 rounded-xl text-sm ${restoreMsg.ok ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400" : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"}`}>
+                  {restoreMsg.text}
+                </div>
+              )}
+
+              <button onClick={handleRestorePreview} disabled={!restoreFile || !restoreKat || restoreLoading} className="btn-secondary text-sm">
+                {restoreLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
+                {restoreLoading ? "Duke krahasuar..." : "Shiko Ndryshimet"}
+              </button>
+
+              {restoreResults && (
+                <div className="space-y-3">
+                  {(() => {
+                    const matched = restoreResults.filter(r => r.matchedKategoriEmri && r.matchedKategoriEmri !== r.currentKategoriEmri);
+                    const ambiguous = restoreResults.filter(r => !r.matchedKategoriEmri && r.candidates.length > 1);
+                    const unmatched = restoreResults.filter(r => !r.matchedKategoriEmri && r.candidates.length === 0);
+                    return (
+                      <>
+                        <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                          <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">{matched.length} do të ndryshojnë</span>
+                          <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">{ambiguous.length} të paqarta (s&apos;preken)</span>
+                          <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400">{unmatched.length} pa përputhje (s&apos;preken)</span>
+                        </div>
+
+                        <div className="max-h-72 overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-700/50">
+                          {restoreResults.map(r => (
+                            <div key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+                              <span className="text-slate-400 w-20 flex-shrink-0">{r.data}</span>
+                              <span className="font-semibold text-slate-700 dark:text-slate-200 w-16 flex-shrink-0">{formatCurrency(r.shuma)}</span>
+                              <span className="flex-1 text-right">
+                                {r.matchedKategoriEmri && r.matchedKategoriEmri !== r.currentKategoriEmri ? (
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">→ {r.matchedKategoriEmri}</span>
+                                ) : r.candidates.length > 1 ? (
+                                  <span className="text-amber-600 dark:text-amber-400">Të paqarta: {r.candidates.join(", ")}</span>
+                                ) : (
+                                  <span className="text-slate-300 dark:text-slate-500">Pa përputhje</span>
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <button onClick={handleRestoreApply} disabled={!matched.length || restoreApplying} className="btn-primary text-sm">
+                          {restoreApplying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                          {restoreApplying ? "Duke aplikuar..." : `Apliko ${matched.length} Ndryshime`}
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
               )}
             </div>
           </div>
