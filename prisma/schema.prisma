@@ -407,21 +407,23 @@ model TimiInvestStudent {
 }
 
 model TimiInvestInvoice {
-  id          Int      @id @default(autoincrement())
-  number      String   @unique
-  seq         Int
-  month       Int
-  year        Int
-  parentName  String
-  date        DateTime @default(now())
-  items       String   // JSON: [{name, regularPrice, discountPct, finalAmount}]
-  totalAmount Float
-  timiDiscPct Float    @default(4.66)
-  timiDiscAmt Float
-  finalAmount Float
-  notes       String?
-  schoolYear  String?
-  createdAt   DateTime @default(now())
+  id               Int      @id @default(autoincrement())
+  number           String   @unique
+  seq              Int
+  month            Int
+  year             Int
+  parentName       String
+  date             DateTime @default(now())
+  items            String   // JSON: [{name, regularPrice, discountPct, finalAmount}]
+  timiStudentIds   String?  // JSON: [TimiInvestStudent.id, ...] — lidhje e qëndrueshme me fëmijët
+  totalAmount      Float
+  timiDiscPct      Float    @default(4.66)
+  timiDiscAmt      Float
+  finalAmount      Float
+  notes            String?
+  schoolYear       String?
+  regularInvoiceId Int?     @unique // Invoice.id — nëse është konvertuar në faturë të rregullt
+  createdAt        DateTime @default(now())
 }
 
 // ── Fletorja Digjitale e Adminit ──────────────────────────

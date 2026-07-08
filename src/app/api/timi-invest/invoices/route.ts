@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
       parentName:  body.parentName || "",
       date,
       items:       JSON.stringify(body.items || []),
+      timiStudentIds: Array.isArray(body.timiStudentIds) ? JSON.stringify(body.timiStudentIds) : null,
       totalAmount,
       timiDiscPct,
       timiDiscAmt,

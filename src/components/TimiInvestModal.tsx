@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import {
   X, Plus, Trash2, Printer, Users, FileText,
   Edit2, Check, History, ArrowLeft, Eye, Download,
+  FileCheck, ArrowRightLeft,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -45,6 +46,7 @@ interface TimiInvoice {
   finalAmount: number;
   notes: string | null;
   schoolYear: string | null;
+  regularInvoiceId: number | null;
   createdAt: string;
 }
 
@@ -520,6 +522,24 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
     fetchInvoices();
   }
 
+  const [converting, setConverting] = useState<number | null>(null);
+
+  async function convertToInvoice(inv: TimiInvoice) {
+    if (!confirm(`Konverto profaturën ${inv.number} në faturë të rregullt me numër serik? Ky veprim krijon një dokument zyrtar të ri.`)) return;
+    setConverting(inv.id);
+    try {
+      const r = await fetch(`/api/timi-invest/invoices/${inv.id}/convert`, { method: "POST" });
+      const data = await r.json();
+      if (!r.ok) { alert(data.error || "Gabim gjatë konvertimit"); return; }
+      fetchInvoices();
+      window.open(`/invoices/${data.id}`, "_blank");
+    } catch {
+      alert("Gabim rrjeti.");
+    } finally {
+      setConverting(null);
+    }
+  }
+
   /* ════════════════════ RENDER ════════════════════ */
   return (
     <>
@@ -788,7 +808,18 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                               {formatCurrency(inv.finalAmount)}
                             </td>
                             <td className="table-cell">
-                              <div className="flex gap-1 justify-end">
+                              <div className="flex gap-1 justify-end items-center">
+                                {inv.regularInvoiceId ? (
+                                  <a href={`/invoices/${inv.regularInvoiceId}`} target="_blank" rel="noopener noreferrer"
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors" title="Shiko faturën e rregullt">
+                                    <FileCheck className="w-3.5 h-3.5" /> Fatura e Rregullt
+                                  </a>
+                                ) : (
+                                  <button onClick={() => convertToInvoice(inv)} disabled={converting === inv.id}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors disabled:opacity-50" title="Konverto në faturë të rregullt">
+                                    <ArrowRightLeft className="w-3.5 h-3.5" /> {converting === inv.id ? "Duke konvertuar..." : "Konverto"}
+                                  </button>
+                                )}
                                 <button onClick={() => printInvoice(inv)}
                                   className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/30 text-amber-500 transition-colors" title="Printo">
                                   <Printer className="w-3.5 h-3.5" />
