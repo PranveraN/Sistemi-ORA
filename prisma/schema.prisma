@@ -21,6 +21,7 @@ model Organization {
   paymentCategories PaymentCategory[]
   payments         Payment[]
   invoices         Invoice[]
+  schoolYears      SchoolYear[]
 }
 
 model User {
@@ -36,6 +37,7 @@ model User {
   updatedAt      DateTime     @updatedAt
   auditLogs      AuditLog[]
   shpenzimBulkActions ShpenzimBulkAction[]
+  promotionRuns  PromotionRun[]
 }
 
 model Class {
@@ -88,6 +90,7 @@ model Student {
   organization   Organization @relation(fields: [organizationId], references: [id])
   payments       Payment[]
   invoices       Invoice[]
+  yearHistory    StudentYearHistory[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -109,7 +112,83 @@ model PaymentCategory {
   organization   Organization @relation(fields: [organizationId], references: [id])
   payments       Payment[]
   expenses       Expense[]
+  prices         PaymentCategoryPrice[]
   createdAt      DateTime     @default(now())
+}
+
+// ── Vitet Shkollore ───────────────────────────────────────
+
+model SchoolYear {
+  id             Int      @id @default(autoincrement())
+  label          String   // "2026-2027"
+  startDate      DateTime?
+  endDate        DateTime?
+  active         Boolean  @default(false)
+  organizationId Int      @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  prices         PaymentCategoryPrice[]
+  studentHistory StudentYearHistory[]
+  promotions     PromotionRun[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, label])
+  @@index([organizationId, active])
+}
+
+model PaymentCategoryPrice {
+  id            Int             @id @default(autoincrement())
+  categoryId    Int
+  category      PaymentCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  schoolYearId  Int
+  schoolYear    SchoolYear      @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+  defaultAmount Float           @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([categoryId, schoolYearId])
+  @@index([schoolYearId])
+}
+
+// Foto e ngrirë e gjendjes së nxënësit PARA çdo kalimi viti — s'lidhet live
+// me Class (mund të riemërtohet/fshihet më vonë), prandaj ruan tekst të ngrirë.
+model StudentYearHistory {
+  id           Int        @id @default(autoincrement())
+  studentId    Int
+  student      Student    @relation(fields: [studentId], references: [id])
+  schoolYearId Int
+  schoolYear   SchoolYear @relation(fields: [schoolYearId], references: [id])
+  classId      Int?       // referencë e thjeshtë, pa @relation — s'bllokon fshirjen e Class
+  className    String?
+  classLevel   String?
+  discountPct  Float      @default(0)
+  status       String     // ACTIVE/INACTIVE në kohën e arkivimit
+  studentName  String
+  outcome      String     // PROMOTED | REPEATED | GRADUATED | LEFT
+  newClassId   Int?
+  newClassName String?
+  createdAt    DateTime   @default(now())
+
+  @@unique([studentId, schoolYearId])
+  @@index([schoolYearId])
+}
+
+model PromotionRun {
+  id              Int        @id @default(autoincrement())
+  fromYearId      Int?
+  toYearId        Int
+  toYear          SchoolYear @relation(fields: [toYearId], references: [id])
+  userId          Int
+  user            User       @relation(fields: [userId], references: [id])
+  studentCount    Int
+  promotedCount   Int
+  repeatedCount   Int
+  graduatedCount  Int
+  leftCount       Int
+  requestSnapshot String     // JSON e vendimeve të aplikuara
+  createdAt       DateTime   @default(now())
+
+  @@index([toYearId])
 }
 
 model Expense {

@@ -4,7 +4,7 @@ import Header from "@/components/layout/Header";
 import Link from "next/link";
 import {
   FileSignature, FilePen, BadgeCheck,
-  BookOpen, ClipboardCheck, ArrowUpRight, Users,
+  BookOpen, ClipboardCheck, ArrowUpRight, Users, GraduationCap,
 } from "lucide-react";
 
 const cards = [
@@ -61,6 +61,15 @@ const cards = [
     color: "text-teal-600 dark:text-teal-400",
     bg: "bg-teal-50 dark:bg-teal-900/30",
     ring: "hover:ring-teal-300 dark:hover:ring-teal-700",
+  },
+  {
+    href: "/sekretaria/viti-shkollor",
+    icon: GraduationCap,
+    label: "Mbyllja e Vitit",
+    desc: "Kalo nxënësit në klasën e re dhe hap vitin e ardhshëm",
+    color: "text-indigo-600 dark:text-indigo-400",
+    bg: "bg-indigo-50 dark:bg-indigo-900/30",
+    ring: "hover:ring-indigo-300 dark:hover:ring-indigo-700",
   },
 ];
 

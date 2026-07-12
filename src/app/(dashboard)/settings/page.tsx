@@ -7,7 +7,7 @@ import {
   Save, Plus, Euro, Pencil, Check, X, Trash2,
   School, Users, BookOpen, ShoppingBag, Eye, EyeOff,
   Loader2, AlertTriangle, GraduationCap, KeyRound,
-  DatabaseBackup, Download, RefreshCw,
+  DatabaseBackup, Download, RefreshCw, CalendarRange, Star,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -65,6 +65,7 @@ const TABS = [
   { key: "shpenzime",  label: "Shpenzime",     icon: ShoppingBag },
   { key: "perdoruesit",label: "Përdoruesit",   icon: Users },
   { key: "backup",     label: "Backup",        icon: DatabaseBackup },
+  { key: "vitet",      label: "Vitet Shkollore", icon: CalendarRange },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -84,7 +85,7 @@ export default function SettingsPage() {
         {/* Tab bar */}
         <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-fit flex-wrap">
           {TABS.map(t => {
-            if ((t.key === "perdoruesit" || t.key === "backup") && !isAdmin) return null;
+            if ((t.key === "perdoruesit" || t.key === "backup" || t.key === "vitet") && !isAdmin) return null;
             const Icon = t.icon;
             return (
               <button
@@ -109,6 +110,7 @@ export default function SettingsPage() {
         {tab === "shpenzime"   && <ExpenseCatsSection />}
         {tab === "perdoruesit" && isAdmin && <UsersSection />}
         {tab === "backup"     && isAdmin && <BackupSection />}
+        {tab === "vitet"      && isAdmin && <SchoolYearsSection />}
       </div>
     </>
   );
@@ -1010,6 +1012,165 @@ function BackupSection() {
               <a href={`/api/backups/${b.filename}`} className="btn-secondary text-xs px-3 py-1.5 flex-shrink-0">
                 <Download className="w-3.5 h-3.5" /> Shkarko
               </a>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  7. VITET SHKOLLORE                                          */
+/* ═══════════════════════════════════════════════════════════ */
+interface SchoolYearRow {
+  id: number; label: string; startDate: string | null; endDate: string | null; active: boolean;
+}
+interface YearPriceRow { categoryId: number; name: string; type: string; defaultAmount: number }
+
+function SchoolYearsSection() {
+  const [years, setYears] = useState<SchoolYearRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newLabel, setNewLabel] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addErr, setAddErr] = useState<string | null>(null);
+  const [pricesForYear, setPricesForYear] = useState<number | null>(null);
+  const [prices, setPrices] = useState<YearPriceRow[]>([]);
+  const [pricesLoading, setPricesLoading] = useState(false);
+  const [savingPrices, setSavingPrices] = useState(false);
+
+  const fetchYears = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch("/api/school-years");
+    if (r.ok) setYears(await r.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchYears(); }, [fetchYears]);
+
+  async function handleAdd(e: React.SyntheticEvent) {
+    e.preventDefault();
+    setAdding(true); setAddErr(null);
+    const r = await fetch("/api/school-years", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: newLabel.trim() }),
+    });
+    const data = await r.json();
+    setAdding(false);
+    if (!r.ok) { setAddErr(data.error || "Gabim"); return; }
+    setNewLabel("");
+    fetchYears();
+  }
+
+  async function openPrices(yearId: number) {
+    if (pricesForYear === yearId) { setPricesForYear(null); return; }
+    setPricesForYear(yearId);
+    setPricesLoading(true);
+    const r = await fetch(`/api/school-years/${yearId}/prices`);
+    if (r.ok) setPrices(await r.json());
+    setPricesLoading(false);
+  }
+
+  async function handleSavePrices(yearId: number) {
+    setSavingPrices(true);
+    await fetch(`/api/school-years/${yearId}/prices`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prices: prices.map(p => ({ categoryId: p.categoryId, defaultAmount: p.defaultAmount })) }),
+    });
+    setSavingPrices(false);
+    setPricesForYear(null);
+  }
+
+  async function handleDelete(id: number, label: string) {
+    if (!confirm(`Fshi vitin "${label}"?`)) return;
+    const r = await fetch(`/api/school-years/${id}`, { method: "DELETE" });
+    if (!r.ok) { const d = await r.json(); alert(d.error); return; }
+    fetchYears();
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex items-center gap-3 p-5 border-b border-slate-100 dark:border-slate-700">
+        <div className="w-9 h-9 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
+          <CalendarRange className="w-5 h-5 text-indigo-500" />
+        </div>
+        <div>
+          <h2 className="font-bold text-slate-900 dark:text-white">Vitet Shkollore</h2>
+          <p className="text-xs text-slate-400">Përgatit çmimet e vitit të ardhshëm pa prekur vitin aktual. Hapja zyrtare e vitit bëhet te Sekretaria → Mbyllja e Vitit.</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleAdd} className="p-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+          <Plus className="w-3.5 h-3.5" /> Shto Vit të Ri
+        </p>
+        <div className="flex gap-2">
+          <input value={newLabel} onChange={e => setNewLabel(e.target.value)}
+            className="form-input flex-1" placeholder='p.sh. "2027-2028"' required />
+          <button type="submit" disabled={adding} className="btn-primary flex-shrink-0 px-3">
+            {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+          </button>
+        </div>
+        {addErr && <p className="text-xs text-red-500 mt-2">{addErr}</p>}
+      </form>
+
+      {loading ? (
+        <div className="py-10 text-center text-slate-400 text-sm">Duke ngarkuar...</div>
+      ) : years.length === 0 ? (
+        <div className="py-10 text-center text-slate-400 text-sm">Nuk ka vite shkollore</div>
+      ) : (
+        <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          {years.map(y => (
+            <div key={y.id}>
+              <div className="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-slate-900 dark:text-white text-sm">{y.label}</p>
+                  {y.active && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                      <Star className="w-3 h-3" /> Aktiv
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => openPrices(y.id)} className="btn-secondary text-xs px-3 py-1.5">
+                    Çmimet {pricesForYear === y.id ? "▴" : "▾"}
+                  </button>
+                  {!y.active && (
+                    <button onClick={() => handleDelete(y.id, y.label)}
+                      className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-500 transition-colors"
+                      title="Fshi">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {pricesForYear === y.id && (
+                <div className="px-5 pb-4 bg-indigo-50/30 dark:bg-indigo-900/10">
+                  {pricesLoading ? (
+                    <div className="py-4 text-center text-slate-400 text-xs">Duke ngarkuar çmimet...</div>
+                  ) : (
+                    <div className="space-y-2 pt-2">
+                      {prices.map((p, i) => (
+                        <div key={p.categoryId} className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-slate-700 dark:text-slate-200">{p.name}</span>
+                          <div className="relative w-32">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">€</span>
+                            <input type="number" value={p.defaultAmount} min="0" step="0.01"
+                              onChange={e => setPrices(arr => arr.map((row, j) => j === i ? { ...row, defaultAmount: parseFloat(e.target.value) || 0 } : row))}
+                              className="form-input pl-6 py-1.5 text-sm" />
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex justify-end pt-2">
+                        <button onClick={() => handleSavePrices(y.id)} disabled={savingPrices} className="btn-primary text-xs px-3 py-1.5">
+                          {savingPrices ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                          Ruaj Çmimet
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
