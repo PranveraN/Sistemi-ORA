@@ -46,7 +46,7 @@ export default function StudentsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("ACTIVE");
   const [classId, setClassId] = useState(classIdParam);
   const [classes, setClasses] = useState<Class[]>([]);
   const [page, setPage] = useState(1);
