@@ -45,7 +45,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     const vatRate = parseFloat(body.vatRate) || 0;
-    const subtotal = body.items.reduce((sum: number, item: { total: number }) => sum + item.total, 0);
+    const subtotal = body.items.reduce((sum: number, item: { regularPrice: number; discountPct: number; unitPrice: number; quantity: number; total: number }) => {
+      const reg  = parseFloat(String(item.regularPrice)) || 0;
+      const disc = parseFloat(String(item.discountPct))  || 0;
+      const unit = reg > 0 ? Math.round(reg * (1 - disc / 100) * 100) / 100 : (parseFloat(String(item.unitPrice)) || 0);
+      return sum + Math.round(item.quantity * unit * 100) / 100;
+    }, 0);
     const vatAmount = (subtotal * vatRate) / 100;
     const total = subtotal + vatAmount;
 
@@ -74,12 +79,19 @@ export async function POST(req: NextRequest) {
         dueDate: body.dueDate ? new Date(body.dueDate) : null,
         notes: body.notes || null,
         items: {
-          create: body.items.map((item: { description: string; quantity: number; unitPrice: number; total: number }) => ({
-            description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.total,
-          })),
+          create: body.items.map((item: { description: string; quantity: number; regularPrice: number; discountPct: number; unitPrice: number; total: number }) => {
+            const reg  = parseFloat(String(item.regularPrice)) || 0;
+            const disc = parseFloat(String(item.discountPct))  || 0;
+            const unit = reg > 0 ? Math.round(reg * (1 - disc / 100) * 100) / 100 : (parseFloat(String(item.unitPrice)) || 0);
+            return {
+              description:  item.description,
+              quantity:     item.quantity,
+              regularPrice: reg,
+              discountPct:  disc,
+              unitPrice:    unit,
+              total:        Math.round(item.quantity * unit * 100) / 100,
+            };
+          }),
         },
       },
       include: { items: true, student: true },

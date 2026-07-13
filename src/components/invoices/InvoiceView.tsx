@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { ChevronLeft, Printer, Download, Send } from "lucide-react";
-import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
+import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import { useRef, useState } from "react";
 
 interface InvoiceItem {
   id: number;
   description: string;
   quantity: number;
+  regularPrice: number;
+  discountPct: number;
   unitPrice: number;
   total: number;
 }
@@ -51,6 +53,140 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
     });
     setUpdatingStatus(false);
     window.location.reload();
+  }
+
+  function printInvoice() {
+    const origin = window.location.origin;
+    const typeLabel = invoice.type === "INVOICE" ? "FATURË" : invoice.type === "PROFORMA" ? "PROFATURË" : "OFERTË";
+    const itemRows = invoice.items.map(item => {
+      const hasDiscount = item.regularPrice > 0 && item.discountPct > 0;
+      const discAmt = hasDiscount ? Math.round(item.regularPrice * (item.discountPct / 100) * 100) / 100 : 0;
+      return `
+      <tr>
+        <td class="desc">${item.description}</td>
+        <td class="center">${item.quantity}</td>
+        <td class="right" style="color:#64748b">${item.regularPrice > 0 ? `${item.regularPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €` : "—"}</td>
+        <td class="right" style="color:#16a34a">${hasDiscount ? `−${item.discountPct}%<br><small style="font-size:8px">(${discAmt.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €)</small>` : "—"}</td>
+        <td class="right">${item.unitPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</td>
+        <td class="right bold">${item.total.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</td>
+      </tr>`;
+    }).join("");
+
+    const vatRow = invoice.vatRate > 0
+      ? `<div class="total-row"><span>TVSH (${invoice.vatRate}%)</span><span>${invoice.vatAmount.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</span></div>`
+      : "";
+
+    const notesBlock = invoice.notes
+      ? `<div class="notes"><p class="notes-label">SHËNIME</p><p class="notes-text">${invoice.notes}</p></div>`
+      : "";
+
+    const html = `<!DOCTYPE html><html lang="sq"><head>
+<meta charset="UTF-8"/>
+<title>${typeLabel} #${invoice.number}</title>
+<style>
+@page { size: A4 portrait; margin: 14mm 16mm; }
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #0f172a; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.logo-block { display: flex; align-items: center; gap: 10px; }
+.logo { height: 44px; width: auto; object-fit: contain; }
+.school-name { font-size: 16px; font-weight: 800; color: #1d4ed8; }
+.school-sub { font-size: 8.5px; color: #64748b; margin-top: 2px; }
+.invoice-meta { text-align: right; }
+.invoice-type { font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: .04em; }
+.invoice-num { font-size: 11px; font-family: monospace; color: #1d4ed8; margin-top: 2px; }
+.invoice-date { font-size: 9px; color: #94a3b8; margin-top: 2px; }
+.divider { border: none; border-top: 2px solid #e2e8f0; margin: 10px 0; }
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+.info-section .section-label { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #94a3b8; margin-bottom: 5px; }
+.student-name { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 3px; }
+.info-line { font-size: 9.5px; color: #475569; margin-top: 1px; }
+.status-badge { display: inline-block; padding: 2px 9px; border-radius: 4px; font-size: 9px; font-weight: 700; background: #dbeafe; color: #1e40af; margin-bottom: 4px; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+thead tr { background: #1d4ed8; color: #fff; }
+th { padding: 7px 10px; font-size: 10px; font-weight: 600; text-align: left; }
+td { padding: 6px 10px; font-size: 10px; border-bottom: 1px solid #f1f5f9; }
+tr:nth-child(even) td { background: #f8fafc; }
+.center { text-align: center; }
+.right { text-align: right; }
+.bold { font-weight: 700; }
+.desc { max-width: 220px; }
+.totals { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+.totals-box { width: 200px; }
+.total-row { display: flex; justify-content: space-between; font-size: 10px; color: #475569; padding: 3px 0; }
+.total-main { display: flex; justify-content: space-between; font-size: 14px; font-weight: 800; color: #1d4ed8; border-top: 2px solid #e2e8f0; padding-top: 6px; margin-top: 4px; }
+.notes { border-top: 1px solid #e2e8f0; padding-top: 12px; margin-bottom: 16px; }
+.notes-label { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #94a3b8; margin-bottom: 4px; }
+.notes-text { font-size: 10px; color: #475569; }
+.footer { border-top: 1px solid #e2e8f0; padding-top: 10px; text-align: center; }
+.footer p { font-size: 8px; color: #94a3b8; }
+.sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 30px; }
+.sig-line { border-top: 1px solid #94a3b8; margin-top: 20px; margin-bottom: 3px; }
+.sig-lbl { font-size: 8px; color: #64748b; text-align: center; }
+</style></head><body>
+<div class="header">
+  <div class="logo-block">
+    <img src="${origin}/logo.png" class="logo" alt="Logo" onerror="this.style.display='none'"/>
+    <div>
+      <div class="school-name">AKADEMIA ORA</div>
+      <div class="school-sub">Shkollë Private</div>
+      <div class="school-sub">Tel: +383 46 505 055</div>
+    </div>
+  </div>
+  <div class="invoice-meta">
+    <div class="invoice-type">${typeLabel}</div>
+    <div class="invoice-num">#${invoice.number}</div>
+    <div class="invoice-date">Data: ${formatDate(invoice.createdAt)}</div>
+    ${invoice.dueDate ? `<div class="invoice-date">Afati: ${formatDate(invoice.dueDate)}</div>` : ""}
+  </div>
+</div>
+<hr class="divider"/>
+<div class="info-grid">
+  <div class="info-section">
+    <div class="section-label">NXËNËSI</div>
+    <div class="student-name">${invoice.student.firstName} ${invoice.student.lastName}</div>
+    <div class="info-line">Prindi: ${invoice.student.parentName}</div>
+    <div class="info-line">Tel: ${invoice.student.parentPhone}</div>
+    ${invoice.student.address ? `<div class="info-line">${invoice.student.address}</div>` : ""}
+    ${invoice.student.class ? `<div class="info-line">Klasa: ${invoice.student.class.name}</div>` : ""}
+  </div>
+  <div class="info-section">
+    <div class="section-label">STATUSI</div>
+    <div class="status-badge">${getStatusLabel(invoice.status)}</div>
+    <div class="info-line">Nr. Personal: ${invoice.student.personalNumber}</div>
+  </div>
+</div>
+<table>
+  <thead><tr>
+    <th>Përshkrimi</th>
+    <th class="center" style="width:40px">Sasi</th>
+    <th class="right" style="width:85px">Çm. Rregullt</th>
+    <th class="right" style="width:75px">Zbritja</th>
+    <th class="right" style="width:75px">Çm. Final</th>
+    <th class="right" style="width:80px">Totali</th>
+  </tr></thead>
+  <tbody>${itemRows}</tbody>
+</table>
+<div class="totals">
+  <div class="totals-box">
+    <div class="total-row"><span>Nëntotali:</span><span>${invoice.subtotal.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</span></div>
+    ${vatRow}
+    <div class="total-main"><span>TOTALI:</span><span>${invoice.total.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</span></div>
+  </div>
+</div>
+${notesBlock}
+<div class="sig-grid">
+  <div><div class="sig-line"></div><div class="sig-lbl">Nënshkrimi i nxënësit / prindit</div></div>
+  <div><div class="sig-line"></div><div class="sig-lbl">Vula dhe nënshkrimi i shkollës</div></div>
+</div>
+<div class="footer"><p>Akademia Ora &bull; ${new Date().getFullYear()}</p></div>
+<script>window.onload=()=>window.print()</script>
+</body></html>`;
+
+    const w = window.open("", "_blank", "width=820,height=1100");
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
   }
 
   async function exportPDF() {
@@ -227,7 +363,7 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
               Shëno si Paguar
             </button>
           )}
-          <button onClick={() => window.print()} className="btn-secondary">
+          <button onClick={printInvoice} className="btn-secondary">
             <Printer className="w-4 h-4" />
             Printo
           </button>
@@ -295,24 +431,39 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
             <thead className="bg-primary-600 text-white">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold">Përshkrimi</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold w-20">Sasia</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold w-36">Çmimi</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold w-36">Totali</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold w-16">Sasi</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold w-32">Çm. Rregullt</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold w-28">Zbritja</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold w-32">Çm. Final</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold w-32">Totali</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-              {invoice.items.map((item, i) => (
-                <tr key={item.id} className={i % 2 === 0 ? "" : "bg-slate-50 dark:bg-slate-800/30"}>
-                  <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-200">{item.description}</td>
-                  <td className="px-4 py-3 text-sm text-center text-slate-600 dark:text-slate-300">{item.quantity}</td>
-                  <td className="px-4 py-3 text-sm text-right text-slate-600 dark:text-slate-300">
-                    {item.unitPrice.toLocaleString()} €
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold text-slate-800 dark:text-slate-200">
-                    {item.total.toLocaleString()} €
-                  </td>
-                </tr>
-              ))}
+              {invoice.items.map((item, i) => {
+                const hasDiscount = item.regularPrice > 0 && item.discountPct > 0;
+                const discAmt = hasDiscount ? Math.round(item.regularPrice * (item.discountPct / 100) * 100) / 100 : 0;
+                return (
+                  <tr key={item.id} className={i % 2 === 0 ? "" : "bg-slate-50 dark:bg-slate-800/30"}>
+                    <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-200">{item.description}</td>
+                    <td className="px-4 py-3 text-sm text-center text-slate-600 dark:text-slate-300">{item.quantity}</td>
+                    <td className="px-4 py-3 text-sm text-right text-slate-500">
+                      {item.regularPrice > 0 ? `${item.regularPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €` : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right">
+                      {hasDiscount
+                        ? <span className="text-green-600 font-medium">−{item.discountPct}% <span className="text-xs text-green-500">({discAmt.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €)</span></span>
+                        : <span className="text-slate-300">—</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right text-slate-600 dark:text-slate-300">
+                      {item.unitPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right font-bold text-slate-800 dark:text-slate-200">
+                      {item.total.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

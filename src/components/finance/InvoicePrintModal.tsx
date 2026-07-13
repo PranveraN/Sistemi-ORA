@@ -33,10 +33,44 @@ interface Props {
 export default function InvoicePrintModal({ student, payment, categoryName, month, year, onClose }: Props) {
   const printRef = useRef<HTMLDivElement>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [savedInvoice, setSavedInvoice] = useState<{ id: number; number: string } | null>(null);
 
-  const invNumber = `FAT-${year}-${String(student.id).padStart(4, "0")}`;
   const today = new Date();
   const periodLabel = month ? `${MONTHS[month - 1]} ${year}` : String(year);
+
+  async function getOrCreateInvoice(): Promise<string> {
+    if (savedInvoice) return savedInvoice.number;
+    try {
+      const finalAmt = payment?.finalAmount ?? payment?.amount ?? 0;
+      const discPct  = payment?.discountType === "percentage" ? (payment?.discount ?? 0) : 0;
+      const regPrice = payment?.amount ?? finalAmt;
+      const res = await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: student.id,
+          type: "INVOICE",
+          vatRate: 0,
+          dueDate: payment?.dueDate || null,
+          notes: null,
+          items: [{
+            description: `${categoryName} — ${periodLabel}`,
+            quantity: 1,
+            regularPrice: regPrice,
+            discountPct: discPct,
+            unitPrice: finalAmt,
+            total: finalAmt,
+          }],
+        }),
+      });
+      if (res.ok) {
+        const inv = await res.json();
+        setSavedInvoice({ id: inv.id, number: inv.number });
+        return inv.number;
+      }
+    } catch { /* fallback */ }
+    return `FAT-${year}-${String(student.id).padStart(4, "0")}`;
+  }
 
   const amount      = payment?.amount      ?? 0;
   const finalAmount = payment?.finalAmount ?? 0;
@@ -48,7 +82,10 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
     ? (amount * discount) / 100
     : discount;
 
-  function handlePrint() {
+  const invNumber = savedInvoice?.number ?? "…";
+
+  async function handlePrint() {
+    const invNum = await getOrCreateInvoice();
     const content = printRef.current;
     if (!content) return;
 
@@ -56,6 +93,7 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
     if (!win) return;
     const origin = window.location.origin;
 
+    const html = content.innerHTML.replace(/…/g, invNum);
     win.document.write(`
       <!DOCTYPE html>
       <html lang="sq">
@@ -106,7 +144,7 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
         </style>
         <base href="${origin}/">
       </head>
-      <body>${content.innerHTML}</body>
+      <body>${html}</body>
       </html>
     `);
     win.document.close();
@@ -116,6 +154,7 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
 
   async function handlePDF() {
     setDownloadingPdf(true);
+    const invNum = await getOrCreateInvoice();
     try {
       const { default: jsPDF } = await import("jspdf");
       const { default: autoTable } = await import("jspdf-autotable");
@@ -159,7 +198,7 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
       doc.setFontSize(9);
       doc.setTextColor(100, 116, 139);
       doc.setFont("helvetica", "normal");
-      doc.text(`Nr: ${invNumber}`, 196, 27, { align: "right" });
+      doc.text(`Nr: ${invNum}`, 196, 27, { align: "right" });
       doc.text(`Data: ${formatDate(today)}`, 196, 33, { align: "right" });
 
       // Divider
@@ -259,9 +298,9 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
       doc.setFontSize(8);
       doc.setTextColor(203, 213, 225);
       doc.setFont("helvetica", "normal");
-      doc.text(`Akademia Ora • ${invNumber} • ${formatDate(today)}`, 105, 285, { align: "center" });
+      doc.text(`Akademia Ora • ${invNum} • ${formatDate(today)}`, 105, 285, { align: "center" });
 
-      doc.save(`Fatura-${student.lastName}-${invNumber}.pdf`);
+      doc.save(`Fatura-${student.lastName}-${invNum}.pdf`);
     } finally {
       setDownloadingPdf(false);
     }
