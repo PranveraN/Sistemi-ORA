@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { useSidebar } from "@/components/layout/SidebarContext";
 
 type Role = "ADMIN" | "FINANCE" | "SECRETARY";
 
@@ -65,14 +66,26 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { data: session } = useSession();
   const role = ((session?.user as { role?: string } | undefined)?.role ?? "ADMIN") as Role;
+  const { mobileOpen, close } = useSidebar();
 
   return (
-    <aside
-      className={cn(
-        "relative flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 ease-in-out",
-        collapsed ? "w-16" : "w-60"
+    <>
+      {/* Overlay — vetëm celular, kur sirtari është i hapur */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm md:hidden"
+          onClick={close}
+        />
       )}
-    >
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 transition-transform duration-300 ease-in-out",
+          "md:relative md:translate-x-0",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          "w-60",
+          collapsed && "md:w-16"
+        )}
+      >
       {/* Logo */}
       <div className={cn(
         "flex items-center gap-3 px-4 py-5 border-b border-slate-200 dark:border-slate-700",
@@ -114,6 +127,7 @@ export default function Sidebar() {
                       <li key={item.href}>
                         <Link
                           href={item.href}
+                          onClick={close}
                           className={cn(
                             "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
                             isActive
@@ -126,7 +140,7 @@ export default function Sidebar() {
                           <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
                           {!collapsed && <span>{item.label}</span>}
                           {isActive && !collapsed && (
-                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary-600 dark:bg-primary-400" />
+                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent-500 dark:bg-accent-400" />
                           )}
                         </Link>
                       </li>
@@ -139,13 +153,14 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      {/* Collapse button */}
+      {/* Collapse button — vetëm desktop, s'ka kuptim në sirtarin celular */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-20 w-6 h-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shadow-sm transition-colors z-10"
+        className="hidden md:flex absolute -right-3 top-20 w-6 h-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-full items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shadow-sm transition-colors z-10"
       >
         {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
       </button>
-    </aside>
+      </aside>
+    </>
   );
 }

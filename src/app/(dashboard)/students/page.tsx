@@ -51,6 +51,7 @@ export default function StudentsPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [page, setPage] = useState(1);
   const [tuitionPrice, setTuitionPrice] = useState<number>(2000);
+  const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
   const limit = 20;
 
   /* Inline price editing */
@@ -149,6 +150,9 @@ export default function StudentsPage() {
       const shkollimi = (catData as { name: string; defaultAmount: number }[]).find(c => c.name === "Shkollimi");
       if (shkollimi?.defaultAmount) setTuitionPrice(shkollimi.defaultAmount);
     });
+    fetch("/api/settings")
+      .then(r => r.json())
+      .then(s => setTimiInvestEnabled(s.timiInvestEnabled !== "false"));
   }, []);
 
   const fetchStudents = useCallback(async (isFirst = false) => {
@@ -317,7 +321,7 @@ export default function StudentsPage() {
   return (
     <>
       <Header title="Nxënësit" />
-      <div className="p-6 space-y-4 animate-fade-in">
+      <div className="p-4 sm:p-6 space-y-4 animate-fade-in">
 
         {/* Actions bar */}
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
@@ -376,32 +380,32 @@ export default function StudentsPage() {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="card p-4 flex items-center gap-3">
-            <div className="w-9 h-9 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="card p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 flex-shrink-0 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
               <Users className="w-4 h-4 text-blue-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-lg font-bold text-slate-900 dark:text-white">{total}</p>
-              <p className="text-xs text-slate-400">Gjithsej</p>
+              <p className="text-xs text-slate-400 truncate">Gjithsej</p>
             </div>
           </div>
-          <div className="card p-4 flex items-center gap-3">
-            <div className="w-9 h-9 bg-green-50 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+          <div className="card p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 flex-shrink-0 bg-green-50 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
               <Users className="w-4 h-4 text-green-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-lg font-bold text-slate-900 dark:text-white">{activeCount}</p>
-              <p className="text-xs text-slate-400">Aktivë</p>
+              <p className="text-xs text-slate-400 truncate">Aktivë</p>
             </div>
           </div>
-          <div className="card p-4 flex items-center gap-3">
-            <div className="w-9 h-9 bg-red-50 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
+          <div className="card p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 flex-shrink-0 bg-red-50 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
               <AlertCircle className="w-4 h-4 text-red-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-lg font-bold text-slate-900 dark:text-white">{debtCount}</p>
-              <p className="text-xs text-slate-400">Me borxhe</p>
+              <p className="text-xs text-slate-400 truncate">Me borxhe</p>
             </div>
           </div>
         </div>
@@ -456,12 +460,14 @@ export default function StudentsPage() {
                   <th className="table-header">Klasa</th>
                   <th className="table-header">Kontrata</th>
                   <th className="table-header">Çmimi Final</th>
-                  <th className="table-header">
-                    <span className="inline-flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-violet-500 inline-block"></span>
-                      Çmimi TI
-                    </span>
-                  </th>
+                  {timiInvestEnabled && (
+                    <th className="table-header">
+                      <span className="inline-flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-violet-500 inline-block"></span>
+                        Çmimi TI
+                      </span>
+                    </th>
+                  )}
                   <th className="table-header">Paguar</th>
                   <th className="table-header">Borxhi</th>
                   <th className="table-header">Statusi</th>
@@ -482,7 +488,7 @@ export default function StudentsPage() {
                   </tr>
                 ) : students.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="table-cell text-center py-12 text-slate-400">
+                    <td colSpan={timiInvestEnabled ? 12 : 11} className="table-cell text-center py-12 text-slate-400">
                       Asnjë nxënës nuk u gjet
                     </td>
                   </tr>
@@ -562,37 +568,39 @@ export default function StudentsPage() {
                         )}
                       </td>
                       {/* Çmimi TI */}
-                      <td className="table-cell">
-                        {s.timiInvest ? (
-                          <div className="flex items-center gap-1">
-                            <span className="font-semibold text-violet-600 dark:text-violet-400 text-sm">
-                              {formatCurrency(s.timiInvest.regularPrice)}
-                            </span>
+                      {timiInvestEnabled && (
+                        <td className="table-cell">
+                          {s.timiInvest ? (
+                            <div className="flex items-center gap-1">
+                              <span className="font-semibold text-violet-600 dark:text-violet-400 text-sm">
+                                {formatCurrency(s.timiInvest.regularPrice)}
+                              </span>
+                              <button
+                                onClick={() => openTiModal(s)}
+                                title="Modifiko çmimin TI"
+                                className="p-0.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-violet-400 hover:text-violet-600 transition-colors"
+                              >
+                                <Edit className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => removeTiLink(s)}
+                                title="Hiq lidhjen TI"
+                                className="p-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-500 transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
                             <button
                               onClick={() => openTiModal(s)}
-                              title="Modifiko çmimin TI"
-                              className="p-0.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-violet-400 hover:text-violet-600 transition-colors"
+                              title="Lidh me Timi Invest"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border border-dashed border-slate-300 dark:border-slate-600 text-slate-400 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
                             >
-                              <Edit className="w-3 h-3" />
+                              <Plus className="w-3 h-3" /> TI
                             </button>
-                            <button
-                              onClick={() => removeTiLink(s)}
-                              title="Hiq lidhjen TI"
-                              className="p-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-500 transition-colors"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => openTiModal(s)}
-                            title="Lidh me Timi Invest"
-                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border border-dashed border-slate-300 dark:border-slate-600 text-slate-400 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-                          >
-                            <Plus className="w-3 h-3" /> TI
-                          </button>
-                        )}
-                      </td>
+                          )}
+                        </td>
+                      )}
                       {/* Paguar */}
                       <td className="table-cell">
                         {paid > 0

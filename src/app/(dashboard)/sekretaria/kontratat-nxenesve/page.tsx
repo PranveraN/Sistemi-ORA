@@ -320,6 +320,13 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
   const [siblings, setSiblings] = useState<Student[]>([]);
   const [siblingsAdded, setSiblingsAdded] = useState(false);
   const [basePrice, setBasePrice] = useState(2000);
+  const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then(r => r.json())
+      .then(s => setTimiInvestEnabled(s.timiInvestEnabled !== "false"));
+  }, []);
 
   useEffect(() => {
     function normPhone(p: string) { return p.replace(/\D/g, ""); }
@@ -838,18 +845,20 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                           </div>
                         </div>
                       </div>
-                      <div style={{ marginBottom: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-                          <span onClick={() => setD(p => ({ ...p, paymentMethod: "2" }))}
-                            style={{ border: "1px solid #000", minWidth: "14px", height: "14px", display: "inline-block", textAlign: "center", lineHeight: "13px", marginTop: "2px", cursor: "pointer", flexShrink: 0 }}>
-                            {d.paymentMethod === "2" ? "✓" : ""}
-                          </span>
-                          <div>
-                            <p style={{ ...P, marginBottom: "2px" }}><strong>6.2. Mundësia e dytë:</strong></p>
-                            <p style={P}>Pagesa mund të bëhet përmes "Timi Invest" i cili e krediton prindin me mundësi pagese nga 3-12 këste mujore në vlerën e përgjithshme të shkollimit pa shpenzime administrative dhe pa kosto shtesë.</p>
+                      {timiInvestEnabled && (
+                        <div style={{ marginBottom: "8px" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                            <span onClick={() => setD(p => ({ ...p, paymentMethod: "2" }))}
+                              style={{ border: "1px solid #000", minWidth: "14px", height: "14px", display: "inline-block", textAlign: "center", lineHeight: "13px", marginTop: "2px", cursor: "pointer", flexShrink: 0 }}>
+                              {d.paymentMethod === "2" ? "✓" : ""}
+                            </span>
+                            <div>
+                              <p style={{ ...P, marginBottom: "2px" }}><strong>6.2. Mundësia e dytë:</strong></p>
+                              <p style={P}>Pagesa mund të bëhet përmes "Timi Invest" i cili e krediton prindin me mundësi pagese nga 3-12 këste mujore në vlerën e përgjithshme të shkollimit pa shpenzime administrative dhe pa kosto shtesë.</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
                       <div className="no-print" style={{ fontSize: "9pt", color: "#888", marginTop: "4px" }}>
                         (kliko kutinë për të zgjedhur mundësinë)
                       </div>

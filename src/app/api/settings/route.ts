@@ -10,6 +10,7 @@ const DEFAULTS: Record<string, string> = {
   schoolNipt:    "",
   schoolYear:    "2025/2026",
   schoolWebsite: "",
+  timiInvestEnabled: "true",
 };
 
 const ALLOWED = Object.keys(DEFAULTS);

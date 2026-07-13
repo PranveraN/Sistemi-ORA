@@ -15,6 +15,7 @@ import { formatCurrency } from "@/lib/utils";
 interface SchoolInfo {
   schoolName: string; schoolPhone: string; schoolAddress: string;
   schoolEmail: string; schoolNipt: string; schoolYear: string; schoolWebsite: string;
+  timiInvestEnabled: string;
 }
 
 interface Category {
@@ -123,6 +124,7 @@ function SchoolSection() {
   const [info, setInfo] = useState<SchoolInfo>({
     schoolName: "", schoolPhone: "", schoolAddress: "",
     schoolEmail: "", schoolNipt: "", schoolYear: "", schoolWebsite: "",
+    timiInvestEnabled: "true",
   });
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
@@ -186,6 +188,23 @@ function SchoolSection() {
             placeholder="Rr. Nënë Tereza, Prishtinë"
           />
         </div>
+      </div>
+
+      <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-700">
+        <div>
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Moduli TIMI INVEST</p>
+          <p className="text-xs text-slate-400 max-w-md">
+            Kur është joaktiv, fshihet nga Dashboard, Nxënësit dhe kontratat e reja — për shkolla që s&apos;e përdorin këtë mundësi financimi.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setInfo(s => ({ ...s, timiInvestEnabled: s.timiInvestEnabled === "true" ? "false" : "true" }))}
+          className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${info.timiInvestEnabled === "true" ? "bg-primary-600" : "bg-slate-300 dark:bg-slate-600"}`}
+          aria-pressed={info.timiInvestEnabled === "true"}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${info.timiInvestEnabled === "true" ? "translate-x-5" : "translate-x-0"}`} />
+        </button>
       </div>
 
       <div className="flex items-center justify-end gap-3 pt-2">

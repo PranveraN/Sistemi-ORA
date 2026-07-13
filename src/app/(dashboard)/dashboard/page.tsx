@@ -48,11 +48,15 @@ export default function DashboardPage() {
   const [showOferta, setShowOferta] = useState(false);
   const [ofertaView, setOfertaView] = useState<"form" | "history">("form");
   const [showTimiInvest, setShowTimiInvest] = useState(false);
+  const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
 
   useEffect(() => {
     fetch("/api/dashboard")
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); });
+    fetch("/api/settings")
+      .then(r => r.json())
+      .then(s => setTimiInvestEnabled(s.timiInvestEnabled !== "false"));
   }, []);
 
   if (loading) return (
@@ -78,7 +82,7 @@ export default function DashboardPage() {
   return (
     <>
       <Header title="Dashboard" />
-      <div className="p-6 space-y-6 animate-fade-in">
+      <div className="p-4 sm:p-6 space-y-6 animate-fade-in">
 
         {/* Quick Actions bar */}
         <QuickActions />
@@ -121,17 +125,19 @@ export default function DashboardPage() {
             <ArrowUpRight className="w-4 h-4 text-slate-300 ml-auto flex-shrink-0 group-hover:text-emerald-500 transition-colors" />
           </Link>
 
-          <button onClick={() => setShowTimiInvest(true)}
-            className="flex items-center gap-3 p-4 card hover:ring-2 hover:ring-amber-300 dark:hover:ring-amber-700 transition-all text-left group">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0 group-hover:bg-amber-100 dark:group-hover:bg-amber-900/50 transition-colors">
-              <CreditCard className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-white text-sm">TIMI INVEST</p>
-              <p className="text-xs text-slate-400 mt-0.5">Nxënësit, faturat dhe profaturët</p>
-            </div>
-            <ArrowUpRight className="w-4 h-4 text-slate-300 ml-auto flex-shrink-0 group-hover:text-amber-500 transition-colors" />
-          </button>
+          {timiInvestEnabled && (
+            <button onClick={() => setShowTimiInvest(true)}
+              className="flex items-center gap-3 p-4 card hover:ring-2 hover:ring-amber-300 dark:hover:ring-amber-700 transition-all text-left group">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0 group-hover:bg-amber-100 dark:group-hover:bg-amber-900/50 transition-colors">
+                <CreditCard className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-800 dark:text-white text-sm">TIMI INVEST</p>
+                <p className="text-xs text-slate-400 mt-0.5">Nxënësit, faturat dhe profaturët</p>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-slate-300 ml-auto flex-shrink-0 group-hover:text-amber-500 transition-colors" />
+            </button>
+          )}
 
           <Link href="/shpenzime"
             className="flex items-center gap-3 p-4 card hover:ring-2 hover:ring-red-300 dark:hover:ring-red-700 transition-all text-left group">

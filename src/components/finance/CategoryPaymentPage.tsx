@@ -165,6 +165,13 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [sortDir,  setSortDir]  = useState<"asc" | "desc">("asc");
   const [colKlasa,  setColKlasa]  = useState("");
   const [colMetoda, setColMetoda] = useState("");
+  const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then(r => r.json())
+      .then(s => setTimiInvestEnabled(s.timiInvestEnabled !== "false"));
+  }, []);
 
   function toggleSort(col: string) {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -282,7 +289,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   return (
     <>
       <Header title={title} />
-      <div className="p-6 space-y-5 animate-fade-in">
+      <div className="p-4 sm:p-6 space-y-5 animate-fade-in">
 
         {/* Tab bar + shared filters */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -662,7 +669,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                                   )}
                                 </span>
                               )}
-                              {s.timiInvest && (() => {
+                              {timiInvestEnabled && s.timiInvest && (() => {
                                 const tiPrice = Math.max(0, s.timiInvest.regularPrice * (1 - s.timiInvest.discountPct / 100) - (s.timiInvest.manualDiscAmt || 0));
                                 return (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-[10px] font-semibold" title={`Çmimi TI: ${tiPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €`}>

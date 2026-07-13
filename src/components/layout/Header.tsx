@@ -4,11 +4,12 @@ import { signOut } from "next-auth/react";
 import { useSession } from "next-auth/react";
 import {
   Moon, Sun, LogOut, Bell, ChevronLeft, Settings, User,
-  AlertTriangle, Clock, CheckCircle, CreditCard, X, ChevronRight,
+  AlertTriangle, Clock, CheckCircle, CreditCard, X, ChevronRight, Menu,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useSidebar } from "@/components/layout/SidebarContext";
 
 /* ── helpers ─────────────────────────────────────────────── */
 function getInitials(name?: string | null) {
@@ -345,6 +346,7 @@ function ProfileMenu({ onClose }: { onClose: () => void }) {
 export default function Header({ title, backHref }: { title?: string; backHref?: string }) {
   const router = useRouter();
   const { data: session } = useSession();
+  const { toggle: toggleSidebar } = useSidebar();
   const [dark, setDark] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
@@ -393,6 +395,13 @@ export default function Header({ title, backHref }: { title?: string; backHref?:
     <header className="h-14 flex items-center justify-between px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
       {/* Left */}
       <div className="flex items-center gap-2">
+        <button
+          onClick={toggleSidebar}
+          className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex-shrink-0"
+          aria-label="Hap menynë"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
         {(backHref || canGoBack) && (
           <button
             onClick={() => router.back()}
