@@ -77,6 +77,17 @@ export const MONTHS = [
   "Korrik", "Gusht", "Shtator", "Tetor", "Nëntor", "Dhjetor"
 ];
 
+// Ushqimi (food) payments are tracked per bi-monthly period, stored under the
+// period's first calendar month (9, 11, 1, 3, 5) — used to show the full period
+// name ("Shtator/Tetor") instead of just the canonical month ("Shtator").
+export const USHQIMI_PERIOD_LABELS: Record<number, string> = {
+  9:  "Shtator/Tetor",
+  11: "Nëntor/Dhjetor",
+  1:  "Janar/Shkurt",
+  3:  "Mars/Prill",
+  5:  "Maj/Qershor",
+};
+
 export function generateInvoiceNumber(type: string, id: number): string {
   const prefix = type === "INVOICE" ? "FAT" : type === "PROFORMA" ? "PRO" : "OFR";
   const year = new Date().getFullYear();

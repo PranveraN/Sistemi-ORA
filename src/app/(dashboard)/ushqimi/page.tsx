@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
-import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
+import { formatCurrency, MONTHS } from "@/lib/utils";
 import * as XLSX from "xlsx";
 import {
   Search, CheckCircle, AlertCircle, Plus, X, Save,
@@ -88,13 +88,96 @@ interface Payment {
   balance: number; discount: number; discountType: string | null;
   scholarship: number; method: string | null; paidDate: string | null;
   dueDate: string; status: string; description: string | null;
-  receiptNumber: string | null;
+  receiptNumber: string | null; month: number; year: number;
 }
+interface Class { id: number; name: string; level: string; }
+
 interface StudentRow {
   id: number; firstName: string; lastName: string;
   parentPhone: string | null;
   class: { id: number; name: string } | null;
   payment: Payment | null;
+  installments: Payment[];
+  status: string;
+  inactiveDate: string | null;
+}
+
+/* ─── 5 bi-monthly food periods (matches the office's Excel layout) ──── */
+const PERIOD_BUCKETS: { label: string; months: number[]; canonicalMonth: number }[] = [
+  { label: "Shtator/Tetor",  months: [9, 10],  canonicalMonth: 9  },
+  { label: "Nëntor/Dhjetor", months: [11, 12], canonicalMonth: 11 },
+  { label: "Janar/Shkurt",   months: [1, 2],   canonicalMonth: 1  },
+  { label: "Mars/Prill",     months: [3, 4],   canonicalMonth: 3  },
+  { label: "Maj/Qershor",    months: [5, 6],   canonicalMonth: 5  },
+];
+
+function findPeriodPayment(installments: Payment[], months: number[]): Payment | null {
+  const matches = installments.filter(p => months.includes(p.month));
+  if (!matches.length) return null;
+  if (matches.length === 1) return matches[0];
+  const finalAmount = matches.reduce((s, p) => s + p.finalAmount, 0);
+  const paidAmount  = matches.reduce((s, p) => s + p.paidAmount, 0);
+  return { ...matches[0], finalAmount, paidAmount, balance: Math.max(0, finalAmount - paidAmount) };
+}
+
+// Marks a single period as "not attending" for one student, independent of the
+// student's overall Active/Inactive status — so a student can pause food service
+// for one period and resume the next, which a single student-level status can't represent.
+const SKIPPED_MARKER = "Ndërprerë";
+
+function exportUshqimiGridExcel(students: StudentRow[], year: number) {
+  const rows = students.map((s, i) => {
+    const periodValues = PERIOD_BUCKETS.map(period => {
+      const payment = findPeriodPayment(s.installments, period.months);
+      if (!payment) return "";
+      if (payment.description === SKIPPED_MARKER) return "Ndërprerë";
+      if (payment.method === "BANK") return `Bankë (${payment.finalAmount})`;
+      return payment.finalAmount;
+    });
+    const totalPlan = PERIOD_BUCKETS.reduce((sum, period) => {
+      const p = findPeriodPayment(s.installments, period.months);
+      return sum + (p?.finalAmount || 0);
+    }, 0);
+    const totalPaid = PERIOD_BUCKETS.reduce((sum, period) => {
+      const p = findPeriodPayment(s.installments, period.months);
+      return sum + (p?.paidAmount || 0);
+    }, 0);
+    const totalDebt = PERIOD_BUCKETS.reduce((sum, period) => {
+      const p = findPeriodPayment(s.installments, period.months);
+      return sum + (p?.balance || 0);
+    }, 0);
+    return {
+      "#":         i + 1,
+      "Emri":      s.firstName,
+      "Mbiemri":   s.lastName,
+      "Klasa":     s.class?.name ?? "",
+      "Telefoni":  s.parentPhone ?? "",
+      "Ushqimi":   totalPlan,
+      [PERIOD_BUCKETS[0].label]: periodValues[0],
+      [PERIOD_BUCKETS[1].label]: periodValues[1],
+      [PERIOD_BUCKETS[2].label]: periodValues[2],
+      [PERIOD_BUCKETS[3].label]: periodValues[3],
+      [PERIOD_BUCKETS[4].label]: periodValues[4],
+      "Paguar":    totalPaid,
+      "Borxhi":    totalDebt,
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws["!cols"] = [
+    { wch: 4 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 14 }, { wch: 10 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 10 },
+  ];
+  const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: 0, c })];
+    if (cell) cell.s = { font: { bold: true }, fill: { fgColor: { rgb: "E2E8F0" } } };
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Ushqimi");
+  const today = new Date().toISOString().split("T")[0];
+  XLSX.writeFile(wb, `Ushqimi-${year}-${today}.xlsx`);
 }
 
 type StatFilter = "all" | "paid" | "overdue" | "pending" | "revenue" | "debt";
@@ -148,9 +231,21 @@ export default function UshqimiPage() {
   const now = new Date();
   const [month, setMonth]   = useState(now.getMonth() + 1);
   const [year, setYear]     = useState(now.getFullYear());
-  const [search, setSearch] = useState("");
+  const [search, setSearch]   = useState("");
+  const [classId, setClassId] = useState("");
+  const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    fetch("/api/classes").then(r => r.json()).then((data: Class[]) => {
+      setClasses([...data].sort((a, b) => {
+        const na = parseInt(a.name), nb = parseInt(b.name);
+        if (na !== nb) return na - nb;
+        return a.name.localeCompare(b.name);
+      }));
+    });
+  }, []);
 
   // Pricing config
   const [price2Meals,   setPrice2Meals]   = useState(4);
@@ -166,11 +261,13 @@ export default function UshqimiPage() {
 
   // View mode
   const [showOnlyEnrolled, setShowOnlyEnrolled] = useState(true);
-  const [copying, setCopying] = useState(false);
-  const [copyResult, setCopyResult] = useState<string | null>(null);
+
+  // Year-wide data for the income grid (5 periods at once, independent of `month`)
+  const [yearStudents, setYearStudents] = useState<StudentRow[]>([]);
+  const [yearLoading,  setYearLoading]  = useState(true);
 
   // Modals
-  const [payModal,         setPayModal]         = useState<StudentRow | null>(null);
+  const [payModal, setPayModal] = useState<{ student: StudentRow; month: number; existingPayment: Payment | null } | null>(null);
   const [printModal,       setPrintModal]        = useState<StudentRow | null>(null);
   const [receiptPaymentId, setReceiptPaymentId] = useState<number | null>(null);
   const [statFilter,  setStatFilter]  = useState<StatFilter | null>(null);
@@ -179,61 +276,17 @@ export default function UshqimiPage() {
   const [calcAmount,  setCalcAmount]  = useState<number | undefined>();
 
   const prices = calcPrices(price2Meals, workingDays, monthsPerYear);
+  // Same fallback as fetchYearData — keeps period-bucket dates consistent with what was fetched.
+  const effectiveYear = year > 0 ? year : new Date().getFullYear();
 
-  // Stats
-  const enrolled    = students.filter(s => s.payment !== null).length;
-  const notEnrolled = students.length - enrolled;
-  const paid    = students.filter(s => s.payment?.status === "PAID").length;
-  const overdue = students.filter(s => s.payment?.status === "OVERDUE").length;
-  const pending = students.filter(s => !s.payment || s.payment.status === "PENDING").length;
-  const totalRevenue = students.reduce((s, r) => s + (r.payment?.paidAmount || 0), 0);
-  const totalDebt    = students.reduce((s, r) => s + (r.payment?.balance   || 0), 0);
-
-  async function copyFromPrevMonth() {
-    setCopying(true);
-    setCopyResult(null);
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear  = month === 1 ? year - 1 : year;
-    const res = await fetch(`/api/category-payments?category=Ushqimi&month=${prevMonth}&year=${prevYear}`);
-    const data = await res.json();
-    const prevEnrolled: StudentRow[] = (data.students || []).filter((s: StudentRow) => s.payment !== null);
-    const currentIds = new Set(students.filter(s => s.payment !== null).map(s => s.id));
-    const toAdd = prevEnrolled.filter(s => !currentIds.has(s.id));
-    if (toAdd.length === 0) {
-      setCopyResult("Të gjithë nxënësit e muajit paraprak tashmë janë të regjistruar.");
-      setCopying(false);
-      return;
-    }
-    const today = new Date(year, month - 1, 5).toISOString().split("T")[0];
-    await Promise.all(toAdd.map(s =>
-      fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId: s.id, categoryId,
-          amount: 0, discount: 0, discountType: null, scholarship: 0,
-          paidAmount: 0, method: "CASH",
-          dueDate: today,
-          description: s.payment?.description || null,
-          month, year,
-        }),
-      })
-    ));
-    setCopyResult(`✓ ${toAdd.length} nxënës u kopjuan nga ${MONTHS[prevMonth - 1]}.`);
-    setCopying(false);
-    fetchData();
-  }
-
-  async function handleRemoveEnrollment(s: StudentRow) {
-    if (!s.payment) return;
-    if (s.payment.paidAmount > 0) {
-      alert("Ky nxënës ka bërë pagesa — modifiko manualisht.");
-      return;
-    }
-    if (!confirm(`Hiq ${s.firstName} ${s.lastName} nga ushqimi?`)) return;
-    await fetch(`/api/payments/${s.payment.id}`, { method: "DELETE" });
-    fetchData();
-  }
+  // Stats (year-wide, across all 5 periods)
+  const enrolled    = yearStudents.filter(s => s.installments.length > 0).length;
+  const notEnrolled = yearStudents.length - enrolled;
+  const paid    = yearStudents.filter(s => s.payment?.status === "PAID").length;
+  const overdue = yearStudents.filter(s => s.payment?.status === "OVERDUE").length;
+  const pending = yearStudents.filter(s => !s.payment || s.payment.status === "PENDING").length;
+  const totalRevenue = yearStudents.reduce((s, r) => s + (r.payment?.paidAmount || 0), 0);
+  const totalDebt    = yearStudents.reduce((s, r) => s + (r.payment?.balance   || 0), 0);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -249,6 +302,22 @@ export default function UshqimiPage() {
     setLoading(false);
   }, [month, year, search]);
 
+  const fetchYearData = useCallback(async () => {
+    setYearLoading(true);
+    // The 5-period grid always needs one concrete year (bucketing by calendar month
+    // only makes sense within a single year) — "Të gjitha" falls back to this year.
+    const effectiveYear = year > 0 ? year : new Date().getFullYear();
+    const params = new URLSearchParams({ category: "Ushqimi", search, year: String(effectiveYear) });
+    if (classId) params.set("classId", classId);
+    const res = await fetch(`/api/category-payments?${params}`);
+    if (res.ok) {
+      const d = await res.json();
+      setYearStudents(d.students);
+      if (d.category?.id) setCategoryId(d.category.id);
+    }
+    setYearLoading(false);
+  }, [year, search, classId]);
+
   const _firstRender = useRef(true);
   useEffect(() => {
     const delay = _firstRender.current ? 0 : 300;
@@ -257,12 +326,20 @@ export default function UshqimiPage() {
     return () => clearTimeout(t);
   }, [fetchData]);
 
-  const sorted = [...students].sort((a, b) => {
+  const _yearFirstRender = useRef(true);
+  useEffect(() => {
+    const delay = _yearFirstRender.current ? 0 : 300;
+    _yearFirstRender.current = false;
+    const t = setTimeout(fetchYearData, delay);
+    return () => clearTimeout(t);
+  }, [fetchYearData]);
+
+  const sorted = [...yearStudents].sort((a, b) => {
     const order = ["OVERDUE", "PARTIAL", "PENDING", "PAID"];
     return order.indexOf(a.payment?.status || "PENDING") - order.indexOf(b.payment?.status || "PENDING");
   });
 
-  const displayed = showOnlyEnrolled ? sorted.filter(s => s.payment !== null) : sorted;
+  const displayed = showOnlyEnrolled ? sorted.filter(s => s.installments.length > 0) : sorted;
 
   return (
     <>
@@ -288,10 +365,12 @@ export default function UshqimiPage() {
             ))}
           </div>
           <div className="flex items-center gap-2 ml-auto">
-            <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="form-input w-36">
-              <option value={0}>Të gjitha</option>
-              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-            </select>
+            {tab !== "income" && (
+              <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="form-input w-36">
+                <option value={0}>Të gjitha</option>
+                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            )}
             <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-28">
               <option value={0}>Të gjitha</option>
               {[2023,2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
@@ -620,7 +699,7 @@ export default function UshqimiPage() {
                 onClick={() => setShowOnlyEnrolled(false)}
                 className={`px-3 py-1.5 rounded-lg font-medium transition-all ${!showOnlyEnrolled ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
               >
-                Të gjithë <span className="ml-1 text-xs font-bold text-slate-400">{students.length}</span>
+                Të gjithë <span className="ml-1 text-xs font-bold text-slate-400">{yearStudents.length}</span>
               </button>
             </div>
 
@@ -634,28 +713,26 @@ export default function UshqimiPage() {
               Shto nxënës {notEnrolled > 0 && <span className="ml-1 bg-white/20 rounded px-1.5 py-0.5 text-xs">{notEnrolled} pa ushqim</span>}
             </button>
 
-            {/* Kopjo muajin paraprak */}
-            <button
-              onClick={copyFromPrevMonth}
-              disabled={copying}
-              className="btn-secondary text-sm"
-            >
-              {copying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
-              Kopjo muajin paraprak
-            </button>
+            {/* Filtri i klasës */}
+            <select value={classId} onChange={e => setClassId(e.target.value)} className="form-input w-36 text-sm">
+              <option value="">Të gjitha klasat</option>
+              {classes.map(c => (
+                <option key={c.id} value={String(c.id)}>{c.name}</option>
+              ))}
+            </select>
 
             {/* Import Excel */}
             <Link href={`/ushqimi/import`} className="btn-secondary text-sm">
               <FileUp className="w-4 h-4" />
               Import Excel
             </Link>
-          </div>
 
-          {copyResult && (
-            <div className={`text-xs px-3 py-2 rounded-lg ${copyResult.startsWith("✓") ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" : "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400"}`}>
-              {copyResult}
-            </div>
-          )}
+            {/* Exporto Excel */}
+            <button onClick={() => exportUshqimiGridExcel(displayed, effectiveYear)} className="btn-secondary text-sm">
+              <Download className="w-4 h-4" />
+              Exporto Excel
+            </button>
+          </div>
         </div>
 
         {/* ── Filters ── */}
@@ -674,7 +751,7 @@ export default function UshqimiPage() {
           )}
         </div>
 
-        {/* ── Student Table ── */}
+        {/* ── Student Table — 5 periudha, si Excel-i i zyrës ── */}
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -683,25 +760,31 @@ export default function UshqimiPage() {
                   <th className="table-header w-8">#</th>
                   <th className="table-header">Nxënësi</th>
                   <th className="table-header">Klasa</th>
-                  <th className="table-header">Plani</th>
-                  <th className="table-header">Shuma</th>
+                  <th className="table-header">Ushqimi</th>
+                  {PERIOD_BUCKETS.map(period => (
+                    <th key={period.label} className="table-header text-center whitespace-nowrap">{period.label}</th>
+                  ))}
                   <th className="table-header">Paguar</th>
                   <th className="table-header">Borxhi</th>
-                  <th className="table-header">Afati</th>
-                  <th className="table-header">Statusi</th>
                   <th className="table-header text-right">Veprime</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                {loading ? (
-                  <tr><td colSpan={10} className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" /></td></tr>
+                {yearLoading ? (
+                  <tr><td colSpan={9} className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" /></td></tr>
                 ) : sorted.length === 0 ? (
-                  <tr><td colSpan={10} className="py-16 text-center text-slate-400 text-sm">Asnjë nxënës nuk u gjet</td></tr>
+                  <tr><td colSpan={9} className="py-16 text-center text-slate-400 text-sm">Asnjë nxënës nuk u gjet</td></tr>
                 ) : displayed.map((s, i) => {
-                  const p = s.payment;
-                  const isOverdue = p?.status === "OVERDUE";
+                  const rowPeriods = PERIOD_BUCKETS.map(period => ({
+                    period,
+                    payment: findPeriodPayment(s.installments, period.months),
+                  }));
+                  const totalPlan = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.finalAmount || 0), 0);
+                  const totalPaid = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.paidAmount  || 0), 0);
+                  const totalDebtRow = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.balance   || 0), 0);
+                  const anyOverdue = rowPeriods.some(rp => rp.payment?.status === "OVERDUE");
                   return (
-                    <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${isOverdue ? "bg-red-50/40 dark:bg-red-900/10" : ""}`}>
+                    <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${anyOverdue ? "bg-red-50/40 dark:bg-red-900/10" : ""}`}>
                       <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                       <td className="table-cell">
                         <Link href={`/students/${s.id}`} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
@@ -713,45 +796,49 @@ export default function UshqimiPage() {
                           ? <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-2 py-0.5 rounded text-xs font-medium">{s.class.name}</span>
                           : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="table-cell text-xs text-slate-500 dark:text-slate-400 max-w-[140px]">
-                        {p?.description
-                          ? <span className="line-clamp-2">{p.description}</span>
-                          : <span className="text-slate-300">—</span>}
+                      <td className="table-cell font-semibold">
+                        {totalPlan > 0 ? formatCurrency(totalPlan) : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="table-cell font-medium">{p ? formatCurrency(p.finalAmount) : <span className="text-slate-300">—</span>}</td>
+                      {rowPeriods.map(({ period, payment }) => {
+                        const skipped = payment?.description === SKIPPED_MARKER;
+                        return (
+                          <td key={period.label} className="table-cell text-center p-0">
+                            <button
+                              type="button"
+                              onClick={() => setPayModal({ student: s, month: period.canonicalMonth, existingPayment: payment })}
+                              className={`w-full h-full px-2 py-2.5 text-xs font-medium transition-colors ${
+                                skipped
+                                  ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 italic hover:bg-slate-200"
+                                  : payment?.method === "BANK"
+                                  ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-100"
+                                  : payment && payment.balance > 0
+                                  ? "text-red-600 dark:text-red-400 font-bold hover:bg-slate-50 dark:hover:bg-slate-700"
+                                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                              }`}
+                            >
+                              {skipped
+                                ? "Ndërprerë"
+                                : payment?.method === "BANK"
+                                ? "Bankë"
+                                : payment
+                                ? formatCurrency(payment.finalAmount)
+                                : "—"}
+                            </button>
+                          </td>
+                        );
+                      })}
                       <td className="table-cell text-green-600 dark:text-green-400 font-medium">
-                        {p ? formatCurrency(p.paidAmount) : <span className="text-slate-300">—</span>}
+                        {totalPaid > 0 ? formatCurrency(totalPaid) : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="table-cell">
-                        {p && p.balance > 0
-                          ? <span className="text-red-600 dark:text-red-400 font-bold">{formatCurrency(p.balance)}</span>
-                          : p?.status === "PAID"
+                        {totalDebtRow > 0
+                          ? <span className="text-red-600 dark:text-red-400 font-bold">{formatCurrency(totalDebtRow)}</span>
+                          : totalPlan > 0
                           ? <span className="text-green-500 text-xs">✓</span>
                           : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="table-cell text-xs">
-                        {p?.dueDate
-                          ? <span className={isOverdue ? "text-red-500 font-medium" : "text-slate-400"}>{formatDate(p.dueDate)}</span>
-                          : <span className="text-slate-300">—</span>}
-                      </td>
-                      <td className="table-cell">
-                        <span className={`badge ${getStatusColor(p?.status || "PENDING")}`}>
-                          {p ? getStatusLabel(p.status) : "Pa pagesë"}
-                        </span>
-                      </td>
                       <td className="table-cell text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => setPayModal(s)}
-                            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                              p?.status === "PAID"
-                                ? "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
-                                : "bg-primary-600 hover:bg-primary-700 text-white"
-                            }`}
-                          >
-                            <Plus className="w-3 h-3" />
-                            {p ? (p.status === "PAID" ? "Modifiko" : "Plotëso") : "Shto"}
-                          </button>
                           <button
                             onClick={() => setCalcModal(s)}
                             title="Kalkulator i Ushqimit"
@@ -759,15 +846,6 @@ export default function UshqimiPage() {
                           >
                             <Calculator className="w-4 h-4" />
                           </button>
-                          {p && (
-                            <button
-                              onClick={() => handleRemoveEnrollment(s)}
-                              title="Hiq nga ushqimi"
-                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-500 transition-colors"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          )}
                           <button
                             onClick={() => setPrintModal(s)}
                             title="Gjenero faturë"
@@ -775,15 +853,6 @@ export default function UshqimiPage() {
                           >
                             <Printer className="w-4 h-4" />
                           </button>
-                          {p?.receiptNumber && (
-                            <button
-                              onClick={() => setReceiptPaymentId(p.id)}
-                              title="Riprinto Dëshminë e Pagesës"
-                              className="p-1.5 rounded-lg text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -792,6 +861,9 @@ export default function UshqimiPage() {
               </tbody>
             </table>
           </div>
+          <p className="text-xs text-slate-400 px-4 py-2.5 border-t border-slate-100 dark:border-slate-700">
+            Kliko mbi një qelizë periudhe për të shtuar ose ndryshuar pagesën e asaj periudhe.
+          </p>
         </div>
 
         </>}
@@ -800,13 +872,14 @@ export default function UshqimiPage() {
       {/* ── Modals ── */}
       {payModal && (
         <UshqimiPayModal
-          student={payModal}
-          month={month} year={year}
+          student={payModal.student}
+          existingPayment={payModal.existingPayment}
+          month={payModal.month} year={effectiveYear}
           prices={prices}
           workingDays={workingDays}
           overrideAmount={calcAmount}
           onClose={() => { setPayModal(null); setCalcAmount(undefined); }}
-          onSave={async (rid) => { setPayModal(null); setCalcAmount(undefined); await fetchData(); if (rid) setReceiptPaymentId(rid); }}
+          onSave={async (rid) => { setPayModal(null); setCalcAmount(undefined); await fetchYearData(); if (rid) setReceiptPaymentId(rid); }}
         />
       )}
       {calcModal && (
@@ -815,10 +888,10 @@ export default function UshqimiPage() {
           price2Meals={price2Meals}
           periods={periods}
           onClose={() => setCalcModal(null)}
-          onApply={(s, amount) => {
+          onApply={(s, amount, canonicalMonth) => {
             setCalcModal(null);
             setCalcAmount(amount);
-            setPayModal(s);
+            setPayModal({ student: s, month: canonicalMonth, existingPayment: findPeriodPayment(s.installments, PERIOD_BUCKETS.find(p => p.canonicalMonth === canonicalMonth)!.months) });
           }}
         />
       )}
@@ -827,7 +900,7 @@ export default function UshqimiPage() {
           student={printModal}
           payment={printModal.payment}
           categoryName="Ushqimi"
-          month={month} year={year}
+          month={month} year={effectiveYear}
           onClose={() => setPrintModal(null)}
         />
       )}
@@ -840,14 +913,14 @@ export default function UshqimiPage() {
       {statFilter && (
         <StatListModal
           filter={statFilter}
-          students={students}
+          students={yearStudents}
           onClose={() => setStatFilter(null)}
         />
       )}
       {enrollModal && (
         <EnrollModal
-          notEnrolled={students.filter(s => s.payment === null)}
-          onEnroll={(s) => { setEnrollModal(false); setPayModal(s); }}
+          notEnrolled={yearStudents.filter(s => s.installments.length === 0)}
+          onEnroll={(s) => { setEnrollModal(false); setPayModal({ student: s, month: PERIOD_BUCKETS[0].canonicalMonth, existingPayment: null }); }}
           onClose={() => setEnrollModal(false)}
         />
       )}
@@ -858,13 +931,13 @@ export default function UshqimiPage() {
 /* ═══════════════════════════════════════════════════════ */
 /*  Payment Modal — specialized for meals                 */
 /* ═══════════════════════════════════════════════════════ */
-function UshqimiPayModal({ student, month, year, prices, workingDays, onClose, onSave, overrideAmount }: {
-  student: StudentRow; month: number; year: number;
+function UshqimiPayModal({ student, existingPayment, month, year, prices, workingDays, onClose, onSave, overrideAmount }: {
+  student: StudentRow; existingPayment: Payment | null; month: number; year: number;
   prices: Record<string, number>; workingDays: number;
   overrideAmount?: number;
   onClose: () => void; onSave: (receiptPaymentId?: number) => void;
 }) {
-  const existing = student.payment;
+  const existing = existingPayment;
   const [plan,        setPlan]        = useState(overrideAmount != null ? "__calc__" : "2_shujta_muaj");
   const [specificDays,setSpecificDays]= useState(workingDays);
   const [numMonths,   setNumMonths]   = useState(1);
@@ -946,6 +1019,41 @@ function UshqimiPayModal({ student, month, year, prices, workingDays, onClose, o
     }
     setSaving(false);
     onSave(withPrint ? receiptPaymentId : undefined);
+  }
+
+  const isSkipped = existing?.description === SKIPPED_MARKER;
+
+  async function markSkipped() {
+    setSaving(true);
+    const payload: Record<string, unknown> = {
+      studentId: student.id, categoryId: 2,
+      amount: 0, discount: 0, discountType: null, scholarship: 0,
+      finalAmount: 0, paidAmount: 0,
+      method, dueDate, paidDate: null,
+      month, year,
+      description: SKIPPED_MARKER,
+    };
+    if (!existing) {
+      const catRes = await fetch("/api/categories");
+      const cats = await catRes.json();
+      const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
+      if (cat) payload.categoryId = cat.id;
+    }
+    if (existing) {
+      await fetch(`/api/payments/${existing.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+    setSaving(false);
+    onSave(undefined);
   }
 
   return (
@@ -1087,9 +1195,24 @@ function UshqimiPayModal({ student, month, year, prices, workingDays, onClose, o
           )}
         </div>
 
+        {isSkipped && (
+          <div className="mx-5 mb-3 p-3 bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-600 dark:text-slate-300">
+            Kjo periudhë është shënuar si <strong>Ndërprerë</strong> (nxënësi s&apos;e ndoqi). Zgjidh një plan dhe ruaj për ta rikthyer si periudhë normale.
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex flex-wrap gap-2 p-5 pt-0">
           <button onClick={onClose} className="btn-secondary"><X className="w-4 h-4" />Anulo</button>
+          <button
+            onClick={markSkipped}
+            disabled={saving}
+            title="Nxënësi nuk e ndoqi këtë periudhë — s'ngarkohet asnjë shumë, mund të rikthehet më vonë"
+            className="btn-secondary text-slate-500"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+            {isSkipped ? "Ndërprerë (rifresko)" : "Shëno si Ndërprerë"}
+          </button>
           <button onClick={() => { handleSave(false); }} disabled={saving || finalAmount === 0} className="btn-secondary">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             {saving ? "Duke ruajtur..." : "Ruaj"}
@@ -1302,7 +1425,7 @@ function UshqimiCalcModal({ student, price2Meals, periods, onClose, onApply }: {
   price2Meals: number;
   periods: Period[];
   onClose: () => void;
-  onApply: (student: StudentRow, amount: number) => void;
+  onApply: (student: StudentRow, amount: number, canonicalMonth: number) => void;
 }) {
   const [mealsPerDay, setMealsPerDay] = useState<1 | 2>(2);
   const [selected, setSelected] = useState<boolean[]>(Array(5).fill(true));
@@ -1439,7 +1562,11 @@ function UshqimiCalcModal({ student, price2Meals, periods, onClose, onApply }: {
         <div className="flex gap-3 p-5 pt-0">
           <button onClick={onClose} className="btn-secondary flex-1 justify-center">Anulo</button>
           <button
-            onClick={() => onApply(student, Math.round(calculatedAmount * 100) / 100)}
+            onClick={() => {
+              const firstSelected = selected.findIndex(Boolean);
+              const canonicalMonth = PERIOD_BUCKETS[firstSelected >= 0 ? firstSelected : 0].canonicalMonth;
+              onApply(student, Math.round(calculatedAmount * 100) / 100, canonicalMonth);
+            }}
             disabled={calculatedAmount <= 0}
             className="btn-primary flex-1 justify-center"
           >

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X, Printer, Loader2 } from "lucide-react";
-import { MONTHS } from "@/lib/utils";
+import { MONTHS, USHQIMI_PERIOD_LABELS } from "@/lib/utils";
 
 interface ReceiptData {
   receiptNumber: string | null;
@@ -54,7 +54,7 @@ function categoryLabel(c: string): string {
   return c;
 }
 
-function periodLabel(month: number | null, year: number | null, description: string | null): string {
+function periodLabel(month: number | null, year: number | null, description: string | null, category: string): string {
   if (description?.startsWith("KESTI_")) {
     const k = description.replace("KESTI_", "Kësti ");
     return year ? `${k} — ${year}` : k;
@@ -63,13 +63,16 @@ function periodLabel(month: number | null, year: number | null, description: str
     const idx = parseInt(description.replace("MUAJI_", "")) - 1;
     return `Muaji ${MONTHS[idx] ?? ""} ${year ?? ""}`.trim();
   }
+  if (category === "Ushqimi" && month && USHQIMI_PERIOD_LABELS[month]) {
+    return year ? `${USHQIMI_PERIOD_LABELS[month]} ${year}` : USHQIMI_PERIOD_LABELS[month];
+  }
   if (month && year) return `${MONTHS[month - 1]} ${year}`;
   if (year) return String(year);
   return "";
 }
 
 function buildReceiptHTML(d: ReceiptData, copy: "prind" | "shkolla", origin: string): string {
-  const period   = periodLabel(d.month, d.year, d.description);
+  const period   = periodLabel(d.month, d.year, d.description, d.category);
   const dateStr  = d.paidDate
     ? new Date(d.paidDate).toLocaleDateString("sq-AL")
     : new Date(d.createdAt).toLocaleDateString("sq-AL");
@@ -263,7 +266,11 @@ html, body { height:100%; font-family: Arial, Helvetica, sans-serif; background:
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 mb-0.5">Kategoria</p>
-                  <p className="font-medium text-slate-700 dark:text-slate-200">{categoryLabel(data.category)}</p>
+                  <p className="font-medium text-slate-700 dark:text-slate-200">
+                    {categoryLabel(data.category)}
+                    {periodLabel(data.month, data.year, data.description, data.category) &&
+                      ` — ${periodLabel(data.month, data.year, data.description, data.category)}`}
+                  </p>
                 </div>
               </div>
 

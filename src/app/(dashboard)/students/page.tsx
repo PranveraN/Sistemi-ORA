@@ -24,6 +24,10 @@ interface Student {
   lastName: string;
   parentName: string | null;
   parentPhone: string | null;
+  motherPhone: string | null;
+  fatherPhone: string | null;
+  motherEmail: string | null;
+  fatherEmail: string | null;
   personalNumber: string | null;
   diaryNumber: string | null;
   kontrata: string | null;
@@ -281,6 +285,8 @@ export default function StudentsPage() {
         "Mbiemri":        s.lastName,
         "Klasa":          s.class?.name ?? "",
         "Nr. Personal":   s.personalNumber ?? "",
+        "Telefoni":       s.parentPhone || s.fatherPhone || s.motherPhone || "",
+        "Email":          s.motherEmail || s.fatherEmail || "",
         "Çmimi Bazë (€)": tuitionPrice,
         "Zbritja (%)":    s.discountPct,
         "Çmimi Final (€)":fp,
@@ -293,7 +299,7 @@ export default function StudentsPage() {
     const ws = XLSX.utils.json_to_sheet(rows);
     ws["!cols"] = [
       { wch: 4 }, { wch: 16 }, { wch: 18 }, { wch: 8 }, { wch: 15 },
-      { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 10 },
+      { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 10 },
     ];
 
     // Stil header (bold)

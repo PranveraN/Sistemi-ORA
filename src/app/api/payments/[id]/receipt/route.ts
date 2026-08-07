@@ -26,13 +26,17 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 
   if (!payment) return NextResponse.json({ error: "Pagesa nuk u gjet" }, { status: 404 });
 
-  // Shumat e paguara para kësaj pagese (pagesat e tjera për të njëjtin nxënës+kategori)
+  // Shumat e paguara para kësaj pagese (pagesat e tjera për të njëjtin nxënës+kategori).
+  // Ushqimi tani ka fatura të pavarura për çdo periudhë (jo total kumulativ nëpër muaj),
+  // prandaj kufizohet vetëm te i njëjti muaj/vit — përndryshe "Paguar më parë" përmbledh
+  // gabimisht pagesa periudhash krejt të tjera dhe shifrat s'kanë kuptim mes tyre.
   const otherPayments = await prisma.payment.findMany({
     where: {
       studentId: payment.studentId,
       categoryId: payment.categoryId,
       id: { not: paymentId },
       paidAmount: { gt: 0 },
+      ...(payment.category.name === "Ushqimi" ? { month: payment.month, year: payment.year } : {}),
     },
     select: { paidAmount: true },
   });

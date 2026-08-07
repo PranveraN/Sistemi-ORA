@@ -16,6 +16,8 @@ type PrismaPayment = {
   discountType: string | null;
   scholarship: number;
   description: string | null;
+  month: number;
+  year: number;
 };
 
 function aggregateStatus(payments: PrismaPayment[]): string {
@@ -98,6 +100,7 @@ export async function GET(req: NextRequest) {
             balance: true, status: true, method: true, dueDate: true,
             paidDate: true, discount: true, discountType: true,
             scholarship: true, description: true, receiptNumber: true,
+            month: true, year: true,
           },
         },
       },
