@@ -21,6 +21,7 @@ interface TimiStudent {
   manualDiscAmt: number;
   active: boolean;
   notes: string | null;
+  studentId: number | null;
 }
 
 interface ProfatureItem {
@@ -326,7 +327,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   function openStudentForm(s?: TimiStudent) {
     if (s) {
       setEditStudent(s);
-      setStudentForm({ firstName: s.firstName, lastName: s.lastName, parentName: s.parentName, parentPhone: s.parentPhone, regularPrice: String(s.regularPrice), discountPct: String(s.discountPct), manualDiscAmt: String(s.manualDiscAmt ?? 0), notes: s.notes || "", linkedStudentId: "" });
+      setStudentForm({ firstName: s.firstName, lastName: s.lastName, parentName: s.parentName, parentPhone: s.parentPhone, regularPrice: String(s.regularPrice), discountPct: String(s.discountPct), manualDiscAmt: String(s.manualDiscAmt ?? 0), notes: s.notes || "", linkedStudentId: s.studentId ? String(s.studentId) : "" });
       setStudentSearch(`${s.firstName} ${s.lastName}`);
     } else {
       setEditStudent(null);
@@ -606,9 +607,13 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                   </p>
 
                   {/* Search from existing students */}
-                  {!editStudent && (
-                    <div className="relative">
-                      <label className="form-label">Kërko nga nxënësit e regjistruar</label>
+                  <div className="relative">
+                      <label className="form-label">
+                        Kërko nga nxënësit e regjistruar
+                        {studentForm.linkedStudentId
+                          ? <span className="text-emerald-600 dark:text-emerald-400 font-semibold"> — i lidhur ✓</span>
+                          : <span className="text-red-500 font-semibold"> — s&apos;është i lidhur ende</span>}
+                      </label>
                       <input
                         className="form-input"
                         placeholder="Shkruaj emrin e nxënësit..."
@@ -631,7 +636,6 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                         </div>
                       )}
                     </div>
-                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>

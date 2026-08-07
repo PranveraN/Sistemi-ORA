@@ -35,6 +35,8 @@ function InvoiceForm() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
+  const [studentQuery, setStudentQuery] = useState("");
+  const [showStudentSuggestions, setShowStudentSuggestions] = useState(false);
 
   const [form, setForm] = useState({
     studentId: preStudentId,
@@ -49,13 +51,24 @@ function InvoiceForm() {
   ]);
 
   useEffect(() => {
-    fetch("/api/students?limit=2000&status=ACTIVE").then(r => r.json()).then(d =>
-      setStudents([...(d.students || [])].sort((a: Student, b: Student) =>
+    fetch("/api/students?limit=2000&status=ACTIVE").then(r => r.json()).then(d => {
+      const sorted = [...(d.students || [])].sort((a: Student, b: Student) =>
         a.lastName.localeCompare(b.lastName, "sq", { sensitivity: "base" }) ||
         a.firstName.localeCompare(b.firstName, "sq", { sensitivity: "base" })
-      ))
-    );
-  }, []);
+      );
+      setStudents(sorted);
+      if (preStudentId) {
+        const pre = sorted.find(s => String(s.id) === preStudentId);
+        if (pre) setStudentQuery(`${pre.firstName} ${pre.lastName}`);
+      }
+    });
+  }, [preStudentId]);
+
+  const filteredStudents = studentQuery.trim()
+    ? students.filter(s =>
+        `${s.firstName} ${s.lastName}`.toLowerCase().includes(studentQuery.trim().toLowerCase())
+      ).slice(0, 50)
+    : students.slice(0, 50);
 
   function setField(field: string, value: string) { setForm(f => ({ ...f, [field]: value })); }
 
@@ -79,6 +92,7 @@ function InvoiceForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.studentId) { setError("Zgjidh nxënësin nga lista e sugjerimeve."); return; }
     setLoading(true); setError("");
     const res = await fetch("/api/invoices", {
       method: "POST",
@@ -119,14 +133,37 @@ function InvoiceForm() {
                   <option value="OFFER">Ofertë</option>
                 </select>
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 relative">
                 <label className="form-label">Nxënësi <span className="text-red-500">*</span></label>
-                <select value={form.studentId} onChange={e => setField("studentId", e.target.value)} className="form-input" required>
-                  <option value="">— Zgjidh nxënësin —</option>
-                  {students.map(s => (
-                    <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  value={studentQuery}
+                  onChange={e => { setStudentQuery(e.target.value); setField("studentId", ""); setShowStudentSuggestions(true); }}
+                  onFocus={() => setShowStudentSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowStudentSuggestions(false), 150)}
+                  className="form-input"
+                  placeholder="Kërko nxënësin me emër..."
+                  autoComplete="off"
+                />
+                {showStudentSuggestions && filteredStudents.length > 0 && (
+                  <ul className="absolute z-50 left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg max-h-56 overflow-y-auto">
+                    {filteredStudents.map(s => (
+                      <li key={s.id}>
+                        <button
+                          type="button"
+                          onMouseDown={() => {
+                            setField("studentId", String(s.id));
+                            setStudentQuery(`${s.firstName} ${s.lastName}`);
+                            setShowStudentSuggestions(false);
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm"
+                        >
+                          {s.firstName} {s.lastName}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div>
                 <label className="form-label">Afati i Pagesës</label>
