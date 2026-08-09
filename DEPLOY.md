@@ -148,6 +148,11 @@ docker run --rm -v akademia-ora-data:/data -v "$PWD":/backup busybox \
   cp /data/akademia-ora.db /backup/akademia-ora-backup-$(date +%F).db
 ```
 
+> Student badge photos live on the same volume, under `/data/student-photos/`
+> (no separate volume — they persist across rebuilds exactly like the DB
+> file). The command above backs up the DB only; if you also want photos in
+> the backup, copy the whole volume instead: `cp -r /data/* /backup/`.
+
 Optional daily cron (3 AM, keep file with date):
 
 ```cron

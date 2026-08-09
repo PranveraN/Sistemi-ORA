@@ -21,6 +21,10 @@ prisma/*.db-wal
 prisma/*.db-shm
 prisma/backups/
 
+# Student badge photos (skedarë realë, jo për Git — të njëjtin logjikë si baza e të dhënave)
+prisma/student-photos/
+student-photos/
+
 # Temp/debug files
 prisma/check-data.mjs
 prisma/check.sql

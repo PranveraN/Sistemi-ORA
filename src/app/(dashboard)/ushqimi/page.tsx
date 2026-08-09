@@ -4,15 +4,18 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, MONTHS } from "@/lib/utils";
+import { PERIOD_BUCKETS } from "@/lib/food-periods";
+import { BADGE_CSS, buildBadgeCardHTML } from "@/lib/badge-html";
 import * as XLSX from "xlsx";
 import {
   Search, CheckCircle, AlertCircle, Plus, X, Save,
   Users, Loader2, Printer, Calculator, ChevronDown, ChevronUp, Info,
-  TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp,
+  TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard,
 } from "lucide-react";
 import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
 import PaymentReceiptModal from "@/components/finance/PaymentReceiptModal";
+import StudentBadgeModal from "@/components/students/StudentBadgeModal";
 
 type Tab = "income" | "expense" | "handover" | "report";
 
@@ -102,15 +105,6 @@ interface StudentRow {
   inactiveDate: string | null;
 }
 
-/* ─── 5 bi-monthly food periods (matches the office's Excel layout) ──── */
-const PERIOD_BUCKETS: { label: string; months: number[]; canonicalMonth: number }[] = [
-  { label: "Shtator/Tetor",  months: [9, 10],  canonicalMonth: 9  },
-  { label: "Nëntor/Dhjetor", months: [11, 12], canonicalMonth: 11 },
-  { label: "Janar/Shkurt",   months: [1, 2],   canonicalMonth: 1  },
-  { label: "Mars/Prill",     months: [3, 4],   canonicalMonth: 3  },
-  { label: "Maj/Qershor",    months: [5, 6],   canonicalMonth: 5  },
-];
-
 function findPeriodPayment(installments: Payment[], months: number[]): Payment | null {
   const matches = installments.filter(p => months.includes(p.month));
   if (!matches.length) return null;
@@ -178,6 +172,29 @@ function exportUshqimiGridExcel(students: StudentRow[], year: number) {
   XLSX.utils.book_append_sheet(wb, ws, "Ushqimi");
   const today = new Date().toISOString().split("T")[0];
   XLSX.writeFile(wb, `Ushqimi-${year}-${today}.xlsx`);
+}
+
+function printClassBadges(students: StudentRow[], className: string) {
+  const cards = students
+    .map(s => buildBadgeCardHTML({ id: s.id, firstName: s.firstName, lastName: s.lastName, className: s.class?.name || "" }))
+    .join("");
+  const win = window.open("", "_blank", "width=900,height=1200");
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html lang="sq"><head>
+<meta charset="UTF-8"/>
+<title>Bexhet — ${className || "Të gjithë"}</title>
+<style>
+@page { size: A4 portrait; margin: 10mm; }
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.sheet { display:grid; grid-template-columns: repeat(2, 90mm); grid-auto-rows: 55mm; gap: 4mm; justify-content:center; }
+${BADGE_CSS}
+</style>
+</head><body>
+<div class="sheet">${cards}</div>
+<script>window.onload = () => setTimeout(() => window.print(), 300);</script>
+</body></html>`);
+  win.document.close();
 }
 
 type StatFilter = "all" | "paid" | "overdue" | "pending" | "revenue" | "debt";
@@ -273,11 +290,13 @@ export default function UshqimiPage() {
   const [statFilter,  setStatFilter]  = useState<StatFilter | null>(null);
   const [enrollModal, setEnrollModal] = useState(false);
   const [calcModal,   setCalcModal]   = useState<StudentRow | null>(null);
+  const [badgeModal,  setBadgeModal]  = useState<StudentRow | null>(null);
   const [calcAmount,  setCalcAmount]  = useState<number | undefined>();
 
   const prices = calcPrices(price2Meals, workingDays, monthsPerYear);
   // Same fallback as fetchYearData — keeps period-bucket dates consistent with what was fetched.
   const effectiveYear = year > 0 ? year : new Date().getFullYear();
+  const selectedClassName = classes.find(c => String(c.id) === classId)?.name || "Të gjitha klasat";
 
   // Stats (year-wide, across all 5 periods)
   const enrolled    = yearStudents.filter(s => s.installments.length > 0).length;
@@ -732,6 +751,12 @@ export default function UshqimiPage() {
               <Download className="w-4 h-4" />
               Exporto Excel
             </button>
+
+            {/* Printo Bexhet — per klasen e filtruar aktualisht */}
+            <button onClick={() => printClassBadges(displayed, selectedClassName)} className="btn-secondary text-sm" disabled={displayed.length === 0}>
+              <IdCard className="w-4 h-4" />
+              Printo Bexhet {classId && <span className="ml-1 text-xs text-slate-400">({selectedClassName})</span>}
+            </button>
           </div>
         </div>
 
@@ -853,6 +878,13 @@ export default function UshqimiPage() {
                           >
                             <Printer className="w-4 h-4" />
                           </button>
+                          <button
+                            onClick={() => setBadgeModal(s)}
+                            title="Bexhi i nxënësit"
+                            className="p-1.5 rounded-lg text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500 dark:hover:text-violet-400 transition-colors"
+                          >
+                            <IdCard className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -922,6 +954,12 @@ export default function UshqimiPage() {
           notEnrolled={yearStudents.filter(s => s.installments.length === 0)}
           onEnroll={(s) => { setEnrollModal(false); setPayModal({ student: s, month: PERIOD_BUCKETS[0].canonicalMonth, existingPayment: null }); }}
           onClose={() => setEnrollModal(false)}
+        />
+      )}
+      {badgeModal && (
+        <StudentBadgeModal
+          student={badgeModal}
+          onClose={() => setBadgeModal(null)}
         />
       )}
     </>
