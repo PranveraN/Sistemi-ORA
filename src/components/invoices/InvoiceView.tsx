@@ -354,7 +354,7 @@ ${notesBlock}
               Shëno si Dërguar
             </button>
           )}
-          {invoice.status === "SENT" && (
+          {(invoice.status === "DRAFT" || invoice.status === "SENT") && (
             <button
               onClick={() => updateStatus("PAID")}
               disabled={updatingStatus}

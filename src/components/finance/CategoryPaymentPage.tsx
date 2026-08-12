@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
+import { CYCLES, getCycle } from "@/lib/school-cycles";
 import {
   Search, CheckCircle, AlertCircle, Clock,
   Plus, X, Save, Users, Loader2, Printer,
@@ -165,6 +166,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [sortDir,  setSortDir]  = useState<"asc" | "desc">("asc");
   const [colKlasa,  setColKlasa]  = useState("");
   const [colMetoda, setColMetoda] = useState("");
+  const [colCikli,  setColCikli]  = useState("");
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
 
   useEffect(() => {
@@ -220,6 +222,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   function applyColFilters(list: StudentRow[]) {
     return list
       .filter(s => !colKlasa  || s.class?.name === colKlasa)
+      .filter(s => !colCikli  || getCycle(s.class?.name) === colCikli)
       .filter(s => !colMetoda || s.payment?.method === colMetoda ||
         s.installments.some(p => p.method === colMetoda));
   }
@@ -500,6 +503,13 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                     <X className="w-3 h-3" />Klasa: {colKlasa}
                   </button>
                 )}
+                {colCikli && (
+                  <button onClick={() => setColCikli("")}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors">
+                    <X className="w-3 h-3" />
+                    {CYCLES.find(c => c.value === colCikli)?.label ?? colCikli}
+                  </button>
+                )}
                 {colMetoda && (
                   <button onClick={() => setColMetoda("")}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 transition-colors">
@@ -515,7 +525,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                   </button>
                 )}
                 <span className="text-sm text-slate-400">
-                  {sorted.length}{(statusFilter || colKlasa || colMetoda) ? ` / ${students.length}` : ""} nxënës
+                  {sorted.length}{(statusFilter || colKlasa || colCikli || colMetoda) ? ` / ${students.length}` : ""} nxënës
                 </span>
               </div>
             </div>
@@ -543,7 +553,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                       <th className="table-header w-8">#</th>
                       <th className="table-header">Nxënësi</th>
 
-                      {/* KLASA — dropdown filter */}
+                      {/* KLASA + CIKLI — dropdown filters */}
                       <th className="table-header p-0">
                         <div className="flex items-center gap-1 px-3 py-2">
                           <span>Klasa</span>
@@ -557,6 +567,16 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                             {uniqueKlasa.map(k => <option key={k} value={k}>{k}</option>)}
                           </select>
                           {colKlasa && <button onClick={() => setColKlasa("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
+                          <select
+                            value={colCikli}
+                            onChange={e => setColCikli(e.target.value)}
+                            className="ml-1 text-[10px] border border-slate-200 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
+                            title="Filtro sipas ciklit"
+                          >
+                            <option value="">Cikli: të gjithë</option>
+                            {CYCLES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                          </select>
+                          {colCikli && <button onClick={() => setColCikli("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
                         </div>
                       </th>
 

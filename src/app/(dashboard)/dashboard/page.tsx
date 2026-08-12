@@ -21,6 +21,7 @@ import {
 interface DashboardData {
   totalStudents: number;
   activeStudents: number;
+  cycleCounts: { ulet: number; larte: number; paCaktuar: number };
   studentsWithDebt: number;
   monthlyRevenue: number;
   prevMonthRevenue: number;
@@ -196,6 +197,14 @@ export default function DashboardPage() {
             </div>
             <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.activeStudents}</p>
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Nxënës Aktivë</p>
+            <div className="flex items-center gap-3 mt-1.5 text-xs">
+              <span className="text-slate-500 dark:text-slate-400">
+                <span className="font-bold text-slate-700 dark:text-slate-200">{data.cycleCounts.ulet}</span> Cikli Ulët
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">
+                <span className="font-bold text-slate-700 dark:text-slate-200">{data.cycleCounts.larte}</span> Cikli Lartë
+              </span>
+            </div>
             <p className="text-xs text-slate-400 mt-1">
               {data.newStudentsThisMonth > 0
                 ? `${data.newStudentsThisMonth} të regjistruar këtë muaj`

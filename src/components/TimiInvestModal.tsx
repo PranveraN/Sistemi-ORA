@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import {
   X, Plus, Trash2, Printer, Users, FileText,
   Edit2, Check, History, ArrowLeft, Eye, Download,
-  FileCheck, ArrowRightLeft,
+  FileCheck, ArrowRightLeft, Search,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -228,6 +228,10 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   const [students, setStudents] = useState<TimiStudent[]>([]);
   const [invoices, setInvoices] = useState<TimiInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+
+  /* Kerkim ne listat (Nxenesit / Faturat) */
+  const [studentListQuery, setStudentListQuery] = useState("");
+  const [invoiceListQuery, setInvoiceListQuery] = useState("");
 
   /* Student form state */
   const [showStudentForm, setShowStudentForm] = useState(false);
@@ -541,6 +545,24 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const filteredStudents = studentListQuery.trim()
+    ? students.filter(s => {
+        const q = studentListQuery.trim().toLowerCase();
+        return `${s.firstName} ${s.lastName}`.toLowerCase().includes(q)
+          || s.parentName.toLowerCase().includes(q)
+          || (s.parentPhone || "").toLowerCase().includes(q);
+      })
+    : students;
+
+  const filteredInvoices = invoiceListQuery.trim()
+    ? invoices.filter(inv => {
+        const q = invoiceListQuery.trim().toLowerCase();
+        return inv.number.toLowerCase().includes(q)
+          || inv.parentName.toLowerCase().includes(q)
+          || inv.items.toLowerCase().includes(q);
+      })
+    : invoices;
+
   /* ════════════════════ RENDER ════════════════════ */
   return (
     <>
@@ -587,7 +609,17 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
           {/* ════ VIEW: STUDENT LIST ════ */}
           {view === "list" && (
             <div className="space-y-4">
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="relative flex-1 min-w-48 max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    value={studentListQuery}
+                    onChange={e => setStudentListQuery(e.target.value)}
+                    placeholder="Kërko nxënësin ose prindin..."
+                    className="form-input pl-9"
+                  />
+                </div>
+                <div className="flex gap-2">
                 {students.length > 0 && (
                   <button onClick={exportExcel} className="btn-secondary flex items-center gap-1.5">
                     <Download className="w-4 h-4 text-green-600" />
@@ -597,6 +629,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                 <button onClick={() => openStudentForm()} className="btn-primary bg-amber-500 hover:bg-amber-600 border-amber-500 text-white">
                   <Plus className="w-4 h-4" /> Shto Nxënës
                 </button>
+                </div>
               </div>
 
               {/* Student form inline */}
@@ -694,6 +727,11 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                   <Users className="w-10 h-10 opacity-20 mb-3" />
                   <p className="text-sm">Nuk ka nxënës të regjistruar për TIMI INVEST.</p>
                 </div>
+              ) : filteredStudents.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                  <Search className="w-10 h-10 opacity-20 mb-3" />
+                  <p className="text-sm">Asnjë përputhje për &quot;{studentListQuery}&quot;.</p>
+                </div>
               ) : (
                 <div className="card">
                   <div className="overflow-x-auto">
@@ -710,7 +748,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                      {students.map(s => {
+                      {filteredStudents.map(s => {
                         const final = Math.max(0, s.regularPrice * (1 - s.discountPct / 100) - (s.manualDiscAmt || 0));
                         return (
                           <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
@@ -769,7 +807,18 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
 
           {/* ════ VIEW: INVOICES ════ */}
           {view === "invoices" && (
-            <div>
+            <div className="space-y-4">
+              {invoices.length > 0 && (
+                <div className="relative flex-1 min-w-48 max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    value={invoiceListQuery}
+                    onChange={e => setInvoiceListQuery(e.target.value)}
+                    placeholder="Kërko sipas nr., prindit ose fëmijës..."
+                    className="form-input pl-9"
+                  />
+                </div>
+              )}
               {invoices.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-slate-400">
                   <FileText className="w-10 h-10 opacity-20 mb-3" />
@@ -777,6 +826,11 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                   <button onClick={() => setView("create")} className="btn-primary mt-4 bg-amber-500 hover:bg-amber-600 border-amber-500">
                     <Plus className="w-4 h-4" /> Krijo profaturën e parë
                   </button>
+                </div>
+              ) : filteredInvoices.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                  <Search className="w-10 h-10 opacity-20 mb-3" />
+                  <p className="text-sm">Asnjë përputhje për &quot;{invoiceListQuery}&quot;.</p>
                 </div>
               ) : (
                 <div className="card overflow-hidden">
@@ -792,7 +846,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                      {invoices.map(inv => {
+                      {filteredInvoices.map(inv => {
                         const parsedItems: ProfatureItem[] = (() => { try { return JSON.parse(inv.items); } catch { return []; } })();
                         return (
                           <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">

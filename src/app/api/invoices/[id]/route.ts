@@ -22,14 +22,58 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
   const { id } = await params;
+  const invoiceId = parseInt(id);
   const body = await req.json();
 
+  const updateData: { status: string; paidDate?: Date } = { status: body.status };
+  if (body.status === "PAID") updateData.paidDate = new Date();
+
   const invoice = await prisma.invoice.update({
-    where: { id: parseInt(id) },
-    data: { status: body.status },
+    where: { id: invoiceId },
+    data: updateData,
+    include: { payments: true },
   });
+
+  // Kur shenohet Paguar, sigurohemi qe ekziston nje pagese reale e lidhur —
+  // perndryshe fatura mbetet e shkeputur nga Te Hyrat/Raportet (ato lexojne
+  // vetem nga tabela Payment, jo nga statusi i fatures).
+  if (body.status === "PAID") {
+    if (invoice.payments.length > 0) {
+      await Promise.all(invoice.payments.map(p =>
+        prisma.payment.update({
+          where: { id: p.id },
+          data: { paidAmount: p.finalAmount, balance: 0, status: "PAID", paidDate: p.paidDate ?? new Date() },
+        })
+      ));
+    } else {
+      let category = await prisma.paymentCategory.findFirst({ where: { name: "Faturat", organizationId: orgId } });
+      if (!category) {
+        category = await prisma.paymentCategory.create({
+          data: { name: "Faturat", type: "one-time", defaultAmount: 0, organizationId: orgId },
+        });
+      }
+      await prisma.payment.create({
+        data: {
+          studentId:   invoice.studentId,
+          categoryId:  category.id,
+          amount:      invoice.subtotal,
+          finalAmount: invoice.total,
+          paidAmount:  invoice.total,
+          balance:     0,
+          dueDate:     invoice.dueDate ?? new Date(),
+          paidDate:    new Date(),
+          status:      "PAID",
+          method:      "CASH",
+          description: `Fatura ${invoice.number}`,
+          invoiceId:   invoice.id,
+          organizationId: orgId,
+        },
+      });
+    }
+  }
 
   return NextResponse.json(invoice);
 }

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { Plus, Eye } from "lucide-react";
+import { Plus, Eye, CheckCircle, Loader2 } from "lucide-react";
 
 interface Invoice {
   id: number;
@@ -24,6 +24,7 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [type, setType] = useState("");
   const [status, setStatus] = useState("");
+  const [markingPaid, setMarkingPaid] = useState<number | null>(null);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
@@ -40,6 +41,18 @@ export default function InvoicesPage() {
   }, [type, status]);
 
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
+
+  async function markPaid(inv: Invoice) {
+    if (!confirm(`Shëno faturën ${inv.number} (${inv.student.firstName} ${inv.student.lastName}) si Paguar?`)) return;
+    setMarkingPaid(inv.id);
+    await fetch(`/api/invoices/${inv.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "PAID" }),
+    });
+    setMarkingPaid(null);
+    fetchInvoices();
+  }
 
   return (
     <>
@@ -146,12 +159,24 @@ export default function InvoicesPage() {
                       </span>
                     </td>
                     <td className="table-cell text-right">
-                      <Link
-                        href={`/invoices/${inv.id}`}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors inline-flex"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Link>
+                      <div className="flex items-center justify-end gap-1">
+                        {inv.status !== "PAID" && inv.status !== "CANCELLED" && (
+                          <button
+                            onClick={() => markPaid(inv)}
+                            disabled={markingPaid === inv.id}
+                            title="Shëno si Paguar"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors inline-flex disabled:opacity-50"
+                          >
+                            {markingPaid === inv.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                          </button>
+                        )}
+                        <Link
+                          href={`/invoices/${inv.id}`}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors inline-flex"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

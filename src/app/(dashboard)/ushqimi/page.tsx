@@ -5,12 +5,13 @@ import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, MONTHS } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
+import { CYCLES, getCycle } from "@/lib/school-cycles";
 import { BADGE_CSS, buildBadgeCardHTML } from "@/lib/badge-html";
 import * as XLSX from "xlsx";
 import {
   Search, CheckCircle, AlertCircle, Plus, X, Save,
   Users, Loader2, Printer, Calculator, ChevronDown, ChevronUp, Info,
-  TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard,
+  TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard, Trash2,
 } from "lucide-react";
 import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
@@ -250,6 +251,7 @@ export default function UshqimiPage() {
   const [year, setYear]     = useState(now.getFullYear());
   const [search, setSearch]   = useState("");
   const [classId, setClassId] = useState("");
+  const [cycleFilter, setCycleFilter] = useState("");
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -337,6 +339,22 @@ export default function UshqimiPage() {
     setYearLoading(false);
   }, [year, search, classId]);
 
+  async function handleRemoveFromUshqimi(s: StudentRow) {
+    const payments = PERIOD_BUCKETS
+      .map(period => findPeriodPayment(s.installments, period.months))
+      .filter((p): p is Payment => p !== null);
+    if (!payments.length) return;
+
+    const totalPaid = payments.reduce((sum, p) => sum + p.paidAmount, 0);
+    const warning = totalPaid > 0
+      ? `${s.firstName} ${s.lastName} ka ${formatCurrency(totalPaid)} të paguara për ushqimin këtë vit. Fshirja heq krejt historikun e pagesave të ushqimit për të (të gjitha periudhat). Vazhdo?`
+      : `Hiq ${s.firstName} ${s.lastName} nga ushqimi (${effectiveYear})?`;
+    if (!confirm(warning)) return;
+
+    await Promise.all(payments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+    fetchYearData();
+  }
+
   const _firstRender = useRef(true);
   useEffect(() => {
     const delay = _firstRender.current ? 0 : 300;
@@ -358,7 +376,8 @@ export default function UshqimiPage() {
     return order.indexOf(a.payment?.status || "PENDING") - order.indexOf(b.payment?.status || "PENDING");
   });
 
-  const displayed = showOnlyEnrolled ? sorted.filter(s => s.installments.length > 0) : sorted;
+  const byEnrollment = showOnlyEnrolled ? sorted.filter(s => s.installments.length > 0) : sorted;
+  const displayed = cycleFilter ? byEnrollment.filter(s => getCycle(s.class?.name) === cycleFilter) : byEnrollment;
 
   return (
     <>
@@ -740,6 +759,14 @@ export default function UshqimiPage() {
               ))}
             </select>
 
+            {/* Filtri i ciklit */}
+            <select value={cycleFilter} onChange={e => setCycleFilter(e.target.value)} className="form-input w-44 text-sm">
+              <option value="">Të gjitha ciklet</option>
+              {CYCLES.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+
             {/* Import Excel */}
             <Link href={`/ushqimi/import`} className="btn-secondary text-sm">
               <FileUp className="w-4 h-4" />
@@ -885,6 +912,15 @@ export default function UshqimiPage() {
                           >
                             <IdCard className="w-4 h-4" />
                           </button>
+                          {totalPlan > 0 && (
+                            <button
+                              onClick={() => handleRemoveFromUshqimi(s)}
+                              title="Hiq nga ushqimi"
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-500 dark:hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getCycle } from "@/lib/school-cycles";
 
 export async function GET() {
   const session = await auth();
@@ -30,6 +31,7 @@ export async function GET() {
     expiringThisWeek,
     allMonthlyPayments,
     allEnrollments,
+    activeStudentsByClass,
   ] = await Promise.all([
     prisma.student.count({ where: { organizationId: orgId } }),
     prisma.student.count({ where: { organizationId: orgId, status: "ACTIVE" } }),
@@ -105,7 +107,20 @@ export async function GET() {
       where: { organizationId: orgId, enrollDate: { gte: new Date(thisYear, thisMonth - 5, 1) } },
       select: { enrollDate: true },
     }),
+
+    prisma.student.findMany({
+      where: { organizationId: orgId, status: "ACTIVE" },
+      select: { class: { select: { name: true } } },
+    }),
   ]);
+
+  const cycleCounts = { ulet: 0, larte: 0, paCaktuar: 0 };
+  for (const s of activeStudentsByClass) {
+    const cycle = getCycle(s.class?.name);
+    if (cycle === "ulet") cycleCounts.ulet++;
+    else if (cycle === "larte") cycleCounts.larte++;
+    else cycleCounts.paCaktuar++;
+  }
 
   const months = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(thisYear, thisMonth - (5 - i), 1);
@@ -140,6 +155,7 @@ export async function GET() {
   return NextResponse.json({
     totalStudents,
     activeStudents,
+    cycleCounts,
     studentsWithDebt: studentsWithDebt.length,
     monthlyRevenue: thisMonthRev,
     prevMonthRevenue: prevMonthRev,

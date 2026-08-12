@@ -54,13 +54,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const spaceIdx = item.name.lastIndexOf(" ");
       const firstName = spaceIdx === -1 ? item.name : item.name.slice(0, spaceIdx);
       const lastName = spaceIdx === -1 ? "" : item.name.slice(spaceIdx + 1);
-      const ti = await prisma.timiInvestStudent.findFirst({
+      let ti = await prisma.timiInvestStudent.findFirst({
         where: {
           parentName: profature.parentName,
           firstName: { equals: firstName },
           lastName: { equals: lastName },
         },
       });
+      // Profatura te vjetra mund te kene prindin e profatures ndryshe nga
+      // prindi i ruajtur te vete femija (p.sh. nena vs babai) — nese s'gjendet
+      // perputhje e sakte me te dy fushat, kthehu te perputhja vetem sipas emrit.
+      if (!ti) {
+        ti = await prisma.timiInvestStudent.findFirst({
+          where: { firstName: { equals: firstName }, lastName: { equals: lastName } },
+        });
+      }
       resolved.push({ name: item.name, studentId: ti?.studentId ?? null });
     }
   }
