@@ -6,7 +6,7 @@ import { formatCurrency } from "@/lib/utils";
 import {
   ShoppingBag, TrendingUp, Wallet, AlertTriangle,
   Package, ArrowRightLeft, BarChart3, Plus, ChevronRight,
-  Banknote, CreditCard, Archive,
+  Banknote, CreditCard, Archive, ClipboardList,
 } from "lucide-react";
 
 interface Stats {
@@ -44,11 +44,12 @@ export default function UniformaDashboard() {
       </div>
 
       {/* Quick nav */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           { href: "/uniforma/shitje",    icon: ShoppingBag,    label: "Shitjet",   sub: `${stats.salesCount} gjithsej`,   color: "bg-blue-50 dark:bg-blue-900/30 text-blue-600" },
           { href: "/uniforma/produktet", icon: Package,        label: "Produktet", sub: `${stats.totalItems} cope stok`,  color: "bg-purple-50 dark:bg-purple-900/30 text-purple-600" },
           { href: "/uniforma/dorezat",   icon: ArrowRightLeft, label: "Dorezat",   sub: formatCurrency(stats.totalHandedOver), color: "bg-green-50 dark:bg-green-900/30 text-green-600" },
+          { href: "/uniforma/porosite",  icon: ClipboardList,  label: "Porositë",  sub: stats.lowStock.length > 0 ? `${stats.lowStock.length} nën prag` : "Stoku në rregull", color: "bg-amber-50 dark:bg-amber-900/30 text-amber-600" },
           { href: "/uniforma/raport",    icon: BarChart3,      label: "Raporti",   sub: "Pasqyra e detajuar",             color: "bg-orange-50 dark:bg-orange-900/30 text-orange-600" },
         ].map(nav => (
           <Link key={nav.href} href={nav.href}

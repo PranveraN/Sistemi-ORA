@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, FileText,
   GraduationCap, BarChart3, Settings, BookOpen,
   ChevronLeft, ChevronRight, UtensilsCrossed,
-  Shirt, BookMarked, NotebookPen, ClipboardList, Wallet, TrendingUp, Scale, Home, Archive, Building2,
+  Shirt, BookMarked, NotebookPen, ClipboardList, Wallet, TrendingUp, Scale, Home, Archive, Building2, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -56,6 +56,7 @@ const navSections = [
       { href: "/fletorja", icon: NotebookPen,    label: "Fletorja",  roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
       { href: "/classes",  icon: GraduationCap,  label: "Klasat",    roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
       { href: "/reports",  icon: BarChart3,      label: "Raportet",  roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/historiku", icon: History,       label: "Historiku", roles: ["ADMIN"] as Role[] },
       { href: "/settings", icon: Settings,       label: "Cilësimet", roles: ["ADMIN"] as Role[] },
     ],
   },

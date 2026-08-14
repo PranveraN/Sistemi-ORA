@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAction } from "@/lib/audit";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -34,8 +35,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const invoice = await prisma.invoice.update({
     where: { id: invoiceId },
     data: updateData,
-    include: { payments: true },
+    include: { payments: true, student: { select: { firstName: true, lastName: true } } },
   });
+
+  await logAction(session, "UPDATE", "Invoice", invoice.id,
+    `Ndryshoi statusin e faturës ${invoice.number} (${invoice.student.firstName} ${invoice.student.lastName}) në ${body.status}`);
 
   // Kur shenohet Paguar, sigurohemi qe ekziston nje pagese reale e lidhur —
   // perndryshe fatura mbetet e shkeputur nga Te Hyrat/Raportet (ato lexojne
@@ -85,6 +89,11 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const invoiceId = parseInt(id);
 
+  const existing = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: { student: { select: { firstName: true, lastName: true } } },
+  });
+
   // Largo lidhjen me pagesat para fshirjes (invoiceId është opsional në Payment)
   await prisma.payment.updateMany({
     where: { invoiceId },
@@ -92,6 +101,11 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   });
   // InvoiceItem fshihet automatikisht (onDelete: Cascade në schema)
   await prisma.invoice.delete({ where: { id: invoiceId } });
+
+  if (existing) {
+    await logAction(session, "DELETE", "Invoice", invoiceId,
+      `Fshiu faturën ${existing.number} (${existing.student.firstName} ${existing.student.lastName}) — ${existing.total}€`);
+  }
 
   return NextResponse.json({ ok: true });
 }

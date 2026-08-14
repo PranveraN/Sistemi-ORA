@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAction } from "@/lib/audit";
 
 type StaffInput = {
   emri: string;
@@ -44,7 +45,11 @@ export async function POST(req: NextRequest) {
     status:      s.status      || "ACTIVE",
   }));
 
+  const before = await prisma.staff.count();
   await prisma.staff.deleteMany();
   const result = await prisma.staff.createMany({ data });
+
+  await logAction(session, "DELETE", "Staff", null, `Fshiu gjithë stafin (${before} rreshta) dhe importoi ${result.count} rreshta të rinj nga skedari`);
+
   return NextResponse.json({ imported: result.count });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAction } from "@/lib/audit";
 
 export async function POST() {
   const session = await auth();
@@ -87,6 +88,11 @@ export async function POST() {
       deleted: dupIds,
       merged,
     });
+  }
+
+  if (totalDeleted > 0) {
+    await logAction(session, "DELETE", "Student", null,
+      `Bashkoi ${dupRows.length} grupe nxënësish të dublikuar — fshiu ${totalDeleted} rreshta, transferoi të dhëna te ${totalMerged}`);
   }
 
   return NextResponse.json({

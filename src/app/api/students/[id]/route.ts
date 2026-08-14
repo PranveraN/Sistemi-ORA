@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAction } from "@/lib/audit";
 
 function parseDate(val: unknown): Date | null {
   if (!val) return null;
@@ -127,6 +128,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data,
   });
 
+  await logAction(session, "UPDATE", "Student", student.id,
+    `Ndryshoi kontratën/zbritjen e ${student.firstName} ${student.lastName}`);
+
   return NextResponse.json(student);
 }
 
@@ -141,11 +145,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { searchParams } = new URL(req.url);
   const permanent = searchParams.get("permanent") === "true";
 
+  const existing = await prisma.student.findUnique({ where: { id: studentId }, select: { firstName: true, lastName: true } });
+  const studentName = existing ? `${existing.firstName} ${existing.lastName}` : `#${studentId}`;
+
   if (permanent) {
     await prisma.payment.deleteMany({ where: { studentId } });
     await prisma.invoice.deleteMany({ where: { studentId } });
     await prisma.auditLog.deleteMany({ where: { entity: "Student", entityId: studentId } });
     await prisma.student.delete({ where: { id: studentId } });
+    await logAction(session, "DELETE", "Student", studentId, `Fshiu përgjithmonë nxënësin ${studentName} (bashkë me pagesat/faturat)`);
   } else {
     await prisma.student.update({
       where: { id: studentId },
@@ -154,6 +162,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await prisma.$executeRawUnsafe(
       `UPDATE Student SET inactiveDate = datetime('now') WHERE id = ${studentId}`
     );
+    await logAction(session, "UPDATE", "Student", studentId, `Çaktivizoi nxënësin ${studentName}`);
   }
 
   return NextResponse.json({ success: true });

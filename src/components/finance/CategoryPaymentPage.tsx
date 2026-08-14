@@ -1303,8 +1303,15 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         }
       };
 
-      await saveInstallment(k1Existing, portion1, k1Paid, k1Form.dueDate, k1Form.paidDate, k1Form.method, "KESTI_1");
-      await saveInstallment(k2Existing, portion2, k2Paid, k2Form.dueDate, k2Form.paidDate, k2Form.method, "KESTI_2");
+      // Krijo/perditeso vetem kestet qe kane shume reale (ose qe ekzistojne tashme) —
+      // perndryshe ruajtja e vetem njerit kesti krijonte automatikisht nje pagese
+      // "fantazme" 0-euro per tjetrin, gje qe ngatarronte stafin ne Historik.
+      if (k1Existing || portion1 > 0) {
+        await saveInstallment(k1Existing, portion1, k1Paid, k1Form.dueDate, k1Form.paidDate, k1Form.method, "KESTI_1");
+      }
+      if (k2Existing || portion2 > 0) {
+        await saveInstallment(k2Existing, portion2, k2Paid, k2Form.dueDate, k2Form.paidDate, k2Form.method, "KESTI_2");
+      }
     } else {
       // Monthly mode — delete non-monthly installments if switching from other mode
       if (!isAlreadyMonthly) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAction } from "@/lib/audit";
 
 const CLASS_STRUCTURE = [
   "1A","1B","2A","2B","3A","3B","4A","4B",
@@ -48,6 +49,9 @@ export async function POST() {
       unassigned++;
     }
   }
+
+  await logAction(session, "DELETE", "Class", null,
+    `Rikrijoi strukturën e klasave (${CLASS_STRUCTURE.length} klasa), ${reassigned} nxënës u ricaktuan, ${unassigned + (existingStudents.length - oldMap.size)} mbetën pa klasë`);
 
   return NextResponse.json({
     classesCreated: CLASS_STRUCTURE.length,

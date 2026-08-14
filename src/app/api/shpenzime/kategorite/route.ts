@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAction } from "@/lib/audit";
 
 type KategoriRow = { id: number; emri: string; ngjyra: string | null; ikona: string | null; createdAt: string };
 
@@ -64,7 +65,14 @@ export async function DELETE(req: NextRequest) {
   const id = parseInt(searchParams.get("id") || "0");
   if (!id) return NextResponse.json({ error: "ID mungon" }, { status: 400 });
 
+  const [existing] = await prisma.$queryRawUnsafe<{ emri: string }[]>(`SELECT emri FROM ShpenzimKategori WHERE id = ?`, id);
+  const [{ cnt }] = await prisma.$queryRawUnsafe<{ cnt: number }[]>(`SELECT COUNT(*) as cnt FROM Shpenzim WHERE kategoriId = ?`, id);
+
   await prisma.$executeRawUnsafe(`DELETE FROM Shpenzim WHERE kategoriId = ?`, id);
   await prisma.$executeRawUnsafe(`DELETE FROM ShpenzimKategori WHERE id = ?`, id);
+
+  await logAction(session, "DELETE", "ShpenzimKategori", id,
+    `Fshiu kategorinë "${existing?.emri ?? id}" e shpenzimeve, bashkë me ${cnt} shpenzime`);
+
   return NextResponse.json({ success: true });
 }

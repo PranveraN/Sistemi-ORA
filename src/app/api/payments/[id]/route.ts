@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAction } from "@/lib/audit";
 
 async function generateReceiptNumber(): Promise<string> {
   const year = new Date().getFullYear();
@@ -59,7 +60,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       description: body.description || null,
       ...(receiptNumber ? { receiptNumber } : {}),
     },
+    include: { student: { select: { firstName: true, lastName: true } }, category: { select: { name: true } } },
   });
+
+  await logAction(session, "UPDATE", "Payment", payment.id,
+    `Ndryshoi pagesën e ${payment.student.firstName} ${payment.student.lastName} (${payment.category.name}) — ${finalAmount}€`);
 
   return NextResponse.json(payment);
 }
@@ -69,6 +74,18 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  await prisma.payment.delete({ where: { id: parseInt(id) } });
+  const paymentId = parseInt(id);
+  const existing = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: { student: { select: { firstName: true, lastName: true } }, category: { select: { name: true } } },
+  });
+
+  await prisma.payment.delete({ where: { id: paymentId } });
+
+  if (existing) {
+    await logAction(session, "DELETE", "Payment", paymentId,
+      `Fshiu pagesën e ${existing.student.firstName} ${existing.student.lastName} (${existing.category.name}) — ${existing.finalAmount}€`);
+  }
+
   return NextResponse.json({ success: true });
 }

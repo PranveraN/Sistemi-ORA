@@ -945,6 +945,7 @@ export default function UshqimiPage() {
           month={payModal.month} year={effectiveYear}
           prices={prices}
           workingDays={workingDays}
+          periods={periods}
           overrideAmount={calcAmount}
           onClose={() => { setPayModal(null); setCalcAmount(undefined); }}
           onSave={async (rid) => { setPayModal(null); setCalcAmount(undefined); await fetchYearData(); if (rid) setReceiptPaymentId(rid); }}
@@ -1005,17 +1006,26 @@ export default function UshqimiPage() {
 /* ═══════════════════════════════════════════════════════ */
 /*  Payment Modal — specialized for meals                 */
 /* ═══════════════════════════════════════════════════════ */
-function UshqimiPayModal({ student, existingPayment, month, year, prices, workingDays, onClose, onSave, overrideAmount }: {
+function UshqimiPayModal({ student, existingPayment, month, year, prices, workingDays, periods, onClose, onSave, overrideAmount }: {
   student: StudentRow; existingPayment: Payment | null; month: number; year: number;
-  prices: Record<string, number>; workingDays: number;
+  prices: Record<string, number>; workingDays: number; periods: Period[];
   overrideAmount?: number;
   onClose: () => void; onSave: (receiptPaymentId?: number) => void;
 }) {
   const existing = existingPayment;
-  const [plan,        setPlan]        = useState(overrideAmount != null ? "__calc__" : "2_shujta_muaj");
-  const [specificDays,setSpecificDays]= useState(workingDays);
-  const [numMonths,   setNumMonths]   = useState(1);
-  const [customPrice] = useState(0);
+  const isCalc = overrideAmount != null;
+  // Ditët parazgjedhur duhet të përputhen me periudhën reale (Kalkulatori i Çmimeve),
+  // jo me vlerën gjenerike "Ditë pune/muaj" — përndryshe të dyja vendet tregojnë numra të ndryshëm.
+  const periodIndex = PERIOD_BUCKETS.findIndex(p => p.canonicalMonth === month);
+  const periodDays = periodIndex >= 0 ? (periods[periodIndex]?.days ?? workingDays) : workingDays;
+  const [days, setDays] = useState(
+    existing && existing.finalAmount > 0 && prices["2_shujta_ditë"] > 0
+      ? Math.max(1, Math.round(existing.finalAmount / prices["2_shujta_ditë"]))
+      : periodDays
+  );
+  const [pricePerDay, setPricePerDay] = useState(
+    existing && days > 0 ? Math.round((existing.finalAmount / days) * 100) / 100 : prices["2_shujta_ditë"]
+  );
   const [paidAmount,  setPaidAmount]  = useState(String(existing?.paidAmount ?? ""));
   const [method,      setMethod]      = useState(existing?.method ?? "CASH");
   const [dueDate,     setDueDate]     = useState(
@@ -1030,25 +1040,14 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
   );
   const [saving, setSaving] = useState(false);
 
-  // Calculate final amount based on plan
-  const calcAmount = (): number => {
-    if (plan === "__calc__")       return overrideAmount ?? 0;
-    if (plan === "dite_specifike") return prices["dite_specifike"] * specificDays;
-    if (plan === "periudhe")       return prices["periudhe"] * numMonths;
-    if (plan === "custom")         return customPrice;
-    return prices[plan] ?? 0;
-  };
-
-  const finalAmount = calcAmount();
+  const finalAmount = isCalc ? (overrideAmount ?? 0) : Math.round(days * pricePerDay * 100) / 100;
   const paid = parseFloat(paidAmount || "0");
   const balance = Math.max(0, finalAmount - paid);
 
-  const planLabel = MEAL_PLANS.find(p => p.value === plan)?.label || plan;
-  const description = plan === "dite_specifike"
-    ? `${planLabel} × ${specificDays} ditë (${MONTHS[month - 1]} ${year})`
-    : plan === "periudhe"
-    ? `${planLabel} × ${numMonths} muaj (nga ${MONTHS[month - 1]} ${year})`
-    : `${planLabel} — ${MONTHS[month - 1]} ${year}`;
+  const periodLabel = PERIOD_BUCKETS.find(p => p.canonicalMonth === month)?.label || MONTHS[month - 1];
+  const description = isCalc
+    ? `${periodLabel} ${year}`
+    : `${days} ditë × ${formatCurrency(pricePerDay)} — ${periodLabel} ${year}`;
 
   async function handleSave(withPrint = false) {
     setSaving(true);
@@ -1149,69 +1148,28 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
 
         <div className="p-5 space-y-4">
           {/* Calculator override notice */}
-          {plan === "__calc__" && (
+          {isCalc ? (
             <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl">
               <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm font-medium">
                 <Calculator className="w-4 h-4" />
                 Shumë e llogaritur nga Kalkulatori
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-black text-amber-600">{formatCurrency(overrideAmount ?? 0)}</span>
-                <button onClick={() => setPlan("2_shujta_muaj")} className="text-xs text-slate-400 hover:text-slate-600 underline">Ndrysho</button>
+              <span className="text-lg font-black text-amber-600">{formatCurrency(overrideAmount ?? 0)}</span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="form-label">Numri i ditëve <span className="text-red-500">*</span></label>
+                <input type="number" value={days}
+                  onChange={e => setDays(parseInt(e.target.value) || 0)}
+                  className="form-input" min="0" />
               </div>
-            </div>
-          )}
-
-          {/* Plan selector */}
-          {plan !== "__calc__" && (
-            <div>
-              <label className="form-label">Lloji i Planit <span className="text-red-500">*</span></label>
-              <div className="grid grid-cols-2 gap-2 mt-1">
-                {MEAL_PLANS.map(p => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => setPlan(p.value)}
-                    className={`text-left px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
-                      plan === p.value
-                        ? "border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
-                        : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary-200 dark:hover:border-primary-700"
-                    }`}
-                  >
-                    <span className="block">{p.label}</span>
-                    {p.value !== "dite_specifike" && p.value !== "periudhe" && (
-                      <span className={`text-xs font-bold mt-0.5 block ${plan === p.value ? "text-primary-600" : "text-slate-400"}`}>
-                        {formatCurrency(prices[p.value] || 0)}
-                      </span>
-                    )}
-                  </button>
-                ))}
+              <div>
+                <label className="form-label">Çmimi / ditë (€) <span className="text-red-500">*</span></label>
+                <input type="number" value={pricePerDay}
+                  onChange={e => setPricePerDay(parseFloat(e.target.value) || 0)}
+                  className="form-input" min="0" step="0.01" />
               </div>
-            </div>
-          )}
-
-          {/* Extra inputs for variable plans */}
-          {plan === "dite_specifike" && (
-            <div className="bg-slate-50 dark:bg-slate-900/40 rounded-xl p-4">
-              <label className="form-label">Numri i ditëve specifike</label>
-              <input type="number" value={specificDays}
-                onChange={e => setSpecificDays(parseInt(e.target.value) || 1)}
-                className="form-input w-28" min="1" max="31" />
-              <p className="text-xs text-slate-400 mt-2">
-                {specificDays} ditë × {formatCurrency(prices["dite_specifike"])} = <strong className="text-primary-600">{formatCurrency(finalAmount)}</strong>
-              </p>
-            </div>
-          )}
-
-          {plan === "periudhe" && (
-            <div className="bg-slate-50 dark:bg-slate-900/40 rounded-xl p-4">
-              <label className="form-label">Numri i muajve</label>
-              <input type="number" value={numMonths}
-                onChange={e => setNumMonths(parseInt(e.target.value) || 1)}
-                className="form-input w-28" min="1" max="12" />
-              <p className="text-xs text-slate-400 mt-2">
-                {numMonths} muaj × {formatCurrency(prices["periudhe"])} = <strong className="text-primary-600">{formatCurrency(finalAmount)}</strong>
-              </p>
             </div>
           )}
 

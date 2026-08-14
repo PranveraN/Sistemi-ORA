@@ -334,18 +334,43 @@ model InvoiceItem {
 // ── Sistemi i Uniformave ──────────────────────────────────
 
 model UniProduct {
-  id          Int           @id @default(autoincrement())
+  id          Int            @id @default(autoincrement())
   name        String
   description String?
   photo       String?
   buyPrice    Float
   sellPrice   Float
-  stock       Int           @default(0)
-  stockAlert  Int           @default(5)
-  active      Boolean       @default(true)
+  stock       Int            @default(0)
+  stockAlert  Int            @default(5)
+  active      Boolean        @default(true)
   saleItems   UniSaleItem[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  orderItems  UniOrderItem[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model UniOrder {
+  id           Int            @id @default(autoincrement())
+  orderNumber  String         @unique
+  supplier     String?
+  status       String         @default("ORDERED") // ORDERED, RECEIVED, CANCELLED
+  orderDate    DateTime       @default(now())
+  receivedDate DateTime?
+  notes        String?
+  items        UniOrderItem[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model UniOrderItem {
+  id        Int        @id @default(autoincrement())
+  orderId   Int
+  order     UniOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId Int
+  product   UniProduct @relation(fields: [productId], references: [id])
+  quantity  Int
+  buyPrice  Float
+  total     Float
 }
 
 model UniSale {
