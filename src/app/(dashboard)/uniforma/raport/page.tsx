@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import { BarChart3, TrendingUp, TrendingDown, Wallet, ArrowRightLeft, Package, ShoppingBag, ArrowLeft, Download, Medal } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 interface ProductSale {
   name: string; qty: number; revenue: number; cost: number; profit: number;
@@ -27,7 +27,7 @@ async function exportToExcel(stats: Stats) {
   const sales = salesData.sales ?? [];
 
   const wb = XLSX.utils.book_new();
-  const today = new Date().toLocaleDateString("sq-AL");
+  const today = formatDate(new Date());
 
   // Sheet 1: Pasqyra financiare
   const summary = [
@@ -66,7 +66,7 @@ async function exportToExcel(stats: Stats) {
         s.id,
         s.customerName,
         s.customerPhone ?? "",
-        new Date(s.saleDate).toLocaleDateString("sq-AL"),
+        formatDate(s.saleDate),
         s.totalAmount,
         s.paidAmount,
         s.balance,

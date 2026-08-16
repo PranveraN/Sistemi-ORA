@@ -7,7 +7,7 @@ import {
   Edit2, Check, History, ArrowLeft, Eye, Download,
   FileCheck, ArrowRightLeft, Search,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 /* ─── Types ─────────────────────────────────────────────── */
 interface TimiStudent {
@@ -67,7 +67,7 @@ function fmt(v: number) {
   return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 }
 function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString("sq-AL");
+  return formatDate(d);
 }
 
 /* ─── Profaturë HTML builder ─────────────────────────────── */
@@ -85,7 +85,7 @@ function buildProfatureHTML(inv: {
   origin?: string;
 }) {
   const rows = Array.from({ length: 5 }, (_, i) => inv.items[i] || null);
-  const dateStr = new Date(inv.date).toLocaleDateString("sq-AL");
+  const dateStr = formatDate(inv.date);
 
   const itemRows = rows.map((item, i) => {
     if (!item) return `

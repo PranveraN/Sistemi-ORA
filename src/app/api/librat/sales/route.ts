@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
+  const from   = searchParams.get("from") || "";
+  const to     = searchParams.get("to") || "";
   const page   = parseInt(searchParams.get("page") || "1");
   const limit  = parseInt(searchParams.get("limit") || "50");
   const offset = (page - 1) * limit;
@@ -29,6 +31,8 @@ export async function GET(req: NextRequest) {
   let where = "WHERE 1=1";
   if (status) where += ` AND bs.status='${status}'`;
   if (search) where += ` AND bs.studentName LIKE '%${search.replace(/'/g, "''")}%'`;
+  if (from)   where += ` AND bs.saleDate >= '${from}'`;
+  if (to)     where += ` AND bs.saleDate <= '${to}'`;
 
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(`
     SELECT bs.*, COUNT(bsi.id) as itemCount

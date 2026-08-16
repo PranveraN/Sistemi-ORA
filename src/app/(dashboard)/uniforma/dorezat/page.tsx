@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, Trash2, Printer, ArrowRightLeft, X, ArrowLeft } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 interface Handover {
   id: number;
@@ -40,7 +40,7 @@ hr { border:none; border-top:1px dashed #cbd5e1; margin:14px 0; }
   <p class="sub">${new Date(h.handoverAt).toLocaleDateString("sq-AL", { dateStyle: "long" })}</p>
 </div>
 <hr/>
-<div class="row"><span class="label">Data:</span><span>${new Date(h.handoverAt).toLocaleDateString("sq-AL")}</span></div>
+<div class="row"><span class="label">Data:</span><span>${formatDate(h.handoverAt)}</span></div>
 ${h.recipient ? `<div class="row"><span class="label">Marrësi:</span><span>${h.recipient}</span></div>` : ""}
 <div class="row"><span class="label">Mënyra:</span><span>${METHOD_LABEL[h.method] ?? h.method}</span></div>
 ${h.reference ? `<div class="row"><span class="label">Referenca:</span><span>${h.reference}</span></div>` : ""}
@@ -168,7 +168,7 @@ export default function DorezatPage() {
               {handovers.map(h => (
                 <tr key={h.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                    {new Date(h.handoverAt).toLocaleDateString("sq-AL")}
+                    {formatDate(h.handoverAt)}
                   </td>
                   <td className="px-4 py-3 font-bold text-green-600">{formatCurrency(h.amount)}</td>
                   <td className="px-4 py-3">

@@ -54,6 +54,7 @@ export async function GET(req: NextRequest) {
   const categoryName = searchParams.get("category") || "";
   const monthParam   = searchParams.get("month");
   const yearParam    = searchParams.get("year");
+  const yearType     = searchParams.get("yearType") || "calendar"; // "academic" = Shtator–Gusht (dy vite kalendarike)
   const month  = monthParam  ? parseInt(monthParam)  : null;  // null = all months
   const year   = yearParam   ? parseInt(yearParam)   : null;  // null = all years
   const search  = searchParams.get("search")  || "";
@@ -79,8 +80,20 @@ export async function GET(req: NextRequest) {
 
   // Build payment filter — skip month/year when null (= "Të gjitha")
   const paymentFilter: Record<string, unknown> = { categoryId: category.id };
-  if (month && month > 0) paymentFilter.month = month;
-  if (year  && year  > 0) paymentFilter.year  = year;
+  if (month && month > 0) {
+    paymentFilter.month = month;
+    if (year && year > 0) paymentFilter.year = year;
+  } else if (year && year > 0) {
+    // "Të gjitha" muajt + vit akademik → "year" është viti fillestar (Shtator), spanon dy vite kalendarike
+    if (yearType === "academic") {
+      paymentFilter.OR = [
+        { month: { gte: 9 }, year },
+        { month: { lte: 8 }, year: year + 1 },
+      ];
+    } else {
+      paymentFilter.year = year;
+    }
+  }
 
   // When filtering broadly (all months or all years), fetch more records per student
   const isNarrow = (month && month > 0) && (year && year > 0);
@@ -158,6 +171,7 @@ export async function GET(req: NextRequest) {
       parentPhone:  s.parentPhone,
       class:        s.class,
       discountPct:  s.discountPct,
+      paymentPlan:  s.paymentPlan,
       status:       s.status,
       inactiveDate: inactiveDateMap.get(s.id) ?? null,
       payment:      aggregatePayment(s.payments as PrismaPayment[]),

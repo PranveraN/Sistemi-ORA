@@ -6,6 +6,7 @@ import {
   ClipboardCheck, FileText, Star, Search,
   ChevronLeft, ChevronRight, X, Printer,
 } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 
 /* ─── Types ─────────────────────────────────────────────── */
 interface Student {
@@ -116,12 +117,11 @@ function GC({ value, onChange }: { value: string; onChange: (v: string) => void 
 /* ─── Main modal ─────────────────────────────────────────── */
 function FletekalimCLModal({ student, onClose, initialData }: { student: Student; onClose: () => void; initialData?: Partial<FKData> }) {
   const today = new Date();
-  const todayFmt = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
+  const todayFmt = formatDate(today);
   const fmtBirth = (iso: string | null) => {
     if (!iso) return "";
     try {
-      const d = new Date(iso);
-      return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+      return formatDate(iso);
     } catch { return ""; }
   };
 
@@ -488,7 +488,7 @@ function StudentList({ docTitle, onSelect, onBack }: {
                     {s.class ? `${s.class.level} — ${s.class.name}` : "—"}
                   </td>
                   <td className="px-4 py-3 text-slate-500">
-                    {s.birthDate ? new Date(s.birthDate).toLocaleDateString("sq-AL") : "—"}
+                    {s.birthDate ? formatDate(s.birthDate) : "—"}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
@@ -574,10 +574,10 @@ interface FKDataCU {
 
 function FletekalimCUModal({ student, onClose, initialData }: { student: Student; onClose: () => void; initialData?: Partial<FKDataCU> }) {
   const today = new Date();
-  const todayFmt = `${String(today.getDate()).padStart(2,"0")}/${String(today.getMonth()+1).padStart(2,"0")}/${today.getFullYear()}`;
+  const todayFmt = formatDate(today);
   const fmtBirth = (iso: string | null) => {
     if (!iso) return "";
-    try { const d=new Date(iso); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`; }
+    try { return formatDate(iso); }
     catch { return ""; }
   };
 
@@ -955,10 +955,10 @@ interface FKDataVCL {
 
 function VërtëtimCLModal({ student, onClose, initialData }: { student: Student; onClose: () => void; initialData?: Partial<FKDataVCL> }) {
   const today = new Date();
-  const todayFmt = `${String(today.getDate()).padStart(2,"0")}/${String(today.getMonth()+1).padStart(2,"0")}/${today.getFullYear()}`;
+  const todayFmt = formatDate(today);
   const fmtBirth = (iso: string | null) => {
     if (!iso) return "";
-    try { const d=new Date(iso); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`; } catch { return ""; }
+    try { return formatDate(iso); } catch { return ""; }
   };
 
   const [d, setD] = useState<FKDataVCL>(() => ({
@@ -1259,10 +1259,10 @@ interface FKDataPN {
 
 function PasqyreNotaveCUModal({ student, onClose, initialData }: { student: Student; onClose: () => void; initialData?: Partial<FKDataPN> }) {
   const today = new Date();
-  const todayFmt = `${String(today.getDate()).padStart(2,"0")}/${String(today.getMonth()+1).padStart(2,"0")}/${today.getFullYear()}`;
+  const todayFmt = formatDate(today);
   const fmtBirth = (iso: string | null) => {
     if (!iso) return "";
-    try { const d=new Date(iso); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`; } catch { return ""; }
+    try { return formatDate(iso); } catch { return ""; }
   };
   const yr = `${today.getFullYear()-1}/${today.getFullYear()}`;
 

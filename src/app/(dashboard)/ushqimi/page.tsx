@@ -3,15 +3,16 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
-import { formatCurrency, MONTHS } from "@/lib/utils";
+import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
 import { CYCLES, getCycle } from "@/lib/school-cycles";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
 import { BADGE_CSS, buildBadgeCardHTML } from "@/lib/badge-html";
 import * as XLSX from "xlsx";
 import {
   Search, CheckCircle, AlertCircle, Plus, X, Save,
   Users, Loader2, Printer, Calculator, ChevronDown, ChevronUp, Info,
-  TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard, Trash2,
+  TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard, Trash2, Receipt,
 } from "lucide-react";
 import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
@@ -29,7 +30,7 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 
 function exportUshqimiExcel(students: StudentRow[], month: number, year: number) {
   const wb = XLSX.utils.book_new();
-  const today = new Date().toLocaleDateString("sq-AL");
+  const today = formatDate(new Date());
   const periudha = month > 0 && year > 0
     ? `${MONTHS[month - 1]} ${year}`
     : year > 0 ? String(year) : "Të gjitha";
@@ -119,6 +120,10 @@ function findPeriodPayment(installments: Payment[], months: number[]): Payment |
 // student's overall Active/Inactive status — so a student can pause food service
 // for one period and resume the next, which a single student-level status can't represent.
 const SKIPPED_MARKER = "Ndërprerë";
+// Nxenesi e ndjek periudhen por s'paguan (falas) — s'duhet te numerohet as
+// te te hyrat e ushqimit as te borxhi, ndaj perdoret finalAmount:0 njesoj si
+// SKIPPED_MARKER, thjesht me etikete/ngjyre te ndryshme ne tabele.
+const FREE_MARKER = "Falas";
 
 function exportUshqimiGridExcel(students: StudentRow[], year: number) {
   const rows = students.map((s, i) => {
@@ -247,8 +252,10 @@ function calcPrices(price2Meals: number, workingDays: number, monthsPerYear: num
 /* ═══════════════════════════════════════════════════════ */
 export default function UshqimiPage() {
   const now = new Date();
+  const currentAcademicStart = now.getMonth() + 1 >= 9 ? now.getFullYear() : now.getFullYear() - 1;
   const [month, setMonth]   = useState(now.getMonth() + 1);
-  const [year, setYear]     = useState(now.getFullYear());
+  const [year, setYear]     = useState(currentAcademicStart);
+  const [yearType, setYearType] = useState<YearType>("academic");
   const [search, setSearch]   = useState("");
   const [classId, setClassId] = useState("");
   const [cycleFilter, setCycleFilter] = useState("");
@@ -298,6 +305,17 @@ export default function UshqimiPage() {
   const prices = calcPrices(price2Meals, workingDays, monthsPerYear);
   // Same fallback as fetchYearData — keeps period-bucket dates consistent with what was fetched.
   const effectiveYear = year > 0 ? year : new Date().getFullYear();
+  // Viti kalendarik konkret për një muaj specifik (p.sh. Muaji/Shpenzime tab) — Shtator–Dhjetor
+  // bien te effectiveYear, Janar–Gusht te effectiveYear+1, kur jemi në Vit Akademik.
+  const resolvedYear = yearType === "academic"
+    ? (month > 0 ? (month >= 9 ? effectiveYear : effectiveYear + 1) : effectiveYear)
+    : effectiveYear;
+  // Viti kalendarik i saktë për një periudhë ushqimi (Shtator/Tetor..Maj/Qershor) — përdoret
+  // nga grafiku me 5 periudha, ku Janar/Shkurt–Maj/Qershor i takojnë vitit shkollor pasardhës.
+  function periodCalYear(canonicalMonth: number) {
+    if (yearType !== "academic") return effectiveYear;
+    return canonicalMonth >= 9 ? effectiveYear : effectiveYear + 1;
+  }
   const selectedClassName = classes.find(c => String(c.id) === classId)?.name || "Të gjitha klasat";
 
   // Stats (year-wide, across all 5 periods)
@@ -313,7 +331,7 @@ export default function UshqimiPage() {
     setLoading(true);
     const params = new URLSearchParams({ category: "Ushqimi", search });
     if (month > 0) params.set("month", String(month));
-    if (year  > 0) params.set("year",  String(year));
+    if (resolvedYear  > 0) params.set("year",  String(resolvedYear));
     const res = await fetch(`/api/category-payments?${params}`);
     if (res.ok) {
       const d = await res.json();
@@ -321,7 +339,7 @@ export default function UshqimiPage() {
       if (d.category?.id) setCategoryId(d.category.id);
     }
     setLoading(false);
-  }, [month, year, search]);
+  }, [month, resolvedYear, search]);
 
   const fetchYearData = useCallback(async () => {
     setYearLoading(true);
@@ -329,6 +347,8 @@ export default function UshqimiPage() {
     // only makes sense within a single year) — "Të gjitha" falls back to this year.
     const effectiveYear = year > 0 ? year : new Date().getFullYear();
     const params = new URLSearchParams({ category: "Ushqimi", search, year: String(effectiveYear) });
+    // Vit akademik → periudhat Janar/Shkurt..Maj/Qershor bien te viti pasardhës (2 vite kalendarike gjithsej)
+    if (yearType === "academic") params.set("yearType", "academic");
     if (classId) params.set("classId", classId);
     const res = await fetch(`/api/category-payments?${params}`);
     if (res.ok) {
@@ -337,7 +357,7 @@ export default function UshqimiPage() {
       if (d.category?.id) setCategoryId(d.category.id);
     }
     setYearLoading(false);
-  }, [year, search, classId]);
+  }, [year, yearType, search, classId]);
 
   async function handleRemoveFromUshqimi(s: StudentRow) {
     const payments = PERIOD_BUCKETS
@@ -352,6 +372,42 @@ export default function UshqimiPage() {
     if (!confirm(warning)) return;
 
     await Promise.all(payments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+    fetchYearData();
+  }
+
+  // Faturon automatikisht periudhat qe s'kane ende pagese, duke perdorur
+  // çmimet e Kalkulatorit — perdoret kur shtohet nxenes i ri, dhe si
+  // veprim manual per nxenesit ekzistues qe kane vetem disa periudha te faturuara.
+  async function billMissingPeriods(s: StudentRow) {
+    const catRes = await fetch("/api/categories");
+    const cats = await catRes.json();
+    const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
+    if (!cat?.id) return;
+
+    const missing = PERIOD_BUCKETS
+      .map((period, i) => ({ period, i }))
+      .filter(({ period }) => !findPeriodPayment(s.installments, period.months));
+    if (!missing.length) return;
+
+    await Promise.all(missing.map(({ period, i }) => {
+      const days = periods[i]?.days ?? workingDays;
+      const finalAmount = Math.round(days * price2Meals * 100) / 100;
+      const calYear = periodCalYear(period.canonicalMonth);
+      const dueDate = new Date(calYear, period.canonicalMonth - 1, 5).toISOString().split("T")[0];
+      return fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: s.id, categoryId: cat.id,
+          amount: finalAmount, discount: 0, discountType: null, scholarship: 0,
+          finalAmount, paidAmount: 0,
+          method: "CASH",
+          dueDate,
+          month: period.canonicalMonth, year: calYear,
+          description: `${days} ditë × ${formatCurrency(price2Meals)} — ${period.label} ${calYear}`,
+        }),
+      });
+    }));
     fetchYearData();
   }
 
@@ -403,6 +459,21 @@ export default function UshqimiPage() {
             ))}
           </div>
           <div className="flex items-center gap-2 ml-auto">
+            <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 text-xs font-semibold flex-shrink-0">
+              {([["academic", "🎓 Akademik"], ["calendar", "📅 Kalendarik"]] as [YearType, string][]).map(([yt, lbl]) => (
+                <button
+                  key={yt}
+                  onClick={() => setYearType(yt)}
+                  className={`px-2.5 py-2 transition-colors ${
+                    yearType === yt
+                      ? "bg-primary-600 text-white"
+                      : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
             {tab !== "income" && (
               <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="form-input w-36">
                 <option value={0}>Të gjitha</option>
@@ -411,107 +482,119 @@ export default function UshqimiPage() {
             )}
             <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-28">
               <option value={0}>Të gjitha</option>
-              {[2023,2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
+              {(yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS).map(y => (
+                <option key={y} value={y}>{yearType === "academic" ? `${y}–${y + 1}` : y}</option>
+              ))}
             </select>
           </div>
         </div>
 
         {/* ── EXPENSE TAB ── */}
         {tab === "expense" && (
-          <ExpensesSection categoryId={categoryId} type="EXPENSE" month={month} year={year} />
+          <ExpensesSection categoryId={categoryId} type="EXPENSE" month={month} year={resolvedYear} />
         )}
 
         {/* ── HANDOVER TAB ── */}
         {tab === "handover" && (
-          <ExpensesSection categoryId={categoryId} type="HANDOVER" month={month} year={year} />
+          <ExpensesSection categoryId={categoryId} type="HANDOVER" month={month} year={resolvedYear} />
         )}
 
         {/* ── REPORT TAB ── */}
         {tab === "report" && (() => {
-          const totalBilled    = students.reduce((s, r) => s + (r.payment?.finalAmount || 0), 0);
-          const totalCollected = students.reduce((s, r) => s + (r.payment?.paidAmount  || 0), 0);
-          const totalDebtR     = students.reduce((s, r) => s + (r.payment?.balance     || 0), 0);
-          const paidR    = students.filter(s => s.payment?.status === "PAID").length;
-          const overdueR = students.filter(s => s.payment?.status === "OVERDUE").length;
-          const pendingR = students.filter(s => !s.payment || s.payment.status === "PENDING").length;
-          const collectionRate = totalBilled > 0 ? (totalCollected / totalBilled * 100).toFixed(1) : "0.0";
+          const periodStats = PERIOD_BUCKETS.map(() => ({ started: 0, interrupted: 0, free: 0, billed: 0, paid: 0, debt: 0 }));
+          const interruptedIds = new Set<number>();
+          const freeIds = new Set<number>();
+          let paidBank = 0, paidCash = 0;
+
+          for (const s of yearStudents) {
+            let prevReal = false;
+            PERIOD_BUCKETS.forEach((period, i) => {
+              const payment = findPeriodPayment(s.installments, period.months);
+              const isSkip = payment?.description === SKIPPED_MARKER;
+              const isFree = payment?.description === FREE_MARKER;
+              const isReal = !!payment && !isSkip && !isFree;
+
+              if (isSkip) { periodStats[i].interrupted++; interruptedIds.add(s.id); }
+              if (isFree) { periodStats[i].free++; freeIds.add(s.id); }
+              if (isReal && !prevReal) periodStats[i].started++;
+
+              if (payment) {
+                periodStats[i].billed += payment.finalAmount;
+                periodStats[i].paid   += payment.paidAmount;
+                periodStats[i].debt   += payment.balance;
+                if (payment.method === "BANK") paidBank += payment.paidAmount;
+                else paidCash += payment.paidAmount;
+              }
+              prevReal = isReal;
+            });
+          }
+
+          const totalPaidR   = periodStats.reduce((s, p) => s + p.paid,   0);
+          const totalDebtR   = periodStats.reduce((s, p) => s + p.debt,   0);
+          const totalBilledR = periodStats.reduce((s, p) => s + p.billed, 0);
+
           return (
             <div className="space-y-4 animate-fade-in">
               {/* Export button */}
               <div className="flex justify-end">
-                <button onClick={() => exportUshqimiExcel(students, month, year)}
-                  className="btn-ghost">
+                <button onClick={() => exportUshqimiGridExcel(yearStudents, effectiveYear)} className="btn-ghost">
                   <Download className="w-4 h-4" /> Exporto Excel
                 </button>
               </div>
 
               {/* KPI cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="card p-4">
-                  <p className="text-xs text-slate-400 mb-1">Faturuar totale</p>
-                  <p className="text-xl font-bold text-slate-800 dark:text-white">{formatCurrency(totalBilled)}</p>
-                  <p className="text-xs text-slate-400 mt-1">{students.filter(s => s.payment).length} nxënës me faturë</p>
+                  <p className="text-xs text-slate-400 mb-1">Nxënës me ushqim</p>
+                  <p className="text-xl font-bold text-slate-800 dark:text-white">{enrolled}</p>
+                  <p className="text-xs text-slate-400 mt-1">{interruptedIds.size} kanë ndërprerë ndonjëherë</p>
                 </div>
                 <div className="card p-4">
-                  <p className="text-xs text-slate-400 mb-1">E arkëtuar</p>
-                  <p className="text-xl font-bold text-green-600">{formatCurrency(totalCollected)}</p>
-                  <p className="text-xs text-slate-400 mt-1">{collectionRate}% e totalit</p>
+                  <p className="text-xs text-slate-400 mb-1">Paguar gjithsej</p>
+                  <p className="text-xl font-bold text-green-600">{formatCurrency(totalPaidR)}</p>
+                  <p className="text-xs text-slate-400 mt-1">Bankë {formatCurrency(paidBank)} · Cash {formatCurrency(paidCash)}</p>
                 </div>
                 <div className="card p-4">
                   <p className="text-xs text-slate-400 mb-1">Borxhe</p>
                   <p className="text-xl font-bold text-red-500">{formatCurrency(totalDebtR)}</p>
-                  <p className="text-xs text-slate-400 mt-1">{overdueR} vonuar</p>
+                  <p className="text-xs text-slate-400 mt-1">nga {formatCurrency(totalBilledR)} faturuar</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-slate-400 mb-1">Marrin falas</p>
+                  <p className="text-xl font-bold text-blue-500">{freeIds.size}</p>
+                  <p className="text-xs text-slate-400 mt-1">nxënës, s'ndikojnë te të hyrat</p>
                 </div>
               </div>
 
-              {/* Revenue bar */}
-              <div className="card p-5">
-                <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-primary-500" /> Pasqyra financiare
-                </h2>
-                <div className="space-y-2 mb-4">
-                  {[
-                    { label: "Faturuar totale", value: totalBilled,    cls: "" },
-                    { label: "E arkëtuar",       value: totalCollected, cls: "text-green-600" },
-                    { label: "(-) Borxhe",       value: totalDebtR,     cls: "text-red-500" },
-                  ].map(row => (
-                    <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-slate-100 dark:border-slate-800 last:border-0 text-sm">
-                      <span className="text-slate-500">{row.label}</span>
-                      <span className={`font-semibold ${row.cls || "text-slate-800 dark:text-slate-200"}`}>{formatCurrency(row.value)}</span>
-                    </div>
-                  ))}
-                </div>
-                {totalBilled > 0 && (
-                  <div className="h-3 rounded-full overflow-hidden flex bg-slate-100 dark:bg-slate-800">
-                    <div className="bg-green-400 h-full transition-all" style={{ width: `${totalCollected / totalBilled * 100}%` }} title="E arkëtuar" />
-                    <div className="bg-red-300 h-full transition-all" style={{ width: `${totalDebtR / totalBilled * 100}%` }} title="Borxhe" />
-                  </div>
-                )}
-                <div className="flex gap-4 mt-2">
-                  <div className="flex items-center gap-1.5 text-xs"><div className="w-2.5 h-2.5 rounded-sm bg-green-400" /><span className="text-slate-500">E arkëtuar</span></div>
-                  <div className="flex items-center gap-1.5 text-xs"><div className="w-2.5 h-2.5 rounded-sm bg-red-300" /><span className="text-slate-500">Borxhe</span></div>
-                </div>
-              </div>
-
-              {/* Status breakdown */}
-              <div className="card p-5">
-                <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Statusi i nxënësve</h2>
-                <div className="space-y-3">
-                  {[
-                    { label: "Paguar",    count: paidR,    bar: "bg-green-500",  pct: students.length ? paidR    / students.length * 100 : 0 },
-                    { label: "Vonuar",    count: overdueR, bar: "bg-red-400",    pct: students.length ? overdueR / students.length * 100 : 0 },
-                    { label: "Pa pagesë", count: pendingR, bar: "bg-slate-300",  pct: students.length ? pendingR / students.length * 100 : 0 },
-                  ].map(s => (
-                    <div key={s.label} className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500">{s.label}</span>
-                        <span className="font-bold text-slate-700 dark:text-slate-300">{s.count} ({s.pct.toFixed(0)}%)</span>
-                      </div>
-                      <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div className={`h-full ${s.bar} rounded-full transition-all`} style={{ width: `${s.pct}%` }} />
-                      </div>
-                    </div>
-                  ))}
+              {/* Per-period breakdown */}
+              <div className="card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50">
+                      <tr>
+                        <th className="table-header">Periudha</th>
+                        <th className="table-header text-center">Filluan</th>
+                        <th className="table-header text-center">Ndërprenë</th>
+                        <th className="table-header text-center">Falas</th>
+                        <th className="table-header text-right">Faturuar</th>
+                        <th className="table-header text-right">Paguar</th>
+                        <th className="table-header text-right">Borxh</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                      {PERIOD_BUCKETS.map((period, i) => (
+                        <tr key={period.label}>
+                          <td className="table-cell font-medium">{period.label}</td>
+                          <td className="table-cell text-center text-green-600 font-semibold">{periodStats[i].started || "—"}</td>
+                          <td className="table-cell text-center text-slate-400">{periodStats[i].interrupted || "—"}</td>
+                          <td className="table-cell text-center text-blue-500">{periodStats[i].free || "—"}</td>
+                          <td className="table-cell text-right">{formatCurrency(periodStats[i].billed)}</td>
+                          <td className="table-cell text-right text-green-600">{formatCurrency(periodStats[i].paid)}</td>
+                          <td className="table-cell text-right text-red-500 font-semibold">{formatCurrency(periodStats[i].debt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -831,6 +914,7 @@ export default function UshqimiPage() {
                     period,
                     payment: findPeriodPayment(s.installments, period.months),
                   }));
+                  const hasMissingPeriods = rowPeriods.some(rp => !rp.payment);
                   const totalPlan = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.finalAmount || 0), 0);
                   const totalPaid = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.paidAmount  || 0), 0);
                   const totalDebtRow = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.balance   || 0), 0);
@@ -853,6 +937,7 @@ export default function UshqimiPage() {
                       </td>
                       {rowPeriods.map(({ period, payment }) => {
                         const skipped = payment?.description === SKIPPED_MARKER;
+                        const free    = payment?.description === FREE_MARKER;
                         return (
                           <td key={period.label} className="table-cell text-center p-0">
                             <button
@@ -861,6 +946,8 @@ export default function UshqimiPage() {
                               className={`w-full h-full px-2 py-2.5 text-xs font-medium transition-colors ${
                                 skipped
                                   ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 italic hover:bg-slate-200"
+                                  : free
+                                  ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100"
                                   : payment?.method === "BANK"
                                   ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-100"
                                   : payment && payment.balance > 0
@@ -870,6 +957,8 @@ export default function UshqimiPage() {
                             >
                               {skipped
                                 ? "Ndërprerë"
+                                : free
+                                ? "Falas"
                                 : payment?.method === "BANK"
                                 ? "Bankë"
                                 : payment
@@ -912,6 +1001,15 @@ export default function UshqimiPage() {
                           >
                             <IdCard className="w-4 h-4" />
                           </button>
+                          {hasMissingPeriods && (
+                            <button
+                              onClick={() => billMissingPeriods(s)}
+                              title="Gjenero periudhat e mbetura (sipas Kalkulatorit)"
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 dark:text-slate-500 dark:hover:text-primary-400 transition-colors"
+                            >
+                              <Receipt className="w-4 h-4" />
+                            </button>
+                          )}
                           {totalPlan > 0 && (
                             <button
                               onClick={() => handleRemoveFromUshqimi(s)}
@@ -942,7 +1040,7 @@ export default function UshqimiPage() {
         <UshqimiPayModal
           student={payModal.student}
           existingPayment={payModal.existingPayment}
-          month={payModal.month} year={effectiveYear}
+          month={payModal.month} year={periodCalYear(payModal.month)}
           prices={prices}
           workingDays={workingDays}
           periods={periods}
@@ -969,7 +1067,7 @@ export default function UshqimiPage() {
           student={printModal}
           payment={printModal.payment}
           categoryName="Ushqimi"
-          month={month} year={effectiveYear}
+          month={month} year={resolvedYear}
           onClose={() => setPrintModal(null)}
         />
       )}
@@ -989,7 +1087,7 @@ export default function UshqimiPage() {
       {enrollModal && (
         <EnrollModal
           notEnrolled={yearStudents.filter(s => s.installments.length === 0)}
-          onEnroll={(s) => { setEnrollModal(false); setPayModal({ student: s, month: PERIOD_BUCKETS[0].canonicalMonth, existingPayment: null }); }}
+          onEnroll={(s) => { setEnrollModal(false); billMissingPeriods(s); }}
           onClose={() => setEnrollModal(false)}
         />
       )}
@@ -1095,8 +1193,9 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
   }
 
   const isSkipped = existing?.description === SKIPPED_MARKER;
+  const isFree    = existing?.description === FREE_MARKER;
 
-  async function markSkipped() {
+  async function markAs(marker: string) {
     setSaving(true);
     const payload: Record<string, unknown> = {
       studentId: student.id, categoryId: 2,
@@ -1104,7 +1203,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       finalAmount: 0, paidAmount: 0,
       method, dueDate, paidDate: null,
       month, year,
-      description: SKIPPED_MARKER,
+      description: marker,
     };
     if (!existing) {
       const catRes = await fetch("/api/categories");
@@ -1128,6 +1227,9 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
     setSaving(false);
     onSave(undefined);
   }
+
+  const markSkipped = () => markAs(SKIPPED_MARKER);
+  const markFree    = () => markAs(FREE_MARKER);
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -1229,7 +1331,12 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
 
         {isSkipped && (
           <div className="mx-5 mb-3 p-3 bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-600 dark:text-slate-300">
-            Kjo periudhë është shënuar si <strong>Ndërprerë</strong> (nxënësi s&apos;e ndoqi). Zgjidh një plan dhe ruaj për ta rikthyer si periudhë normale.
+            Kjo periudhë është shënuar si <strong>Ndërprerë</strong> (nxënësi s&apos;e ndoqi). Plotëso ditë/çmim dhe ruaj për ta rikthyer si periudhë normale.
+          </div>
+        )}
+        {isFree && (
+          <div className="mx-5 mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm text-blue-700 dark:text-blue-300">
+            Kjo periudhë është shënuar si <strong>Falas</strong> (nxënësi e ndjek pa pagesë). Plotëso ditë/çmim dhe ruaj për ta rikthyer si periudhë normale.
           </div>
         )}
 
@@ -1244,6 +1351,15 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
             {isSkipped ? "Ndërprerë (rifresko)" : "Shëno si Ndërprerë"}
+          </button>
+          <button
+            onClick={markFree}
+            disabled={saving}
+            title="Nxënësi e ndjek këtë periudhë pa pagesë — s'numërohet te të hyrat as te borxhi"
+            className="btn-secondary text-blue-500"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            {isFree ? "Falas (rifresko)" : "Shëno si Falas"}
           </button>
           <button onClick={() => { handleSave(false); }} disabled={saving || finalAmount === 0} className="btn-secondary">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}

@@ -9,7 +9,7 @@ import {
   Loader2, AlertTriangle, GraduationCap, KeyRound,
   DatabaseBackup, Download, RefreshCw, CalendarRange, Star,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 /* ─── Types ───────────────────────────────────────────────── */
 interface SchoolInfo {
@@ -1023,7 +1023,7 @@ function BackupSection() {
             <div key={b.filename} className="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
               <div className="min-w-0">
                 <p className="font-semibold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                  {new Date(b.createdAt).toLocaleString("sq")}
+                  {formatDateTime(b.createdAt)}
                   {b.manual && <span className="text-[10px] font-medium bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 px-1.5 py-0.5 rounded-full">Manual</span>}
                 </p>
                 <p className="text-xs text-slate-400">{formatSize(b.size)}</p>

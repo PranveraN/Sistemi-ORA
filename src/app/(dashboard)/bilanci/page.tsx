@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Header from "@/components/layout/Header";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Scale, Download, Building2, Clock, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
@@ -115,7 +115,7 @@ export default function BilanciPage() {
       @page { size: A4 landscape; margin: 15mm; }
     </style></head><body>
     <h1>Bilanci Financiar — ${data.label}</h1>
-    <p class="sub">Gjeneruar: ${new Date().toLocaleDateString("sq-AL")} | Formula: Të Hyra − Shpenzime − Inv. Kapitale − Inv. Përkohshme</p>
+    <p class="sub">Gjeneruar: ${formatDate(new Date())} | Formula: Të Hyra − Shpenzime − Inv. Kapitale − Inv. Përkohshme</p>
     <div class="kpi">
       <div class="kpi-card green"><div class="kpi-label">Të Hyra Totale</div><div class="kpi-val" style="color:#059669">${formatCurrency(data.totalHyra)}</div></div>
       <div class="kpi-card red"><div class="kpi-label">Shpenzime Totale</div><div class="kpi-val" style="color:#dc2626">${formatCurrency(data.totalShpenzim)}</div></div>

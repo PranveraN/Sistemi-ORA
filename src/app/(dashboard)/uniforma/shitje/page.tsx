@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { ShoppingBag, Plus, Search, Eye, Trash2, Filter, ChevronLeft, ChevronRight, ArrowLeft } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 interface Sale {
   id: number;
@@ -129,7 +129,7 @@ export default function ShitjetPage() {
                       {s.customerPhone && <p className="text-xs text-slate-400">{s.customerPhone}</p>}
                     </td>
                     <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                      {new Date(s.saleDate).toLocaleDateString("sq-AL")}
+                      {formatDate(s.saleDate)}
                     </td>
                     <td className="px-4 py-3 text-slate-500">{s._count.items} copë</td>
                     <td className="px-4 py-3 font-semibold text-slate-800 dark:text-slate-200">{formatCurrency(s.totalAmount)}</td>

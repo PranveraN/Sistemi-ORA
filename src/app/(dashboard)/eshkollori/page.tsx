@@ -9,6 +9,7 @@ export default function EshkolloriPage() {
       icon={<BookMarked className="w-5 h-5" />}
       color="teal"
       isMonthly={false}
+      singlePaymentOnly={true}
     />
   );
 }

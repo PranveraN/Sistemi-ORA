@@ -7,6 +7,7 @@ import {
   ArrowLeft, GraduationCap, Users, User,
   Printer, RotateCcw, X, ChevronRight,
 } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 
 interface Student {
   id: number;
@@ -54,8 +55,7 @@ function toRoman(n: number): string {
 }
 
 function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  return formatDate(iso);
 }
 
 function todayFmt(): string { return fmtDate(new Date().toISOString()); }

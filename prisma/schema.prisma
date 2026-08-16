@@ -82,6 +82,7 @@ model Student {
   fatherPhone    String?
   fatherEmail    String?
   kontrata       String?   // Po, Nuk e ka kthy, Nuk ka
+  paymentPlan    String?   // FULL, TWO, MONTHLY, TIMI_INVEST — synimi/regjistrimi i menyres se pageses
   status         String    @default("ACTIVE") // ACTIVE, INACTIVE
   enrollDate     DateTime  @default(now())
   inactiveDate   DateTime?
@@ -478,6 +479,17 @@ model BookPayment {
   paidAt    DateTime @default(now())
   notes     String?
   createdAt DateTime @default(now())
+}
+
+model BookHandover {
+  id          Int      @id @default(autoincrement())
+  amount      Float
+  description String?
+  recipient   String?
+  method      String   @default("CASH")
+  handoverAt  DateTime @default(now())
+  reference   String?
+  createdAt   DateTime @default(now())
 }
 
 // ─────────────────────────────────────────────────────────

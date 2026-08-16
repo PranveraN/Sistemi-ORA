@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Printer, Plus, CreditCard, Package, Calendar, Phone, User } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 interface SaleItem {
   id: number;
@@ -49,7 +49,7 @@ const STATUS_MAP: Record<string, { label: string; cls: string }> = {
 const METHOD_LABEL: Record<string, string> = { CASH: "Cash", BANK: "Bankë", CARD: "Kartë" };
 
 function buildUniformReceiptHTML(sale: Sale, copy: "prind" | "shkolla"): string {
-  const dateStr = new Date(sale.saleDate).toLocaleDateString("sq-AL");
+  const dateStr = formatDate(sale.saleDate);
   const itemRows = sale.items.map(item =>
     `<tr>
       <td class="td">${item.product.name}${item.size ? ` <span class="size">${item.size}</span>` : ""}</td>
@@ -59,7 +59,7 @@ function buildUniformReceiptHTML(sale: Sale, copy: "prind" | "shkolla"): string 
   ).join("");
   const payRows = sale.payments.map(p =>
     `<div class="pay-row">
-      <span>${new Date(p.paidAt).toLocaleDateString("sq-AL")} · ${METHOD_LABEL[p.method] ?? p.method}${p.notes ? ` · ${p.notes}` : ""}</span>
+      <span>${formatDate(p.paidAt)} · ${METHOD_LABEL[p.method] ?? p.method}${p.notes ? ` · ${p.notes}` : ""}</span>
       <span class="green bold">${formatCurrency(p.amount)}</span>
     </div>`
   ).join("");
@@ -309,7 +309,7 @@ export default function SaleDetailPage() {
                     <div>
                       <p className="font-medium text-slate-800 dark:text-slate-200 text-sm">{formatCurrency(p.amount)}</p>
                       <p className="text-xs text-slate-400">
-                        {new Date(p.paidAt).toLocaleDateString("sq-AL")} · {METHOD_LABEL[p.method] ?? p.method}
+                        {formatDate(p.paidAt)} · {METHOD_LABEL[p.method] ?? p.method}
                         {p.notes && ` · ${p.notes}`}
                       </p>
                     </div>
@@ -337,7 +337,7 @@ export default function SaleDetailPage() {
             )}
             <div className="flex items-center gap-2 text-sm">
               <Calendar className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-500">{new Date(sale.saleDate).toLocaleDateString("sq-AL")}</span>
+              <span className="text-slate-500">{formatDate(sale.saleDate)}</span>
             </div>
           </div>
 

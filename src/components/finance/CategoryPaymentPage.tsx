@@ -5,6 +5,15 @@ import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
 import { CYCLES, getCycle } from "@/lib/school-cycles";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
+
+const PAYMENT_PLANS: { value: string; label: string }[] = [
+  { value: "FULL",         label: "E plotë" },
+  { value: "TWO",          label: "Dy pjesë" },
+  { value: "MONTHLY",      label: "Me këste" },
+  { value: "TIMI_INVEST",  label: "Përmes Timi Invest" },
+];
+const PAYMENT_PLAN_LABELS: Record<string, string> = Object.fromEntries(PAYMENT_PLANS.map(p => [p.value, p.label]));
 import {
   Search, CheckCircle, AlertCircle, Clock,
   Plus, X, Save, Users, Loader2, Printer,
@@ -39,6 +48,7 @@ interface StudentRow {
   lastName: string;
   class: { id: number; name: string } | null;
   discountPct: number;
+  paymentPlan: string | null;
   status: string;
   inactiveDate: string | null;
   payment: Payment | null;        // aggregated (for table stats)
@@ -70,6 +80,7 @@ interface Props {
   color: string;
   isMonthly?: boolean;
   showCalculator?: boolean;
+  singlePaymentOnly?: boolean; // vetëm "Pagesë e plotë" — pa Dy Këste / Çdo Muaj (p.sh. Eshkollori, shumë fikse vjetore)
 }
 
 type Tab = "income" | "expense" | "handover";
@@ -83,7 +94,7 @@ function exportStudentsExcel(
   isMonthly: boolean,
 ) {
   const wb = XLSX.utils.book_new();
-  const today = new Date().toLocaleDateString("sq-AL");
+  const today = formatDate(new Date());
   const period = isMonthly && month > 0
     ? `${MONTHS[month - 1]} ${year > 0 ? year : ""}`
     : year > 0 ? String(year) : "Të gjitha";
@@ -145,10 +156,12 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "handover", label: "Dorezim Parash",   icon: <ArrowLeftRight className="w-4 h-4" /> },
 ];
 
-export default function CategoryPaymentPage({ categoryName, title, icon, color, isMonthly = true, showCalculator = false }: Props) {
+export default function CategoryPaymentPage({ categoryName, title, icon, color, isMonthly = true, showCalculator = false, singlePaymentOnly = false }: Props) {
   const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year,  setYear]  = useState(now.getFullYear());
+  const currentAcademicStart = now.getMonth() + 1 >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+  const [month, setMonth] = useState(0); // 0 = "Të gjitha" → by default shfaq pasqyrën e plotë të vitit akademik
+  const [year,  setYear]  = useState(currentAcademicStart);
+  const [yearType, setYearType] = useState<YearType>("academic");
   const [search,  setSearch]  = useState("");
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [stats,    setStats]   = useState<Stats | null>(null);
@@ -167,6 +180,8 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [colKlasa,  setColKlasa]  = useState("");
   const [colMetoda, setColMetoda] = useState("");
   const [colCikli,  setColCikli]  = useState("");
+  const [colPlan,   setColPlan]   = useState("");
+  const [colBorxhi, setColBorxhi] = useState("");
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
 
   useEffect(() => {
@@ -184,13 +199,38 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
     return <span className="text-primary-500 ml-1 text-[10px]">{sortDir === "asc" ? "▲" : "▼"}</span>;
   }
 
+  // "year" përfaqëson vitin fillestar akademik (p.sh. 2025 = "2025–2026") kur yearType="academic",
+  // ose thjesht vitin kalendarik kur yearType="calendar".
+  // resolvedYear = viti kalendarik konkret që i përgjigjet muajit të zgjedhur (për query/etiketa).
+  // schoolYearStart = viti fillestar i vitit shkollor, gjithmonë i saktë pavarësisht yearType-it
+  // (përdoret nga calcProrated dhe PaymentModal, që tashmë presin vitin fillestar shkollor).
+  const resolvedYear = year <= 0 ? 0
+    : yearType === "academic"
+      ? (month > 0 ? (month >= 9 ? year : year + 1) : year)
+      : year;
+  const schoolYearStart = year <= 0 ? 0
+    : yearType === "academic"
+      ? year
+      : (month > 0 && month <= 8 ? year - 1 : year);
+
+  function switchYearType(yt: YearType) {
+    if (year > 0) setYear(yt === "academic" ? schoolYearStart : resolvedYear);
+    setYearType(yt);
+  }
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ category: categoryName, search });
     // month=0 → "Të gjitha" → omit month param
     if (isMonthly && month > 0) params.set("month", String(month));
     // year=0 → "Të gjitha" → omit year param
-    if (year > 0) params.set("year", String(year));
+    if (resolvedYear > 0) {
+      params.set("year", String(resolvedYear));
+      // "Të gjitha" muajt + vit akademik → API duhet të përfshijë të dy vitet kalendarike (Shtator–Gusht).
+      // Vetëm për kategoritë me muaj (isMonthly) — kategoritë pa muaj (p.sh. Eshkollori) s'kanë fushën
+      // "month" të populluar (null), ndaj filtri OR sipas muajit s'i gjen kurrë ato pagesa.
+      if (isMonthly && !(month > 0) && yearType === "academic") params.set("yearType", "academic");
+    }
     const res = await fetch(`/api/category-payments?${params}`);
     if (res.ok) {
       const d = await res.json();
@@ -199,7 +239,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
       setCategory(d.category);
     }
     setLoading(false);
-  }, [categoryName, month, year, search, isMonthly]);
+  }, [categoryName, month, resolvedYear, yearType, search, isMonthly]);
 
   const _firstRender = useRef(true);
   useEffect(() => {
@@ -223,8 +263,26 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
     return list
       .filter(s => !colKlasa  || s.class?.name === colKlasa)
       .filter(s => !colCikli  || getCycle(s.class?.name) === colCikli)
+      .filter(s => !colPlan   || s.paymentPlan === colPlan)
       .filter(s => !colMetoda || s.payment?.method === colMetoda ||
-        s.installments.some(p => p.method === colMetoda));
+        s.installments.some(p => p.method === colMetoda))
+      .filter(s => {
+        if (!colBorxhi) return true;
+        const st = s.payment?.status || "PENDING";
+        if (colBorxhi === "DEBT")    return st !== "PAID";
+        if (colBorxhi === "FULL")    return st === "PENDING" || st === "OVERDUE";
+        if (colBorxhi === "PARTIAL") return st === "PARTIAL";
+        return true;
+      });
+  }
+
+  async function savePaymentPlan(studentId: number, plan: string) {
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, paymentPlan: plan || null } : s));
+    await fetch(`/api/students/${studentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentPlan: plan || null }),
+    });
   }
 
   function applySort(list: StudentRow[]) {
@@ -319,7 +377,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           </Link>
 
           <button
-            onClick={() => exportStudentsExcel(students, stats, title, month, year, isMonthly)}
+            onClick={() => exportStudentsExcel(students, stats, title, month, resolvedYear, isMonthly)}
             className="btn-secondary text-sm"
             title="Exporto në Excel"
           >
@@ -338,6 +396,21 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           )}
 
           <div className="flex items-center gap-2 ml-auto">
+            <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 text-xs font-semibold flex-shrink-0">
+              {([["academic", "🎓 Akademik"], ["calendar", "📅 Kalendarik"]] as [YearType, string][]).map(([yt, lbl]) => (
+                <button
+                  key={yt}
+                  onClick={() => switchYearType(yt)}
+                  className={`px-2.5 py-2 transition-colors ${
+                    yearType === yt
+                      ? "bg-primary-600 text-white"
+                      : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
             {isMonthly && (
               <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="form-input w-36">
                 <option value={0}>Të gjitha</option>
@@ -346,7 +419,9 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
             )}
             <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-28">
               <option value={0}>Të gjitha</option>
-              {[2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+              {(yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS).map(y => (
+                <option key={y} value={y}>{yearType === "academic" ? `${y}–${y + 1}` : y}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -510,11 +585,25 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                     {CYCLES.find(c => c.value === colCikli)?.label ?? colCikli}
                   </button>
                 )}
+                {colPlan && (
+                  <button onClick={() => setColPlan("")}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100 transition-colors">
+                    <X className="w-3 h-3" />
+                    {PAYMENT_PLAN_LABELS[colPlan] ?? colPlan}
+                  </button>
+                )}
                 {colMetoda && (
                   <button onClick={() => setColMetoda("")}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 transition-colors">
                     <X className="w-3 h-3" />
                     {colMetoda === "CASH" ? "Cash" : colMetoda === "BANK" ? "Bankë" : colMetoda === "CARD" ? "Kartelë" : colMetoda}
+                  </button>
+                )}
+                {colBorxhi && (
+                  <button onClick={() => setColBorxhi("")}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-100 transition-colors">
+                    <X className="w-3 h-3" />
+                    {colBorxhi === "DEBT" ? "Me borxh" : colBorxhi === "FULL" ? "Borxh total" : "Borxh në pjesë"}
                   </button>
                 )}
                 {sortCol && (
@@ -525,7 +614,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                   </button>
                 )}
                 <span className="text-sm text-slate-400">
-                  {sorted.length}{(statusFilter || colKlasa || colCikli || colMetoda) ? ` / ${students.length}` : ""} nxënës
+                  {sorted.length}{(statusFilter || colKlasa || colCikli || colPlan || colMetoda || colBorxhi) ? ` / ${students.length}` : ""} nxënës
                 </span>
               </div>
             </div>
@@ -580,6 +669,23 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                         </div>
                       </th>
 
+                      {/* MENYRA E PAGESES — dropdown filter */}
+                      <th className="table-header p-0">
+                        <div className="flex items-center gap-1 px-3 py-2">
+                          <span>Mënyra e Pagesës</span>
+                          <select
+                            value={colPlan}
+                            onChange={e => setColPlan(e.target.value)}
+                            className="ml-1 text-[10px] border border-slate-200 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
+                            title="Filtro sipas mënyrës së pagesës"
+                          >
+                            <option value="">Të gjitha</option>
+                            {PAYMENT_PLANS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                          </select>
+                          {colPlan && <button onClick={() => setColPlan("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
+                        </div>
+                      </th>
+
                       {/* SHUMA — sortable */}
                       <th className="table-header cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort("shuma")}>
                         <div className="flex items-center gap-1">Shuma <SortIcon col="shuma" /></div>
@@ -590,9 +696,25 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                         <div className="flex items-center gap-1">Paguar <SortIcon col="paguar" /></div>
                       </th>
 
-                      {/* BORXHI — sortable */}
-                      <th className="table-header cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort("borxhi")}>
-                        <div className="flex items-center gap-1">Borxhi <SortIcon col="borxhi" /></div>
+                      {/* BORXHI — sortable + dropdown filter */}
+                      <th className="table-header p-0">
+                        <div className="flex items-center gap-1 px-3 py-2">
+                          <span className="cursor-pointer select-none flex items-center gap-1" onClick={() => toggleSort("borxhi")}>
+                            Borxhi <SortIcon col="borxhi" />
+                          </span>
+                          <select
+                            value={colBorxhi}
+                            onChange={e => setColBorxhi(e.target.value)}
+                            className="ml-1 text-[10px] border border-slate-200 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
+                            title="Filtro sipas borxhit"
+                          >
+                            <option value="">Të gjitha</option>
+                            <option value="DEBT">Me borxh</option>
+                            <option value="FULL">Borxh total</option>
+                            <option value="PARTIAL">Borxh në pjesë</option>
+                          </select>
+                          {colBorxhi && <button onClick={() => setColBorxhi("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
+                        </div>
                       </th>
 
                       {/* METODA — dropdown filter */}
@@ -629,13 +751,13 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                     {loading ? (
                       <tr>
-                        <td colSpan={11} className="py-16 text-center">
+                        <td colSpan={12} className="py-16 text-center">
                           <Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" />
                         </td>
                       </tr>
                     ) : sorted.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="py-16 text-center text-slate-400 text-sm">
+                        <td colSpan={12} className="py-16 text-center text-slate-400 text-sm">
                           Asnjë nxënës nuk u gjet
                         </td>
                       </tr>
@@ -654,7 +776,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
 
                       // Pro-rate për joaktivët
                       const prorated = isInactive && s.inactiveDate && basePrice > 0 && year > 0
-                        ? calcProrated(basePrice, s.discountPct ?? 0, new Date(s.inactiveDate), year)
+                        ? calcProrated(basePrice, s.discountPct ?? 0, new Date(s.inactiveDate), schoolYearStart)
                         : null;
 
                       const rowBg = isInactive
@@ -665,7 +787,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                         <React.Fragment key={s.id}>
                         {isFirstInactive && inactiveStudents.length > 0 && (
                           <tr>
-                            <td colSpan={11} className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800/60 border-t-2 border-slate-300 dark:border-slate-600">
+                            <td colSpan={12} className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800/60 border-t-2 border-slate-300 dark:border-slate-600">
                               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                                 ✕ Joaktiv — {inactiveStudents.length} nxënës · të përjashtuar nga statistikat dhe mesatarja
                               </span>
@@ -684,7 +806,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                                   ✕ Joaktiv
                                   {s.inactiveDate && (
                                     <span className="text-slate-400">
-                                      {new Date(s.inactiveDate).toLocaleDateString("sq-AL")}
+                                      {formatDate(s.inactiveDate)}
                                     </span>
                                   )}
                                 </span>
@@ -715,6 +837,17 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                             {s.class
                               ? <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-2 py-0.5 rounded text-xs font-medium">{s.class.name}</span>
                               : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="table-cell">
+                            <select
+                              value={s.paymentPlan ?? ""}
+                              onChange={e => savePaymentPlan(s.id, e.target.value)}
+                              onClick={e => e.stopPropagation()}
+                              className="text-xs border border-slate-200 dark:border-slate-600 rounded px-1.5 py-1 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
+                            >
+                              <option value="">— Pazgjedhur —</option>
+                              {PAYMENT_PLANS.map(pl => <option key={pl.value} value={pl.value}>{pl.label}</option>)}
+                            </select>
                           </td>
                           <td className="table-cell font-medium text-slate-800 dark:text-slate-200">
                             {isInactive && prorated ? (
@@ -886,11 +1019,11 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
         )}
 
         {tab === "expense" && (
-          <ExpensesSection categoryId={category?.id ?? null} type="EXPENSE" month={month} year={year} />
+          <ExpensesSection categoryId={category?.id ?? null} type="EXPENSE" month={month} year={resolvedYear} />
         )}
 
         {tab === "handover" && (
-          <ExpensesSection categoryId={category?.id ?? null} type="HANDOVER" month={month} year={year} />
+          <ExpensesSection categoryId={category?.id ?? null} type="HANDOVER" month={month} year={resolvedYear} />
         )}
       </div>
 
@@ -899,8 +1032,9 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           student={modal}
           category={category}
           month={isMonthly && month > 0 ? month : undefined}
-          year={year}
+          year={schoolYearStart}
           overrideAmount={calcAmount}
+          singlePaymentOnly={singlePaymentOnly}
           onClose={() => { setModal(null); setCalcAmount(undefined); }}
           onSave={async (rid) => {
             setModal(null);
@@ -917,7 +1051,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           payment={printModal.payment}
           categoryName={title}
           month={isMonthly && month > 0 ? month : undefined}
-          year={year}
+          year={resolvedYear}
           onClose={() => setPrintModal(null)}
         />
       )}
@@ -1082,9 +1216,10 @@ interface ModalProps {
   onClose: () => void;
   onSave: (receiptPaymentId?: number) => void;
   overrideAmount?: number;
+  singlePaymentOnly?: boolean;
 }
 
-function PaymentModal({ student, category, month, year, onClose, onSave, overrideAmount }: ModalProps) {
+function PaymentModal({ student, category, month, year, onClose, onSave, overrideAmount, singlePaymentOnly = false }: ModalProps) {
   const today = new Date().toISOString().split("T")[0];
   const installments = student.installments;
 
@@ -1106,8 +1241,11 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   const [saving, setSaving] = useState(false);
 
   // ── Common form (gross amount + discounts) ──
+  // Nëse kategoria ka një shumë fikse të konfiguruar (p.sh. Librat & Shkollorja = 20€/vit),
+  // fusha "Shuma" mbushet automatikisht — kursen kohë kur çmimi është i njëjtë për të gjithë.
   const [form, setForm] = useState({
-    amount:       overrideAmount != null ? String(overrideAmount) : String(singleExisting?.amount ?? k1Existing?.amount ?? ""),
+    amount:       overrideAmount != null ? String(overrideAmount)
+      : String(singleExisting?.amount ?? k1Existing?.amount ?? (category.defaultAmount > 0 ? category.defaultAmount : "")),
     discount:     String(singleExisting?.discount    ?? "0"),
     discountType: singleExisting?.discountType       ?? "fixed",
     scholarship:  String(singleExisting?.scholarship ?? "0"),
@@ -1377,41 +1515,43 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         </div>
 
         <div className="p-5 space-y-5">
-          {/* Mode toggle */}
-          <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-xl w-fit">
-            <button
-              onClick={() => setMode("single")}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                mode === "single"
-                  ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              Pagesë e plotë
-            </button>
-            <button
-              onClick={() => setMode("two")}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                mode === "two"
-                  ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              <CalendarDays className="w-4 h-4" />
-              Dy Këste
-            </button>
-            <button
-              onClick={() => setMode("monthly")}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                mode === "monthly"
-                  ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              <CalendarDays className="w-4 h-4" />
-              Çdo Muaj
-            </button>
-          </div>
+          {/* Mode toggle — fshihet kur kategoria ka vetëm pagesë të plotë (p.sh. Eshkollori) */}
+          {!singlePaymentOnly && (
+            <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-xl w-fit">
+              <button
+                onClick={() => setMode("single")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  mode === "single"
+                    ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+              >
+                Pagesë e plotë
+              </button>
+              <button
+                onClick={() => setMode("two")}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  mode === "two"
+                    ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+              >
+                <CalendarDays className="w-4 h-4" />
+                Dy Këste
+              </button>
+              <button
+                onClick={() => setMode("monthly")}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  mode === "monthly"
+                    ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+              >
+                <CalendarDays className="w-4 h-4" />
+                Çdo Muaj
+              </button>
+            </div>
+          )}
 
           {/* Common: gross amount + discounts */}
           <div>

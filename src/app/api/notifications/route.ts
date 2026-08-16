@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { formatDate } from "@/lib/utils";
 
 export async function GET() {
   const session = await auth();
@@ -64,7 +65,7 @@ export async function GET() {
       id: `pay-${p.id}`,
       type: "overdue" as const,
       title: `Pagesë e vonuar — ${p.student.firstName} ${p.student.lastName}`,
-      body: `€${p.finalAmount.toFixed(0)} — skadon ${new Date(p.dueDate).toLocaleDateString("sq-AL")}`,
+      body: `€${p.finalAmount.toFixed(0)} — skadon ${formatDate(p.dueDate)}`,
       dueDate: p.dueDate.toISOString(),
       urgent: true,
       category: "PAYMENT",

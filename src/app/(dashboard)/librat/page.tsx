@@ -2,7 +2,13 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import Header from "@/components/layout/Header";
-import { BookOpen, Plus, Search, X, Printer, Trash2, Loader2, Package, TrendingUp, ShoppingCart, AlertCircle } from "lucide-react";
+import {
+  BookOpen, Plus, Search, X, Printer, Trash2, Loader2, Package, TrendingUp, ShoppingCart, AlertCircle,
+  TrendingDown, ArrowRightLeft, BarChart3, Download, Wallet, Medal,
+} from "lucide-react";
+import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, getDateRange, type YearType } from "@/lib/academicYear";
+import * as XLSX from "xlsx";
 
 /* ── Types ─────────────────────────────────────────────── */
 interface Product {
@@ -21,6 +27,21 @@ interface Sale {
   itemCount?: number; items?: SaleItem[]; payments?: Payment[];
 }
 interface Student { id: number; firstName: string; lastName: string; class: { name: string } | null; }
+
+interface Handover {
+  id: number; amount: number; description: string | null; recipient: string | null;
+  method: string; reference: string | null; handoverAt: string;
+}
+interface ProductSale { name: string; qty: number; revenue: number; cost: number; profit: number; }
+interface Stats {
+  totalRevenue: number; totalCost: number; totalProfit: number;
+  totalCollected: number; totalDebt: number;
+  totalHandedOver: number; remainingProfit: number;
+  stockValue: number; totalItems: number;
+  lowStock: { name: string; stock: number }[];
+  salesCount: number; paidCount: number; partialCount: number; pendingCount: number;
+  productSales: ProductSale[];
+}
 
 /* ── Helpers ────────────────────────────────────────────── */
 function fmt(v: number) {
@@ -42,7 +63,7 @@ function methodLabel(m: string) {
 
 /* ── Receipt print ──────────────────────────────────────── */
 function buildBookReceiptHTML(sale: Sale, copy: "prind" | "shkolla", origin: string): string {
-  const dateStr = new Date(sale.saleDate).toLocaleDateString("sq-AL");
+  const dateStr = formatDate(sale.saleDate);
   const recNum  = sale.receiptNumber || `#${sale.id}`;
   const itemRows = (sale.items || []).map(it => `
     <tr>
@@ -162,9 +183,145 @@ td { padding:3px 6px; border-bottom:1px solid #e2e8f0; }
   w.document.close();
 }
 
+const HANDOVER_METHOD_LABEL: Record<string, string> = { CASH: "Cash", BANK: "Bankë / Transfer", CARD: "Kartë" };
+
+function printHandoverReceipt(h: Handover) {
+  const win = window.open("", "_blank", "width=400,height=600");
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html lang="sq"><head><meta charset="UTF-8"/><title>Dëshmi Dorëzimi</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#0f172a; padding:32px 24px; max-width:360px; }
+h1 { font-size:18px; font-weight:700; }
+.sub { color:#64748b; font-size:11px; }
+hr { border:none; border-top:1px dashed #cbd5e1; margin:14px 0; }
+.row { display:flex; justify-content:space-between; padding:4px 0; }
+.label { color:#64748b; }
+.amount { font-size:20px; font-weight:700; color:#0f172a; }
+.sig-area { display:flex; justify-content:space-between; margin-top:32px; }
+.sig-box { text-align:center; }
+.sig-line { border-bottom:1px solid #0f172a; width:120px; margin-top:40px; }
+</style></head><body>
+<div style="text-align:center;margin-bottom:20px">
+  <h1>Akademia Ora</h1>
+  <p class="sub">Dëshmi Dorëzimi — Librat e Anglishtes</p>
+  <p class="sub">${formatDate(h.handoverAt)}</p>
+</div>
+<hr/>
+<div class="row"><span class="label">Data:</span><span>${formatDate(h.handoverAt)}</span></div>
+${h.recipient ? `<div class="row"><span class="label">Marrësi:</span><span>${h.recipient}</span></div>` : ""}
+<div class="row"><span class="label">Mënyra:</span><span>${HANDOVER_METHOD_LABEL[h.method] ?? h.method}</span></div>
+${h.reference ? `<div class="row"><span class="label">Referenca:</span><span>${h.reference}</span></div>` : ""}
+${h.description ? `<div class="row"><span class="label">Shënim:</span><span>${h.description}</span></div>` : ""}
+<hr/>
+<div style="text-align:center;padding:16px 0">
+  <p class="sub" style="margin-bottom:4px">SHUMA E DORËZUAR</p>
+  <p class="amount">${formatCurrency(h.amount)}</p>
+</div>
+<hr/>
+<div class="sig-area">
+  <div class="sig-box"><div class="sig-line"></div><p class="sub" style="margin-top:6px">Dhënësi</p></div>
+  <div class="sig-box"><div class="sig-line"></div><p class="sub" style="margin-top:6px">Marrësi</p></div>
+</div>
+</body></html>`);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 300);
+}
+
+function exportLibratReport(stats: Stats, periodLabel: string) {
+  const wb = XLSX.utils.book_new();
+  const today = formatDate(new Date());
+
+  const summary = [
+    ["RAPORTI FINANCIAR — LIBRAT E ANGLISHTES", "", today],
+    ["Periudha:", periodLabel],
+    [],
+    ["PASQYRA E TË ARDHURAVE", ""],
+    ["Shitje totale", stats.totalRevenue],
+    ["(-) Kosto totale", stats.totalCost],
+    ["= Fitim bruto", stats.totalProfit],
+    [],
+    ["ARKËTIMI", ""],
+    ["E arkëtuar", stats.totalCollected],
+    ["(-) Borxhet", stats.totalDebt],
+    ["(-) Dorëzuar", stats.totalHandedOver],
+    ["= Mbetja", stats.remainingProfit],
+    [],
+    ["STOKU", ""],
+    ["Cope totale", stats.totalItems],
+    ["Vlera stokut", stats.stockValue],
+    [],
+    ["SHITJET", ""],
+    ["Gjithsej shitje", stats.salesCount],
+    ["Paguar", stats.paidCount],
+    ["Pjesërisht", stats.partialCount],
+    ["Pa pagesë", stats.pendingCount],
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(summary);
+  ws1["!cols"] = [{ wch: 28 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, ws1, "Pasqyra");
+
+  if (stats.productSales.length > 0) {
+    const totQty = stats.productSales.reduce((s, p) => s + p.qty, 0);
+    const totRev = stats.productSales.reduce((s, p) => s + p.revenue, 0);
+    const totPro = stats.productSales.reduce((s, p) => s + p.profit, 0);
+    const rows = [
+      ["Libri", "Sasia", "Shitje (€)", "Fitimi (€)", "Marzha (%)"],
+      ...stats.productSales.map(p => [
+        p.name, p.qty, p.revenue, p.profit,
+        p.revenue > 0 ? `${(p.profit / p.revenue * 100).toFixed(1)}%` : "0.0%",
+      ]),
+      ["TOTALI", totQty, totRev, totPro, totRev > 0 ? `${(totPro / totRev * 100).toFixed(1)}%` : "0.0%"],
+    ];
+    const ws2 = XLSX.utils.aoa_to_sheet(rows);
+    ws2["!cols"] = [{ wch: 26 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws2, "Sipas Librit");
+  }
+
+  if (stats.lowStock.length > 0) {
+    const rows = [
+      ["Libri", "Stoku (cope)"],
+      ...stats.lowStock.map(p => [p.name, p.stock]),
+    ];
+    const ws3 = XLSX.utils.aoa_to_sheet(rows);
+    ws3["!cols"] = [{ wch: 28 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, ws3, "Stok i ulët");
+  }
+
+  XLSX.writeFile(wb, `Raporti-Librat-${today.replace(/\./g, "-")}.xlsx`);
+}
+
 /* ════════════════════════════════════════════════════════ */
 export default function LibratPage() {
-  const [tab, setTab] = useState<"shitjet" | "produktet">("shitjet");
+  const [tab, setTab] = useState<"shitjet" | "produktet" | "raport" | "dorezim">("shitjet");
+
+  /* ── Periudha (Vit Akademik / Kalendarik + Muaj + Vit) ── */
+  const now = new Date();
+  const currentAcademicStart = now.getMonth() + 1 >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+  const [yearType, setYearType] = useState<YearType>("academic");
+  const [month, setMonth] = useState(0); // 0 = "Të gjitha"
+  const [year, setYear]   = useState(currentAcademicStart);
+
+  function dateRange(): { from?: string; to?: string } {
+    if (year <= 0) return {};
+    if (month > 0) {
+      const calYear = yearType === "academic" ? (month >= 9 ? year : year + 1) : year;
+      const start = new Date(calYear, month - 1, 1);
+      const end   = new Date(calYear, month, 0, 23, 59, 59);
+      return { from: start.toISOString(), to: end.toISOString() };
+    }
+    const { start, end } = getDateRange(year, yearType);
+    return { from: start.toISOString(), to: end.toISOString() };
+  }
+
+  function periodLabel(): string {
+    if (year <= 0) return "Të gjitha";
+    if (month > 0) {
+      const calYear = yearType === "academic" ? (month >= 9 ? year : year + 1) : year;
+      return `${MONTHS[month - 1]} ${calYear}`;
+    }
+    return yearType === "academic" ? `${year}–${year + 1}` : String(year);
+  }
 
   /* ── Products state ── */
   const [products, setProducts] = useState<Product[]>([]);
@@ -196,18 +353,88 @@ export default function LibratPage() {
 
   const fetchSales = useCallback(async () => {
     setSalesLoading(true);
+    const { from, to } = dateRange();
     const p = new URLSearchParams({ search, limit: "100" });
     if (statusFilter) p.set("status", statusFilter);
+    if (from) p.set("from", from);
+    if (to)   p.set("to", to);
     const r = await fetch(`/api/librat/sales?${p}`);
     if (r.ok) setSales((await r.json()).sales);
     setSalesLoading(false);
-  }, [search, statusFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, statusFilter, month, year, yearType]);
+
+  /* ── Raport state ── */
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  const fetchStats = useCallback(async () => {
+    setStatsLoading(true);
+    const { from, to } = dateRange();
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to)   p.set("to", to);
+    const r = await fetch(`/api/librat/stats?${p}`);
+    if (r.ok) setStats(await r.json());
+    setStatsLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, year, yearType]);
+
+  /* ── Dorëzim Parash state ── */
+  const [handovers, setHandovers] = useState<Handover[]>([]);
+  const [handoversLoading, setHandoversLoading] = useState(true);
+  const [handoverModal, setHandoverModal] = useState(false);
+  const [handoverForm, setHandoverForm] = useState({
+    amount: "", description: "", recipient: "", method: "CASH", reference: "",
+    handoverAt: new Date().toISOString().split("T")[0],
+  });
+  const [savingHandover, setSavingHandover] = useState(false);
+
+  const fetchHandovers = useCallback(async () => {
+    setHandoversLoading(true);
+    const { from, to } = dateRange();
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to)   p.set("to", to);
+    const r = await fetch(`/api/librat/handovers?${p}`);
+    if (r.ok) setHandovers(await r.json());
+    setHandoversLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, year, yearType]);
+
+  async function saveHandover() {
+    setSavingHandover(true);
+    await fetch("/api/librat/handovers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: parseFloat(handoverForm.amount),
+        description: handoverForm.description.trim() || null,
+        recipient: handoverForm.recipient.trim() || null,
+        method: handoverForm.method,
+        reference: handoverForm.reference.trim() || null,
+        handoverAt: handoverForm.handoverAt,
+      }),
+    });
+    setSavingHandover(false);
+    setHandoverModal(false);
+    setHandoverForm({ amount: "", description: "", recipient: "", method: "CASH", reference: "", handoverAt: new Date().toISOString().split("T")[0] });
+    fetchHandovers();
+  }
+
+  async function deleteHandover(id: number) {
+    if (!confirm("Fshi këtë dorëzim?")) return;
+    await fetch(`/api/librat/handovers/${id}`, { method: "DELETE" });
+    fetchHandovers();
+  }
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => {
     const t = setTimeout(fetchSales, 300);
     return () => clearTimeout(t);
   }, [fetchSales]);
+  useEffect(() => { if (tab === "raport") fetchStats(); }, [tab, fetchStats]);
+  useEffect(() => { if (tab === "dorezim") fetchHandovers(); }, [tab, fetchHandovers]);
 
   async function openDetail(sale: Sale) {
     setDetailLoading(true);
@@ -274,16 +501,52 @@ export default function LibratPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">
-          {(["shitjet", "produktet"] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize ${
-                tab === t ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
-              }`}>
-              {t === "shitjet" ? "Shitjet" : "Produktet"}
-            </button>
-          ))}
+        {/* Tabs + Filtri i periudhës */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">
+            {(["shitjet", "produktet", "raport", "dorezim"] as const).map(t => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  tab === t ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}>
+                {t === "shitjet" && <ShoppingCart className="w-4 h-4" />}
+                {t === "produktet" && <BookOpen className="w-4 h-4" />}
+                {t === "raport" && <BarChart3 className="w-4 h-4" />}
+                {t === "dorezim" && <ArrowRightLeft className="w-4 h-4" />}
+                {t === "shitjet" ? "Shitjet" : t === "produktet" ? "Produktet" : t === "raport" ? "Raport" : "Dorëzim Parash"}
+              </button>
+            ))}
+          </div>
+
+          {tab !== "produktet" && (
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 text-xs font-semibold flex-shrink-0">
+                {([["academic", "🎓 Akademik"], ["calendar", "📅 Kalendarik"]] as [YearType, string][]).map(([yt, lbl]) => (
+                  <button
+                    key={yt}
+                    onClick={() => setYearType(yt)}
+                    className={`px-2.5 py-2 transition-colors ${
+                      yearType === yt
+                        ? "bg-primary-600 text-white"
+                        : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="form-input w-36">
+                <option value={0}>Të gjitha</option>
+                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+              <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-28">
+                <option value={0}>Të gjitha</option>
+                {(yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS).map(y => (
+                  <option key={y} value={y}>{yearType === "academic" ? `${y}–${y + 1}` : y}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* ── SHITJET TAB ── */}
@@ -349,7 +612,7 @@ export default function LibratPage() {
                           )}
                         </td>
                         <td className="table-cell"><span className={`badge ${statusColor(sale.status)}`}>{statusLabel(sale.status)}</span></td>
-                        <td className="table-cell text-slate-400 text-xs">{new Date(sale.saleDate).toLocaleDateString("sq-AL")}</td>
+                        <td className="table-cell text-slate-400 text-xs">{formatDate(sale.saleDate)}</td>
                         <td className="table-cell" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
                             <button onClick={() => openDetail(sale)} title="Shiko detajet" className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors">
@@ -425,7 +688,269 @@ export default function LibratPage() {
             </div>
           </>
         )}
+
+        {/* ── RAPORT TAB ── */}
+        {tab === "raport" && (
+          statsLoading || !stats ? (
+            <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary-400" /></div>
+          ) : (() => {
+            const profitMargin = stats.totalRevenue > 0 ? (stats.totalProfit / stats.totalRevenue * 100).toFixed(1) : "0.0";
+            return (
+              <div className="space-y-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-400">Periudha: <span className="font-semibold text-slate-600 dark:text-slate-300">{periodLabel()}</span></p>
+                  <button onClick={() => exportLibratReport(stats, periodLabel())} className="btn-ghost">
+                    <Download className="w-4 h-4" /> Exporto Excel
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    { icon: ShoppingCart, label: "Shitje",      value: formatCurrency(stats.totalRevenue),    sub: `${stats.salesCount} transaksione`, color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-900/30" },
+                    { icon: TrendingUp,   label: "Fitim bruto", value: formatCurrency(stats.totalProfit),     sub: `Marzha ${profitMargin}%`,           color: "text-green-600",   bg: "bg-green-50 dark:bg-green-900/30" },
+                    { icon: Wallet,       label: "E arkëtuar",  value: formatCurrency(stats.totalCollected),  sub: `Borxh: ${formatCurrency(stats.totalDebt)}`, color: "text-primary-600", bg: "bg-primary-50 dark:bg-primary-900/30" },
+                    { icon: ArrowRightLeft, label: "Mbetja",    value: formatCurrency(stats.remainingProfit), sub: `Dorëzuar: ${formatCurrency(stats.totalHandedOver)}`, color: "text-orange-600", bg: "bg-orange-50 dark:bg-orange-900/30" },
+                  ].map(k => (
+                    <div key={k.label} className="card p-5">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${k.bg}`}>
+                        <k.icon className={`w-5 h-5 ${k.color}`} />
+                      </div>
+                      <p className={`text-xl font-bold ${k.color}`}>{k.value}</p>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200 mt-0.5">{k.label}</p>
+                      <p className="text-xs text-slate-400 mt-1">{k.sub}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="card p-5">
+                    <h2 className="font-semibold text-slate-800 dark:text-white mb-3 text-sm flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-blue-500" /> Statusi i shitjeve
+                    </h2>
+                    <div className="space-y-3">
+                      {[
+                        { label: "Paguar",     count: stats.paidCount,    bar: "bg-green-500", pct: stats.salesCount ? stats.paidCount / stats.salesCount * 100 : 0 },
+                        { label: "Pjesërisht", count: stats.partialCount, bar: "bg-blue-400",  pct: stats.salesCount ? stats.partialCount / stats.salesCount * 100 : 0 },
+                        { label: "Pa pagesë",  count: stats.pendingCount, bar: "bg-slate-300", pct: stats.salesCount ? stats.pendingCount / stats.salesCount * 100 : 0 },
+                      ].map(s => (
+                        <div key={s.label} className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-slate-500">{s.label}</span>
+                            <span className="font-bold text-slate-700 dark:text-slate-300">{s.count} ({s.pct.toFixed(0)}%)</span>
+                          </div>
+                          <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                            <div className={`h-full ${s.bar} rounded-full transition-all`} style={{ width: `${s.pct}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="card p-5">
+                    <h2 className="font-semibold text-slate-800 dark:text-white mb-3 text-sm flex items-center gap-2">
+                      <Package className="w-4 h-4 text-purple-500" /> Stoku
+                    </h2>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                        <p className="text-xs text-slate-400">Cope totale</p>
+                        <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.totalItems}</p>
+                      </div>
+                      <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                        <p className="text-xs text-slate-400">Vlera stokut</p>
+                        <p className="text-lg font-bold text-primary-600">{formatCurrency(stats.stockValue)}</p>
+                      </div>
+                    </div>
+                    {stats.lowStock.length > 0 ? (
+                      <div>
+                        <p className="text-xs font-semibold text-amber-600 mb-2">Stok i ulët ({stats.lowStock.length})</p>
+                        <div className="space-y-1">
+                          {stats.lowStock.slice(0, 5).map(p => (
+                            <div key={p.name} className="flex justify-between text-xs">
+                              <span className="text-slate-500 truncate">{p.name}</span>
+                              <span className="text-amber-600 font-bold ml-2">{p.stock} cope</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-green-600 flex items-center gap-1.5">
+                        <span className="w-2 h-2 bg-green-500 rounded-full" /> Stok i mjaftueshëm
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {stats.productSales.length > 0 && (
+                  <div className="card overflow-hidden">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                      <h2 className="font-semibold text-slate-800 dark:text-white text-sm flex items-center gap-2">
+                        <Medal className="w-4 h-4 text-amber-500" /> Shitjet sipas Librit
+                      </h2>
+                      <span className="text-xs text-slate-400">{stats.productSales.length} libra</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-slate-50 dark:bg-slate-800/50 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            <th className="px-5 py-3 text-left">Libri</th>
+                            <th className="px-5 py-3 text-right">Sasia</th>
+                            <th className="px-5 py-3 text-right">Shitje</th>
+                            <th className="px-5 py-3 text-right">Fitimi</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                          {stats.productSales.map(p => (
+                            <tr key={p.name}>
+                              <td className="px-5 py-2.5 font-medium text-slate-800 dark:text-white">{p.name}</td>
+                              <td className="px-5 py-2.5 text-right text-slate-600 dark:text-slate-300">{p.qty}</td>
+                              <td className="px-5 py-2.5 text-right font-semibold text-slate-800 dark:text-white">{formatCurrency(p.revenue)}</td>
+                              <td className="px-5 py-2.5 text-right text-emerald-600 font-medium">{formatCurrency(p.profit)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()
+        )}
+
+        {/* ── DORËZIM PARASH TAB ── */}
+        {tab === "dorezim" && (
+          <div className="space-y-4 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-400">Periudha: <span className="font-semibold text-slate-600 dark:text-slate-300">{periodLabel()}</span></p>
+              <button onClick={() => setHandoverModal(true)} className="btn-primary">
+                <Plus className="w-4 h-4" /> Regjistro Dorëzim
+              </button>
+            </div>
+
+            <div className="card p-5 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-green-50 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
+                <ArrowRightLeft className="w-6 h-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">Gjithsej i dorëzuar</p>
+                <p className="text-2xl font-bold text-green-600">{formatCurrency(handovers.reduce((s, h) => s + h.amount, 0))}</p>
+              </div>
+              <div className="ml-auto text-right">
+                <p className="text-xs text-slate-400">Rekordet</p>
+                <p className="text-lg font-bold text-slate-700 dark:text-slate-200">{handovers.length}</p>
+              </div>
+            </div>
+
+            {handoversLoading ? (
+              <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary-400" /></div>
+            ) : (
+              <div className="card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      {["Data", "Shuma", "Mënyra", "Marrësi", "Referenca", "Shënim", ""].map(h => (
+                        <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {handovers.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-12 text-center">
+                          <ArrowRightLeft className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          <p className="text-slate-400">Nuk ka dorëzime të regjistruara për këtë periudhë</p>
+                        </td>
+                      </tr>
+                    )}
+                    {handovers.map(h => (
+                      <tr key={h.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDate(h.handoverAt)}</td>
+                        <td className="px-4 py-3 font-bold text-green-600">{formatCurrency(h.amount)}</td>
+                        <td className="px-4 py-3">
+                          <span className="badge bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                            {HANDOVER_METHOD_LABEL[h.method] ?? h.method}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{h.recipient ?? "—"}</td>
+                        <td className="px-4 py-3 text-slate-400 font-mono text-xs">{h.reference ?? "—"}</td>
+                        <td className="px-4 py-3 text-slate-400 max-w-[160px] truncate">{h.description ?? "—"}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => printHandoverReceipt(h)}
+                              className="p-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-500 transition-colors"
+                              title="Printo dëshmi">
+                              <Printer className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => deleteHandover(h.id)}
+                              className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/30 text-red-400 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* ── Handover Modal ── */}
+      {handoverModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setHandoverModal(false)}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+              <h3 className="font-bold text-slate-800 dark:text-white">Regjistro Dorëzim</h3>
+              <button onClick={() => setHandoverModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">Shuma (€) <span className="text-red-500">*</span></label>
+                  <input type="number" step="0.01" placeholder="0.00" value={handoverForm.amount}
+                    onChange={e => setHandoverForm(f => ({ ...f, amount: e.target.value }))} className="form-input" />
+                </div>
+                <div>
+                  <label className="form-label">Data</label>
+                  <input type="date" value={handoverForm.handoverAt}
+                    onChange={e => setHandoverForm(f => ({ ...f, handoverAt: e.target.value }))} className="form-input" />
+                </div>
+              </div>
+              <div>
+                <label className="form-label">Mënyra</label>
+                <select value={handoverForm.method} onChange={e => setHandoverForm(f => ({ ...f, method: e.target.value }))} className="form-input">
+                  <option value="CASH">Cash</option>
+                  <option value="BANK">Bankë / Transfer</option>
+                  <option value="CARD">Kartë</option>
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Marrësi</label>
+                <input placeholder="p.sh. Drejtori" value={handoverForm.recipient}
+                  onChange={e => setHandoverForm(f => ({ ...f, recipient: e.target.value }))} className="form-input" />
+              </div>
+              <div>
+                <label className="form-label">Referenca / Nr. fature</label>
+                <input placeholder="Opsional" value={handoverForm.reference}
+                  onChange={e => setHandoverForm(f => ({ ...f, reference: e.target.value }))} className="form-input" />
+              </div>
+              <div>
+                <label className="form-label">Shënim</label>
+                <input placeholder="Opsional" value={handoverForm.description}
+                  onChange={e => setHandoverForm(f => ({ ...f, description: e.target.value }))} className="form-input" />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
+              <button onClick={() => setHandoverModal(false)} className="btn-secondary">Anulo</button>
+              <button onClick={saveHandover} disabled={savingHandover || !handoverForm.amount} className="btn-primary">
+                {savingHandover ? "Duke ruajtur..." : "Ruaj"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Product Modal ── */}
       {prodModal && (
@@ -748,7 +1273,7 @@ function SaleDetailModal({ sale, loading, onClose, onPrint, onDelete, onPayment 
                 <div><p className="text-xs text-slate-400 mb-0.5">Nxënësi</p><p className="font-bold text-slate-800 dark:text-white">{sale.studentName}</p></div>
                 <div><p className="text-xs text-slate-400 mb-0.5">Klasa</p><p className="font-medium text-slate-700 dark:text-slate-200">{sale.studentClass || "—"}</p></div>
                 <div><p className="text-xs text-slate-400 mb-0.5">Statusi</p><span className={`badge ${statusColor(sale.status)}`}>{statusLabel(sale.status)}</span></div>
-                <div><p className="text-xs text-slate-400 mb-0.5">Data</p><p className="text-slate-600 dark:text-slate-300 text-xs">{new Date(sale.saleDate).toLocaleDateString("sq-AL")}</p></div>
+                <div><p className="text-xs text-slate-400 mb-0.5">Data</p><p className="text-slate-600 dark:text-slate-300 text-xs">{formatDate(sale.saleDate)}</p></div>
               </div>
 
               {/* Items */}
@@ -823,7 +1348,7 @@ function SaleDetailModal({ sale, loading, onClose, onPrint, onDelete, onPayment 
                     {sale.payments.map(p => (
                       <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400">{new Date(p.paidAt).toLocaleDateString("sq-AL")}</span>
+                          <span className="text-xs text-slate-400">{formatDate(p.paidAt)}</span>
                           <span className="text-xs text-slate-500">{methodLabel(p.method)}</span>
                         </div>
                         <span className="font-semibold text-green-600">{fmt(p.amount)} €</span>

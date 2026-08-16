@@ -6,6 +6,7 @@ import {
   BookOpen, Search, ChevronLeft, ChevronRight, Save,
   Printer, Loader2, RotateCw, Check, Users,
 } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 
 /* ─── Shared Types ────────────────────────────────────────── */
 interface StudentBasic {
@@ -401,7 +402,7 @@ function Page1Fillore({ record, extra, setExtra, grades, setGrades }: {
   setExtra: React.Dispatch<React.SetStateAction<typeof extra>>;
   grades: Grades15; setGrades: React.Dispatch<React.SetStateAction<Grades15>>;
 }) {
-  const bd = record.birthDate ? new Date(record.birthDate).toLocaleDateString("sq-AL") : "";
+  const bd = record.birthDate ? formatDate(record.birthDate) : "";
   const ex = (k: keyof typeof extra) => extra[k];
   const setEx = (k: keyof typeof extra, v: string) => setExtra(p => ({ ...p, [k]: v }));
 
@@ -767,7 +768,7 @@ function Page1Mesme({ record, extra, setExtra, grades, setGrades }: {
   setExtra: React.Dispatch<React.SetStateAction<typeof extra>>;
   grades: Grades69; setGrades: React.Dispatch<React.SetStateAction<Grades69>>;
 }) {
-  const bd = record.birthDate ? new Date(record.birthDate).toLocaleDateString("sq-AL") : "";
+  const bd = record.birthDate ? formatDate(record.birthDate) : "";
   const ex = (k: keyof typeof extra) => extra[k];
   const setEx = (k: keyof typeof extra, v: string) => setExtra(p => ({ ...p, [k]: v }));
   const YRS: (keyof Grades69["vitet"])[] = ["kl6","kl7","kl8","kl9"];

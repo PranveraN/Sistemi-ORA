@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Header from "@/components/layout/Header";
-import { formatCurrency, MONTHS } from "@/lib/utils";
+import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
@@ -67,7 +67,7 @@ export default function ReportsPage() {
       const d = data as { number: string; studentName: string; className: string; total: number; status: string; date: string }[];
       wsData = [
         ["Nr. Faturës", "Nxënësi", "Klasa", "Data", "Statusi", "Totali (€)"],
-        ...d.map(r => [r.number, r.studentName, r.className, new Date(r.date).toLocaleDateString("sq-AL"), r.status, r.total]),
+        ...d.map(r => [r.number, r.studentName, r.className, formatDate(r.date), r.status, r.total]),
         ["TOTALI", "", "", "", "", d.reduce((s, r) => s + r.total, 0)],
       ];
     } else if (reportType === "debts") {
@@ -101,7 +101,7 @@ export default function ReportsPage() {
     doc.text("AKADEMIA ORA — Raport", 20, 20);
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`Viti: ${year} • Data: ${new Date().toLocaleDateString("sq-AL")}`, 20, 28);
+    doc.text(`Viti: ${year} • Data: ${formatDate(new Date())}`, 20, 28);
 
     let head: string[][] = [];
     let body: (string | number)[][] = [];
@@ -113,7 +113,7 @@ export default function ReportsPage() {
     } else if (reportType === "invoices") {
       const d = data as { number: string; studentName: string; className: string; total: number; status: string; date: string }[];
       head = [["Nr. Faturës", "Nxënësi", "Klasa", "Data", "Statusi", "Totali (€)"]];
-      body = d.map(r => [r.number, r.studentName, r.className, new Date(r.date).toLocaleDateString("sq-AL"), r.status, `${r.total.toLocaleString()} €`]);
+      body = d.map(r => [r.number, r.studentName, r.className, formatDate(r.date), r.status, `${r.total.toLocaleString()} €`]);
     } else if (reportType === "debts") {
       const d = data as { name: string; class: string; totalDebt: number }[];
       head = [["Nxënësi", "Klasa", "Borxhi (€)"]];
@@ -561,7 +561,7 @@ function InvoicesReport({
                       {row.className}
                     </span>
                   </td>
-                  <td className="table-cell text-slate-500 text-sm">{new Date(row.date).toLocaleDateString("sq-AL")}</td>
+                  <td className="table-cell text-slate-500 text-sm">{formatDate(row.date)}</td>
                   <td className="table-cell">
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${st.cls}`}>{st.label}</span>
                   </td>

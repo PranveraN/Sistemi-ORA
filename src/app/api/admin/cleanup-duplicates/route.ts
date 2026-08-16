@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
+import { formatDate } from "@/lib/utils";
 
 export async function POST() {
   const session = await auth();
@@ -48,7 +49,7 @@ export async function POST() {
          orig.birthDate.toISOString().startsWith("2015-01-02"));
       if (dup.birthDate && (!orig.birthDate || origBirthIsPlaceholder)) {
         upd.birthDate = dup.birthDate;
-        merged.push(`datëlindja: ${dup.birthDate.toLocaleDateString("sq-AL")}`);
+        merged.push(`datëlindja: ${formatDate(dup.birthDate)}`);
       }
 
       // Kopjo fushat e tjera bosh

@@ -122,6 +122,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const data: Record<string, unknown> = {};
   if ("kontrata" in body) data.kontrata = body.kontrata ?? null;
   if ("discountPct" in body) data.discountPct = Number(body.discountPct) || 0;
+  if ("paymentPlan" in body) data.paymentPlan = body.paymentPlan || null;
 
   const student = await prisma.student.update({
     where: { id: parseInt(id) },
@@ -129,7 +130,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
 
   await logAction(session, "UPDATE", "Student", student.id,
-    `Ndryshoi kontratën/zbritjen e ${student.firstName} ${student.lastName}`);
+    `Ndryshoi kontratën/zbritjen/mënyrën e pagesës për ${student.firstName} ${student.lastName}`);
 
   return NextResponse.json(student);
 }

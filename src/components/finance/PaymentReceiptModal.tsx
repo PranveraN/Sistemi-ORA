@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X, Printer, Loader2 } from "lucide-react";
-import { MONTHS, USHQIMI_PERIOD_LABELS } from "@/lib/utils";
+import { MONTHS, USHQIMI_PERIOD_LABELS, formatDate } from "@/lib/utils";
 
 interface ReceiptData {
   receiptNumber: string | null;
@@ -74,8 +74,8 @@ function periodLabel(month: number | null, year: number | null, description: str
 function buildReceiptHTML(d: ReceiptData, copy: "prind" | "shkolla", origin: string): string {
   const period   = periodLabel(d.month, d.year, d.description, d.category);
   const dateStr  = d.paidDate
-    ? new Date(d.paidDate).toLocaleDateString("sq-AL")
-    : new Date(d.createdAt).toLocaleDateString("sq-AL");
+    ? formatDate(d.paidDate)
+    : formatDate(d.createdAt);
   const timeStr  = new Date(d.createdAt).toLocaleTimeString("sq-AL", { hour: "2-digit", minute: "2-digit" });
   const recNum   = d.receiptNumber || `#${d.paymentId}`;
 

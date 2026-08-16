@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import { useSession } from "next-auth/react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { Plus, Trash2, Edit, X, Save, Settings, TrendingDown, Calendar, BarChart3, Download, Upload, Loader2, History, Undo2, FileUp, Check } from "lucide-react";
 import { MONTHS } from "@/lib/utils";
 import * as XLSX from "xlsx";
@@ -536,7 +536,7 @@ export default function ShpenzimePage() {
     }
     const headers = ["Data", "Emërtimi", "Kategoria", "Nr. Fiskal", "Nr. i Faturës", "Shuma (€)"];
     const rows = fatura.map(s => [
-      new Date(s.data).toLocaleDateString("sq-AL"),
+      formatDate(s.data),
       s.emriBiznesit || s.pershkrim || "—",
       s.kategori?.emri || "—",
       s.nrFiskal || "—",
@@ -833,7 +833,7 @@ export default function ShpenzimePage() {
                         <td className="table-cell text-slate-500 text-xs">
                           <div className="flex items-center gap-1.5">
                             <Calendar className="w-3 h-3" />
-                            {new Date(s.data).toLocaleDateString("sq-AL")}
+                            {formatDate(s.data)}
                           </div>
                         </td>
                         <td className="table-cell">
@@ -1559,7 +1559,7 @@ export default function ShpenzimePage() {
                         {h.action === "DELETE" ? "Fshirje" : "Ndryshim"} e {h.count} shpenzime{h.undone && <span className="ml-2 text-xs text-slate-400">(e zhbërë)</span>}
                       </p>
                       <p className="text-xs text-slate-400">
-                        {h.userName} · {new Date(h.createdAt).toLocaleString("sq")}
+                        {h.userName} · {formatDateTime(h.createdAt)}
                       </p>
                     </div>
                     {!h.undone && (
@@ -1636,7 +1636,7 @@ export default function ShpenzimePage() {
                         <div className="max-h-72 overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-700/50">
                           {restoreResults.map(r => (
                             <div key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
-                              <span className="text-slate-400 w-20 flex-shrink-0">{r.data}</span>
+                              <span className="text-slate-400 w-20 flex-shrink-0">{formatDate(r.data)}</span>
                               <span className="font-semibold text-slate-700 dark:text-slate-200 w-16 flex-shrink-0">{formatCurrency(r.shuma)}</span>
                               <span className="flex-1 text-right">
                                 {r.matchedKategoriEmri && r.matchedKategoriEmri !== r.currentKategoriEmri ? (
