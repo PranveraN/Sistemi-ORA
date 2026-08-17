@@ -9,7 +9,7 @@ export async function GET() {
 
   const classes = await prisma.class.findMany({
     where: { organizationId: orgId },
-    include: { _count: { select: { students: true } } },
+    include: { _count: { select: { students: { where: { status: "ACTIVE" } } } } },
     orderBy: { name: "asc" },
   });
 
