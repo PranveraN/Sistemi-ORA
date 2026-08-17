@@ -147,7 +147,7 @@ export default function ReportsPage() {
             {REPORT_TYPES.map(rt => (
               <button
                 key={rt.value}
-                onClick={() => setReportType(rt.value)}
+                onClick={() => { setReportType(rt.value); setData(null); setInvMeta(null); }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   reportType === rt.value
                     ? "bg-primary-600 text-white"

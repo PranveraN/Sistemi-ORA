@@ -8,6 +8,7 @@ import {
   School, Users, BookOpen, ShoppingBag, Eye, EyeOff,
   Loader2, AlertTriangle, GraduationCap, KeyRound,
   DatabaseBackup, Download, RefreshCw, CalendarRange, Star,
+  Combine,
 } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
@@ -585,6 +586,10 @@ function ExpenseCatsSection() {
   const [newCat,  setNewCat]  = useState({ emri: "", ngjyra: "#6366f1", ikona: "" });
   const [adding,  setAdding]  = useState(false);
   const [saving,  setSaving]  = useState(false);
+  const [mergeId,     setMergeId]     = useState<number | null>(null);
+  const [mergeTarget, setMergeTarget] = useState<string>("");
+  const [merging,     setMerging]     = useState(false);
+  const [onlyDupes,   setOnlyDupes]   = useState(false);
 
   const fetchCats = useCallback(async () => {
     const r = await fetch("/api/shpenzime/kategorite");
@@ -593,6 +598,37 @@ function ExpenseCatsSection() {
   }, []);
 
   useEffect(() => { fetchCats(); }, [fetchCats]);
+
+  // Emra që përsëriten (pa dallim të madh/vogël, hapësira anash) — për t'i sinjalizuar te lista
+  const dupeNames = new Set<string>();
+  {
+    const seen = new Map<string, number>();
+    for (const c of cats) {
+      const key = c.emri.trim().toLowerCase();
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    for (const [key, n] of seen) if (n > 1) dupeNames.add(key);
+  }
+  const visibleCats = onlyDupes ? cats.filter(c => dupeNames.has(c.emri.trim().toLowerCase())) : cats;
+
+  async function handleMerge(sourceId: number) {
+    const targetId = parseInt(mergeTarget);
+    if (!targetId) return;
+    const source = cats.find(c => c.id === sourceId);
+    const target = cats.find(c => c.id === targetId);
+    if (!source || !target) return;
+    if (!confirm(`Bashko "${source.emri}" (${source._count.shpenzime} shpenzime) me "${target.emri}"?\n\nTë gjitha shpenzimet e "${source.emri}" zhvendosen te "${target.emri}", dhe "${source.emri}" fshihet (bosh, pa humbje të dhënash).`)) return;
+    setMerging(true);
+    await fetch("/api/shpenzime/kategorite/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceId, targetId }),
+    });
+    setMerging(false);
+    setMergeId(null);
+    setMergeTarget("");
+    fetchCats();
+  }
 
   async function handleAdd(e: React.SyntheticEvent) {
     e.preventDefault();
@@ -630,10 +666,19 @@ function ExpenseCatsSection() {
         <div className="w-9 h-9 bg-orange-50 dark:bg-orange-900/30 rounded-xl flex items-center justify-center">
           <ShoppingBag className="w-5 h-5 text-orange-500" />
         </div>
-        <div>
+        <div className="flex-1">
           <h2 className="font-bold text-slate-900 dark:text-white">Kategoritë e Shpenzimeve</h2>
           <p className="text-xs text-slate-400">Menaxho kategoritë e zyrës dhe blerjet</p>
         </div>
+        {dupeNames.size > 0 && (
+          <button onClick={() => setOnlyDupes(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              onlyDupes ? "bg-amber-500 text-white" : "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100"
+            }`}>
+            <AlertTriangle className="w-3.5 h-3.5" />
+            {onlyDupes ? "Duke shfaqur vetëm duplikatet" : `${dupeNames.size} emra duplikatë`}
+          </button>
+        )}
       </div>
 
       {/* Add form */}
@@ -659,11 +704,15 @@ function ExpenseCatsSection() {
       {/* List */}
       {loading ? (
         <div className="py-10 text-center text-slate-400 text-sm">Duke ngarkuar...</div>
-      ) : cats.length === 0 ? (
-        <div className="py-10 text-center text-slate-400 text-sm">Nuk ka kategori shpenzimesh</div>
+      ) : visibleCats.length === 0 ? (
+        <div className="py-10 text-center text-slate-400 text-sm">
+          {onlyDupes ? "Asnjë duplikat" : "Nuk ka kategori shpenzimesh"}
+        </div>
       ) : (
         <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-          {cats.map(cat => (
+          {visibleCats.map(cat => {
+            const isDupe = dupeNames.has(cat.emri.trim().toLowerCase());
+            return (
             <div key={cat.id}>
               {editId === cat.id ? (
                 <div className="p-4 bg-orange-50/30 dark:bg-orange-900/10 space-y-2">
@@ -682,19 +731,51 @@ function ExpenseCatsSection() {
                     </button>
                   </div>
                 </div>
+              ) : mergeId === cat.id ? (
+                <div className="p-4 bg-blue-50/30 dark:bg-blue-900/10 space-y-2">
+                  <p className="text-xs text-slate-500">
+                    Bashko <span className="font-semibold">"{cat.emri}"</span> ({cat._count.shpenzime} shpenzime) me:
+                  </p>
+                  <div className="flex gap-2">
+                    <select value={mergeTarget} onChange={e => setMergeTarget(e.target.value)} className="form-input flex-1" autoFocus>
+                      <option value="">— Zgjedh kategorinë ku të zhvendosen —</option>
+                      {cats.filter(c => c.id !== cat.id).map(c => (
+                        <option key={c.id} value={c.id}>{c.emri} ({c._count.shpenzime} shpenzime)</option>
+                      ))}
+                    </select>
+                    <button onClick={() => { setMergeId(null); setMergeTarget(""); }} className="p-2 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700">
+                      <X className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleMerge(cat.id)} disabled={merging || !mergeTarget} className="p-2 rounded bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50">
+                      {merging ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <div className="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                <div className={`flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${isDupe ? "bg-amber-50/40 dark:bg-amber-900/5" : ""}`}>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
                       style={{ backgroundColor: cat.ngjyra || "#6366f1" }}>
                       {cat.ikona || cat.emri[0]?.toUpperCase()}
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-900 dark:text-white text-sm">{cat.emri}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-semibold text-slate-900 dark:text-white text-sm">{cat.emri}</p>
+                        {isDupe && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
+                            <AlertTriangle className="w-2.5 h-2.5" /> Duplikat
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-400">{cat._count.shpenzime} shpenzime</p>
                     </div>
                   </div>
                   <div className="flex gap-1">
+                    <button onClick={() => { setMergeId(cat.id); setMergeTarget(""); }}
+                      className="p-1.5 rounded text-slate-300 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:text-slate-500 transition-colors"
+                      title="Bashko me kategori tjetër">
+                      <Combine className="w-3.5 h-3.5" />
+                    </button>
                     <button onClick={() => { setEditId(cat.id); setEditForm({ emri: cat.emri, ngjyra: cat.ngjyra || "#6366f1", ikona: cat.ikona || "" }); }}
                       className="p-1.5 rounded text-slate-300 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20 dark:text-slate-500 transition-colors"
                       title="Modifiko">
@@ -709,7 +790,8 @@ function ExpenseCatsSection() {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
