@@ -11,6 +11,8 @@ export async function GET(req: NextRequest) {
   const studentId = searchParams.get("studentId") || "";
   const type = searchParams.get("type") || "";
   const status = searchParams.get("status") || "";
+  const month = parseInt(searchParams.get("month") || "0");
+  const year  = parseInt(searchParams.get("year")  || "0");
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "20");
 
@@ -18,6 +20,11 @@ export async function GET(req: NextRequest) {
   if (studentId) where.studentId = parseInt(studentId);
   if (type) where.type = type;
   if (status) where.status = status;
+  if (year > 0) {
+    const start = month > 0 ? new Date(year, month - 1, 1) : new Date(year, 0, 1);
+    const end   = month > 0 ? new Date(year, month, 0, 23, 59, 59) : new Date(year, 11, 31, 23, 59, 59);
+    where.createdAt = { gte: start, lte: end };
+  }
 
   const [invoices, total] = await Promise.all([
     prisma.invoice.findMany({

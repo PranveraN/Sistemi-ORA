@@ -3,8 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
-import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { Plus, Eye, CheckCircle, Loader2 } from "lucide-react";
+import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
+import { CALENDAR_YEARS } from "@/lib/academicYear";
+import { Plus, Eye, CheckCircle, Loader2, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 
 interface Invoice {
   id: number;
@@ -24,11 +26,16 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [type, setType] = useState("");
   const [status, setStatus] = useState("");
+  const [month, setMonth] = useState(0);
+  const [year, setYear] = useState(0);
   const [markingPaid, setMarkingPaid] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ type, status, limit: "50" });
+    if (month > 0) params.set("month", String(month));
+    if (year  > 0) params.set("year",  String(year));
     const res = await fetch(`/api/invoices?${params}`);
     const data = await res.json();
     const sorted = (data.invoices || []).sort((a: Invoice, b: Invoice) =>
@@ -38,9 +45,40 @@ export default function InvoicesPage() {
     setInvoices(sorted);
     setTotal(data.total);
     setLoading(false);
-  }, [type, status]);
+  }, [type, status, month, year]);
 
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
+
+  async function exportExcel() {
+    setExporting(true);
+    const params = new URLSearchParams({ type, status, limit: "5000" });
+    if (month > 0) params.set("month", String(month));
+    if (year  > 0) params.set("year",  String(year));
+    const res = await fetch(`/api/invoices?${params}`);
+    const data = await res.json();
+    const list: Invoice[] = data.invoices || [];
+
+    const periudha = month > 0 && year > 0 ? `${MONTHS[month - 1]} ${year}` : year > 0 ? String(year) : "Të gjitha";
+    const rows = list.map(inv => [
+      inv.number,
+      getStatusLabel(inv.type),
+      `${inv.student.firstName} ${inv.student.lastName}`,
+      inv.items.length,
+      inv.total,
+      inv.dueDate ? formatDate(inv.dueDate) : "",
+      formatDate(inv.createdAt),
+      getStatusLabel(inv.status),
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Numri", "Lloji", "Nxënësi", "Zëra", "Totali (€)", "Afati", "Data", "Statusi"],
+      ...rows,
+    ]);
+    ws["!cols"] = [{ wch: 16 }, { wch: 10 }, { wch: 22 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Faturat");
+    XLSX.writeFile(wb, `Faturat-${periudha.replace(/\s/g, "-")}.xlsx`);
+    setExporting(false);
+  }
 
   async function markPaid(inv: Invoice) {
     if (!confirm(`Shëno faturën ${inv.number} (${inv.student.firstName} ${inv.student.lastName}) si Paguar?`)) return;
@@ -59,8 +97,8 @@ export default function InvoicesPage() {
       <Header title="Faturat" />
       <div className="p-6 space-y-4 animate-fade-in">
 
-        <div className="flex items-center justify-between">
-          <div className="flex gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex gap-3 flex-wrap">
             <select value={type} onChange={e => setType(e.target.value)} className="form-input w-40">
               <option value="">Të gjitha llojet</option>
               <option value="INVOICE">Faturë</option>
@@ -74,11 +112,25 @@ export default function InvoicesPage() {
               <option value="PAID">Paguar</option>
               <option value="CANCELLED">Anuluar</option>
             </select>
+            <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="form-input w-36">
+              <option value={0}>Të gjithë muajt</option>
+              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            </select>
+            <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-32">
+              <option value={0}>Të gjitha vitet</option>
+              {CALENDAR_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
           </div>
-          <Link href="/invoices/new" className="btn-primary">
-            <Plus className="w-4 h-4" />
-            Faturë e Re
-          </Link>
+          <div className="flex gap-3">
+            <button onClick={exportExcel} disabled={exporting || invoices.length === 0} className="btn-secondary">
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Exporto Excel
+            </button>
+            <Link href="/invoices/new" className="btn-primary">
+              <Plus className="w-4 h-4" />
+              Faturë e Re
+            </Link>
+          </div>
         </div>
 
         {/* Stats */}
