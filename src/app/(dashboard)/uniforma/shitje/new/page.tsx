@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Trash2, ShoppingCart, ArrowLeft, Package, ChevronDown } from "lucide-react";
+import { Search, Trash2, ShoppingCart, ArrowLeft, Package, ChevronDown, X } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
 interface Product {
@@ -11,6 +11,13 @@ interface Product {
   sellPrice: number;
   buyPrice: number;
   stock: number;
+}
+
+interface StudentOpt {
+  id: number;
+  firstName: string;
+  lastName: string;
+  class: { name: string } | null;
 }
 
 interface CartItem {
@@ -30,6 +37,9 @@ export default function NewSalePage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentOpts, setStudentOpts] = useState<StudentOpt[]>([]);
+  const [selStudent, setSelStudent] = useState<StudentOpt | null>(null);
   const [paidAmount, setPaidAmount] = useState("");
   const [method, setMethod] = useState("CASH");
   const [notes, setNotes] = useState("");
@@ -45,6 +55,27 @@ export default function NewSalePage() {
       .then(r => r.json())
       .then(d => setProducts(Array.isArray(d) ? d : []));
   }, []);
+
+  // Kërkim nxënësi — opsionale (Uniforma shitet edhe klientëve që s'janë
+  // nxënës të regjistruar), prandaj s'kufizon fare regjistrimin e shitjes.
+  useEffect(() => {
+    if (!studentSearch || studentSearch.length < 2) { setStudentOpts([]); return; }
+    const t = setTimeout(async () => {
+      const r = await fetch(`/api/students?search=${encodeURIComponent(studentSearch)}&limit=10`);
+      if (r.ok) {
+        const d = await r.json();
+        setStudentOpts(Array.isArray(d) ? d : d.students || []);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [studentSearch]);
+
+  function selectStudent(s: StudentOpt) {
+    setSelStudent(s);
+    setStudentOpts([]);
+    setStudentSearch("");
+    setCustomerName(`${s.firstName} ${s.lastName}`);
+  }
 
   const filtered = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase())
@@ -91,6 +122,7 @@ export default function NewSalePage() {
     const body = {
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim() || null,
+      studentId: selStudent?.id ?? null,
       items: cart.map(i => ({
         productId: i.product.id,
         size: i.size,
@@ -240,6 +272,35 @@ export default function NewSalePage() {
         <div className="space-y-4">
           <div className="card p-5 space-y-4">
             <h2 className="font-semibold text-slate-800 dark:text-white text-sm">Klienti</h2>
+            <div>
+              <label className="label">Nxënësi (opsionale)</label>
+              {selStudent ? (
+                <div className="flex items-center justify-between p-2.5 bg-primary-50 dark:bg-primary-900/20 rounded-xl border border-primary-200 dark:border-primary-800">
+                  <div>
+                    <p className="font-semibold text-primary-800 dark:text-primary-300 text-sm">{selStudent.firstName} {selStudent.lastName}</p>
+                    {selStudent.class && <p className="text-xs text-slate-500">Klasa {selStudent.class.name}</p>}
+                  </div>
+                  <button onClick={() => setSelStudent(null)} className="text-slate-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input value={studentSearch} onChange={e => setStudentSearch(e.target.value)}
+                    placeholder="Kërko nxënësin (opsionale)..." className="input pl-9" />
+                  {studentOpts.length > 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden">
+                      {studentOpts.map(s => (
+                        <button key={s.id} onClick={() => selectStudent(s)}
+                          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-primary-50 dark:hover:bg-primary-900/20 text-left text-sm transition-colors">
+                          <span className="font-medium text-slate-800 dark:text-white">{s.firstName} {s.lastName}</span>
+                          {s.class && <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">{s.class.name}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <div>
               <label className="label">Emri i klientit *</label>
               <input className="input" placeholder="Emri Mbiemri" value={customerName}

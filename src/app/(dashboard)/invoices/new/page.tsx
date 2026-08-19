@@ -31,6 +31,8 @@ function InvoiceForm() {
   const searchParams  = useSearchParams();
   const router        = useRouter();
   const preStudentId  = searchParams.get("studentId") || "";
+  const preType       = searchParams.get("type") || "";
+  const initialType   = ["INVOICE", "PROFORMA", "OFFER"].includes(preType) ? preType : "INVOICE";
 
   const [students, setStudents] = useState<Student[]>([]);
   const [loading,  setLoading]  = useState(false);
@@ -40,7 +42,7 @@ function InvoiceForm() {
 
   const [form, setForm] = useState({
     studentId: preStudentId,
-    type:      "INVOICE",
+    type:      initialType,
     vatRate:   "0",
     dueDate:   "",
     notes:     "",

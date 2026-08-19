@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
       const personalNumber = str(row.personalNumber)?.replace(/\s/g, "");
       if (personalNumber) {
-        student = await prisma.student.findUnique({ where: { personalNumber } });
+        student = await prisma.student.findFirst({ where: { personalNumber } });
       }
 
       if (!student && (row.firstName || row.lastName)) {

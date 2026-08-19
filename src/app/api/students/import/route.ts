@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       // 1. Sipas nr. personal (nëse ka)
       // 2. Fallback sipas emrit+mbiemrit (edhe kur DB nuk ka nr. personal ende)
       let existing = personalNumber
-        ? await prisma.student.findUnique({ where: { personalNumber } })
+        ? await prisma.student.findFirst({ where: { personalNumber } })
         : null;
 
       if (!existing) {

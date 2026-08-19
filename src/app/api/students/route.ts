@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 
 function parseDate(val: unknown): Date | undefined {
   if (!val) return undefined;
@@ -72,20 +73,46 @@ export async function GET(req: NextRequest) {
     status === "ACTIVE"
       ? prisma.student.count({ where })
       : prisma.student.count({ where: { ...where, status: "ACTIVE" } }),
-    prisma.student.count({ where: { ...where, payments: { some: { balance: { gt: 0 } } } } }),
+    // "Borxhi"/"Paguar" te kjo listë krahasohen me "Çmimi Final" (çmimi i
+    // Shkollimit — vetëm një kategori, shih `tuitionPrice` në frontend), prandaj
+    // edhe këtu kufizohet vetëm te kategoria "Shkollimi" — përndryshe një student
+    // pa borxh në Shkollimi por me borxh te p.sh. Ushqimi numërohej gabimisht si
+    // "me borxh" këtu, duke mos përputhur me atë që tregon rreshti i tij.
+    prisma.student.count({ where: { ...where, payments: { some: { balance: { gt: 0 }, category: { name: "Shkollimi", organizationId: orgId } } } } }),
   ]);
 
   const studentIds = rawStudents.map(s => s.id);
-  const paymentSums = await prisma.payment.groupBy({
-    by: ["studentId"],
-    where: { studentId: { in: studentIds } },
-    _sum: { paidAmount: true },
+  // Kufizuar vetëm te "Shkollimi" — shih komentin mbi debtCount pak më sipër,
+  // i njëjti arsyetim: kjo shumë krahasohet me "Çmimi Final" (Shkollimi), jo me
+  // gjithë pagesat e nxënësit nga të gjitha kategoritë (Ushqimi, Eshkollori, etj).
+  // Merren rekordet e papërpunuara (jo `groupBy` `_sum`) sepse Këste Fleksibël
+  // përdor një model "FLEX_HEADER + FLEX_PAY_N" ku mbledhja e thjeshtë e
+  // finalAmount do ta fryente totalin (shih `aggregatePaymentTotals`).
+  const shkollimiPayments = await prisma.payment.findMany({
+    where: { studentId: { in: studentIds }, category: { name: "Shkollimi", organizationId: orgId } },
+    select: { studentId: true, paidAmount: true, finalAmount: true, description: true },
   });
-  const sumMap = new Map(paymentSums.map(p => [p.studentId, p._sum.paidAmount ?? 0]));
+  const shkollimiByStudent = new Map<number, { paidAmount: number; finalAmount: number; description: string | null }[]>();
+  for (const p of shkollimiPayments) {
+    const arr = shkollimiByStudent.get(p.studentId) ?? [];
+    arr.push(p);
+    shkollimiByStudent.set(p.studentId, arr);
+  }
+  const sumMap = new Map<number, number>();
+  const shkollimiTotalMap = new Map<number, number>();
+  const shkollimiCountMap = new Map<number, number>();
+  for (const [studentId, payments] of shkollimiByStudent) {
+    const { finalAmount, paidAmount } = aggregatePaymentTotals(payments);
+    sumMap.set(studentId, paidAmount);
+    shkollimiTotalMap.set(studentId, finalAmount);
+    shkollimiCountMap.set(studentId, payments.length);
+  }
 
   const students = rawStudents.map(s => ({
     ...s,
     totalPaid: sumMap.get(s.id) ?? 0,
+    shkollimiFinalTotal: shkollimiTotalMap.get(s.id) ?? 0,
+    hasShkollimiPlan: (shkollimiCountMap.get(s.id) ?? 0) > 0,
     timiInvest: null,
   }));
 
@@ -112,7 +139,7 @@ export async function POST(req: NextRequest) {
         birthDate: parseDate(body.birthDate),
         personalNumber: body.personalNumber || undefined,
         organizationId: orgId,
-        ...(body.classId ? { class: { connect: { id: parseInt(body.classId) } } } : {}),
+        ...(body.classId ? { classId: parseInt(body.classId) } : {}),
         guardian: body.guardian || null,
         motherNumber: body.motherNumber || null,
         diaryNumber: body.diaryNumber || null,

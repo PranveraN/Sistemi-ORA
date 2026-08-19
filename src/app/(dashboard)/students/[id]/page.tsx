@@ -22,10 +22,18 @@ export default async function StudentPage({ params }: { params: Promise<{ id: st
 
   if (!student) notFound();
 
+  // BookSale (Librat e Anglishtes) dhe UniSale (Uniforma) s'kanë relacion Prisma
+  // te Student (vetëm studentId opsional), prandaj merren veç e veç dhe
+  // bashkohen më poshtë — përndryshe blerjet mungonin krejtësisht nga historiku.
+  const [bookSales, uniSales] = await Promise.all([
+    prisma.bookSale.findMany({ where: { studentId: student.id }, orderBy: { saleDate: "desc" } }),
+    prisma.uniSale.findMany({ where: { studentId: student.id }, orderBy: { saleDate: "desc" } }),
+  ]);
+
   return (
     <>
       <Header />
-      <StudentProfile student={JSON.parse(JSON.stringify(student))} />
+      <StudentProfile student={JSON.parse(JSON.stringify({ ...student, bookSales, uniSales }))} />
     </>
   );
 }

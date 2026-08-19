@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDateRange, getAcademicMonths, type YearType } from "@/lib/academicYear";
+import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -86,8 +87,13 @@ export async function GET(req: NextRequest) {
       where: { status: "ACTIVE" },
       include: {
         class: { select: { name: true } },
+        // Kufizuar vetëm te kategoria "Shkollimi" — "finalPrice" më poshtë
+        // është çmimi i Shkollimit, prandaj "Paguar"/"Borxhi" duhet të
+        // krahasohen vetëm me pagesat e Shkollimit, jo me gjithë kategoritë
+        // bashkë (Ushqimi, Eshkollori, etj), të cilat kanë çmimet e tyre të
+        // veçanta dhe s'duhen përzier këtu.
         payments: {
-          where: { paidDate: { gte: start, lte: end } },
+          where: { paidDate: { gte: start, lte: end }, ...(shkollimi ? { categoryId: shkollimi.id } : {}) },
           include: { category: { select: { name: true } } },
         },
       },
@@ -96,14 +102,21 @@ export async function GET(req: NextRequest) {
 
     const result = allActive
       .map(s => {
-        const finalPrice = Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100));
-        const totalPaid  = s.payments.reduce((sum, p) => sum + p.paidAmount, 0);
-        const paidBalance = s.payments.reduce((sum, p) => sum + p.balance, 0);
+        // Njësoj si te /api/students dhe /api/reports/families — nëse ka plan
+        // real, "Çmimi Final" merret prej tij, jo prej përllogaritjes sintetike.
+        // `aggregatePaymentTotals` (jo mbledhje e thjeshtë e `finalAmount`/
+        // `balance`) trajton saktë Këste Fleksibël (FLEX_HEADER + FLEX_PAY_N) —
+        // mbledhja e drejtpërdrejtë e `.balance` do të tregonte GJITHMONË
+        // borxhin e PLOTË (2000€), sepse `balance` i header-it vetë s'ndryshon
+        // kurrë ndërsa pagesat regjistrohen si rekorde krejt të veçanta.
+        const agg = aggregatePaymentTotals(s.payments);
+        const finalPrice = s.payments.length > 0 ? agg.finalAmount : Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100));
+        const totalPaid  = agg.paidAmount;
 
         // Nëse nuk ka asnjë pagesë, borxhi = çmimi i plotë
         const totalDebt = s.payments.length === 0
           ? finalPrice
-          : paidBalance;
+          : agg.balance;
 
         const paymentsWithDebt = s.payments.filter(p => p.balance > 0);
 

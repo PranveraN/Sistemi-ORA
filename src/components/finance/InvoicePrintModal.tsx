@@ -93,6 +93,15 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
     if (!win) return;
     const origin = window.location.origin;
 
+    // Parapamja në ekran përdor klasat Tailwind të vetë aplikacionit (jo një grup
+    // klasash "custom" të veçanta) — prandaj dritarja e printimit duhet të ngarkojë
+    // TË NJËJTAT stylesheet-e reale të faqes (jo një <style> të shkruar me dorë, i
+    // cili më parë kishte klasa krejt të tjera nga ato që përdor markup-u aktual
+    // dhe s'aplikohej fare — kjo shkaktonte printim pa asnjë stil).
+    const stylesheetTags = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map(el => el.outerHTML)
+      .join("\n");
+
     const html = content.innerHTML.replace(/…/g, invNum);
     win.document.write(`
       <!DOCTYPE html>
@@ -100,56 +109,30 @@ export default function InvoicePrintModal({ student, payment, categoryName, mont
       <head>
         <meta charset="UTF-8"/>
         <title>Faturë — ${student.firstName} ${student.lastName}</title>
+        <base href="${origin}/">
+        ${stylesheetTags}
         <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; background: #fff; padding: 40px; }
-          .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
-          .logo-wrap { display: flex; align-items: center; gap: 14px; }
-          .logo-img { height: 52px; width: auto; object-fit: contain; }
-          .school-name { font-size: 22px; font-weight: 800; color: #2563eb; }
-          .school-sub  { font-size: 12px; color: #64748b; margin-top: 2px; }
-          .inv-meta { text-align: right; }
-          .inv-type { font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; }
-          .inv-num  { font-size: 13px; color: #64748b; margin-top: 4px; font-family: monospace; }
-          .divider  { border: none; border-top: 2px solid #e2e8f0; margin: 0 0 24px; }
-          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
-          .info-box { background: #f8fafc; border-radius: 12px; padding: 16px; }
-          .info-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
-          .info-val   { font-size: 14px; font-weight: 600; color: #0f172a; margin-bottom: 3px; }
-          .info-sub   { font-size: 12px; color: #64748b; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-          thead tr { background: #2563eb; }
-          thead th { color: #fff; padding: 11px 14px; text-align: left; font-size: 12px; font-weight: 600; }
-          thead th:last-child { text-align: right; }
-          tbody tr:nth-child(even) { background: #f8fafc; }
-          tbody td { padding: 11px 14px; font-size: 13px; color: #334155; border-bottom: 1px solid #f1f5f9; }
-          tbody td:last-child { text-align: right; font-weight: 600; }
-          .totals { margin-left: auto; width: 280px; }
-          .total-row { display: flex; justify-content: space-between; font-size: 13px; padding: 5px 0; color: #64748b; }
-          .total-row.main { font-size: 16px; font-weight: 800; color: #2563eb; border-top: 2px solid #e2e8f0; padding-top: 10px; margin-top: 5px; }
-          .status-box { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
-          .status-dot { width: 8px; height: 8px; border-radius: 50%; }
-          .status-dot.paid { background: #22c55e; }
-          .status-dot.pending { background: #f59e0b; }
-          .status-dot.partial { background: #3b82f6; }
-          .status-dot.overdue { background: #ef4444; }
-          .status-text { font-size: 12px; font-weight: 600; }
-          .footer { margin-top: 36px; padding-top: 16px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: flex-end; }
-          .sig-line { border-top: 1px solid #cbd5e1; width: 160px; text-align: center; padding-top: 6px; font-size: 11px; color: #94a3b8; }
-          .footer-note { font-size: 11px; color: #cbd5e1; text-align: center; }
+          body { background: #fff; padding: 24px; }
           @media print {
-            body { padding: 20px; }
+            body { padding: 0; }
             button { display: none !important; }
           }
         </style>
-        <base href="${origin}/">
       </head>
       <body>${html}</body>
       </html>
     `);
     win.document.close();
+    // Stylesheet-et e jashtme (<link>) ngarkohen në mënyrë asinkrone — printimi
+    // menjëherë do të kapte një faqe ende pa stile. Prisim ngarkimin e tyre.
+    const linkEls = Array.from(win.document.querySelectorAll('link[rel="stylesheet"]')) as HTMLLinkElement[];
+    await Promise.all(linkEls.map(link => new Promise<void>(resolve => {
+      if (link.sheet) return resolve();
+      link.addEventListener("load", () => resolve(), { once: true });
+      link.addEventListener("error", () => resolve(), { once: true });
+    })));
     win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 400);
+    setTimeout(() => { win.print(); win.close(); }, 150);
   }
 
   async function handlePDF() {

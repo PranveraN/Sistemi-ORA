@@ -32,11 +32,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const finalAmount = Math.max(0, amount - discountAmount - scholarship);
   const paidAmount = parseFloat(body.paidAmount || 0);
   const balance = Math.max(0, finalAmount - paidAmount);
+  const dueDate = new Date(body.dueDate);
 
   let status = "PENDING";
   if (paidAmount >= finalAmount) status = "PAID";
   else if (paidAmount > 0) status = "PARTIAL";
-  else if (new Date(body.dueDate) < new Date()) status = "OVERDUE";
+  else if (dueDate < new Date()) status = "OVERDUE";
+
+  // Muaji/viti duhet të ndjekin Afatin e ri kur ndryshon — përndryshe pagesa mbetet
+  // e "arkivuar" nën muajin e vjetër (stale) dhe bëhet e padukshme për filtrat/
+  // raportet që kërkojnë muaj real (p.sh. Vit Akademik). Nëse frontend-i dërgon
+  // month/year të llogaritur (siç bën tani CategoryPaymentPage), respektohen ato;
+  // përndryshe llogariten direkt nga Afati, kurrë nuk lihen jashtë përditësimit.
+  const month = body.month != null ? parseInt(body.month) : dueDate.getMonth() + 1;
+  const year  = body.year  != null ? parseInt(body.year)  : dueDate.getFullYear();
 
   // Gjej rekordin ekzistues për të ruajtur receiptNumber nëse ka
   const existing = await prisma.payment.findUnique({ where: { id: parseInt(id) }, select: { receiptNumber: true } });
@@ -51,13 +60,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       discountType: body.discountType || null,
       scholarship,
       finalAmount,
-      dueDate: new Date(body.dueDate),
+      dueDate,
       paidDate: paidAmount > 0 ? (body.paidDate ? new Date(body.paidDate) : new Date()) : null,
       paidAmount,
       balance,
       method: body.method || null,
       status,
       description: body.description || null,
+      month,
+      year,
       ...(receiptNumber ? { receiptNumber } : {}),
     },
     include: { student: { select: { firstName: true, lastName: true } }, category: { select: { name: true } } },

@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Pencil, X, Loader2 } from "lucide-react";
+import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer } from "lucide-react";
 
 interface Payment {
   id: number;
   amount: number;
+  finalAmount: number;
   paidAmount: number;
   balance: number;
   status: string;
@@ -17,6 +18,88 @@ interface Payment {
   paidDate: string | null;
   description: string | null;
   category: { name: string };
+}
+
+// Faqet dedikuara për disa kategori — "Modifiko" te kartela e përmbledhur çon
+// direkt te faqja ku ka planin e plotë (Dy Këste/Çdo Muaj/Këste Fleksibël).
+const CATEGORY_LINKS: Record<string, string> = {
+  "Shkollimi": "/shkollimi",
+  "Librat & Shkollorja": "/eshkollori",
+  "Ushqimi": "/ushqimi",
+  "Librat e Anglishtes": "/librat",
+  "Uniforma": "/uniforma/shitje",
+};
+
+interface CategoryPaymentGroup {
+  categoryName: string;
+  baseAmount: number;
+  finalAmount: number;
+  paidAmount: number;
+  balance: number;
+  lastPaidDate: string | null;
+}
+
+function groupPaymentsByCategory(payments: Payment[]): CategoryPaymentGroup[] {
+  const byCategory = new Map<string, Payment[]>();
+  for (const p of payments) {
+    const arr = byCategory.get(p.category.name) ?? [];
+    arr.push(p);
+    byCategory.set(p.category.name, arr);
+  }
+  const groups: CategoryPaymentGroup[] = [];
+  for (const [categoryName, group] of byCategory) {
+    // Këste Fleksibël (FLEX_HEADER + FLEX_PAY_N): header-i mban VETËM totalin
+    // e vërtetë (amount/finalAmount) — çdo pagesë tjetër ka finalAmount = e
+    // vetja (asnjë borxh individual). Mbledhja e thjeshtë e të gjithëve do ta
+    // fryente totalin (header + çdo pagesë = shumëfishim), prandaj kur ka
+    // header, përdoret VETËM ai për bazën/totalin.
+    const header = group.find(p => p.description === "FLEX_HEADER");
+    const baseAmount   = header ? header.amount      : group.reduce((s, p) => s + p.amount, 0);
+    const finalAmount  = header ? header.finalAmount : group.reduce((s, p) => s + p.finalAmount, 0);
+    const paidAmount   = group.reduce((s, p) => s + p.paidAmount, 0);
+    const lastPaidDate = group.reduce<string | null>((max, p) => (p.paidDate && (!max || p.paidDate > max)) ? p.paidDate : max, null);
+    groups.push({
+      categoryName, baseAmount, finalAmount, paidAmount,
+      balance: Math.max(0, finalAmount - paidAmount),
+      lastPaidDate,
+    });
+  }
+  return groups.sort((a, b) => a.categoryName.localeCompare(b.categoryName, "sq"));
+}
+
+// Librat e Anglishtes (BookSale) dhe Uniforma (UniSale) s'i takojnë tabelës
+// Payment — janë shitje (me artikuj/stok), jo pagesa me kategori — prandaj
+// mblidhen veç dhe shtohen si "kategori" shtesë në pasqyrën e njëjtë, që të
+// mos mungojnë nga historiku.
+interface BookSale {
+  id: number;
+  totalAmount: number;
+  paidAmount: number;
+  balance: number;
+  saleDate: string;
+}
+
+interface UniSale {
+  id: number;
+  totalAmount: number;
+  paidAmount: number;
+  balance: number;
+  saleDate: string;
+}
+
+function salesToGroup(categoryName: string, sales: { totalAmount: number; paidAmount: number; saleDate: string }[]): CategoryPaymentGroup | null {
+  if (sales.length === 0) return null;
+  const baseAmount = sales.reduce((s, b) => s + b.totalAmount, 0);
+  const paidAmount = sales.reduce((s, b) => s + b.paidAmount, 0);
+  const lastPaidDate = sales.reduce<string | null>((max, b) => (!max || b.saleDate > max ? b.saleDate : max), null);
+  return {
+    categoryName,
+    baseAmount,
+    finalAmount: baseAmount,
+    paidAmount,
+    balance: Math.max(0, baseAmount - paidAmount),
+    lastPaidDate,
+  };
 }
 
 interface Invoice {
@@ -63,25 +146,136 @@ interface Student {
   class: { name: string; level: string } | null;
   payments: Payment[];
   invoices: Invoice[];
+  bookSales: BookSale[];
+  uniSales: UniSale[];
+}
+
+const SCHOOL = {
+  name:    "Akademia Ora",
+  address: "Përroi i njelmët, Prishtinë",
+  phone:   "+383 46 505 055",
+  web:     "www.akademiaora.com",
+};
+
+// Ndërton dokumentin e printueshëm të historikut të plotë — përdor pikërisht
+// të njëjtin model "HTML e vetë-mjaftueshme + stil inline" si Dëshmia e Pagesës
+// (PaymentReceiptModal), JO kopjimin e innerHTML-it Tailwind të faqes (ai qasje
+// pati shkaktuar printim krejtësisht të shformuar te faturat më herët).
+function buildHistoryHTML(student: Student, categoryGroups: CategoryPaymentGroup[], totalPaid: number, totalDebt: number, origin: string): string {
+  const dateStr = new Date().toLocaleDateString("sq-AL");
+  const parentName = student.fatherName || student.motherName || student.parentName || "—";
+  const phone = student.fatherPhone || student.motherPhone || student.parentPhone || "—";
+
+  const rows = categoryGroups.map(g => `
+    <tr>
+      <td>${g.categoryName}</td>
+      <td class="num">${formatCurrency(g.baseAmount)}</td>
+      <td class="num">${formatCurrency(g.finalAmount)}</td>
+      <td class="num paid">${formatCurrency(g.paidAmount)}</td>
+      <td>${g.lastPaidDate ? formatDate(g.lastPaidDate) : "—"}</td>
+      <td class="num ${g.balance > 0 ? "debt" : "ok"}">${g.balance > 0 ? formatCurrency(g.balance) : "&#10003; Pa borxh"}</td>
+    </tr>`).join("");
+
+  const invoiceRows = student.invoices.map(inv => `
+    <tr>
+      <td>${inv.number}</td>
+      <td>${getStatusLabel(inv.type)}</td>
+      <td>${formatDate(inv.createdAt)}</td>
+      <td>${getStatusLabel(inv.status)}</td>
+      <td class="num">${formatCurrency(inv.total)}</td>
+    </tr>`).join("");
+
+  return `<!DOCTYPE html><html lang="sq"><head>
+<meta charset="UTF-8"/>
+<title>Historiku — ${student.firstName} ${student.lastName}</title>
+<style>
+@page { size: A4 portrait; margin: 12mm; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: Arial, Helvetica, sans-serif; color:#0f172a; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.header { display:flex; align-items:flex-start; gap:12px; margin-bottom:14px; }
+.logo { height:44px; width:auto; object-fit:contain; }
+.school-name { font-size:16px; font-weight:800; color:#1e3a8a; }
+.school-sub { font-size:9px; color:#64748b; margin-top:1px; }
+.title-box { margin-left:auto; text-align:right; }
+.title { font-size:14px; font-weight:800; color:#1e3a8a; text-transform:uppercase; letter-spacing:.04em; }
+.title-sub { font-size:9px; color:#94a3b8; margin-top:2px; }
+.divider { border:none; border-top:2px solid #e2e8f0; margin:8px 0 14px; }
+.info-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px 16px; margin-bottom:16px; font-size:10px; }
+.info-row .lbl { color:#64748b; display:block; }
+.info-row .val { font-weight:700; color:#0f172a; }
+h2 { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#334155; margin:18px 0 6px; }
+table { width:100%; border-collapse:collapse; font-size:10px; }
+th { text-align:left; background:#f1f5f9; color:#475569; font-weight:700; padding:5px 8px; border-bottom:1px solid #e2e8f0; }
+td { padding:5px 8px; border-bottom:1px solid #f1f5f9; }
+.num { text-align:right; }
+td.paid { color:#059669; font-weight:600; }
+td.debt { color:#dc2626; font-weight:700; }
+td.ok { color:#059669; font-weight:600; }
+tfoot td { font-weight:800; border-top:2px solid #cbd5e1; border-bottom:none; padding-top:7px; }
+.footer-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:44px; }
+.sig-line { border-top:1px solid #94a3b8; margin-bottom:4px; margin-top:24px; }
+.sig-lbl { font-size:8px; color:#64748b; text-align:center; }
+.printed-at { font-size:8px; color:#cbd5e1; text-align:right; margin-top:20px; }
+</style></head><body>
+  <div class="header">
+    <img src="${origin}/logo.png" class="logo" alt="" onerror="this.style.display='none'"/>
+    <div>
+      <div class="school-name">${SCHOOL.name}</div>
+      <div class="school-sub">${SCHOOL.address} &bull; ${SCHOOL.phone}</div>
+      <div class="school-sub">${SCHOOL.web}</div>
+    </div>
+    <div class="title-box">
+      <div class="title">Historiku i Plotë</div>
+      <div class="title-sub">${dateStr}</div>
+    </div>
+  </div>
+  <div class="divider"></div>
+
+  <div class="info-grid">
+    <div class="info-row"><span class="lbl">Nxënësi</span><span class="val">${student.firstName} ${student.lastName}</span></div>
+    <div class="info-row"><span class="lbl">Klasa</span><span class="val">${student.class ? `${student.class.name} — ${student.class.level}` : "—"}</span></div>
+    <div class="info-row"><span class="lbl">Nr. Personal</span><span class="val">${student.personalNumber || "—"}</span></div>
+    <div class="info-row"><span class="lbl">Prindi</span><span class="val">${parentName}</span></div>
+    <div class="info-row"><span class="lbl">Telefoni</span><span class="val">${phone}</span></div>
+    <div class="info-row"><span class="lbl">Statusi</span><span class="val">${getStatusLabel(student.status)}</span></div>
+  </div>
+
+  <h2>Pagesat sipas Kategorisë</h2>
+  <table>
+    <thead><tr><th>Kategoria</th><th class="num">Çmimi bazë</th><th class="num">Me zbritje</th><th class="num">Pagesa</th><th>Data e pagesës</th><th class="num">Borxhi i mbetur</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:14px">Asnjë pagesë e regjistruar</td></tr>`}</tbody>
+    <tfoot><tr><td colspan="3">TOTALI</td><td class="num paid">${formatCurrency(totalPaid)}</td><td></td><td class="num ${totalDebt > 0 ? "debt" : "ok"}">${totalDebt > 0 ? formatCurrency(totalDebt) : "&#10003; Pa borxh"}</td></tr></tfoot>
+  </table>
+
+  ${student.invoices.length > 0 ? `
+  <h2>Faturat</h2>
+  <table>
+    <thead><tr><th>Nr.</th><th>Lloji</th><th>Data</th><th>Statusi</th><th class="num">Shuma</th></tr></thead>
+    <tbody>${invoiceRows}</tbody>
+  </table>` : ""}
+
+  <div class="footer-grid">
+    <div><div class="sig-line"></div><div class="sig-lbl">Nënshkrimi i prindit / nxënësit</div></div>
+    <div><div class="sig-line"></div><div class="sig-lbl">Vula dhe nënshkrimi i shkollës</div></div>
+  </div>
+  <div class="printed-at">Printuar më ${dateStr}</div>
+
+<script>window.onload=()=>{window.print();}</script>
+</body></html>`;
 }
 
 export default function StudentProfile({ student }: { student: Student }) {
   const router = useRouter();
-  const [payments, setPayments] = useState<Payment[]>(student.payments);
-  const [editPayment, setEditPayment] = useState<Payment | null>(null);
-  const totalDebt = payments.reduce((sum, p) => sum + p.balance, 0);
-  const totalPaid = payments.reduce((sum, p) => sum + p.paidAmount, 0);
-
-  async function handleDeletePayment(id: number) {
-    if (!confirm("Fshi këtë pagesë? Ky veprim nuk mund të kthehet.")) return;
-    const r = await fetch(`/api/payments/${id}`, { method: "DELETE" });
-    if (r.ok) setPayments(prev => prev.filter(p => p.id !== id));
-  }
-
-  async function handleSavePayment(updated: Payment) {
-    setPayments(prev => prev.map(p => p.id === updated.id ? updated : p));
-    setEditPayment(null);
-  }
+  const payments = student.payments;
+  const bookGroup = salesToGroup("Librat e Anglishtes", student.bookSales);
+  const uniGroup  = salesToGroup("Uniforma", student.uniSales);
+  const categoryGroups = [...groupPaymentsByCategory(payments), ...(bookGroup ? [bookGroup] : []), ...(uniGroup ? [uniGroup] : [])]
+    .sort((a, b) => a.categoryName.localeCompare(b.categoryName, "sq"));
+  // Totalet nxirren nga grupet (jo nga `payments` e papërpunuara si më parë), që
+  // të përfshijnë edhe Librat e Anglishtes dhe të përputhen saktë me atë që
+  // shfaqet më poshtë kartelë për kartelë.
+  const totalDebt = categoryGroups.reduce((sum, g) => sum + g.balance, 0);
+  const totalPaid = categoryGroups.reduce((sum, g) => sum + g.paidAmount, 0);
 
   async function handleDelete() {
     const ok = window.confirm(
@@ -91,6 +285,13 @@ export default function StudentProfile({ student }: { student: Student }) {
     await fetch(`/api/students/${student.id}?permanent=true`, { method: "DELETE" });
     router.push("/students");
     router.refresh();
+  }
+
+  function printHistory() {
+    const win = window.open("", "_blank", "width=900,height=1200");
+    if (!win) return;
+    win.document.write(buildHistoryHTML(student, categoryGroups, totalPaid, totalDebt, window.location.origin));
+    win.document.close();
   }
 
   const [siblings, setSiblings] = useState<Sibling[]>([]);
@@ -146,6 +347,10 @@ export default function StudentProfile({ student }: { student: Student }) {
             </p>
           </div>
         </div>
+        <button onClick={printHistory} className="btn-secondary">
+          <Printer className="w-4 h-4" />
+          Printo Historinë
+        </button>
         <Link href={`/students/${student.id}/edit`} className="btn-secondary">
           <Edit className="w-4 h-4" />
           Modifiko
@@ -169,8 +374,8 @@ export default function StudentProfile({ student }: { student: Student }) {
           </p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-slate-400 mb-1">Numri i Pagesave</p>
-          <p className="text-xl font-bold text-slate-900 dark:text-white">{student.payments.length}</p>
+          <p className="text-xs text-slate-400 mb-1">Kategori Pagesash</p>
+          <p className="text-xl font-bold text-slate-900 dark:text-white">{categoryGroups.length}</p>
         </div>
       </div>
 
@@ -286,47 +491,42 @@ export default function StudentProfile({ student }: { student: Student }) {
               </Link>
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-              {payments.length === 0 ? (
+              {categoryGroups.length === 0 ? (
                 <p className="text-center text-slate-400 py-8 text-sm">Asnjë pagesë e regjistruar</p>
-              ) : payments.slice(0, 10).map((p) => (
-                <div key={p.id} className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 group">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900 dark:text-white">{p.category.name}</p>
-                    <p className="text-xs text-slate-400">
-                      Afati: {formatDate(p.dueDate)}
-                      {p.paidDate && ` • Paguar: ${formatDate(p.paidDate)}`}
-                      {p.method && ` • ${getStatusLabel(p.method)}`}
-                    </p>
+              ) : categoryGroups.map(g => (
+                <div key={g.categoryName} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{g.categoryName}</p>
+                    {CATEGORY_LINKS[g.categoryName] && (
+                      <Link href={CATEGORY_LINKS[g.categoryName]} className="text-primary-600 hover:underline text-xs font-medium">
+                        Modifiko →
+                      </Link>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <div className="flex items-center gap-2">
-                        <span className={`badge ${getStatusColor(p.status)}`}>
-                          {getStatusLabel(p.status)}
-                        </span>
-                        <span className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {formatCurrency(p.amount)}
-                        </span>
-                      </div>
-                      {p.balance > 0 && (
-                        <p className="text-xs text-red-500 mt-0.5">Borxh: {formatCurrency(p.balance)}</p>
-                      )}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div>
+                      <p className="text-xs text-slate-400 mb-0.5">Çmimi bazë</p>
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{formatCurrency(g.baseAmount)}</p>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => setEditPayment(p)}
-                        title="Edito"
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeletePayment(p.id)}
-                        title="Fshi"
-                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <div>
+                      <p className="text-xs text-slate-400 mb-0.5">Me zbritje</p>
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{formatCurrency(g.finalAmount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-400 mb-0.5">Pagesa</p>
+                      <p className="text-sm font-semibold text-green-600 dark:text-green-400">{formatCurrency(g.paidAmount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-400 mb-0.5">Data e pagesës</p>
+                      <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                        {g.lastPaidDate ? formatDate(g.lastPaidDate) : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-400 mb-0.5">Borxhi i mbetur</p>
+                      <p className={`text-sm font-bold ${g.balance > 0 ? "text-red-600 dark:text-red-400" : "text-green-500"}`}>
+                        {g.balance > 0 ? formatCurrency(g.balance) : "✓ Pa borxh"}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -377,114 +577,7 @@ export default function StudentProfile({ student }: { student: Student }) {
         </div>
       </div>
     </div>
-
-    {editPayment && (
-      <PaymentEditModal
-        payment={editPayment}
-        onClose={() => setEditPayment(null)}
-        onSave={handleSavePayment}
-      />
-    )}
     </>
-  );
-}
-
-function PaymentEditModal({ payment, onClose, onSave }: {
-  payment: Payment;
-  onClose: () => void;
-  onSave: (updated: Payment) => void;
-}) {
-  const [amount, setAmount]       = useState(String(payment.amount));
-  const [paidAmount, setPaid]     = useState(String(payment.paidAmount));
-  const [method, setMethod]       = useState(payment.method || "CASH");
-  const [dueDate, setDueDate]     = useState(payment.dueDate?.slice(0, 10) || "");
-  const [paidDate, setPaidDate]   = useState(payment.paidDate?.slice(0, 10) || "");
-  const [saving, setSaving]       = useState(false);
-
-  async function handleSave() {
-    setSaving(true);
-    const body = {
-      amount: parseFloat(amount),
-      paidAmount: parseFloat(paidAmount || "0"),
-      discount: 0,
-      discountType: null,
-      scholarship: 0,
-      method,
-      dueDate,
-      paidDate: paidDate || null,
-      description: payment.description || null,
-    };
-    const r = await fetch(`/api/payments/${payment.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (r.ok) {
-      const updated = await r.json();
-      onSave({ ...payment, ...updated, category: payment.category });
-    }
-    setSaving(false);
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-          <div>
-            <h3 className="font-bold text-slate-800 dark:text-white">Edito Pagesën</h3>
-            <p className="text-xs text-slate-400 mt-0.5">{payment.category.name}</p>
-          </div>
-          <button onClick={onClose}><X className="w-4 h-4 text-slate-400" /></button>
-        </div>
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="form-label">Shuma (€)</label>
-              <input type="number" min="0" step="0.01" value={amount}
-                onChange={e => setAmount(e.target.value)} className="form-input" />
-            </div>
-            <div>
-              <label className="form-label">Paguar (€)</label>
-              <input type="number" min="0" step="0.01" value={paidAmount}
-                onChange={e => setPaid(e.target.value)} className="form-input" />
-            </div>
-          </div>
-          <div>
-            <label className="form-label">Mënyra e Pagesës</label>
-            <select value={method} onChange={e => setMethod(e.target.value)} className="form-input">
-              <option value="CASH">Cash</option>
-              <option value="BANK">Bankë</option>
-              <option value="CARD">Kartelë</option>
-              <option value="ONLINE">Online</option>
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="form-label">Afati</label>
-              <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="form-input" />
-            </div>
-            <div>
-              <label className="form-label">Data e Pagesës</label>
-              <input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} className="form-input" />
-            </div>
-          </div>
-          {parseFloat(paidAmount || "0") > 0 && (
-            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs flex justify-between">
-              <span className="text-slate-400">Borxhi i mbetur:</span>
-              <span className={`font-bold ${Math.max(0, parseFloat(amount) - parseFloat(paidAmount)) > 0 ? "text-red-500" : "text-green-600"}`}>
-                {parseFloat(amount) - parseFloat(paidAmount) <= 0 ? "✓ Pa borxh" : `${(parseFloat(amount) - parseFloat(paidAmount)).toFixed(2)} €`}
-              </span>
-            </div>
-          )}
-        </div>
-        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-          <button onClick={onClose} className="btn-secondary">Anulo</button>
-          <button onClick={handleSave} disabled={saving || !amount} className="btn-primary">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ruaj Ndryshimet"}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 

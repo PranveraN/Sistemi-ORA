@@ -59,6 +59,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           data: { name: "Faturat", type: "one-time", defaultAmount: 0, organizationId: orgId },
         });
       }
+      const payDueDate = invoice.dueDate ?? new Date();
       await prisma.payment.create({
         data: {
           studentId:   invoice.studentId,
@@ -67,13 +68,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           finalAmount: invoice.total,
           paidAmount:  invoice.total,
           balance:     0,
-          dueDate:     invoice.dueDate ?? new Date(),
+          dueDate:     payDueDate,
           paidDate:    new Date(),
           status:      "PAID",
           method:      "CASH",
           description: `Fatura ${invoice.number}`,
           invoiceId:   invoice.id,
           organizationId: orgId,
+          // Pa muaj/vit, kjo pagesë s'gjendet nga filtrat/raportet që kërkojnë muaj
+          // real (p.sh. Vit Akademik te Shkollimi) — mbetet "e padukshme" edhe pse
+          // ekziston, saktësisht defekti i gjetur këtë sesion te pagesat e këstizuara.
+          month: payDueDate.getMonth() + 1,
+          year:  payDueDate.getFullYear(),
         },
       });
     }

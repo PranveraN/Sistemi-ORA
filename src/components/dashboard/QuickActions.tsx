@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { UserPlus, CreditCard, FileText, X, Plus, ChevronRight } from "lucide-react";
+import { UserPlus, CreditCard, FileText, FileSpreadsheet, X, Plus, ChevronRight } from "lucide-react";
 
 const ACTIONS = [
   {
@@ -40,6 +40,18 @@ const ACTIONS = [
     hover:  "hover:bg-violet-100 dark:hover:bg-violet-900/50",
     ring:   "hover:ring-violet-200 dark:hover:ring-violet-800",
     fab:    "bg-violet-500 hover:bg-violet-600 shadow-violet-200",
+  },
+  {
+    id: "proforma",
+    label: "Gjenero Profaturë",
+    shortLabel: "Profaturë",
+    href: "/invoices/new?type=PROFORMA",
+    icon: FileSpreadsheet,
+    color:  "text-amber-600 dark:text-amber-400",
+    bg:     "bg-amber-50 dark:bg-amber-900/30",
+    hover:  "hover:bg-amber-100 dark:hover:bg-amber-900/50",
+    ring:   "hover:ring-amber-200 dark:hover:ring-amber-800",
+    fab:    "bg-amber-500 hover:bg-amber-600 shadow-amber-200",
   },
 ] as const;
 

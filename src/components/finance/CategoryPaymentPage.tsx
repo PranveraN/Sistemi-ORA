@@ -18,7 +18,7 @@ import {
   Search, CheckCircle, AlertCircle, Clock,
   Plus, X, Save, Users, Loader2, Printer,
   TrendingUp, TrendingDown, ArrowLeftRight, FileUp,
-  CalendarDays, Download, Trash2, Calculator,
+  CalendarDays, Download, Trash2, Calculator, Lock,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
@@ -766,7 +766,8 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                       const isInactive = s.status === "INACTIVE";
                       const isFirstInactive = isInactive && (i === 0 || sorted[i - 1]?.status !== "INACTIVE");
                       const hasMonthly = s.installments.some(p => p.description?.startsWith("MUAJI_"));
-                      const hasTwo = !hasMonthly && s.installments.length >= 2;
+                      const hasFlex = s.installments.some(p => p.description?.startsWith("FLEX_"));
+                      const hasTwo = !hasMonthly && !hasFlex && s.installments.length >= 2;
                       const k1 = hasTwo ? s.installments[0] : null;
                       const k2 = hasTwo ? s.installments[1] : null;
                       const statusKey = p?.status || "PENDING";
@@ -830,6 +831,12 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                               <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded font-medium">
                                 <CalendarDays className="w-3 h-3" />
                                 2 këste
+                              </span>
+                            )}
+                            {hasFlex && (
+                              <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-1.5 py-0.5 rounded font-medium">
+                                <CalendarDays className="w-3 h-3" />
+                                {s.installments.length} pagesa
                               </span>
                             )}
                           </td>
@@ -1207,6 +1214,44 @@ function calcProrated(baseAmount: number, discountPct: number, inactiveDate: Dat
   return { attended, amount, effectivePrice };
 }
 
+// Rrumbullakos në cent — ndarja proporcionale (splitGross) prodhon numra si
+// 99.99999999999999 (gabim standard floating-point), të cilët do të dukeshin
+// të shëmtuar/gabuar nëse futeshin drejtpërdrejt në fushat e formularit.
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+// Ndan çmimin BRUTO (para zbritjes) dhe zbritjen proporcionalisht sipas pjesës
+// (portion, shuma finale pas zbritjes) që i takon këtij kësti/muaji nga totali
+// final i gjithë planit. Kjo është ana tjetër e `reconstructDiscount` më poshtë:
+// bashkë garantojnë që "Çmimi Bazë" origjinal (bruto) DHE zbritja e vërtetë
+// mund të rindërtohen saktësisht sa herë që rihapet plani — asnjëherë s'zhduket
+// apo ndryshon vetëm sepse është ndarë në këste. Pa këtë, çdo këst ruante më
+// parë discount:0 (zbritja hidhej krejtësisht), kështu "Çmimi Bazë" i rindërtuar
+// binte përgjithmonë nga shuma bruto reale (p.sh. 2000€) te shuma tashmë e
+// zbritur (p.sh. 1800€) — pikërisht ankesa "çmimi bazë nuk duhet të ndryshojë
+// në asnjë rrethanë".
+function splitGross(portionFinal: number, totalFinalAll: number, grossTotal: number, discType: string, discVal: number, scholTotal: number) {
+  const ratio = totalFinalAll > 0 ? portionFinal / totalFinalAll : 0;
+  return {
+    amount:      round2(grossTotal * ratio),
+    discount:    round2(discType === "percentage" ? discVal : discVal * ratio),
+    scholarship: round2(scholTotal * ratio),
+  };
+}
+
+// E kundërta e `splitGross`: rindërton zbritjen origjinale nga një grup këstesh
+// që e ndajnë të njëjtin plan. Për përqindje, e njëjta % ruhet te çdo këst pa u
+// shkallëzuar — mjafton e para. Për shumë fikse, secili këst mban vetëm pjesën
+// e vet proporcionale (shih `splitGross`), prandaj duhen mbledhur të gjitha që
+// të rikthehet shuma fikse origjinale e plotë.
+function reconstructDiscount(group: { discount: number; discountType: string | null }[]): number {
+  if (group.length === 0) return 0;
+  return group[0].discountType === "percentage"
+    ? group[0].discount
+    : group.reduce((s, p) => s + p.discount, 0);
+}
+
 /* ─── Payment Modal ──────────────────────────────────────── */
 interface ModalProps {
   student: StudentRow;
@@ -1224,31 +1269,114 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   const installments = student.installments;
 
   // Detect existing installment type
-  const k1Existing = installments.find(p => p.description === "KESTI_1") ?? installments[0] ?? null;
-  const k2Existing = installments.find(p => p.description === "KESTI_2") ?? installments[1] ?? null;
   const isAlreadyMonthly = installments.some(p => p.description?.startsWith("MUAJI_"));
-  const isAlreadyTwo = !isAlreadyMonthly && (
+  const isAlreadyFlex = !isAlreadyMonthly && installments.some(p => p.description?.startsWith("FLEX_"));
+  const isAlreadyTwo = !isAlreadyMonthly && !isAlreadyFlex && (
     installments.length >= 2 ||
     installments.some(p => p.description === "KESTI_1" || p.description === "KESTI_2")
   );
+  const k1Existing = !isAlreadyFlex ? (installments.find(p => p.description === "KESTI_1") ?? installments[0] ?? null) : null;
+  const k2Existing = !isAlreadyFlex ? (installments.find(p => p.description === "KESTI_2") ?? installments[1] ?? null) : null;
 
-  // Single payment is the first one if it's not a KESTI/MUAJI record
-  const singleExisting = !isAlreadyTwo && !isAlreadyMonthly ? (installments[0] ?? null) : null;
+  // Sapo një plan i këstizuar EKZISTON (Dy Këste/Çdo Muaj/Fleksibël me rekorde
+  // reale), "Çmimi Bazë"/"Zbritja" bëhen VETËM PASQYRË (jo më të editueshme).
+  // Arsyeja rrënjësore: në këto mënyra, shuma REALE që i takon çdo kësti
+  // ("Shuma e këstit" më poshtë) është E VETMJA burim i vërtetë — "Çmimi Bazë"
+  // gjithmonë RINDËRTOHET prej saj (shih `existingTotalAmount`). Nëse admin
+  // ndryshonte "Çmimi Bazë"/"Zbritja" pa prekur asnjë shumë kësti, sistemi
+  // "zgjidhte mbrapsht" një total bruto krejt të ri për të mos e prekur shumën
+  // e çdo kësti — dhe herës tjetër që rihapej plani, "Çmimi Bazë" dilte një
+  // shifër e papritur (asnjëherë ajo që u fut). Kjo ishte pikërisht ankesa e
+  // përsëritur "çmimi bazë nuk duhet të ndryshojë në asnjë rrethanë". Tani,
+  // sapo ka këste reale, kjo fushë kyçet plotësisht — për të ndryshuar shumën
+  // e vërtetë, modifiko drejtpërdrejt "Shuma e këstit" të çdo rreshti.
+  const hasExistingInstallmentPlan = isAlreadyTwo || isAlreadyMonthly || isAlreadyFlex;
 
-  const [mode, setMode] = useState<"single" | "two" | "monthly">(
-    isAlreadyMonthly ? "monthly" : isAlreadyTwo ? "two" : "single"
+  // Single payment is the first one if it's not a KESTI/MUAJI/FLEX record
+  const singleExisting = !isAlreadyTwo && !isAlreadyMonthly && !isAlreadyFlex ? (installments[0] ?? null) : null;
+
+  const [mode, setMode] = useState<"single" | "two" | "monthly" | "flex">(
+    isAlreadyMonthly ? "monthly" : isAlreadyFlex ? "flex" : isAlreadyTwo ? "two" : "single"
   );
   const [saving, setSaving] = useState(false);
+
+  // Shuma bazë e GJITHË planit ekzistues (jo vetëm e këstit/muajit të parë që
+  // gjendet). Përndryshe, kur rihapej "Modifiko" për një plan me Dy Këste (ku
+  // çdo këst ruhet me `amount` = vetëm gjysma e vet), "Çmimi Bazë" merrte
+  // gabimisht vetëm Këstin 1 (p.sh. 900€ në vend të 1.800€ total) — kjo e bënte
+  // "Shuma e dy kësteve nuk përputhet me totalin" të dukej gabimisht, dhe nëse
+  // stafi ndërronte mënyrën (p.sh. te "Pagesë e plotë") për të regjistruar një
+  // pagesë të pjesshme, çmimi bazë i ri fillonte prej shifrës së gabuar (gjysma),
+  // duke "tkurrur" gabimisht totalin real të negociuar.
+  // Këste Fleksibël — RISTRUKTURUAR: NJË rekord i vetëm "FLEX_HEADER" mban
+  // Çmimin Bazë/Zbritjen EXAKTËSISHT siç u futën, kurrë të rindërtuar nga
+  // shuma të tjera. Çdo pagesë tjetër ("FLEX_PAY_N") është thjesht një
+  // dëftesë e vetë-mjaftueshme (shih handleSave) — asnjë ndarje proporcionale,
+  // prandaj Çmimi Bazë s'mund të "rrjedhë" më, sido që ndryshon numri i
+  // pagesave. `flexLegacyRows` mbulon VETËM planet e krijuara para këtij
+  // ristrukturimi (rreshta "FLEX_1"/"FLEX_2"/... pa header) — përdoret si
+  // pikënisje migrimi një-herësh, kurrë më pas.
+  const flexHeaderExisting = installments.find(p => p.description === "FLEX_HEADER") ?? null;
+  const flexLegacyRows = isAlreadyFlex && !flexHeaderExisting
+    ? installments.filter(p => p.description?.startsWith("FLEX_") && p.description !== "FLEX_HEADER" && !p.description?.startsWith("FLEX_PAY_"))
+    : [];
+
+  const existingTotalAmount: number | null =
+    singleExisting ? singleExisting.amount :
+    flexHeaderExisting ? flexHeaderExisting.amount :
+    isAlreadyTwo && k1Existing && k2Existing ? round2(k1Existing.amount + k2Existing.amount) :
+    isAlreadyMonthly ? round2(installments.reduce((sum, p) => sum + p.amount, 0)) :
+    flexLegacyRows.length > 0 ? round2(flexLegacyRows.reduce((sum, p) => sum + p.amount, 0)) :
+    null;
+
+  // Njësoj si `existingTotalAmount` më sipër, por për shumën TASHMË TË PAGUAR
+  // të gjithë planit. Pa këtë, kur ndërrohej te "Pagesë e plotë" nga një plan
+  // Dy Këste/Çdo Muaj/Fleksibël me pagesa të pjesshme reale (p.sh. Kësti 1 =
+  // 900€ i paguar), fusha "Paguar" fillonte bosh/0 — nëse stafi shënonte aty
+  // vetëm pagesën E RE (p.sh. 400€ e mbledhur tani për Këstin 2), sistemi e
+  // ruante si TËRË historikun e pagesës (900€ e mëparshme humbiste), duke e
+  // fryrë gabimisht borxhin e mbetur. Tani "Paguar" fillon nga shuma reale e
+  // paguar deri tani, kështu që çdo shtesë llogaritet saktë kundrejt borxhit
+  // të vërtetë të mbetur, jo kundrejt zeros.
+  const existingTotalPaid: number =
+    isAlreadyTwo && k1Existing && k2Existing ? round2(k1Existing.paidAmount + k2Existing.paidAmount) :
+    isAlreadyMonthly ? round2(installments.reduce((sum, p) => sum + p.paidAmount, 0)) :
+    isAlreadyFlex ? round2(installments.filter(p => p.description?.startsWith("FLEX_")).reduce((sum, p) => sum + p.paidAmount, 0)) :
+    0;
+
+  // Grupi i këstizuar ekzistues (Dy Këste / Çdo Muaj) — përdoret për të
+  // rindërtuar zbritjen/bursën origjinale (shih `reconstructDiscount` dhe
+  // `splitGross` më sipër në skedar). Për Këste Fleksibël, zbritja/bursa
+  // lexohet direkt nga `flexHeaderExisting` (ose `flexLegacyRows` gjatë
+  // migrimit) — jo më e rindërtuar nga një grup.
+  const existingInstallmentGroup: Payment[] =
+    isAlreadyTwo && k1Existing && k2Existing ? [k1Existing, k2Existing] :
+    isAlreadyMonthly ? installments.filter(p => p.description?.startsWith("MUAJI_")) :
+    flexLegacyRows.length > 0 ? flexLegacyRows :
+    [];
+  const existingDiscountType: string | null =
+    singleExisting?.discountType ?? flexHeaderExisting?.discountType ?? existingInstallmentGroup[0]?.discountType ?? null;
+  const existingDiscount: number | null =
+    singleExisting ? singleExisting.discount :
+    flexHeaderExisting ? flexHeaderExisting.discount :
+    existingInstallmentGroup.length > 0 ? round2(reconstructDiscount(existingInstallmentGroup)) :
+    null;
+  const existingScholarship: number =
+    singleExisting ? singleExisting.scholarship :
+    flexHeaderExisting ? flexHeaderExisting.scholarship :
+    round2(existingInstallmentGroup.reduce((sum, p) => sum + p.scholarship, 0));
 
   // ── Common form (gross amount + discounts) ──
   // Nëse kategoria ka një shumë fikse të konfiguruar (p.sh. Librat & Shkollorja = 20€/vit),
   // fusha "Shuma" mbushet automatikisht — kursen kohë kur çmimi është i njëjtë për të gjithë.
+  // Zbritja e nxënësit (Student.discountPct) aplikohet automatikisht kur s'ka ende pagesë
+  // reale të ruajtur — përndryshe respektohet gjithmonë zbritja e vërtetë e ruajtur më parë.
   const [form, setForm] = useState({
     amount:       overrideAmount != null ? String(overrideAmount)
-      : String(singleExisting?.amount ?? k1Existing?.amount ?? (category.defaultAmount > 0 ? category.defaultAmount : "")),
-    discount:     String(singleExisting?.discount    ?? "0"),
-    discountType: singleExisting?.discountType       ?? "fixed",
-    scholarship:  String(singleExisting?.scholarship ?? "0"),
+      : String(existingTotalAmount ?? k1Existing?.amount ?? (category.defaultAmount > 0 ? category.defaultAmount : "")),
+    discount:     String(existingDiscount ?? k1Existing?.discount ?? (student.discountPct > 0 ? student.discountPct : "0")),
+    discountType: existingDiscountType ?? k1Existing?.discountType ?? (student.discountPct > 0 ? "percentage" : "fixed"),
+    scholarship:  String(existingScholarship || (singleExisting?.scholarship ?? "0")),
   });
 
   // Derived final amount for reference
@@ -1260,7 +1388,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
 
   // ── Single mode extra state ──
   const [sForm, setSForm] = useState({
-    paidAmount: String(singleExisting?.paidAmount ?? ""),
+    paidAmount: String(singleExisting ? singleExisting.paidAmount : (existingTotalPaid > 0 ? existingTotalPaid : "")),
     method:     singleExisting?.method            ?? "CASH",
     dueDate:    singleExisting?.dueDate
       ? new Date(singleExisting.dueDate).toISOString().split("T")[0]
@@ -1310,9 +1438,28 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
 
   const [mForms, setMForms] = useState<{
     portion: string; paidAmount: string; paidDate: string; dueDate: string; method: string;
-  }[]>(() =>
-    Array.from({ length: 10 }, (_, i) => {
-      const ex = installments.find(p => p.description === `MUAJI_${i + 1}`) ?? null;
+  }[]>(() => {
+    // Nëse s'ka ende muaj (jo isAlreadyMonthly) por KA instalime nga një mënyrë
+    // tjetër (Pagesë e plotë/Dy Këste) me pagesa REALE, përpiqu t'i vendosësh në
+    // muajin përkatës sipas datës së vet të afatit — njësoj si te Këste Fleksibël
+    // më sipër, përndryshe "Paguar"/"Borxhi" do të "harronin" çka është paguar
+    // tashmë. Nëse ndonjë instalim s'përputhet me asnjë prej 10 muajve fiks
+    // (Shtator–Qershor), ai rresht mbetet bosh — për raste të tilla parregullta
+    // rekomandohet "Këste Fleksibël", i cili mbulon çdo datë pa kufizim.
+    const yr0 = year > 0 ? year : new Date().getFullYear();
+    const carryOver = !isAlreadyMonthly ? installments : [];
+    const used = new Set<number>();
+    return Array.from({ length: 10 }, (_, i) => {
+      const targetMonth = SCHOOL_MONTH_CALS[i];
+      const targetYear  = i < 4 ? yr0 : yr0 + 1;
+      const ex = installments.find(p => p.description === `MUAJI_${i + 1}`)
+        ?? carryOver.find(p => {
+          if (used.has(p.id)) return false;
+          const d = new Date(p.dueDate);
+          return d.getMonth() + 1 === targetMonth && d.getFullYear() === targetYear;
+        })
+        ?? null;
+      if (ex && carryOver.includes(ex)) used.add(ex.id);
       return {
         portion:    ex ? String(ex.finalAmount)  : "",
         paidAmount: ex ? String(ex.paidAmount)   : "0",
@@ -1320,8 +1467,8 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         dueDate:    ex?.dueDate  ? new Date(ex.dueDate).toISOString().split("T")[0]  : defaultDueMonth(i),
         method:     ex?.method   ?? "CASH",
       };
-    })
-  );
+    });
+  });
 
   function setM(idx: number, field: string, val: string) {
     setMForms(f => f.map((r, i) => i === idx ? { ...r, [field]: val } : r));
@@ -1336,6 +1483,85 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   const sBalance = Math.max(0, totalFinal - sPaid);
   const k1Paid   = parseFloat(k1Form.paidAmount || "0");
   const k2Paid   = parseFloat(k2Form.paidAmount || "0");
+
+  // ── Pagesat fleksibël (Këste Fleksibël, ristrukturuar) ──
+  // Çdo rresht = NJË pagesë reale (shih "FLEX_PAY_N" te handleSave); Çmimi
+  // Bazë/Zbritja jetojnë VETËM te "FLEX_HEADER" (shih më sipër), kurrë të
+  // ndikuar nga numri i pagesave këtu.
+  const flexPaymentsExisting = installments
+    .filter(p => p.description?.startsWith("FLEX_PAY_"))
+    .sort((a, b) => parseInt(a.description!.replace("FLEX_PAY_", "")) - parseInt(b.description!.replace("FLEX_PAY_", "")));
+
+  const [flexRows, setFlexRows] = useState<{
+    id: number | null; portion: string; paidAmount: string; paidDate: string; dueDate: string; method: string;
+  }[]>(() => {
+    if (flexPaymentsExisting.length > 0) {
+      return flexPaymentsExisting.map(ex => ({
+        id: ex.id,
+        portion:    String(ex.paidAmount),
+        paidAmount: String(ex.paidAmount),
+        paidDate:   ex.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
+        dueDate:    new Date(ex.dueDate).toISOString().split("T")[0],
+        method:     ex.method ?? "CASH",
+      }));
+    }
+    // Migrim një-herësh: plane të krijuara PARA ristrukturimit (rreshta
+    // "FLEX_1"/"FLEX_2"/... pa header) — çdo pagesë reale e tyre konvertohet
+    // në një pagesë të thjeshtë të re; herën tjetër që ruhet, plani rishkruhet
+    // krejtësisht sipas modelit të ri (header + pagesa) dhe ky migrim s'nevojitet më.
+    if (flexLegacyRows.length > 0) {
+      return flexLegacyRows.filter(p => p.paidAmount > 0).map(ex => ({
+        id: null,
+        portion:    String(ex.paidAmount),
+        paidAmount: String(ex.paidAmount),
+        paidDate:   ex.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
+        dueDate:    new Date(ex.dueDate).toISOString().split("T")[0],
+        method:     ex.method ?? "CASH",
+      }));
+    }
+    // Duke ardhur nga një mënyrë tjetër (Pagesë e plotë / Dy Këste / Çdo Muaj) me
+    // pagesa REALE — konverto VETËM këstet/muajt që kanë PAGESË REALE (paidAmount
+    // > 0) në pagesa fleksibël. Këstet ende PA PAGESË (p.sh. Kësti 2 = 0€ i
+    // paguar) NUK konvertohen fare — borxhi i tyre mbetet saktë i mbuluar nga
+    // "Borxhi i mbetur" (Çmimi Bazë − Total paguar), pa nevojë për rresht "bosh".
+    const paidOnly = installments.filter(p => p.paidAmount > 0);
+    if (paidOnly.length > 0) {
+      return paidOnly.map(ex => ({
+        id: null,
+        portion:    String(ex.paidAmount),
+        paidAmount: String(ex.paidAmount),
+        paidDate:   ex.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
+        dueDate:    new Date(ex.dueDate).toISOString().split("T")[0],
+        method:     ex.method ?? "CASH",
+      }));
+    }
+    return [{ id: null, portion: "", paidAmount: "0", paidDate: today, dueDate: today, method: "CASH" }];
+  });
+
+  function setFlex(idx: number, field: string, val: string) {
+    setFlexRows(f => f.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  }
+  // Çdo rresht fleksibël përfaqëson NJË pagesë reale — s'ka fushë të veçantë
+  // "shuma e pritur" (shih komentin te tabela më poshtë), prandaj "portion"
+  // (përdoret nga handleSave/splitGross) barazohet gjithmonë me "paidAmount".
+  function setFlexPaid(idx: number, val: string) {
+    setFlexRows(f => f.map((r, i) => i === idx ? { ...r, portion: val, paidAmount: val } : r));
+  }
+  function addFlexRow() {
+    setFlexRows(f => [...f, { id: null, portion: "", paidAmount: "0", paidDate: today, dueDate: today, method: "CASH" }]);
+  }
+  async function removeFlexRow(idx: number) {
+    const row = flexRows[idx];
+    if (row.id) {
+      if (!confirm("Fshi këtë këst? Ky veprim nuk mund të kthehet.")) return;
+      await fetch(`/api/payments/${row.id}`, { method: "DELETE" });
+    }
+    setFlexRows(f => f.filter((_, i) => i !== idx));
+  }
+  const flexTotalPaid = flexRows.reduce((s, r) => s + (parseFloat(r.paidAmount) || 0), 0);
+  // Borxhi llogaritet kundrejt çmimit bazë (pas zbritjes), jo vetëm shumës së këstesh
+  // të regjistruara deri tani — përndryshe borxhi real fshihet pas çdo kësti të pjesshëm.
+  const flexTotalDebt    = Math.max(0, totalFinal - flexTotalPaid);
 
   function statusLabel(portionAmt: number, paidAmt: number, dueDateStr: string): { label: string; color: string } {
     if (portionAmt > 0 && paidAmt >= portionAmt) return { label: "✓ Paguar", color: "text-green-600" };
@@ -1374,8 +1600,11 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         dueDate:      sForm.dueDate,
         paidDate:     sForm.paidDate,
         description:  null,
-        month,
-        year,
+        // Muaji/viti llogariten nga Afati i pagesës, jo nga filtri aktual i tabelës
+        // (mund të jetë "Të gjitha" → pa muaj konkret, gjë që e bënte pagesën të
+        // "padukshme" për query-t e ardhshme që kërkojnë muaj real).
+        month:        new Date(sForm.dueDate).getMonth() + 1,
+        year:         new Date(sForm.dueDate).getFullYear(),
       };
       if (singleExisting) {
         const r = await fetch(`/api/payments/${singleExisting.id}`, {
@@ -1404,67 +1633,93 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
 
       const saveInstallment = async (
         existing: Payment | null,
-        portionAmt: number,
+        grossAmt: number,
+        discAmt: number,
+        scholAmt: number,
         paidAmt: number,
         dueDate: string,
         paidDate: string,
         method: string,
         description: string,
-      ) => {
+      ): Promise<number | undefined> => {
         const payload = {
           studentId:    student.id,
           categoryId:   category.id,
-          amount:       portionAmt,
-          discount:     0,
-          discountType: "fixed",
-          scholarship:  0,
+          amount:       grossAmt,
+          discount:     discAmt,
+          discountType: form.discountType,
+          scholarship:  scholAmt,
           paidAmount:   paidAmt,
           method,
           dueDate,
           paidDate,
           description,
-          month,
-          year,
+          // Muaji/viti llogariten nga Afati i vetë këstit, jo nga filtri i tabelës.
+          month:        new Date(dueDate).getMonth() + 1,
+          year:         new Date(dueDate).getFullYear(),
         };
         if (existing) {
-          await fetch(`/api/payments/${existing.id}`, {
+          const r = await fetch(`/api/payments/${existing.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
+          return r.ok ? existing.id : undefined;
         } else {
-          await fetch("/api/payments", {
+          const r = await fetch("/api/payments", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
+          if (!r.ok) return undefined;
+          const created = await r.json();
+          return created.id;
         }
       };
+
+      // Çmimi bruto (para zbritjes) dhe zbritja ndahen proporcionalisht mes K1/K2
+      // (shih `splitGross`) — JO më `discount:0` fiks si më parë. Kështu, "Çmimi
+      // Bazë" origjinal (p.sh. 2000€, -10%) rindërtohet gjithmonë saktë kur
+      // rihapet plani, në vend që të "zhvishej" përgjithmonë te shuma tashmë e
+      // zbritur (p.sh. 1800€) — pikërisht defekti i raportuar.
+      const split1 = splitGross(portion1, totalFinal, amount, form.discountType, discount, scholarship);
+      const split2 = splitGross(portion2, totalFinal, amount, form.discountType, discount, scholarship);
 
       // Krijo/perditeso vetem kestet qe kane shume reale (ose qe ekzistojne tashme) —
       // perndryshe ruajtja e vetem njerit kesti krijonte automatikisht nje pagese
       // "fantazme" 0-euro per tjetrin, gje qe ngatarronte stafin ne Historik.
+      // Fletëpagesa printohet për këstin e fundit që mori pagesë reale në këtë ruajtje
+      // (K2 mbizotëron K1 nëse të dy paguhen njëkohësisht).
       if (k1Existing || portion1 > 0) {
-        await saveInstallment(k1Existing, portion1, k1Paid, k1Form.dueDate, k1Form.paidDate, k1Form.method, "KESTI_1");
+        const rid = await saveInstallment(k1Existing, split1.amount, split1.discount, split1.scholarship, k1Paid, k1Form.dueDate, k1Form.paidDate, k1Form.method, "KESTI_1");
+        if (k1Paid > 0 && rid) receiptPaymentId = rid;
       }
       if (k2Existing || portion2 > 0) {
-        await saveInstallment(k2Existing, portion2, k2Paid, k2Form.dueDate, k2Form.paidDate, k2Form.method, "KESTI_2");
+        const rid = await saveInstallment(k2Existing, split2.amount, split2.discount, split2.scholarship, k2Paid, k2Form.dueDate, k2Form.paidDate, k2Form.method, "KESTI_2");
+        if (k2Paid > 0 && rid) receiptPaymentId = rid;
       }
-    } else {
+    } else if (mode === "monthly") {
       // Monthly mode — delete non-monthly installments if switching from other mode
       if (!isAlreadyMonthly) {
         await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
       }
       const yr = year > 0 ? year : new Date().getFullYear();
+      // Fletëpagesa printohet për muajin e fundit (indeksi më i madh) që mori pagesë
+      // reale në këtë ruajtje.
+      const lastPaidMonthIdx = mForms.reduce((last, f, i) => parseFloat(f.paidAmount || "0") > 0 ? i : last, -1);
       await Promise.all(mForms.map(async (mf, i) => {
         const ex = installments.find(p => p.description === `MUAJI_${i + 1}`) ?? null;
+        // Shih komentin te modaliteti "Dy Këste" — çmimi bruto/zbritja ndahen
+        // proporcionalisht, jo `discount:0` fiks, që "Çmimi Bazë" origjinal të
+        // mos ndryshojë kurrë kur rihapet plani.
+        const splitM = splitGross(parseFloat(mf.portion || "0"), totalFinal, amount, form.discountType, discount, scholarship);
         const payload = {
           studentId:    student.id,
           categoryId:   category.id,
-          amount:       parseFloat(mf.portion || "0"),
-          discount:     0,
-          discountType: "fixed",
-          scholarship:  0,
+          amount:       splitM.amount,
+          discount:     splitM.discount,
+          discountType: form.discountType,
+          scholarship:  splitM.scholarship,
           paidAmount:   parseFloat(mf.paidAmount || "0"),
           method:       mf.method,
           dueDate:      mf.dueDate,
@@ -1473,11 +1728,86 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
           month:        SCHOOL_MONTH_CALS[i],
           year:         i < 4 ? yr : yr + 1,
         };
+        let rid: number | undefined;
         if (ex) {
-          await fetch(`/api/payments/${ex.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          const r = await fetch(`/api/payments/${ex.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          rid = r.ok ? ex.id : undefined;
         } else {
-          await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          const r = await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          if (r.ok) rid = (await r.json()).id;
         }
+        if (i === lastPaidMonthIdx) receiptPaymentId = rid;
+      }));
+    } else {
+      // Flex mode — delete installments from a DIFFERENT mode if switching in
+      if (!isAlreadyFlex) {
+        await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+      }
+      // Fshi rreshtat "legacy" (para header-it) — u zëvendësuan nga header-i +
+      // pagesat individuale më poshtë, pjesë e migrimit një-herësh.
+      if (flexLegacyRows.length > 0) {
+        await Promise.all(flexLegacyRows.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+      }
+
+      // HEADER — një rekord i vetëm mban Çmimin Bazë/Zbritjen EXAKTËSISHT siç
+      // janë në formular, e kopjuar direkt, ASNJËHERË e rindërtuar nga ndonjë
+      // ndarje proporcionale. Meqë s'rrjedh nga asnjë shumë tjetër, s'ka MËNYRË
+      // që të ndryshojë vetvetiu, sido që shtohen/hiqen pagesa më poshtë.
+      const headerDueDate = flexHeaderExisting?.dueDate ? new Date(flexHeaderExisting.dueDate).toISOString().split("T")[0] : today;
+      const headerPayload = {
+        studentId:    student.id,
+        categoryId:   category.id,
+        amount:       form.amount,
+        discount:     form.discount,
+        discountType: form.discountType,
+        scholarship:  form.scholarship,
+        paidAmount:   0,
+        method:       "CASH",
+        dueDate:      headerDueDate,
+        paidDate:     null,
+        description:  "FLEX_HEADER",
+        month:        new Date(headerDueDate).getMonth() + 1,
+        year:         new Date(headerDueDate).getFullYear(),
+      };
+      if (flexHeaderExisting) {
+        await fetch(`/api/payments/${flexHeaderExisting.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(headerPayload) });
+      } else {
+        await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(headerPayload) });
+      }
+
+      // PAGESAT — çdo rresht = 1 pagesë REALE, e vetë-mjaftueshme (amount =
+      // paidAmount, 0% zbritje) — thjesht një dëftesë e vogël e paguar
+      // plotësisht. Asnjë ndarje proporcionale, asnjë varësi nga rreshtat e
+      // tjerë. Fletëpagesa printohet për rreshtin e fundit që mori pagesë
+      // reale në këtë ruajtje.
+      const lastPaidFlexIdx = flexRows.reduce((last, r, i) => parseFloat(r.paidAmount || "0") > 0 ? i : last, -1);
+      await Promise.all(flexRows.map(async (fr, i) => {
+        const paidAmt = parseFloat(fr.paidAmount || "0");
+        if (!fr.id && paidAmt <= 0) return;
+        const payload = {
+          studentId:    student.id,
+          categoryId:   category.id,
+          amount:       paidAmt,
+          discount:     0,
+          discountType: "fixed",
+          scholarship:  0,
+          paidAmount:   paidAmt,
+          method:       fr.method,
+          dueDate:      fr.dueDate,
+          paidDate:     fr.paidDate,
+          description:  `FLEX_PAY_${i + 1}`,
+          month:        new Date(fr.dueDate).getMonth() + 1,
+          year:         new Date(fr.dueDate).getFullYear(),
+        };
+        let rid: number | undefined;
+        if (fr.id) {
+          const r = await fetch(`/api/payments/${fr.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          rid = r.ok ? fr.id : undefined;
+        } else {
+          const r = await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          if (r.ok) rid = (await r.json()).id;
+        }
+        if (i === lastPaidFlexIdx) receiptPaymentId = rid;
       }));
     }
 
@@ -1492,6 +1822,15 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   const k1Status = statusLabel(portion1, k1Paid, k1Form.dueDate);
   const k2Status = statusLabel(portion2, k2Paid, k2Form.dueDate);
 
+  // A ka diçka për t'u printuar (dëshmi pagese) pas kësaj ruajtjeje — pra a ka
+  // të paktën një këst/muaj me pagesë reale (>0) në modalitetin aktual.
+  const canPrint =
+    mode === "single"  ? parseFloat(sForm.paidAmount || "0") > 0 :
+    mode === "two"     ? (k1Paid > 0 || k2Paid > 0) :
+    mode === "monthly" ? mForms.some(f => parseFloat(f.paidAmount || "0") > 0) :
+    mode === "flex"    ? flexRows.some(r => parseFloat(r.paidAmount || "0") > 0) :
+    false;
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
@@ -1502,7 +1841,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-800 z-10">
           <div>
             <h3 className="font-bold text-slate-900 dark:text-white">
-              {isAlreadyTwo || mode === "two" ? "Pagesa me Dy Këste" : (singleExisting ? "Modifiko Pagesën" : "Shto Pagesë")}
+              {mode === "two" ? "Pagesa me Dy Këste" : mode === "flex" ? "Pagesa me Këste Fleksibël" : (singleExisting ? "Modifiko Pagesën" : "Shto Pagesë")}
             </h3>
             <p className="text-sm text-slate-400 mt-0.5">
               {student.firstName} {student.lastName}
@@ -1550,34 +1889,64 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                 <CalendarDays className="w-4 h-4" />
                 Çdo Muaj
               </button>
+              <button
+                onClick={() => setMode("flex")}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  mode === "flex"
+                    ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+              >
+                <CalendarDays className="w-4 h-4" />
+                Këste Fleksibël
+              </button>
             </div>
           )}
 
-          {/* Common: gross amount + discounts */}
+          {/* Common: gross amount + discounts — pa kuptim për Këste Fleksibël (çdo rresht ka shumën e vet) */}
           <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Shuma & Zbritja</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              Çmimi Bazë & Zbritja
+              {hasExistingInstallmentPlan && <Lock className="w-3 h-3 text-slate-400" />}
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="form-label">Shuma (€) <span className="text-red-500">*</span></label>
+                <label className="form-label">Çmimi bazë (€) <span className="text-red-500">*</span></label>
                 <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)}
-                  className="form-input" placeholder="0.00" min="0" step="0.01" />
+                  disabled={hasExistingInstallmentPlan}
+                  className="form-input disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
+                  placeholder="0.00" min="0" step="0.01" />
               </div>
               <div>
                 <label className="form-label">Zbritja</label>
                 <div className="flex gap-1">
-                  <select value={form.discountType} onChange={e => set("discountType", e.target.value)} className="form-input w-16 text-xs">
+                  <select value={form.discountType} onChange={e => set("discountType", e.target.value)}
+                    disabled={hasExistingInstallmentPlan}
+                    className="form-input w-16 text-xs disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed">
                     <option value="fixed">€</option>
                     <option value="percentage">%</option>
                   </select>
                   <input type="number" value={form.discount} onChange={e => set("discount", e.target.value)}
-                    className="form-input flex-1" placeholder="0" min="0" />
+                    disabled={hasExistingInstallmentPlan}
+                    className="form-input flex-1 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
+                    placeholder="0" min="0" />
                 </div>
               </div>
             </div>
             <div className="flex items-center justify-between mt-2 px-3 py-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg text-sm">
-              <span className="text-slate-500">Shuma finale:</span>
+              <span className="text-slate-500">Shuma finale (pas zbritjes):</span>
               <span className="font-bold text-primary-700 dark:text-primary-400">{formatCurrency(totalFinal)}</span>
             </div>
+            {hasExistingInstallmentPlan ? (
+              <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+                <Lock className="w-3 h-3 shrink-0" />
+                Çmimi bazë është fiksuar sepse ka tashmë këste reale — për ta ndryshuar, modifiko shumën e vetë kështit/muajit/rreshtit më poshtë.
+              </p>
+            ) : mode === "flex" && (
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                Kjo shumë e pritur përdoret si bazë për "Borxhi i mbetur" te këstet fleksibël më poshtë.
+              </p>
+            )}
           </div>
 
           {/* ── SINGLE MODE ── */}
@@ -1827,7 +2196,11 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                             </td>
                             <td className={`py-1.5 pr-2 font-medium whitespace-nowrap ${st.color}`}>{st.label}</td>
                             <td className="py-1.5">
-                              {portionAmt > 0 && paidAmt < portionAmt && (
+                              {/* Vetëm kur fusha ende s'ka asnjë shumë — sapo admin fillon të
+                                  shkruajë një pagesë të pjesshme (p.sh. 500 nga 1000), butoni
+                                  fshihet, që të mos "kërcejë" gabimisht te shuma e plotë nëse
+                                  klikohet aksidentalisht pranë fushës numerike. */}
+                              {portionAmt > 0 && paidAmt === 0 && (
                                 <button onClick={() => setM(i, "paidAmount", String(portionAmt))}
                                   className="text-green-600 dark:text-green-400 hover:underline text-xs whitespace-nowrap">
                                   ✓ Pago
@@ -1860,6 +2233,85 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
               </div>
             );
           })()}
+
+          {/* ── FLEX MODE ── */}
+          {mode === "flex" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Pagesat</p>
+                <button onClick={addFlexRow} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Shto Pagesë
+                </button>
+              </div>
+
+              {/* Çdo rresht = NJË pagesë reale e marrë në një datë — s'ka fushë të veçantë
+                  "shuma e pritur" për të mos ngatërruar stafin (dy fusha për të njëjtën
+                  shumë ishin konfuze: "Shuma" e kështit kundrejt "Paguar" prej tij).
+                  Rreshti vetë barazon shumën e paguar me vlerën e tij — "Borxhi i mbetur"
+                  llogaritet kundrejt Çmimit Bazë të gjithë planit, jo kundrejt rreshtave. */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-slate-400 border-b border-slate-100 dark:border-slate-700">
+                      <th className="text-left pb-2 pr-2 font-medium">Afati</th>
+                      <th className="pb-2 pr-2 font-medium">Paguar €</th>
+                      <th className="pb-2 pr-2 font-medium">Data e pagesës</th>
+                      <th className="pb-2 pr-2 font-medium">Mënyra</th>
+                      <th className="pb-2 font-medium"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {flexRows.map((fr, i) => (
+                      <tr key={i} className="border-b border-slate-100 dark:border-slate-700/50">
+                        <td className="py-1.5 pr-2">
+                          <input type="date" value={fr.dueDate}
+                            onChange={e => setFlex(i, "dueDate", e.target.value)}
+                            className="form-input py-1 text-xs" />
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          <input type="number" value={fr.paidAmount} min="0" step="0.01"
+                            onChange={e => setFlexPaid(i, e.target.value)}
+                            className="form-input py-1 w-24 text-xs text-right" placeholder="0" />
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          <input type="date" value={fr.paidDate}
+                            onChange={e => setFlex(i, "paidDate", e.target.value)}
+                            className="form-input py-1 text-xs" />
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          <select value={fr.method} onChange={e => setFlex(i, "method", e.target.value)}
+                            className="form-input py-1 text-xs">
+                            <option value="CASH">Cash</option>
+                            <option value="BANK">Bankë</option>
+                            <option value="CARD">Kartelë</option>
+                            <option value="ONLINE">Online</option>
+                          </select>
+                        </td>
+                        <td className="py-1.5">
+                          <button onClick={() => removeFlexRow(i)} disabled={saving}
+                            title="Fshi këtë këst"
+                            className="p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl text-xs">
+                <div>
+                  <p className="text-slate-400 mb-0.5">Total paguar</p>
+                  <p className="font-bold text-green-600">{formatCurrency(flexTotalPaid)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 mb-0.5">Borxhi i mbetur</p>
+                  <p className="font-bold text-red-600">{formatCurrency(flexTotalDebt)}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 p-5 pt-0 sticky bottom-0 bg-white dark:bg-slate-800">
@@ -1868,18 +2320,17 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
           </button>
           <button onClick={() => handleSave(false)} disabled={saving} className="btn-secondary">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? "Duke ruajtur..." : mode === "two" ? "Ruaj Këste" : mode === "monthly" ? "Ruaj Muajt" : "Ruaj"}
+            {saving ? "Duke ruajtur..." : mode === "two" ? "Ruaj Këste" : mode === "monthly" ? "Ruaj Muajt" : mode === "flex" ? "Ruaj Pagesat" : "Ruaj"}
           </button>
-          {mode === "single" && (
-            <button
-              onClick={() => handleSave(true)}
-              disabled={saving || parseFloat(sForm.paidAmount || "0") <= 0}
-              className="btn-primary flex-1 justify-center whitespace-nowrap"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
-              Ruaj &amp; Printo Dëshminë
-            </button>
-          )}
+          <button
+            onClick={() => handleSave(true)}
+            disabled={saving || !canPrint}
+            title={!canPrint ? "Fut një shumë të paguar për të printuar dëshminë" : undefined}
+            className="btn-primary flex-1 justify-center whitespace-nowrap"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+            Ruaj &amp; Printo Dëshminë
+          </button>
         </div>
       </div>
     </div>

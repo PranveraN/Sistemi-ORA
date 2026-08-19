@@ -5,7 +5,7 @@ import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
 import { CALENDAR_YEARS } from "@/lib/academicYear";
-import { Plus, Eye, CheckCircle, Loader2, Download } from "lucide-react";
+import { Plus, Eye, CheckCircle, Loader2, Download, ArrowRightLeft } from "lucide-react";
 import * as XLSX from "xlsx";
 
 interface Invoice {
@@ -16,9 +16,16 @@ interface Invoice {
   status: string;
   createdAt: string;
   dueDate: string | null;
+  convertedInvoiceId: number | null;
   student: { id: number; firstName: string; lastName: string };
   items: { id: number }[];
 }
+
+const TYPE_BADGE: Record<string, string> = {
+  INVOICE:  "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
+  PROFORMA: "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400",
+  OFFER:    "bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400",
+};
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -30,6 +37,7 @@ export default function InvoicesPage() {
   const [year, setYear] = useState(0);
   const [markingPaid, setMarkingPaid] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [converting, setConverting] = useState<number | null>(null);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
@@ -89,6 +97,19 @@ export default function InvoicesPage() {
       body: JSON.stringify({ status: "PAID" }),
     });
     setMarkingPaid(null);
+    fetchInvoices();
+  }
+
+  async function convertToInvoice(inv: Invoice) {
+    if (!confirm(`Konverto profaturën ${inv.number} (${inv.student.firstName} ${inv.student.lastName}) në faturë reale?`)) return;
+    setConverting(inv.id);
+    const res = await fetch(`/api/invoices/${inv.id}/convert`, { method: "POST" });
+    const data = await res.json();
+    setConverting(null);
+    if (!res.ok) {
+      alert(data.error || "Gabim gjatë konvertimit");
+      return;
+    }
     fetchInvoices();
   }
 
@@ -186,9 +207,14 @@ export default function InvoicesPage() {
                       {inv.number}
                     </td>
                     <td className="table-cell">
-                      <span className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded text-xs font-medium">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${TYPE_BADGE[inv.type] ?? "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"}`}>
                         {getStatusLabel(inv.type)}
                       </span>
+                      {inv.type === "PROFORMA" && inv.convertedInvoiceId && (
+                        <Link href={`/invoices/${inv.convertedInvoiceId}`} className="block mt-1 text-[10px] text-primary-600 hover:underline">
+                          → e konvertuar
+                        </Link>
+                      )}
                     </td>
                     <td className="table-cell">
                       <Link href={`/students/${inv.student.id}`} className="text-primary-600 hover:underline font-medium">
@@ -212,6 +238,16 @@ export default function InvoicesPage() {
                     </td>
                     <td className="table-cell text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {inv.type === "PROFORMA" && !inv.convertedInvoiceId && (
+                          <button
+                            onClick={() => convertToInvoice(inv)}
+                            disabled={converting === inv.id}
+                            title="Konverto në Faturë"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors inline-flex disabled:opacity-50"
+                          >
+                            {converting === inv.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRightLeft className="w-4 h-4" />}
+                          </button>
+                        )}
                         {inv.status !== "PAID" && inv.status !== "CANCELLED" && (
                           <button
                             onClick={() => markPaid(inv)}

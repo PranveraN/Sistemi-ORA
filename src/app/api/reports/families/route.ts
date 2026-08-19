@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -9,11 +10,17 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const basePrice = parseFloat(searchParams.get("basePrice") || "2000");
 
+  const shkollimi = await prisma.paymentCategory.findFirst({ where: { name: { contains: "Shkollim" } } });
+
   const students = await prisma.student.findMany({
     where: { status: "ACTIVE" },
     include: {
       class: { select: { name: true } },
-      payments: { select: { paidAmount: true } },
+      // Kufizuar vetëm te "Shkollimi" — `basePrice`/`finalPrice` më poshtë janë
+      // çmimi i Shkollimit, prandaj "paid"/"debt" duhet të krahasohen vetëm me
+      // pagesat e Shkollimit, jo me gjithë kategoritë bashkë (Ushqimi, Eshkollori,
+      // Uniforma, etj), secila me çmimin e vet të veçantë.
+      payments: { where: shkollimi ? { categoryId: shkollimi.id } : undefined, select: { paidAmount: true, finalAmount: true, description: true } },
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });
@@ -68,8 +75,15 @@ export async function GET(req: NextRequest) {
       const lastName = first.lastName;
 
       const children = members.map(s => {
-        const finalPrice = Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100));
-        const paid = s.payments.reduce((sum, p) => sum + p.paidAmount, 0);
+        // Nëse ka plan real te Shkollimi, "Çmimi Final" merret nga vetë plani —
+        // jo nga përllogaritja sintetike "çmimi standard × zbritja" — që të
+        // përputhet saktë me atë që tregon faqja e Shkollimit dhe Lista e
+        // Nxënësve (shih të njëjtin arsyetim te /api/students).
+        // `aggregatePaymentTotals` trajton saktë Këste Fleksibël (FLEX_HEADER +
+        // FLEX_PAY_N), përndryshe totali del i fryrë (header + çdo pagesë).
+        const agg = aggregatePaymentTotals(s.payments);
+        const finalPrice = s.payments.length > 0 ? agg.finalAmount : Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100));
+        const paid = agg.paidAmount;
         const debt = Math.max(0, finalPrice - paid);
         return {
           id: s.id,

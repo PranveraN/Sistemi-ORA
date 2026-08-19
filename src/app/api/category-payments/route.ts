@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 
 type PrismaPayment = {
   id: number;
@@ -22,8 +23,7 @@ type PrismaPayment = {
 
 function aggregateStatus(payments: PrismaPayment[]): string {
   if (!payments.length) return "PENDING";
-  const totalFinal = payments.reduce((s, p) => s + p.finalAmount, 0);
-  const totalPaid  = payments.reduce((s, p) => s + p.paidAmount,  0);
+  const { finalAmount: totalFinal, paidAmount: totalPaid } = aggregatePaymentTotals(payments);
   if (totalFinal > 0 && totalPaid >= totalFinal) return "PAID";
   if (totalPaid > 0) return "PARTIAL";
   const now = new Date();
@@ -34,9 +34,7 @@ function aggregateStatus(payments: PrismaPayment[]): string {
 function aggregatePayment(payments: PrismaPayment[]): PrismaPayment | null {
   if (!payments.length) return null;
   if (payments.length === 1) return payments[0];
-  const totalFinal = payments.reduce((s, p) => s + p.finalAmount, 0);
-  const totalPaid  = payments.reduce((s, p) => s + p.paidAmount,  0);
-  const balance    = Math.max(0, totalFinal - totalPaid);
+  const { finalAmount: totalFinal, paidAmount: totalPaid, balance } = aggregatePaymentTotals(payments);
   return {
     ...payments[0],
     finalAmount: totalFinal,

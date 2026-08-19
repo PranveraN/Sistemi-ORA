@@ -35,17 +35,13 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { customerName, customerPhone, items, paidAmount, method, notes, saleDate } = body;
+  const { customerName, customerPhone, studentId, items, paidAmount, method, notes, saleDate } = body;
 
   if (!items?.length) return NextResponse.json({ error: "Asnjë artikull" }, { status: 400 });
 
   // Load products to get current prices & validate stock
   const productIds = items.map((i: { productId: number }) => i.productId);
   const products = await prisma.uniProduct.findMany({ where: { id: { in: productIds } } });
-
-  // Shitjet e regjistruara për data të kaluara (p.sh. rakordim historik) nuk e kufizojnë
-  // stokun aktual — vetëm shitjet e ditës së sotme validohen kundrejt stokut në kohë reale.
-  const isBackdated = saleDate && new Date(saleDate).toDateString() !== new Date().toDateString();
 
   let totalAmount = 0, totalCost = 0;
   const saleItems: {
@@ -58,12 +54,10 @@ export async function POST(req: NextRequest) {
     if (!product) continue;
     const qty = parseInt(item.quantity);
 
-    if (!isBackdated && product.stock < qty) {
-      return NextResponse.json(
-        { error: `Stoku i pamjaftueshëm për "${product.name}". Disponibël: ${product.stock}, kërkuar: ${qty}.` },
-        { status: 400 }
-      );
-    }
+    // Shitja NUK bllokohet nga stoku i regjistruar — stafi ndonjëherë s'arrin ta
+    // mbajë stokun të përditësuar në kohë reale, edhe pse malli fizikisht ekziston.
+    // Stoku vazhdon të zbritet më poshtë (mund të shkojë negativ), thjesht nuk e
+    // ndalon më ruajtjen e shitjes.
 
     const buy        = product.buyPrice;
     const sell       = item.sellPrice ? parseFloat(item.sellPrice) : product.sellPrice;
@@ -85,6 +79,10 @@ export async function POST(req: NextRequest) {
     data: {
       customerName,
       customerPhone: customerPhone || null,
+      // Opsionale — lidh shitjen me nxënësin (nëse zgjidhet nga admin), që të
+      // shfaqet te historiku i tij. S'është e detyrueshme, sepse Uniforma shitet
+      // shpesh edhe klientëve që s'janë nxënës të regjistruar (motra/vëllezër, etj).
+      studentId: studentId ? parseInt(studentId) : null,
       totalAmount,
       totalCost,
       profit,

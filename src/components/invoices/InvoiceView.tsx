@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft, Printer, Download, Send } from "lucide-react";
+import { ChevronLeft, Printer, Download, Send, ArrowRightLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import { useRef, useState } from "react";
 
@@ -27,6 +28,7 @@ interface Invoice {
   dueDate: string | null;
   createdAt: string;
   notes: string | null;
+  convertedInvoiceId: number | null;
   items: InvoiceItem[];
   student: {
     id: number;
@@ -43,6 +45,8 @@ interface Invoice {
 export default function InvoiceView({ invoice }: { invoice: Invoice }) {
   const printRef = useRef<HTMLDivElement>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const router = useRouter();
 
   async function updateStatus(status: string) {
     setUpdatingStatus(true);
@@ -53,6 +57,19 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
     });
     setUpdatingStatus(false);
     window.location.reload();
+  }
+
+  async function convertToInvoice() {
+    if (!confirm(`Konverto profaturën ${invoice.number} në faturë reale?`)) return;
+    setConverting(true);
+    const res = await fetch(`/api/invoices/${invoice.id}/convert`, { method: "POST" });
+    const data = await res.json();
+    setConverting(false);
+    if (!res.ok) {
+      alert(data.error || "Gabim gjatë konvertimit");
+      return;
+    }
+    router.push(`/invoices/${data.id}`);
   }
 
   function printInvoice() {
@@ -344,6 +361,19 @@ ${notesBlock}
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {invoice.type === "PROFORMA" && (
+            invoice.convertedInvoiceId ? (
+              <Link href={`/invoices/${invoice.convertedInvoiceId}`} className="btn-secondary">
+                <ArrowRightLeft className="w-4 h-4" />
+                Shiko Faturën e Konvertuar
+              </Link>
+            ) : (
+              <button onClick={convertToInvoice} disabled={converting} className="btn-primary">
+                {converting ? <Send className="w-4 h-4 animate-pulse" /> : <ArrowRightLeft className="w-4 h-4" />}
+                Konverto në Faturë
+              </button>
+            )
+          )}
           {invoice.status === "DRAFT" && (
             <button
               onClick={() => updateStatus("SENT")}

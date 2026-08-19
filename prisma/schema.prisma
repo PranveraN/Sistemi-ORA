@@ -313,6 +313,7 @@ model Invoice {
   dueDate     DateTime?
   paidDate    DateTime?
   notes       String?
+  convertedInvoiceId Int?   // kur type=PROFORMA dhe eshte konvertuar, id e Invoice-it real te krijuar
   organizationId Int          @default(1)
   organization   Organization @relation(fields: [organizationId], references: [id])
   payments       Payment[]
@@ -376,6 +377,7 @@ model UniOrderItem {
 
 model UniSale {
   id            Int           @id @default(autoincrement())
+  studentId     Int?
   customerName  String
   customerPhone String?
   totalAmount   Float

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { formatDate, getStatusColor, getStatusLabel, formatCurrency } from "@/lib/utils";
 import {
   UserPlus, Search, ChevronLeft, ChevronRight,
-  Eye, Edit, Users, AlertCircle, Upload, FileSignature, Trash2, Download, X, Plus,
+  Eye, Edit, Users, AlertCircle, Upload, FileSignature, Trash2, Download, X, Plus, Lock,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -36,6 +36,8 @@ interface Student {
   enrollDate: string;
   class: { name: string; level: string } | null;
   totalPaid: number;
+  shkollimiFinalTotal: number;
+  hasShkollimiPlan: boolean;
   timiInvest: { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number } | null;
 }
 
@@ -191,7 +193,15 @@ export default function StudentsPage() {
 
 
   const totalPages = Math.ceil(total / limit);
-  const finalPrice  = (s: Student) => Math.round(tuitionPrice * (1 - s.discountPct / 100));
+  // Nëse nxënësi ka tashmë plan real pagesash te Shkollimi, "Çmimi Final" merret
+  // NGA VETË plani (i njëjti total që tregon faqja e Shkollimit) — jo nga
+  // përllogaritja sintetike "çmimi standard × zbritja". Përndryshe, studentë me
+  // plan jo-standard (p.sh. Këste Fleksibël me shumë të veçantë, siç ndodhi me
+  // Ensarin: 2.200€ real kundrejt 1.800€ të përllogaritur) shfaqnin dy shifra
+  // krejt të ndryshme mes kësaj liste dhe faqes së Shkollimit. Formula sintetike
+  // mbetet vetëm si VLERËSIM PARAPRAK për studentë që s'kanë ende plan real
+  // (të dobishme për të parashikuar borxhin përpara se të faturohen).
+  const finalPrice  = (s: Student) => s.hasShkollimiPlan ? s.shkollimiFinalTotal : Math.round(tuitionPrice * (1 - s.discountPct / 100));
   const totalPaid   = (s: Student) => s.totalPaid;
   const totalDebt   = (s: Student) => Math.max(0, finalPrice(s) - s.totalPaid);
 
@@ -541,8 +551,12 @@ export default function StudentsPage() {
                           Kontratë
                         </Link>
                       </td>
-                      {/* Çmimi Final — editueshëm inline */}
-                      <td className="table-cell" onClick={() => editingPriceId !== s.id && startEditPrice(s)}>
+                      {/* Çmimi Final — editueshëm inline VETËM nëse s'ka ende plan real te
+                          Shkollimi. Sapo ka plan real, kjo shifër vjen drejtpërdrejt nga
+                          pagesat e vërteta (shih `finalPrice` më sipër) — editimi këtu do
+                          të ndryshonte vetëm `discountPct`, çka s'do të prekte më asgjë,
+                          duke krijuar përshtypjen e rreme se ndryshimi "s'funksionoi". */}
+                      <td className="table-cell" onClick={() => !s.hasShkollimiPlan && editingPriceId !== s.id && startEditPrice(s)}>
                         {editingPriceId === s.id ? (
                           <input
                             type="number"
@@ -555,6 +569,15 @@ export default function StudentsPage() {
                             onKeyDown={e => { if (e.key === "Enter") commitEditPrice(s); if (e.key === "Escape") setEditingPriceId(null); }}
                             onClick={e => e.stopPropagation()}
                           />
+                        ) : s.hasShkollimiPlan ? (
+                          <Link href="/shkollimi" className="group" title="Ka plan real te Shkollimi — modifikoje shumën atje">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm group-hover:text-primary-600 transition-colors">
+                                {formatCurrency(fp)}
+                              </span>
+                              <Lock className="w-3 h-3 text-slate-300" />
+                            </div>
+                          </Link>
                         ) : (
                           <div className="cursor-pointer group">
                             <div className="flex items-center gap-1">
