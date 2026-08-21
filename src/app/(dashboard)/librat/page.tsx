@@ -297,7 +297,9 @@ export default function LibratPage() {
 
   /* ── Periudha (Vit Akademik / Kalendarik + Muaj + Vit) ── */
   const now = new Date();
-  const currentAcademicStart = now.getMonth() + 1 >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+  // Gushti llogaritet tashmë si fillim i vitit të ri akademik (jo Shtatori) — shih
+  // CategoryPaymentPage.tsx për shpjegimin e plotë.
+  const currentAcademicStart = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1;
   const [yearType, setYearType] = useState<YearType>("academic");
   const [month, setMonth] = useState(0); // 0 = "Të gjitha"
   const [year, setYear]   = useState(currentAcademicStart);

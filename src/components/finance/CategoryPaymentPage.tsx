@@ -158,7 +158,10 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 
 export default function CategoryPaymentPage({ categoryName, title, icon, color, isMonthly = true, showCalculator = false, singlePaymentOnly = false }: Props) {
   const now = new Date();
-  const currentAcademicStart = now.getMonth() + 1 >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+  // Gushti llogaritet tashmë si fillim i vitit të ri akademik (regjistrimet/kontratat
+  // për vitin e ardhshëm nisin para 1 Shtatorit) — jo Shtatori, që linte faqen të
+  // shfaqte gabimisht vitin e kaluar gjatë gjithë gushtit.
+  const currentAcademicStart = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1;
   const [month, setMonth] = useState(0); // 0 = "Të gjitha" → by default shfaq pasqyrën e plotë të vitit akademik
   const [year,  setYear]  = useState(currentAcademicStart);
   const [yearType, setYearType] = useState<YearType>("academic");

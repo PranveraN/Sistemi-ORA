@@ -252,7 +252,9 @@ function calcPrices(price2Meals: number, workingDays: number, monthsPerYear: num
 /* ═══════════════════════════════════════════════════════ */
 export default function UshqimiPage() {
   const now = new Date();
-  const currentAcademicStart = now.getMonth() + 1 >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+  // Gushti llogaritet tashmë si fillim i vitit të ri akademik (jo Shtatori) — shih
+  // CategoryPaymentPage.tsx për shpjegimin e plotë.
+  const currentAcademicStart = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1;
   const [month, setMonth]   = useState(now.getMonth() + 1);
   const [year, setYear]     = useState(currentAcademicStart);
   const [yearType, setYearType] = useState<YearType>("academic");
