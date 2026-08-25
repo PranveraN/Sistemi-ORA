@@ -6,7 +6,7 @@ import Link from "next/link";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
 import { CYCLES, getCycle } from "@/lib/school-cycles";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import { BADGE_CSS, buildBadgeCardHTML } from "@/lib/badge-html";
 import * as XLSX from "xlsx";
 import {
@@ -252,11 +252,8 @@ function calcPrices(price2Meals: number, workingDays: number, monthsPerYear: num
 /* ═══════════════════════════════════════════════════════ */
 export default function UshqimiPage() {
   const now = new Date();
-  // Gushti llogaritet tashmë si fillim i vitit të ri akademik (jo Shtatori) — shih
-  // CategoryPaymentPage.tsx për shpjegimin e plotë.
-  const currentAcademicStart = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1;
   const [month, setMonth]   = useState(now.getMonth() + 1);
-  const [year, setYear]     = useState(currentAcademicStart);
+  const [year, setYear]     = useState(DEFAULT_ACADEMIC_YEAR);
   const [yearType, setYearType] = useState<YearType>("academic");
   const [search, setSearch]   = useState("");
   const [classId, setClassId] = useState("");

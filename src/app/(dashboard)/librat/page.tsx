@@ -7,7 +7,7 @@ import {
   TrendingDown, ArrowRightLeft, BarChart3, Download, Wallet, Medal,
 } from "lucide-react";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, getDateRange, type YearType } from "@/lib/academicYear";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, getDateRange, type YearType } from "@/lib/academicYear";
 import * as XLSX from "xlsx";
 
 /* ── Types ─────────────────────────────────────────────── */
@@ -296,13 +296,9 @@ export default function LibratPage() {
   const [tab, setTab] = useState<"shitjet" | "produktet" | "raport" | "dorezim">("shitjet");
 
   /* ── Periudha (Vit Akademik / Kalendarik + Muaj + Vit) ── */
-  const now = new Date();
-  // Gushti llogaritet tashmë si fillim i vitit të ri akademik (jo Shtatori) — shih
-  // CategoryPaymentPage.tsx për shpjegimin e plotë.
-  const currentAcademicStart = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1;
   const [yearType, setYearType] = useState<YearType>("academic");
   const [month, setMonth] = useState(0); // 0 = "Të gjitha"
-  const [year, setYear]   = useState(currentAcademicStart);
+  const [year, setYear]   = useState(DEFAULT_ACADEMIC_YEAR);
 
   function dateRange(): { from?: string; to?: string } {
     if (year <= 0) return {};

@@ -38,3 +38,11 @@ export function getAcademicMonths(startYear: number): { calMonth: number; calYea
 export const ACADEMIC_YEARS = [2022, 2023, 2024, 2025, 2026];
 /** Vitet kalendarike */
 export const CALENDAR_YEARS = [2022, 2023, 2024, 2025, 2026, 2027];
+
+/**
+ * Viti akademik i parazgjedhur kur hapet faqja e pagesave — fiksuar manualisht,
+ * NUK llogaritet nga data e sotme. Përditësohet vetëm dorazi (p.sh. në fillim
+ * të vitit shkollor tjetër), përndryshe faqja do të "hidhej" vetvetiu te viti
+ * tjetër çdo Gusht, duke fshehur pagesat e vitit aktual pa asnjë ndryshim manual.
+ */
+export const DEFAULT_ACADEMIC_YEAR = 2026;

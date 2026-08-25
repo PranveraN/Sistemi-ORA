@@ -5,7 +5,7 @@ import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
 import { CYCLES, getCycle } from "@/lib/school-cycles";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 
 const PAYMENT_PLANS: { value: string; label: string }[] = [
   { value: "FULL",         label: "E plotë" },
@@ -157,13 +157,8 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function CategoryPaymentPage({ categoryName, title, icon, color, isMonthly = true, showCalculator = false, singlePaymentOnly = false }: Props) {
-  const now = new Date();
-  // Gushti llogaritet tashmë si fillim i vitit të ri akademik (regjistrimet/kontratat
-  // për vitin e ardhshëm nisin para 1 Shtatorit) — jo Shtatori, që linte faqen të
-  // shfaqte gabimisht vitin e kaluar gjatë gjithë gushtit.
-  const currentAcademicStart = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1;
   const [month, setMonth] = useState(0); // 0 = "Të gjitha" → by default shfaq pasqyrën e plotë të vitit akademik
-  const [year,  setYear]  = useState(currentAcademicStart);
+  const [year,  setYear]  = useState(DEFAULT_ACADEMIC_YEAR);
   const [yearType, setYearType] = useState<YearType>("academic");
   const [search,  setSearch]  = useState("");
   const [students, setStudents] = useState<StudentRow[]>([]);
