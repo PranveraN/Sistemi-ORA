@@ -18,7 +18,7 @@ import {
   Search, CheckCircle, AlertCircle, Clock,
   Plus, X, Save, Users, Loader2, Printer,
   TrendingUp, TrendingDown, ArrowLeftRight, FileUp,
-  CalendarDays, Download, Trash2, Calculator, Lock,
+  CalendarDays, Download, Trash2, Calculator, Lock, StickyNote,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
@@ -39,6 +39,7 @@ interface Payment {
   discountType: string | null;
   scholarship: number;
   description: string | null;
+  note: string | null;
   receiptNumber: string | null;
 }
 
@@ -766,6 +767,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                       const hasMonthly = s.installments.some(p => p.description?.startsWith("MUAJI_"));
                       const hasFlex = s.installments.some(p => p.description?.startsWith("FLEX_"));
                       const hasTwo = !hasMonthly && !hasFlex && s.installments.length >= 2;
+                      const rowNote = s.payment?.note ?? s.installments.find(p => p.note)?.note ?? null;
                       const k1 = hasTwo ? s.installments[0] : null;
                       const k2 = hasTwo ? s.installments[1] : null;
                       const statusKey = p?.status || "PENDING";
@@ -835,6 +837,11 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                               <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-1.5 py-0.5 rounded font-medium">
                                 <CalendarDays className="w-3 h-3" />
                                 {s.installments.length} pagesa
+                              </span>
+                            )}
+                            {rowNote && (
+                              <span className="ml-2 inline-flex" title={rowNote}>
+                                <StickyNote className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0" />
                               </span>
                             )}
                           </td>
@@ -1193,6 +1200,26 @@ function StatCard({ label, value, icon, bg, text }: {
 const SCHOOL_MONTHS_LBL = ["Shtator", "Tetor", "Nëntor", "Dhjetor", "Janar", "Shkurt", "Mars", "Prill", "Maj", "Qershor"];
 const SCHOOL_MONTH_CALS = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6];
 
+// Paralajmërim (jo bllokues) kur një Afat i shkruar dorazi bie jashtë vitit akademik
+// aktualisht të zgjedhur (1 Shtator schoolYearStart – 31 Gusht schoolYearStart+1) —
+// zbulon gabime shtypi si "Prill" në vend të "Shtator" përpara se pagesa të bëhet
+// e padukshme në vitin e pritur (shih rastin Jusuf Fejzullahu).
+export function AcademicYearWarning({ dueDate, schoolYearStart }: { dueDate: string; schoolYearStart: number }) {
+  if (!dueDate || schoolYearStart <= 0) return null;
+  const d = new Date(dueDate);
+  if (isNaN(d.getTime())) return null;
+  const inRange =
+    (d.getFullYear() === schoolYearStart && d.getMonth() + 1 >= 9) ||
+    (d.getFullYear() === schoolYearStart + 1 && d.getMonth() + 1 <= 8);
+  if (inRange) return null;
+  return (
+    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+      <AlertCircle className="w-3 h-3 shrink-0" />
+      Afati bie jashtë vitit akademik {schoolYearStart}–{schoolYearStart + 1} (1 Shtator–31 Gusht) — kontrollo nëse është shtypur gabim.
+    </p>
+  );
+}
+
 // Llogarit pro-rate: muajt e ndjekur deri në datën e joaktivizimit
 function calcProrated(baseAmount: number, discountPct: number, inactiveDate: Date, schoolYear: number) {
   const effectivePrice = Math.round(baseAmount * (1 - discountPct / 100));
@@ -1363,6 +1390,9 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     singleExisting ? singleExisting.scholarship :
     flexHeaderExisting ? flexHeaderExisting.scholarship :
     round2(existingInstallmentGroup.reduce((sum, p) => sum + p.scholarship, 0));
+  // Shënimi i lirë ("për cilën periudhë është kjo pagesë", "borxh i vjetër", etj.) —
+  // ruhet identik në çdo rresht të planit (shih handleSave), ndaj mjafton i pari që gjendet.
+  const existingNote: string | null = installments.find(p => p.note)?.note ?? null;
 
   // ── Common form (gross amount + discounts) ──
   // Nëse kategoria ka një shumë fikse të konfiguruar (p.sh. Librat & Shkollorja = 20€/vit),
@@ -1375,6 +1405,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     discount:     String(existingDiscount ?? k1Existing?.discount ?? (student.discountPct > 0 ? student.discountPct : "0")),
     discountType: existingDiscountType ?? k1Existing?.discountType ?? (student.discountPct > 0 ? "percentage" : "fixed"),
     scholarship:  String(existingScholarship || (singleExisting?.scholarship ?? "0")),
+    note:         existingNote ?? "",
   });
 
   // Derived final amount for reference
@@ -1598,6 +1629,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         dueDate:      sForm.dueDate,
         paidDate:     sForm.paidDate,
         description:  null,
+        note:         form.note || null,
         // Muaji/viti llogariten nga Afati i pagesës, jo nga filtri aktual i tabelës
         // (mund të jetë "Të gjitha" → pa muaj konkret, gjë që e bënte pagesën të
         // "padukshme" për query-t e ardhshme që kërkojnë muaj real).
@@ -1652,6 +1684,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
           dueDate,
           paidDate,
           description,
+          note:         form.note || null,
           // Muaji/viti llogariten nga Afati i vetë këstit, jo nga filtri i tabelës.
           month:        new Date(dueDate).getMonth() + 1,
           year:         new Date(dueDate).getFullYear(),
@@ -1723,6 +1756,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
           dueDate:      mf.dueDate,
           paidDate:     mf.paidDate,
           description:  `MUAJI_${i + 1}`,
+          note:         form.note || null,
           month:        SCHOOL_MONTH_CALS[i],
           year:         i < 4 ? yr : yr + 1,
         };
@@ -1764,6 +1798,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         dueDate:      headerDueDate,
         paidDate:     null,
         description:  "FLEX_HEADER",
+        note:         form.note || null,
         month:        new Date(headerDueDate).getMonth() + 1,
         year:         new Date(headerDueDate).getFullYear(),
       };
@@ -1947,6 +1982,15 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
             )}
           </div>
 
+          {/* Shënim i lirë — sqaron për cilën periudhë është pagesa, ose nëse është
+              shlyerje e një borxhi të vjetër. Ruhet identik në çdo rresht/këst të
+              planit (shih handleSave), kështu që s'zhduket kur ndryshon mënyra e pagesës. */}
+          <div>
+            <label className="form-label">Shënim (opsionale)</label>
+            <input type="text" value={form.note} onChange={e => set("note", e.target.value)}
+              className="form-input" placeholder='p.sh. "Borxh i vjetër nga 2025-2026" ose "Për Shtator-Tetor 2026"' />
+          </div>
+
           {/* ── SINGLE MODE ── */}
           {mode === "single" && (
             <div className="space-y-3">
@@ -1971,6 +2015,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                 <div>
                   <label className="form-label">Afati i Pagesës</label>
                   <input type="date" value={sForm.dueDate} onChange={e => setS("dueDate", e.target.value)} className="form-input" />
+                  <AcademicYearWarning dueDate={sForm.dueDate} schoolYearStart={year} />
                 </div>
                 <div>
                   <label className="form-label">Data e Pagesës</label>
@@ -2029,6 +2074,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                   <div>
                     <label className="form-label">Afati</label>
                     <input type="date" value={k1Form.dueDate} onChange={e => setK1("dueDate", e.target.value)} className="form-input" />
+                    <AcademicYearWarning dueDate={k1Form.dueDate} schoolYearStart={year} />
                   </div>
                   <div>
                     <label className="form-label">Paguar (€)</label>
@@ -2084,6 +2130,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                   <div>
                     <label className="form-label">Afati</label>
                     <input type="date" value={k2Form.dueDate} onChange={e => setK2("dueDate", e.target.value)} className="form-input" />
+                    <AcademicYearWarning dueDate={k2Form.dueDate} schoolYearStart={year} />
                   </div>
                   <div>
                     <label className="form-label">Paguar (€)</label>
@@ -2265,6 +2312,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                           <input type="date" value={fr.dueDate}
                             onChange={e => setFlex(i, "dueDate", e.target.value)}
                             className="form-input py-1 text-xs" />
+                          <AcademicYearWarning dueDate={fr.dueDate} schoolYearStart={year} />
                         </td>
                         <td className="py-1.5 pr-2">
                           <input type="number" value={fr.paidAmount} min="0" step="0.01"

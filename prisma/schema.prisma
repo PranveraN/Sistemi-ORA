@@ -287,6 +287,7 @@ model Payment {
   method        String?          // CASH, BANK, CARD, ONLINE
   status        String           @default("PENDING") // PENDING, PARTIAL, PAID, OVERDUE
   description   String?
+  note          String?          // shënim i lirë i stafit (p.sh. "borxh i vjetër nga 2025-2026")
   invoiceId     Int?
   invoice       Invoice?         @relation(fields: [invoiceId], references: [id])
   month         Int?             // 1-12 for monthly payments

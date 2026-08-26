@@ -17,6 +17,7 @@ type PrismaPayment = {
   discountType: string | null;
   scholarship: number;
   description: string | null;
+  note: string | null;
   month: number;
   year: number;
 };
@@ -89,7 +90,17 @@ export async function GET(req: NextRequest) {
         { month: { lte: 8 }, year: year + 1 },
       ];
     } else {
-      paymentFilter.year = year;
+      // Kalendarik "Të gjitha" → grupohet sipas datës REALE të arkëtimit (paidDate),
+      // jo sipas Afatit (fusha month/year, gjithmonë e rrjedhur nga dueDate) — që
+      // pasqyron saktë sa para hynë brenda vitit kalendarik X, jo për cilin muaj
+      // shkollimi ishin. Pagesat ende PA u paguar (paidDate=null) s'kanë ende
+      // "datë arkëtimi", ndaj bien mbrapsht te Afati i tyre.
+      const yStart = new Date(Date.UTC(year, 0, 1));
+      const yEnd   = new Date(Date.UTC(year + 1, 0, 1));
+      paymentFilter.OR = [
+        { paidDate: { gte: yStart, lt: yEnd } },
+        { paidDate: null, dueDate: { gte: yStart, lt: yEnd } },
+      ];
     }
   }
 
@@ -110,7 +121,7 @@ export async function GET(req: NextRequest) {
             id: true, amount: true, finalAmount: true, paidAmount: true,
             balance: true, status: true, method: true, dueDate: true,
             paidDate: true, discount: true, discountType: true,
-            scholarship: true, description: true, receiptNumber: true,
+            scholarship: true, description: true, note: true, receiptNumber: true,
             month: true, year: true,
           },
         },

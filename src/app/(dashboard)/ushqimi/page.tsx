@@ -93,6 +93,7 @@ interface Payment {
   balance: number; discount: number; discountType: string | null;
   scholarship: number; method: string | null; paidDate: string | null;
   dueDate: string; status: string; description: string | null;
+  note: string | null;
   receiptNumber: string | null; month: number; year: number;
 }
 interface Class { id: number; name: string; level: string; }
@@ -942,6 +943,7 @@ export default function UshqimiPage() {
                             <button
                               type="button"
                               onClick={() => setPayModal({ student: s, month: period.canonicalMonth, existingPayment: payment })}
+                              title={payment?.note || undefined}
                               className={`w-full h-full px-2 py-2.5 text-xs font-medium transition-colors ${
                                 skipped
                                   ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 italic hover:bg-slate-200"
@@ -1135,6 +1137,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       ? new Date(existing.paidDate).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0]
   );
+  const [note, setNote] = useState(existing?.note ?? "");
   const [saving, setSaving] = useState(false);
 
   const finalAmount = isCalc ? (overrideAmount ?? 0) : Math.round(days * pricePerDay * 100) / 100;
@@ -1160,6 +1163,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       paidDate: paid > 0 ? paidDate : null,
       month, year,
       description,
+      note: note || null,
     };
 
     const catRes = await fetch("/api/categories");
@@ -1305,6 +1309,12 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
               <label className="form-label">Data e Pagesës</label>
               <input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} className="form-input" />
             </div>
+          </div>
+
+          <div>
+            <label className="form-label">Shënim (opsionale)</label>
+            <input type="text" value={note} onChange={e => setNote(e.target.value)}
+              className="form-input" placeholder='p.sh. "Borxh i vjetër" ose sqarim tjetër' />
           </div>
 
           {/* Balance */}
