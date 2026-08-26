@@ -11,6 +11,7 @@ const DEFAULTS: Record<string, string> = {
   schoolYear:    "2025/2026",
   schoolWebsite: "",
   timiInvestEnabled: "true",
+  ushqimiPrice2Meals: "4",
 };
 
 const ALLOWED = Object.keys(DEFAULTS);

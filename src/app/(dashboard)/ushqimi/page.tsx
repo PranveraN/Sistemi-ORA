@@ -273,13 +273,36 @@ export default function UshqimiPage() {
     });
   }, []);
 
-  // Pricing config
+  // Pricing config — çmimi (price2Meals) ruhet si parazgjedhje e sistemit (tabela
+  // Setting), jo vetëm në state të faqes — përndryshe çdo rifreskim/rihapje e
+  // kthente te 4€ i fiksuar, edhe pse stafi e kishte ndryshuar në 4.5€ (shih
+  // handleSavePrice2Meals më poshtë, e vetmja mënyrë që e ruan realisht).
   const [price2Meals,   setPrice2Meals]   = useState(4);
+  const [price2MealsSaved, setPrice2MealsSaved] = useState(4);
+  const [savingPrice,   setSavingPrice]   = useState(false);
   const [workingDays,   setWorkingDays]   = useState(20);
   const [monthsPerYear, setMonthsPerYear] = useState(10);
   const [periods,       setPeriods]       = useState<Period[]>(DEFAULT_PERIODS);
   const [showCalc,      setShowCalc]      = useState(true);
   const [showManual,    setShowManual]    = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings").then(r => r.json()).then(s => {
+      const v = parseFloat(s.ushqimiPrice2Meals);
+      if (!isNaN(v) && v > 0) { setPrice2Meals(v); setPrice2MealsSaved(v); }
+    });
+  }, []);
+
+  async function handleSavePrice2Meals() {
+    setSavingPrice(true);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ushqimiPrice2Meals: String(price2Meals) }),
+    });
+    setPrice2MealsSaved(price2Meals);
+    setSavingPrice(false);
+  }
 
   // Tab + category ID
   const [tab,        setTab]        = useState<Tab>("income");
@@ -627,6 +650,17 @@ export default function UshqimiPage() {
                     onChange={e => setPrice2Meals(parseFloat(e.target.value) || 0)}
                     className="form-input w-36" min="0" step="0.5" />
                 </div>
+                {price2Meals !== price2MealsSaved && (
+                  <button
+                    onClick={handleSavePrice2Meals}
+                    disabled={savingPrice}
+                    className="btn-primary text-sm pb-2.5"
+                    title="Ruaje si çmimin e ri të parazgjedhur — përndryshe kthehet te i vjetri kur rihapet faqja"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {savingPrice ? "Duke ruajtur..." : `Ruaj si parazgjedhje (${formatCurrency(price2MealsSaved)} → ${formatCurrency(price2Meals)})`}
+                  </button>
+                )}
                 <div className="flex items-center gap-1.5 text-xs text-slate-400 pb-2">
                   <Info className="w-3.5 h-3.5" />
                   Mengjesi: {formatCurrency(price2Meals * 3/8)}/ditë · Dreka: {formatCurrency(price2Meals * 5/8)}/ditë
