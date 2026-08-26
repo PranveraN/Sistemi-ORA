@@ -259,7 +259,7 @@ export default function ImportStudentsPage() {
       if (val instanceof Date) {
         const d = val.getDate().toString().padStart(2, "0");
         const m = (val.getMonth() + 1).toString().padStart(2, "0");
-        return `${d}.${m}.${val.getFullYear()}`;
+        return `${d}/${m}/${val.getFullYear()}`;
       }
       return String(val ?? "").trim();
     }

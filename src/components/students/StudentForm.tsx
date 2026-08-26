@@ -61,17 +61,17 @@ function Field({ label, type = "text", required = false, placeholder = "", value
   );
 }
 
-// Konverton YYYY-MM-DD → DD.MM.YYYY për display
+// Konverton YYYY-MM-DD → DD/MM/YYYY për display
 function isoToDisplay(iso: string): string {
   if (!iso) return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
     const [y, m, d] = iso.split("-");
-    return `${d}.${m}.${y}`;
+    return `${d}/${m}/${y}`;
   }
   return iso;
 }
 
-// Konverton DD.MM.YYYY → YYYY-MM-DD për ruajtje
+// Konverton DD/MM/YYYY (ose DD.MM.YYYY, për input të vjetër) → YYYY-MM-DD për ruajtje
 function displayToIso(val: string): string {
   const clean = val.replace(/\s/g, "");
   if (/^\d{2}\.\d{2}\.\d{4}$/.test(clean)) {
@@ -100,7 +100,7 @@ function DateField({ label, required = false, value, onChange }: {
   function handleBlur() {
     const digits = raw.replace(/\D/g, "");
     if (digits.length === 8) {
-      const formatted = `${digits.slice(0,2)}.${digits.slice(2,4)}.${digits.slice(4,8)}`;
+      const formatted = `${digits.slice(0,2)}/${digits.slice(2,4)}/${digits.slice(4,8)}`;
       setRaw(formatted);
       onChange(displayToIso(formatted));
     }
@@ -116,7 +116,7 @@ function DateField({ label, required = false, value, onChange }: {
         value={raw}
         onChange={e => handleChange(e.target.value)}
         onBlur={handleBlur}
-        placeholder="DD.MM.VVVV"
+        placeholder="DD/MM/VVVV"
         className="form-input"
       />
     </div>

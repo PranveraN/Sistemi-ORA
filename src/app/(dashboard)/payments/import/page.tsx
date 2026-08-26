@@ -132,7 +132,7 @@ export default function ImportPaymentsPage() {
       for (const [origKey, mappedKey] of Object.entries(headerMap)) {
         const val = row[origKey];
         if (val instanceof Date) {
-          m[mappedKey] = `${val.getDate().toString().padStart(2,"0")}.${(val.getMonth()+1).toString().padStart(2,"0")}.${val.getFullYear()}`;
+          m[mappedKey] = `${val.getDate().toString().padStart(2,"0")}/${(val.getMonth()+1).toString().padStart(2,"0")}/${val.getFullYear()}`;
         } else {
           m[mappedKey] = String(val ?? "").trim();
         }

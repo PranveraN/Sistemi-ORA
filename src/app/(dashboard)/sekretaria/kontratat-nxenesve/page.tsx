@@ -58,7 +58,7 @@ function fmtDate(iso: string) {
   if (!iso) return "";
   try {
     const d = new Date(iso);
-    return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
   } catch { return ""; }
 }
 
@@ -663,9 +663,9 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                   label: "lindje",
                   cells: [
                     <>{sb}</>,
-                    <EF key="b2" value={d.sib2Birth} onChange={set("sib2Birth")} placeholder="DD.MM.YYYY" />,
-                    <EF key="b3" value={d.sib3Birth} onChange={set("sib3Birth")} placeholder="DD.MM.YYYY" />,
-                    ...(has4 ? [<EF key="b4" value={d.sib4Birth} onChange={set("sib4Birth")} placeholder="DD.MM.YYYY" />] : []),
+                    <EF key="b2" value={d.sib2Birth} onChange={set("sib2Birth")} placeholder="DD/MM/YYYY" />,
+                    <EF key="b3" value={d.sib3Birth} onChange={set("sib3Birth")} placeholder="DD/MM/YYYY" />,
+                    ...(has4 ? [<EF key="b4" value={d.sib4Birth} onChange={set("sib4Birth")} placeholder="DD/MM/YYYY" />] : []),
                   ],
                 },
                 {
@@ -728,7 +728,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                   <td style={{ ...CS, width: "50%" }}><span style={LB}>Adresa:</span><EF value={d.motherAddress} onChange={set("motherAddress")} /></td>
                 </tr>
                 <tr>
-                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.motherBirth} onChange={set("motherBirth")} placeholder="DD.MM.YYYY" /></td>
+                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.motherBirth} onChange={set("motherBirth")} placeholder="DD/MM/YYYY" /></td>
                   <td style={CS}><span style={LB}>Profesioni:</span><EF value={d.motherProf} onChange={set("motherProf")} /></td>
                 </tr>
                 <tr>
@@ -741,7 +741,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                   <td style={CS}><span style={LB}>Adresa:</span><EF value={d.fatherAddress} onChange={set("fatherAddress")} /></td>
                 </tr>
                 <tr>
-                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.fatherBirth} onChange={set("fatherBirth")} placeholder="DD.MM.YYYY" /></td>
+                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.fatherBirth} onChange={set("fatherBirth")} placeholder="DD/MM/YYYY" /></td>
                   <td style={CS}><span style={LB}>Profesioni:</span><EF value={d.fatherProf} onChange={set("fatherProf")} /></td>
                 </tr>
                 <tr>
@@ -762,7 +762,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                   <td style={{ ...CS, width: "50%" }}><span style={LB}>Adresa:</span><EF value={d.respAddress} onChange={set("respAddress")} /></td>
                 </tr>
                 <tr>
-                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.respBirth} onChange={set("respBirth")} placeholder="DD.MM.YYYY" /></td>
+                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.respBirth} onChange={set("respBirth")} placeholder="DD/MM/YYYY" /></td>
                   <td style={CS}><span style={LB}>Profesioni:</span><EF value={d.respProf} onChange={set("respProf")} /></td>
                 </tr>
                 <tr>
