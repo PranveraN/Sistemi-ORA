@@ -172,7 +172,7 @@ export default function BilanciPage() {
             ))}
           </div>
 
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             {years.map(y => (
               <button key={y} onClick={() => setVit(y)}
                 className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${vit === y ? "bg-primary-600 text-white shadow-sm" : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary-300"}`}>

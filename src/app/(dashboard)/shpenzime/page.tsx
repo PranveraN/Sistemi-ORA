@@ -609,7 +609,7 @@ export default function ShpenzimePage() {
             {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
           <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-24">
-            {[2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            {[2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
 
           {/* Filtri Zyre / Banke */}
