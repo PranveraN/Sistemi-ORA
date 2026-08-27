@@ -24,7 +24,7 @@ interface Payment {
 // direkt te faqja ku ka planin e plotë (Dy Këste/Çdo Muaj/Këste Fleksibël).
 const CATEGORY_LINKS: Record<string, string> = {
   "Shkollimi": "/shkollimi",
-  "Librat & Shkollorja": "/eshkollori",
+  "Platforma Digjitale": "/eshkollori",
   "Ushqimi": "/ushqimi",
   "Librat e Anglishtes": "/librat",
   "Uniforma": "/uniforma/shitje",

@@ -24,6 +24,7 @@ import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
 import PaymentReceiptModal from "./PaymentReceiptModal";
 import ExpensesSection from "./ExpensesSection";
+import OldDebtImportModal from "./OldDebtImportModal";
 
 interface Payment {
   id: number;
@@ -55,6 +56,7 @@ interface StudentRow {
   payment: Payment | null;        // aggregated (for table stats)
   installments: Payment[];        // raw (0, 1, or 2 records)
   timiInvest: { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number } | null;
+  oldDebt: number;                // borxh i importuar nga një vit i mëparshëm, ende i pashlyer
 }
 
 interface Stats {
@@ -82,6 +84,7 @@ interface Props {
   isMonthly?: boolean;
   showCalculator?: boolean;
   singlePaymentOnly?: boolean; // vetëm "Pagesë e plotë" — pa Dy Këste / Çdo Muaj (p.sh. Eshkollori, shumë fikse vjetore)
+  allowOldDebtImport?: boolean; // shfaq "Importo Borxhin e Vjetër" + badge pranë emrit (p.sh. Eshkollori)
 }
 
 type Tab = "income" | "expense" | "handover";
@@ -157,7 +160,7 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "handover", label: "Dorezim Parash",   icon: <ArrowLeftRight className="w-4 h-4" /> },
 ];
 
-export default function CategoryPaymentPage({ categoryName, title, icon, color, isMonthly = true, showCalculator = false, singlePaymentOnly = false }: Props) {
+export default function CategoryPaymentPage({ categoryName, title, icon, color, isMonthly = true, showCalculator = false, singlePaymentOnly = false, allowOldDebtImport = false }: Props) {
   const [month, setMonth] = useState(0); // 0 = "Të gjitha" → by default shfaq pasqyrën e plotë të vitit akademik
   const [year,  setYear]  = useState(DEFAULT_ACADEMIC_YEAR);
   const [yearType, setYearType] = useState<YearType>("academic");
@@ -182,6 +185,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [colPlan,   setColPlan]   = useState("");
   const [colBorxhi, setColBorxhi] = useState("");
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
+  const [oldDebtModalOpen, setOldDebtModalOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -374,6 +378,17 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
             <FileUp className="w-4 h-4" />
             Import Excel
           </Link>
+
+          {allowOldDebtImport && (
+            <button
+              onClick={() => setOldDebtModalOpen(true)}
+              className="btn-secondary text-sm"
+              title="Importo listën e nxënësve me borxh nga një vit i mëparshëm"
+            >
+              <FileUp className="w-4 h-4" />
+              Importo Borxhin e Vjetër
+            </button>
+          )}
 
           <button
             onClick={() => exportStudentsExcel(students, stats, title, month, resolvedYear, isMonthly)}
@@ -820,6 +835,11 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                                   </span>
                                 );
                               })()}
+                              {s.oldDebt > 0 && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-semibold" title="Borxh i pashlyer nga një vit i mëparshëm">
+                                  ⚠ Borxh i vjetër: {formatCurrency(s.oldDebt)}
+                                </span>
+                              )}
                             </div>
                             {hasMonthly && (
                               <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-medium">
@@ -1080,6 +1100,14 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           students={students}
           onSelect={(s) => { setPickerOpen(false); setModal(s); }}
           onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {oldDebtModalOpen && category && (
+        <OldDebtImportModal
+          categoryId={category.id}
+          onClose={() => setOldDebtModalOpen(false)}
+          onImported={fetchData}
         />
       )}
 
@@ -1395,7 +1423,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   const existingNote: string | null = installments.find(p => p.note)?.note ?? null;
 
   // ── Common form (gross amount + discounts) ──
-  // Nëse kategoria ka një shumë fikse të konfiguruar (p.sh. Librat & Shkollorja = 20€/vit),
+  // Nëse kategoria ka një shumë fikse të konfiguruar (p.sh. Platforma Digjitale = 20€/vit),
   // fusha "Shuma" mbushet automatikisht — kursen kohë kur çmimi është i njëjtë për të gjithë.
   // Zbritja e nxënësit (Student.discountPct) aplikohet automatikisht kur s'ka ende pagesë
   // reale të ruajtur — përndryshe respektohet gjithmonë zbritja e vërtetë e ruajtur më parë.

@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
   const isNarrow = (month && month > 0) && (year && year > 0);
   const takeLimit = isNarrow ? 2 : 60;
 
-  const [students, allTiRows, inactiveDates] = await Promise.all([
+  const [students, allTiRows, inactiveDates, oldDebtRows] = await Promise.all([
     prisma.student.findMany({
       where,
       include: {
@@ -134,7 +134,15 @@ export async function GET(req: NextRequest) {
     prisma.$queryRawUnsafe<{ id: number; inactiveDate: string | null }[]>(
       `SELECT id, inactiveDate FROM Student WHERE status = 'INACTIVE'`
     ),
+    // Borxhi i vjetër (i importuar) — pavarësisht filtrit të vitit të zgjedhur në faqe,
+    // që të mbetet dukshëm derisa të shlyhet plotësisht.
+    prisma.payment.groupBy({
+      by: ["studentId"],
+      where: { categoryId: category.id, description: "BORXH_VJETER", balance: { gt: 0 } },
+      _sum: { balance: true },
+    }),
   ]);
+  const oldDebtMap = new Map(oldDebtRows.map(r => [r.studentId, r._sum.balance ?? 0]));
 
   // Build TI lookup maps (by studentId and by name fallback)
   const tiByStudentId = new Map<number, { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number }>();
@@ -186,6 +194,7 @@ export async function GET(req: NextRequest) {
       payment:      aggregatePayment(s.payments as PrismaPayment[]),
       installments: s.payments,
       timiInvest:   tiDirect ?? tiName ?? null,
+      oldDebt:      oldDebtMap.get(s.id) ?? 0,
     };
   };
 

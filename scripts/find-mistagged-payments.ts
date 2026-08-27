@@ -15,7 +15,7 @@
 import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
-const CATEGORY_NAMES = ["Shkollimi", "Librat & Shkollorja", "Ushqimi"];
+const CATEGORY_NAMES = ["Shkollimi", "Platforma Digjitale", "Ushqimi"];
 
 async function main() {
   const sinceArg = process.argv[2];
