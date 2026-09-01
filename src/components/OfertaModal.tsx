@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   X, Plus, Trash2, Printer, BookOpen, ShoppingBag,
-  MapPin, Package, Monitor, History, ArrowLeft, Save,
+  MapPin, Package, Monitor, History, ArrowLeft, Save, Pencil, Loader2,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -29,7 +29,8 @@ interface OfferRecord {
 }
 
 const DISC = [0, 10, 15, 20];
-const LOCATIONS = [
+interface Location { label: string; price: number }
+const DEFAULT_LOCATIONS: Location[] = [
   { label: "Prishtinë",    price: 65 },
   { label: "Fushë Kosovë", price: 55 },
   { label: "Lipjan",       price: 55 },
@@ -64,6 +65,48 @@ export default function OfertaModal({
   const [history, setHistory] = useState<OfferRecord[]>([]);
 
   useEffect(() => { setHistory(loadHistory()); }, []);
+
+  // Çmimet e vendbanimeve për Transportin — parazgjedhje të ngurta si fallback,
+  // por të ruajtura/rimarra nga Cilësimet që stafi t'i mund t'i përditësojë pa prekur kodin.
+  const [locations, setLocations] = useState<Location[]>(DEFAULT_LOCATIONS);
+  const [editingLocations, setEditingLocations] = useState(false);
+  const [locDraft, setLocDraft] = useState<Location[]>(DEFAULT_LOCATIONS);
+  const [savingLocations, setSavingLocations] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings").then(r => r.json()).then(s => {
+      if (!s.transportLocations) return;
+      try {
+        const parsed = JSON.parse(s.transportLocations);
+        if (Array.isArray(parsed) && parsed.length) setLocations(parsed);
+      } catch { /* mbetet parazgjedhja */ }
+    });
+  }, []);
+
+  function openLocationEditor() {
+    setLocDraft(locations.map(l => ({ ...l })));
+    setEditingLocations(true);
+  }
+  function updateLocDraft(i: number, field: "label" | "price", value: string) {
+    setLocDraft(d => d.map((l, idx) => idx === i ? { ...l, [field]: field === "price" ? (parseFloat(value) || 0) : value } : l));
+  }
+  function addLocDraftRow() { setLocDraft(d => [...d, { label: "", price: 0 }]); }
+  function removeLocDraftRow(i: number) { setLocDraft(d => d.filter((_, idx) => idx !== i)); }
+
+  async function saveLocations() {
+    const cleaned = locDraft.filter(l => l.label.trim()).map(l => ({ label: l.label.trim(), price: l.price }));
+    if (!cleaned.length) return;
+    setSavingLocations(true);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transportLocations: JSON.stringify(cleaned) }),
+    });
+    setLocations(cleaned);
+    setTransporti(v => ({ ...v, locationIdx: Math.min(v.locationIdx, cleaned.length - 1) }));
+    setSavingLocations(false);
+    setEditingLocations(false);
+  }
 
   const [parentName,  setParentName]  = useState("");
   const [parentPhone, setParentPhone] = useState("");
@@ -139,7 +182,7 @@ export default function OfertaModal({
     const _grand  = kids.reduce((s, ch, i) => s + _tot(i, ch), 0);
     const _totDsc = kids.reduce((s, ch) => s + _sibDisc(ch) + (ch.manualDisc || 0), 0);
     const today = new Date().toLocaleDateString("sq-AL", { dateStyle: "long" });
-    const loc = LOCATIONS[S.transporti.locationIdx]?.label ?? "";
+    const loc = locations[S.transporti.locationIdx]?.label ?? "";
 
     const childBlocks = kids.map((ch, i) => {
       const sp = ch.sibDiscPct;
@@ -599,6 +642,11 @@ ${_totDsc > 0 ? `<div class="savings"><span>Kursim total nga t&euml; gjitha zbri
                       <MapPin className={`w-3.5 h-3.5 ${transporti.active ? "text-purple-600 dark:text-purple-400" : "text-slate-400"}`} />
                     </div>
                     <span className="font-medium text-sm text-slate-800 dark:text-slate-100">Transporti</span>
+                    <button type="button" onClick={openLocationEditor}
+                      className="p-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 text-slate-400 hover:text-purple-600 dark:hover:text-purple-400"
+                      title="Edito çmimet e vendbanimeve">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <span className="text-xs text-slate-400">Aktiv</span>
@@ -613,9 +661,9 @@ ${_totDsc > 0 ? `<div class="savings"><span>Kursim total nga t&euml; gjitha zbri
                         <select className="form-input" value={transporti.locationIdx}
                           onChange={e => {
                             const idx = parseInt(e.target.value);
-                            setTransporti(v => ({ ...v, locationIdx: idx, pricePerMonth: LOCATIONS[idx].price }));
+                            setTransporti(v => ({ ...v, locationIdx: idx, pricePerMonth: locations[idx].price }));
                           }}>
-                          {LOCATIONS.map((l, i) => <option key={l.label} value={i}>{l.label}{l.price > 0 ? ` — ${l.price}€` : ""}</option>)}
+                          {locations.map((l, i) => <option key={l.label} value={i}>{l.label}{l.price > 0 ? ` — ${l.price}€` : ""}</option>)}
                         </select>
                       </div>
                       <div>
@@ -764,6 +812,43 @@ ${_totDsc > 0 ? `<div class="savings"><span>Kursim total nga t&euml; gjitha zbri
           </button>
         </div>
       </div>
+
+      {editingLocations && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setEditingLocations(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-white">Çmimet e Vendbanimeve — Transporti</h3>
+              <button onClick={() => setEditingLocations(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-2 overflow-y-auto max-h-[60vh]">
+              {locDraft.map((l, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input type="text" value={l.label} onChange={e => updateLocDraft(i, "label", e.target.value)}
+                    className="form-input flex-1" placeholder="Vendbanimi" />
+                  <input type="number" value={l.price} onChange={e => updateLocDraft(i, "price", e.target.value)}
+                    className="form-input w-24" placeholder="€/muaj" min="0" step="0.01" />
+                  <span className="text-xs text-slate-400 w-6">€</span>
+                  <button type="button" onClick={() => removeLocDraftRow(i)} className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-600">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={addLocDraftRow} className="btn-secondary text-sm w-full justify-center">
+                <Plus className="w-4 h-4" /> Shto Vendbanim
+              </button>
+            </div>
+            <div className="flex justify-end gap-2 p-5 pt-0">
+              <button onClick={() => setEditingLocations(false)} className="btn-secondary">Anulo</button>
+              <button onClick={saveLocations} disabled={savingLocations} className="btn-primary">
+                {savingLocations ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Ruaj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

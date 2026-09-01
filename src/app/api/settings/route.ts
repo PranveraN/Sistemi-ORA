@@ -12,6 +12,15 @@ const DEFAULTS: Record<string, string> = {
   schoolWebsite: "",
   timiInvestEnabled: "true",
   ushqimiPrice2Meals: "4",
+  transportLocations: JSON.stringify([
+    { label: "Prishtinë",    price: 65 },
+    { label: "Fushë Kosovë", price: 55 },
+    { label: "Lipjan",       price: 55 },
+    { label: "Graçanicë",    price: 55 },
+    { label: "Drenas",       price: 65 },
+    { label: "Podujevo",     price: 70 },
+    { label: "Tjetër",       price: 0  },
+  ]),
 };
 
 const ALLOWED = Object.keys(DEFAULTS);
