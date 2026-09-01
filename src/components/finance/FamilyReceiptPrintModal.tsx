@@ -81,7 +81,6 @@ function methodLabel(m: string | null) {
 }
 
 function categoryLabel(c: string): string {
-  if (c === "Platforma Digjitale") return "Shkollimi";
   return c;
 }
 
