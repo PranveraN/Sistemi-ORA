@@ -22,6 +22,7 @@ model Organization {
   payments         Payment[]
   invoices         Invoice[]
   schoolYears      SchoolYear[]
+  materialRequests MaterialRequest[]
 }
 
 model User {
@@ -29,7 +30,7 @@ model User {
   email          String       @unique
   name           String
   password       String
-  role           String       @default("SECRETARY") // ADMIN, FINANCE, SECRETARY, SUPERADMIN
+  role           String       @default("SECRETARY") // ADMIN, FINANCE, SECRETARY, SUPERADMIN, TEACHER
   active         Boolean      @default(true)
   organizationId Int          @default(1)
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -38,6 +39,8 @@ model User {
   auditLogs      AuditLog[]
   shpenzimBulkActions ShpenzimBulkAction[]
   promotionRuns  PromotionRun[]
+  materialRequests         MaterialRequest[] @relation("MaterialRequestTeacher")
+  reviewedMaterialRequests MaterialRequest[] @relation("MaterialRequestReviewer")
 }
 
 model Class {
@@ -267,6 +270,32 @@ model ShpenzimBulkAction {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+}
+
+// Kërkesa për material didaktik nga mësimdhënësit — regjistrohen nga vetë
+// mësimdhënësi (rol "TEACHER"), shqyrtohen nga menaxhmenti (ADMIN/FINANCE).
+model MaterialRequest {
+  id             Int          @id @default(autoincrement())
+  teacherId      Int
+  teacher        User         @relation("MaterialRequestTeacher", fields: [teacherId], references: [id])
+  item           String
+  quantity       Int          @default(1)
+  subjectOrClass String?
+  reason         String
+  status         String       @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewedById   Int?
+  reviewedBy     User?        @relation("MaterialRequestReviewer", fields: [reviewedById], references: [id])
+  reviewNote     String?
+  reviewedAt     DateTime?
+  sentAt         DateTime?    // kur i-u dërgua email personit të blerjeve (FurnitoriOra)
+  sentToEmail    String?
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([status])
+  @@index([teacherId])
 }
 
 model Payment {

@@ -11,6 +11,7 @@ const DEFAULTS: Record<string, string> = {
   schoolYear:    "2025/2026",
   schoolWebsite: "",
   timiInvestEnabled: "true",
+  furnitoriOraEmail: "",
 };
 
 const ALLOWED = Object.keys(DEFAULTS);

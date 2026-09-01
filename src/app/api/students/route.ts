@@ -25,6 +25,10 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status") || "";
   const classId = searchParams.get("classId") || "";
   const siblingPhone = searchParams.get("siblingPhone") || "";
+  const siblingFatherPhone = searchParams.get("siblingFatherPhone") || "";
+  const siblingFatherName  = searchParams.get("siblingFatherName") || "";
+  const siblingMotherPhone = searchParams.get("siblingMotherPhone") || "";
+  const siblingMotherName  = searchParams.get("siblingMotherName") || "";
   const excludeId = searchParams.get("excludeId") || "";
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "20");
@@ -49,6 +53,23 @@ export async function GET(req: NextRequest) {
     } else {
       where.OR = baseConditions;
     }
+  } else if (siblingFatherPhone || siblingMotherPhone) {
+    // Vëllezër/motra të VËRTETË — telefoni DHE emri i të njëjtit prind duhet të përputhen,
+    // jo vetëm telefoni (një numër i gabuar/i përsëritur nuk duhet t'i "bashkojë" familje të ndryshme).
+    const siblingConditions: Record<string, unknown>[] = [];
+    if (siblingFatherPhone) {
+      siblingConditions.push({
+        fatherPhone: siblingFatherPhone,
+        ...(siblingFatherName ? { fatherName: siblingFatherName } : {}),
+      });
+    }
+    if (siblingMotherPhone) {
+      siblingConditions.push({
+        motherPhone: siblingMotherPhone,
+        ...(siblingMotherName ? { motherName: siblingMotherName } : {}),
+      });
+    }
+    where.OR = siblingConditions;
   } else if (siblingPhone) {
     where.OR = [
       { parentPhone: siblingPhone },

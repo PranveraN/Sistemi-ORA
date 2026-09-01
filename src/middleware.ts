@@ -8,18 +8,26 @@ export default auth((req) => {
 
   const isLoginPage = nextUrl.pathname === "/login";
   const isSuperAdminPage = nextUrl.pathname.startsWith("/superadmin");
+  const isTeacherArea = nextUrl.pathname.startsWith("/kerkesa-material");
+  const isTeacherPublicPage = nextUrl.pathname === "/kerkesa-material/regjistrohu";
 
   if (isLoginPage && isLoggedIn) {
     if (role === "SUPERADMIN") return NextResponse.redirect(new URL("/superadmin", nextUrl));
+    if (role === "TEACHER") return NextResponse.redirect(new URL("/kerkesa-material", nextUrl));
     return NextResponse.redirect(new URL("/dashboard", nextUrl));
   }
 
-  if (!isLoginPage && !isLoggedIn) {
+  if (!isLoginPage && !isTeacherPublicPage && !isLoggedIn) {
     return NextResponse.redirect(new URL("/login", nextUrl));
   }
 
   if (isSuperAdminPage && role !== "SUPERADMIN") {
     return NextResponse.redirect(new URL("/dashboard", nextUrl));
+  }
+
+  // Mësimdhënësit shohin VETËM zonën e tyre — jo asnjë faqe tjetër të stafit.
+  if (isLoggedIn && role === "TEACHER" && !isTeacherArea) {
+    return NextResponse.redirect(new URL("/kerkesa-material", nextUrl));
   }
 
   return NextResponse.next();

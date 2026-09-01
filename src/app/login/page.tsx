@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { BookOpen, Eye, EyeOff, Lock, Mail } from "lucide-react";
 
 export default function LoginPage() {
@@ -29,7 +30,7 @@ export default function LoginPage() {
     if (result?.error) {
       setError("Email ose fjalëkalimi është i gabuar.");
     } else {
-      router.push("/dashboard");
+      router.push("/");
       router.refresh();
     }
   }
@@ -112,8 +113,11 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700">
-            <p className="text-xs text-slate-400 text-center">
+          <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700 text-center space-y-3">
+            <p className="text-sm text-slate-500">
+              Mësimdhënës? <Link href="/kerkesa-material/regjistrohu" className="text-primary-600 font-medium hover:underline">Regjistrohu këtu</Link>
+            </p>
+            <p className="text-xs text-slate-400">
               Sistemi i menaxhimit • Akademia Ora © {new Date().getFullYear()}
             </p>
           </div>

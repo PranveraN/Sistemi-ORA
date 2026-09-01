@@ -17,6 +17,7 @@ interface SchoolInfo {
   schoolName: string; schoolPhone: string; schoolAddress: string;
   schoolEmail: string; schoolNipt: string; schoolYear: string; schoolWebsite: string;
   timiInvestEnabled: string;
+  furnitoriOraEmail: string;
 }
 
 interface Category {
@@ -126,6 +127,7 @@ function SchoolSection() {
     schoolName: "", schoolPhone: "", schoolAddress: "",
     schoolEmail: "", schoolNipt: "", schoolYear: "", schoolWebsite: "",
     timiInvestEnabled: "true",
+    furnitoriOraEmail: "",
   });
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
@@ -189,6 +191,20 @@ function SchoolSection() {
             placeholder="Rr. Nënë Tereza, Prishtinë"
           />
         </div>
+      </div>
+
+      <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
+        <label className="form-label">Email i FurnitoriOra (personi i blerjeve)</label>
+        <input
+          type="email"
+          value={info.furnitoriOraEmail}
+          onChange={e => setInfo(s => ({ ...s, furnitoriOraEmail: e.target.value }))}
+          className="form-input max-w-sm"
+          placeholder="furnitoriora@akademiaora.com"
+        />
+        <p className="text-xs text-slate-400 mt-1">
+          Përdoret si adresa e parazgjedhur kur dërgohet një kërkesë e aprovuar për material — mund të ndryshohet për çdo dërgim.
+        </p>
       </div>
 
       <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-700">
