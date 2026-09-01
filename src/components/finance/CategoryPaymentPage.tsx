@@ -25,6 +25,8 @@ import InvoicePrintModal from "./InvoicePrintModal";
 import PaymentReceiptModal from "./PaymentReceiptModal";
 import ExpensesSection from "./ExpensesSection";
 import OldDebtImportModal from "./OldDebtImportModal";
+import FamilyPaymentModal from "./FamilyPaymentModal";
+import FamilyReceiptPrintModal from "./FamilyReceiptPrintModal";
 
 interface Payment {
   id: number;
@@ -186,6 +188,8 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [colBorxhi, setColBorxhi] = useState("");
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
   const [oldDebtModalOpen, setOldDebtModalOpen] = useState(false);
+  const [familyModalOpen, setFamilyModalOpen] = useState(false);
+  const [familyReceiptPrintId, setFamilyReceiptPrintId] = useState<number | null>(null);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -406,6 +410,17 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
             >
               <Plus className="w-4 h-4" />
               Regjistro Pagesë
+            </button>
+          )}
+
+          {tab === "income" && (
+            <button
+              onClick={() => setFamilyModalOpen(true)}
+              className="btn-secondary text-sm"
+              title="Regjistro dhe printo një dëshmi pagese për 2+ fëmijë të së njëjtës familje njëherësh"
+            >
+              <Users className="w-4 h-4" />
+              Pagesë e Përbashkët
             </button>
           )}
 
@@ -1108,6 +1123,27 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           categoryId={category.id}
           onClose={() => setOldDebtModalOpen(false)}
           onImported={fetchData}
+        />
+      )}
+
+      {familyModalOpen && category && (
+        <FamilyPaymentModal
+          categoryId={category.id}
+          categoryName={title}
+          isMonthly={isMonthly}
+          defaultMonth={month}
+          schoolYearStart={schoolYearStart}
+          // muaji s'ndikon çmimin këtu (Shkollimi/Eshkollori kanë shumë fikse), ndaj injorohet
+          computeDefaultAmount={(discountPct) => Math.round((category.defaultAmount ?? 0) * (1 - (discountPct ?? 0) / 100))}
+          onClose={() => setFamilyModalOpen(false)}
+          onSaved={(id) => { setFamilyModalOpen(false); setFamilyReceiptPrintId(id); fetchData(); }}
+        />
+      )}
+
+      {familyReceiptPrintId && (
+        <FamilyReceiptPrintModal
+          familyReceiptId={familyReceiptPrintId}
+          onClose={() => setFamilyReceiptPrintId(null)}
         />
       )}
 

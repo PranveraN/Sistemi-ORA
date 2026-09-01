@@ -18,6 +18,8 @@ import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
 import PaymentReceiptModal from "@/components/finance/PaymentReceiptModal";
 import StudentBadgeModal from "@/components/students/StudentBadgeModal";
+import FamilyPaymentModal from "@/components/finance/FamilyPaymentModal";
+import FamilyReceiptPrintModal from "@/components/finance/FamilyReceiptPrintModal";
 
 type Tab = "income" | "expense" | "handover" | "report";
 
@@ -324,6 +326,8 @@ export default function UshqimiPage() {
   const [calcModal,   setCalcModal]   = useState<StudentRow | null>(null);
   const [badgeModal,  setBadgeModal]  = useState<StudentRow | null>(null);
   const [calcAmount,  setCalcAmount]  = useState<number | undefined>();
+  const [familyModalOpen, setFamilyModalOpen] = useState(false);
+  const [familyReceiptPrintId, setFamilyReceiptPrintId] = useState<number | null>(null);
 
   const prices = calcPrices(price2Meals, workingDays, monthsPerYear);
   // Same fallback as fetchYearData — keeps period-bucket dates consistent with what was fetched.
@@ -896,6 +900,13 @@ export default function UshqimiPage() {
               Exporto Excel
             </button>
 
+            {/* Pagesë e Përbashkët — 2+ fëmijë të së njëjtës familje njëherësh */}
+            <button onClick={() => setFamilyModalOpen(true)} className="btn-secondary text-sm"
+              title="Regjistro dhe printo një dëshmi pagese për 2+ fëmijë të së njëjtës familje njëherësh">
+              <Users className="w-4 h-4" />
+              Pagesë e Përbashkët
+            </button>
+
             {/* Printo Bexhet — per klasen e filtruar aktualisht */}
             <button onClick={() => printClassBadges(displayed, selectedClassName)} className="btn-secondary text-sm" disabled={displayed.length === 0}>
               <IdCard className="w-4 h-4" />
@@ -1131,6 +1142,29 @@ export default function UshqimiPage() {
         <StudentBadgeModal
           student={badgeModal}
           onClose={() => setBadgeModal(null)}
+        />
+      )}
+      {familyModalOpen && categoryId && (
+        <FamilyPaymentModal
+          categoryId={categoryId}
+          categoryName="Ushqimi"
+          isMonthly={true}
+          defaultMonth={PERIOD_BUCKETS.find(p => p.months.includes(now.getMonth() + 1))?.canonicalMonth ?? PERIOD_BUCKETS[0].canonicalMonth}
+          schoolYearStart={effectiveYear}
+          periodOptions={PERIOD_BUCKETS.map(p => ({ label: p.label, canonicalMonth: p.canonicalMonth }))}
+          computeDefaultAmount={(_discountPct, month) => {
+            const idx = PERIOD_BUCKETS.findIndex(p => p.canonicalMonth === month);
+            const days = idx >= 0 ? (periods[idx]?.days ?? workingDays) : workingDays;
+            return Math.round(days * price2Meals * 100) / 100;
+          }}
+          onClose={() => setFamilyModalOpen(false)}
+          onSaved={(id) => { setFamilyModalOpen(false); setFamilyReceiptPrintId(id); fetchYearData(); }}
+        />
+      )}
+      {familyReceiptPrintId && (
+        <FamilyReceiptPrintModal
+          familyReceiptId={familyReceiptPrintId}
+          onClose={() => setFamilyReceiptPrintId(null)}
         />
       )}
     </>
