@@ -1079,6 +1079,7 @@ export default function UshqimiPage() {
           prices={prices}
           workingDays={workingDays}
           periods={periods}
+          periodCalYear={periodCalYear}
           overrideAmount={calcAmount}
           onClose={() => { setPayModal(null); setCalcAmount(undefined); }}
           onSave={async (rid) => { setPayModal(null); setCalcAmount(undefined); await fetchYearData(); if (rid) setReceiptPaymentId(rid); }}
@@ -1139,9 +1140,10 @@ export default function UshqimiPage() {
 /* ═══════════════════════════════════════════════════════ */
 /*  Payment Modal — specialized for meals                 */
 /* ═══════════════════════════════════════════════════════ */
-function UshqimiPayModal({ student, existingPayment, month, year, prices, workingDays, periods, onClose, onSave, overrideAmount }: {
+function UshqimiPayModal({ student, existingPayment, month, year, prices, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount }: {
   student: StudentRow; existingPayment: Payment | null; month: number; year: number;
   prices: Record<string, number>; workingDays: number; periods: Period[];
+  periodCalYear: (canonicalMonth: number) => number;
   overrideAmount?: number;
   onClose: () => void; onSave: (receiptPaymentId?: number) => void;
 }) {
@@ -1268,6 +1270,62 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
   const markSkipped = () => markAs(SKIPPED_MARKER);
   const markFree    = () => markAs(FREE_MARKER);
 
+  // Disa familje paguajnë krejt vitin (5 periudhat) përnjëherë — llogarit çfarë
+  // mbetet pa u paguar në secilën periudhë dhe i mbyll të gjitha njëherësh, duke
+  // ruajtur intakte periudhat e shënuara "Ndërprerë"/"Falas" dhe ato tashmë të paguara.
+  function computeYearPlan() {
+    const items = PERIOD_BUCKETS.map((period, i) => {
+      const existing = findPeriodPayment(student.installments, period.months);
+      const calYear = periodCalYear(period.canonicalMonth);
+      if (existing && (existing.description === SKIPPED_MARKER || existing.description === FREE_MARKER)) {
+        return { period, index: i, existing, finalAmount: 0, remaining: 0, calYear };
+      }
+      const days = periods[i]?.days ?? workingDays;
+      const finalAmount = existing ? existing.finalAmount : Math.round(days * prices["2_shujta_ditë"] * 100) / 100;
+      const remaining = existing ? Math.max(0, existing.finalAmount - existing.paidAmount) : finalAmount;
+      return { period, index: i, existing, finalAmount, remaining, calYear };
+    });
+    const total = items.reduce((sum, it) => sum + it.remaining, 0);
+    return { items, total };
+  }
+
+  const yearPlan = computeYearPlan();
+
+  async function handlePayFullYear() {
+    if (yearPlan.total <= 0) return;
+    if (!confirm(`Do të shënohen si paguar plotësisht të gjitha periudhat e vitit për ${student.firstName} ${student.lastName} — gjithsej ${formatCurrency(yearPlan.total)}. Vazhdo?`)) return;
+
+    setSaving(true);
+    const catRes = await fetch("/api/categories");
+    const cats = await catRes.json();
+    const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
+    const catId = cat?.id ?? 2;
+
+    for (const it of yearPlan.items) {
+      if (it.remaining <= 0) continue;
+      const payload = {
+        studentId: student.id, categoryId: catId,
+        amount: it.finalAmount, discount: 0, discountType: null, scholarship: 0,
+        finalAmount: it.finalAmount, paidAmount: it.finalAmount,
+        method,
+        dueDate: it.existing?.dueDate
+          ? new Date(it.existing.dueDate).toISOString().split("T")[0]
+          : new Date(it.calYear, it.period.canonicalMonth - 1, 5).toISOString().split("T")[0],
+        paidDate,
+        month: it.period.canonicalMonth, year: it.calYear,
+        description: it.existing?.description ?? `${periods[it.index]?.days ?? workingDays} ditë × ${formatCurrency(prices["2_shujta_ditë"])} — ${it.period.label} ${it.calYear}`,
+        note: note || it.existing?.note || null,
+      };
+      if (it.existing) {
+        await fetch(`/api/payments/${it.existing.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      } else {
+        await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      }
+    }
+    setSaving(false);
+    onSave(undefined);
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg animate-fade-in overflow-y-auto max-h-[92vh]" onClick={e => e.stopPropagation()}>
@@ -1368,6 +1426,20 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
             >
               <CheckCircle className="w-4 h-4" />
               Shëno si paguar plotësisht ({formatCurrency(finalAmount)})
+            </button>
+          )}
+
+          {/* Pay full year at once — for families that settle all 5 periods together */}
+          {yearPlan.total > 0 && (
+            <button
+              type="button"
+              onClick={handlePayFullYear}
+              disabled={saving}
+              title="Shënon si paguar plotësisht të gjitha periudhat e mbetura të vitit, jo vetëm këtë"
+              className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              💰 Paguaj Krejt Vitin ({formatCurrency(yearPlan.total)})
             </button>
           )}
         </div>
