@@ -18,7 +18,8 @@ async function bootstrapIfNeeded(orgId: number) {
   if (!label) {
     const now = new Date();
     const y = now.getFullYear();
-    label = now.getMonth() + 1 >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+    // Gushti llogaritet tashmë si fillim i vitit të ri akademik (jo Shtatori).
+    label = now.getMonth() + 1 >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
   }
 
   const year = await prisma.schoolYear.create({

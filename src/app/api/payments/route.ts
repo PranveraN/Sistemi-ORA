@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
         method: body.method || null,
         status,
         description: body.description || null,
+        note: body.note || null,
         month: body.month ? parseInt(body.month) : null,
         year: body.year ? parseInt(body.year) : new Date().getFullYear(),
         receiptNumber,

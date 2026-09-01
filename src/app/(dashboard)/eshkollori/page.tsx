@@ -4,12 +4,13 @@ import { BookMarked } from "lucide-react";
 export default function EshkolloriPage() {
   return (
     <CategoryPaymentPage
-      categoryName="Librat & Shkollorja"
+      categoryName="Platforma Digjitale"
       title="Eshkollori"
       icon={<BookMarked className="w-5 h-5" />}
       color="teal"
       isMonthly={false}
       singlePaymentOnly={true}
+      allowOldDebtImport={true}
     />
   );
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer } from "lucide-react";
+import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote } from "lucide-react";
 
 interface Payment {
   id: number;
@@ -24,7 +24,7 @@ interface Payment {
 // direkt te faqja ku ka planin e plotë (Dy Këste/Çdo Muaj/Këste Fleksibël).
 const CATEGORY_LINKS: Record<string, string> = {
   "Shkollimi": "/shkollimi",
-  "Librat & Shkollorja": "/eshkollori",
+  "Platforma Digjitale": "/eshkollori",
   "Ushqimi": "/ushqimi",
   "Librat e Anglishtes": "/librat",
   "Uniforma": "/uniforma/shitje",
@@ -143,6 +143,7 @@ interface Student {
   status: string;
   enrollDate: string;
   notes: string | null;
+  discountPct: number;
   class: { name: string; level: string } | null;
   payments: Payment[];
   invoices: Invoice[];
@@ -294,6 +295,64 @@ export default function StudentProfile({ student }: { student: Student }) {
     win.document.close();
   }
 
+  // Çmimi i Shkollimit — editueshëm inline VETËM nëse s'ka ende pagesë reale te
+  // Shkollimi (njësoj si te lista e nxënësve). Sapo ekziston, çmimi vjen nga
+  // pagesa e vërtetë (rreshti "Shkollimi" më poshtë me "Modifiko →"), jo më
+  // nga kjo përllogaritje sintetike.
+  const [tuitionPrice, setTuitionPrice] = useState(0);
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [priceVal, setPriceVal] = useState("");
+  const shkollimiGroup = categoryGroups.find(g => g.categoryName === "Shkollimi");
+  const hasShkollimiPlan = !!shkollimiGroup;
+  const finalPrice = hasShkollimiPlan
+    ? shkollimiGroup!.finalAmount
+    : Math.round(tuitionPrice * (1 - student.discountPct / 100));
+
+  useEffect(() => {
+    fetch("/api/categories")
+      .then(r => r.json())
+      .then((cats: { name: string; defaultAmount: number }[]) => {
+        const shkollimi = cats.find(c => c.name === "Shkollimi");
+        if (shkollimi?.defaultAmount) setTuitionPrice(shkollimi.defaultAmount);
+      });
+  }, []);
+
+  function startEditPrice() {
+    setPriceVal(String(finalPrice));
+    setEditingPrice(true);
+  }
+
+  async function commitEditPrice() {
+    setEditingPrice(false);
+    const newPrice = parseFloat(priceVal);
+    if (isNaN(newPrice) || newPrice <= 0 || !tuitionPrice) return;
+    const newDisc = Math.max(0, Math.round((1 - newPrice / tuitionPrice) * 10000) / 100);
+    await fetch(`/api/students/${student.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discountPct: newDisc }),
+    });
+    router.refresh();
+  }
+
+  // Shënime / Komente — hapësirë e veçantë, editueshme direkt këtu (jo më
+  // vetëm te faqja e plotë "Modifiko").
+  const [notesVal, setNotesVal] = useState(student.notes ?? "");
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesSaved, setNotesSaved] = useState(false);
+
+  async function saveNotes() {
+    setNotesSaving(true);
+    setNotesSaved(false);
+    await fetch(`/api/students/${student.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes: notesVal }),
+    });
+    setNotesSaving(false);
+    setNotesSaved(true);
+  }
+
   const [siblings, setSiblings] = useState<Sibling[]>([]);
   useEffect(() => {
     const params = new URLSearchParams({ excludeId: String(student.id), status: "ACTIVE", limit: "10" });
@@ -362,7 +421,7 @@ export default function StudentProfile({ student }: { student: Student }) {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="card p-4">
           <p className="text-xs text-slate-400 mb-1">Totali Paguar</p>
           <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatCurrency(totalPaid)}</p>
@@ -376,6 +435,35 @@ export default function StudentProfile({ student }: { student: Student }) {
         <div className="card p-4">
           <p className="text-xs text-slate-400 mb-1">Kategori Pagesash</p>
           <p className="text-xl font-bold text-slate-900 dark:text-white">{categoryGroups.length}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-slate-400 mb-1">Çmimi i Shkollimit</p>
+          {editingPrice ? (
+            <input
+              type="number"
+              className="w-full border border-primary-400 rounded-lg px-2 py-1 text-lg font-bold text-slate-800 dark:text-slate-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              value={priceVal}
+              autoFocus
+              min={0}
+              onChange={e => setPriceVal(e.target.value)}
+              onBlur={commitEditPrice}
+              onKeyDown={e => { if (e.key === "Enter") commitEditPrice(); if (e.key === "Escape") setEditingPrice(false); }}
+            />
+          ) : hasShkollimiPlan ? (
+            <Link href="/shkollimi" className="group flex items-center gap-1.5" title="Ka pagesë reale te Shkollimi — modifikoje shumën atje">
+              <span className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors">{formatCurrency(finalPrice)}</span>
+              <Lock className="w-3.5 h-3.5 text-slate-300" />
+            </Link>
+          ) : (
+            <button onClick={startEditPrice} className="group flex items-center gap-1.5 text-left" title="Kliko për ta ndryshuar">
+              <span className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors">{formatCurrency(finalPrice)}</span>
+              {student.discountPct > 0 && (
+                <span className="text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
+                  -{student.discountPct}%
+                </span>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -445,13 +533,6 @@ export default function StudentProfile({ student }: { student: Student }) {
           {student.address && (
             <div className="border-t border-slate-100 dark:border-slate-700 pt-3">
               <InfoRow label="Adresa" value={student.address} icon={<MapPin className="w-3.5 h-3.5 text-slate-400" />} />
-            </div>
-          )}
-
-          {student.notes && (
-            <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Shënime</p>
-              <p className="text-sm text-slate-600 dark:text-slate-300">{student.notes}</p>
             </div>
           )}
 
@@ -574,6 +655,32 @@ export default function StudentProfile({ student }: { student: Student }) {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Shënime / Komente — hapësirë e dedikuar, editueshme direkt këtu */}
+      <div className="card p-5 space-y-3">
+        <h3 className="section-title flex items-center gap-2">
+          <StickyNote className="w-4 h-4 text-slate-400" />
+          Shënime / Komente
+        </h3>
+        <textarea
+          value={notesVal}
+          onChange={e => { setNotesVal(e.target.value); setNotesSaved(false); }}
+          rows={4}
+          placeholder="Shkruaj këtu shënime ose komente për këtë nxënës..."
+          className="form-input resize-none w-full"
+        />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={saveNotes}
+            disabled={notesSaving || notesVal === (student.notes ?? "")}
+            className="btn-primary text-sm disabled:opacity-50"
+          >
+            {notesSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Ruaj Shënimin
+          </button>
+          {notesSaved && <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">✓ U ruajt</span>}
         </div>
       </div>
     </div>

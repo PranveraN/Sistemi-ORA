@@ -82,7 +82,7 @@ async function main() {
     data: { name: "Uniforma", type: "one-time", description: "Uniforma shkollore", organizationId: org.id },
   });
   await prisma.paymentCategory.create({
-    data: { name: "Librat & Shkollorja", type: "annual", description: "Materialet shkollore", organizationId: org.id },
+    data: { name: "Platforma Digjitale", type: "annual", description: "Materialet shkollore", organizationId: org.id },
   });
   await prisma.paymentCategory.create({
     data: { name: "Aktivitete Shtesë", type: "one-time", description: "Ekskursione, ngjarje", organizationId: org.id },

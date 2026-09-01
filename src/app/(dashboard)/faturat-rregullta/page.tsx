@@ -369,7 +369,7 @@ function PrintableFature({ invoiceNo, invoiceDate, dueDate, vatRate, buyerName, 
   const fmt = (iso: string) => {
     if (!iso) return "";
     const [y, m, d] = iso.split("-");
-    return `${d}.${m}.${y}`;
+    return `${d}/${m}/${y}`;
   };
 
   return (

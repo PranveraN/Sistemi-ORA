@@ -17,6 +17,7 @@ type PrismaPayment = {
   discountType: string | null;
   scholarship: number;
   description: string | null;
+  note: string | null;
   month: number;
   year: number;
 };
@@ -89,7 +90,17 @@ export async function GET(req: NextRequest) {
         { month: { lte: 8 }, year: year + 1 },
       ];
     } else {
-      paymentFilter.year = year;
+      // Kalendarik "Të gjitha" → grupohet sipas datës REALE të arkëtimit (paidDate),
+      // jo sipas Afatit (fusha month/year, gjithmonë e rrjedhur nga dueDate) — që
+      // pasqyron saktë sa para hynë brenda vitit kalendarik X, jo për cilin muaj
+      // shkollimi ishin. Pagesat ende PA u paguar (paidDate=null) s'kanë ende
+      // "datë arkëtimi", ndaj bien mbrapsht te Afati i tyre.
+      const yStart = new Date(Date.UTC(year, 0, 1));
+      const yEnd   = new Date(Date.UTC(year + 1, 0, 1));
+      paymentFilter.OR = [
+        { paidDate: { gte: yStart, lt: yEnd } },
+        { paidDate: null, dueDate: { gte: yStart, lt: yEnd } },
+      ];
     }
   }
 
@@ -97,7 +108,7 @@ export async function GET(req: NextRequest) {
   const isNarrow = (month && month > 0) && (year && year > 0);
   const takeLimit = isNarrow ? 2 : 60;
 
-  const [students, allTiRows, inactiveDates] = await Promise.all([
+  const [students, allTiRows, inactiveDates, oldDebtRows] = await Promise.all([
     prisma.student.findMany({
       where,
       include: {
@@ -110,7 +121,7 @@ export async function GET(req: NextRequest) {
             id: true, amount: true, finalAmount: true, paidAmount: true,
             balance: true, status: true, method: true, dueDate: true,
             paidDate: true, discount: true, discountType: true,
-            scholarship: true, description: true, receiptNumber: true,
+            scholarship: true, description: true, note: true, receiptNumber: true,
             month: true, year: true,
           },
         },
@@ -123,7 +134,15 @@ export async function GET(req: NextRequest) {
     prisma.$queryRawUnsafe<{ id: number; inactiveDate: string | null }[]>(
       `SELECT id, inactiveDate FROM Student WHERE status = 'INACTIVE'`
     ),
+    // Borxhi i vjetër (i importuar) — pavarësisht filtrit të vitit të zgjedhur në faqe,
+    // që të mbetet dukshëm derisa të shlyhet plotësisht.
+    prisma.payment.groupBy({
+      by: ["studentId"],
+      where: { categoryId: category.id, description: "BORXH_VJETER", balance: { gt: 0 } },
+      _sum: { balance: true },
+    }),
   ]);
+  const oldDebtMap = new Map(oldDebtRows.map(r => [r.studentId, r._sum.balance ?? 0]));
 
   // Build TI lookup maps (by studentId and by name fallback)
   const tiByStudentId = new Map<number, { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number }>();
@@ -175,6 +194,7 @@ export async function GET(req: NextRequest) {
       payment:      aggregatePayment(s.payments as PrismaPayment[]),
       installments: s.payments,
       timiInvest:   tiDirect ?? tiName ?? null,
+      oldDebt:      oldDebtMap.get(s.id) ?? 0,
     };
   };
 

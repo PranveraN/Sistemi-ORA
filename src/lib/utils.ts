@@ -14,22 +14,24 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+// Ndërtuar dorazi (jo Intl/locale) që data të dalë NJËSOJ kudo — dd/mm/yyyy me "/" —
+// pavarësisht se ç'"locale" ka i instaluar serveri/browseri ku ekzekutohet. Më parë
+// përdorej Intl.DateTimeFormat("sq-AL", ...), i cili nxjerr dd.mm.yyyy (me PIKA, jo
+// vija) dhe varet nga të dhënat ICU të disponueshme në runtime — burim i mundshëm
+// pikërisht i mospërputhjeve "herë kështu herë ashtu" mes makinave të ndryshme.
 export function formatDate(date: Date | string): string {
-  return new Intl.DateTimeFormat("sq-AL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(date));
+  const d = new Date(date);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 export function formatDateTime(date: Date | string): string {
-  return new Intl.DateTimeFormat("sq-AL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date));
+  const d = new Date(date);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${formatDate(d)} ${hh}:${min}`;
 }
 
 export function getStatusColor(status: string): string {

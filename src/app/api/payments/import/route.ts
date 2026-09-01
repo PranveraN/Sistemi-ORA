@@ -133,11 +133,17 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(results);
 }
 
+// I RËNDËSISHËM: "." dhe "/" duhet trajtuar IDENTIKISHT (DD.MM.YYYY / DD/MM/YYYY) —
+// përpara, vetëm "/" njihej si ditë-mujë-vit; një datë me pika (p.sh. nga një
+// qelizë Excel e konvertuar në tekst nga faqja e importit) binte te
+// `new Date(s)`, të cilën motori i JS-it e lexon si MM.DD.YYYY (amerikanisht),
+// duke e KTHYER në heshtje ditën me muajin (02.09.2026 → 9 Shkurt, jo 2 Shtator).
 function parseDateStr(raw: string): Date {
   const s = String(raw).trim();
-  if (s.includes("/")) {
-    const [d, m, y] = s.split("/");
-    return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
+  const m = s.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/);
+  if (m) {
+    const [, d, mo, y] = m;
+    return new Date(`${y}-${mo.padStart(2,"0")}-${d.padStart(2,"0")}`);
   }
   const d = new Date(s);
   return isNaN(d.getTime()) ? new Date() : d;

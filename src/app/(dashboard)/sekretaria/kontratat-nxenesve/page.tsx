@@ -58,7 +58,7 @@ function fmtDate(iso: string) {
   if (!iso) return "";
   try {
     const d = new Date(iso);
-    return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
   } catch { return ""; }
 }
 
@@ -333,11 +333,13 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
 
     const rawPhones = [student.fatherPhone, student.motherPhone, student.parentPhone]
       .filter((p): p is string => Boolean(p));
+    // Numra shumë të shkurtër (< 8 shifra) hiqen — janë shpesh vlera placeholder/gabim
+    // shkrimi që përputhen rastësisht me nxënës krejt të palidhur (vëllezër/motra false).
     const phones = [...new Set(
       rawPhones.flatMap(p => {
         const digits = normPhone(p);
         return [digits, digits.slice(-9)];
-      }).filter(Boolean)
+      }).filter(d => d.length >= 8)
     )];
 
     // Emrat unikë të prindërve për kërkim paralel sipas emrit
@@ -375,27 +377,15 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
       if (sibPhoneRes) { const d = await sibPhoneRes.json(); addUnique(d.students || []); }
       for (const res of sibNameReses) { const d = await res.json(); addUnique(d.students || []); }
 
-      const [s2, s3, s4] = found;
-      const sibData = (s: Student) => ({
-        Name:     `${s.firstName} ${s.lastName}`,
-        Personal: s.personalNumber || "",
-        Birth:    s.birthDate ? fmtDate(s.birthDate) : "",
-        Class:    s.class ? `${s.class.level} — ${s.class.name}` : "",
-        Price:    String(Math.round(base * (1 - (s.discountPct || 0) / 100))),
-      });
+      // Çmimi i vetë nxënësit (bazuar te zbritja e tij) vendoset gjithmonë automatikisht —
+      // s'ka lidhje me përputhjen e vëllezërve/motrave, prandaj s'ka rrezik gabimi këtu.
+      setD(prev => ({ ...prev, price: String(mainPrice) }));
 
-      setD(prev => ({
-        ...prev,
-        price: String(mainPrice),
-        ...(s2 ? { sib2Name: sibData(s2).Name, sib2Personal: sibData(s2).Personal, sib2Birth: sibData(s2).Birth, sib2Class: sibData(s2).Class, sib2Price: sibData(s2).Price } : {}),
-        ...(s3 ? { sib3Name: sibData(s3).Name, sib3Personal: sibData(s3).Personal, sib3Birth: sibData(s3).Birth, sib3Class: sibData(s3).Class, sib3Price: sibData(s3).Price } : {}),
-        ...(s4 ? { sib4Name: sibData(s4).Name, sib4Personal: sibData(s4).Personal, sib4Birth: sibData(s4).Birth, sib4Class: sibData(s4).Class, sib4Price: sibData(s4).Price } : {}),
-      }));
-
-      if (found.length > 0) {
-        setSiblingsAdded(true);
-        setSiblings([]);
-      }
+      // Përputhjet me telefon/emër prindi janë vetëm SUGJERIM — kërkojnë konfirmim manual
+      // përpara se të shkruhen në kontratë, sepse përputhja me telefon mund të gabojë kur
+      // dy familje të palidhura kanë të njëjtin numër të regjistruar (shih rastin e raportuar
+      // ku nxënës krejt të palidhur u shfaqën si "vëllezër/motra" në kontratë).
+      if (found.length > 0) setSiblings(found.slice(0, 3));
     };
 
     fetchAll().catch(() => {});
@@ -613,7 +603,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
         )}
         {siblingsAdded && (
           <div className="mx-6 mt-4 px-4 py-2.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl text-sm text-green-700 dark:text-green-400">
-            ✓ Vëllezërit/motrat u shtuan automatikisht në kontratë
+            ✓ Vëllezërit/motrat u shtuan në kontratë
           </div>
         )}
 
@@ -673,9 +663,9 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                   label: "lindje",
                   cells: [
                     <>{sb}</>,
-                    <EF key="b2" value={d.sib2Birth} onChange={set("sib2Birth")} placeholder="DD.MM.YYYY" />,
-                    <EF key="b3" value={d.sib3Birth} onChange={set("sib3Birth")} placeholder="DD.MM.YYYY" />,
-                    ...(has4 ? [<EF key="b4" value={d.sib4Birth} onChange={set("sib4Birth")} placeholder="DD.MM.YYYY" />] : []),
+                    <EF key="b2" value={d.sib2Birth} onChange={set("sib2Birth")} placeholder="DD/MM/YYYY" />,
+                    <EF key="b3" value={d.sib3Birth} onChange={set("sib3Birth")} placeholder="DD/MM/YYYY" />,
+                    ...(has4 ? [<EF key="b4" value={d.sib4Birth} onChange={set("sib4Birth")} placeholder="DD/MM/YYYY" />] : []),
                   ],
                 },
                 {
@@ -738,7 +728,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                   <td style={{ ...CS, width: "50%" }}><span style={LB}>Adresa:</span><EF value={d.motherAddress} onChange={set("motherAddress")} /></td>
                 </tr>
                 <tr>
-                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.motherBirth} onChange={set("motherBirth")} placeholder="DD.MM.YYYY" /></td>
+                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.motherBirth} onChange={set("motherBirth")} placeholder="DD/MM/YYYY" /></td>
                   <td style={CS}><span style={LB}>Profesioni:</span><EF value={d.motherProf} onChange={set("motherProf")} /></td>
                 </tr>
                 <tr>
@@ -751,7 +741,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                   <td style={CS}><span style={LB}>Adresa:</span><EF value={d.fatherAddress} onChange={set("fatherAddress")} /></td>
                 </tr>
                 <tr>
-                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.fatherBirth} onChange={set("fatherBirth")} placeholder="DD.MM.YYYY" /></td>
+                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.fatherBirth} onChange={set("fatherBirth")} placeholder="DD/MM/YYYY" /></td>
                   <td style={CS}><span style={LB}>Profesioni:</span><EF value={d.fatherProf} onChange={set("fatherProf")} /></td>
                 </tr>
                 <tr>
@@ -772,7 +762,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                   <td style={{ ...CS, width: "50%" }}><span style={LB}>Adresa:</span><EF value={d.respAddress} onChange={set("respAddress")} /></td>
                 </tr>
                 <tr>
-                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.respBirth} onChange={set("respBirth")} placeholder="DD.MM.YYYY" /></td>
+                  <td style={CS}><span style={LB}>Data e lindjes:</span><EF value={d.respBirth} onChange={set("respBirth")} placeholder="DD/MM/YYYY" /></td>
                   <td style={CS}><span style={LB}>Profesioni:</span><EF value={d.respProf} onChange={set("respProf")} /></td>
                 </tr>
                 <tr>

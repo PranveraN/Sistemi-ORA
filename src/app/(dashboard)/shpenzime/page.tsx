@@ -83,6 +83,11 @@ export default function ShpenzimePage() {
   const [raportYear, setRaportYear] = useState(now.getFullYear());
   const RAPORT_YEARS = [2023, 2024, 2025, 2026];
 
+  // Qeliza e klikuar në Raportin Vjetor — listë e faturave që përbëjnë atë shumë
+  const [cellModal, setCellModal] = useState<{ kategoriId: number; kategoriEmri: string; month: number; year: number } | null>(null);
+  const [cellRows, setCellRows] = useState<Shpenzim[]>([]);
+  const [cellLoading, setCellLoading] = useState(false);
+
   // Raport Z/B
   type ZBRow = { kategoria: string; ngjyra: string | null; zyre: Record<number, number>; banke: Record<number, number>; totalZ: number; totalB: number };
   const [zbYear, setZbYear] = useState(now.getFullYear());
@@ -265,12 +270,16 @@ export default function ShpenzimePage() {
     setSaving(false);
     setShowModal(false);
     fetchData();
+    if (tab === "raport") fetchRaport();
+    if (cellModal) fetchCellRows(cellModal);
   }
 
   async function handleDelete(id: number) {
     if (!confirm("Fshi këtë shpenzim?")) return;
     await fetch(`/api/shpenzime/${id}`, { method: "DELETE" });
     fetchData();
+    if (tab === "raport") fetchRaport();
+    if (cellModal) fetchCellRows(cellModal);
   }
 
   /* ── Bulk selection ── */
@@ -454,6 +463,40 @@ export default function ShpenzimePage() {
     if (tab === "raport") fetchRaport();
   }, [tab, fetchRaport]);
 
+  async function fetchCellRows(cell: { kategoriId: number; month: number; year: number }) {
+    setCellLoading(true);
+    try {
+      const res = await fetch(`/api/shpenzime?kategoriId=${cell.kategoriId}&month=${cell.month}&year=${cell.year}&limit=500`);
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      const data = await res.json();
+      setCellRows(data.shpenzime || []);
+    } catch {
+      // Gabim rrjeti
+    } finally {
+      setCellLoading(false);
+    }
+  }
+
+  function openCell(kategoriId: number, kategoriEmri: string, month: number) {
+    const cell = { kategoriId, kategoriEmri, month, year: raportYear };
+    setCellModal(cell);
+    fetchCellRows(cell);
+  }
+
+  function openNewForCell() {
+    if (!cellModal) return;
+    setEditId(null);
+    setForm({
+      kategoriId: String(cellModal.kategoriId), shuma: "", pershkrim: "", marres: "",
+      data: new Date(cellModal.year, cellModal.month - 1, 1).toISOString().split("T")[0],
+      metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true,
+      nrFature: "", emriBiznesit: "", nrFiskal: "",
+    });
+    setSipartnerSuggestions([]);
+    setShowSuggestions(false);
+    setShowModal(true);
+  }
+
   const fetchZB = useCallback(async () => {
     setZbLoading(true);
     try {
@@ -609,7 +652,7 @@ export default function ShpenzimePage() {
             {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
           <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-24">
-            {[2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            {[2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
 
           {/* Filtri Zyre / Banke */}
@@ -988,8 +1031,18 @@ export default function ShpenzimePage() {
                         {Array.from({ length: 12 }, (_, i) => {
                           const val = k.muajt[i + 1];
                           return (
-                            <td key={i} className={`px-2 py-2 text-right ${val ? "text-red-600 dark:text-red-400 font-medium" : "text-slate-200 dark:text-slate-700"}`}>
-                              {val ? formatCurrency(val) : "—"}
+                            <td key={i} className="px-2 py-2 text-right">
+                              {val ? (
+                                <button
+                                  onClick={() => openCell(k.id, k.emri, i + 1)}
+                                  className="text-red-600 dark:text-red-400 font-medium hover:underline decoration-dotted underline-offset-2"
+                                  title="Shiko/edito faturat që përbëjnë këtë shumë"
+                                >
+                                  {formatCurrency(val)}
+                                </button>
+                              ) : (
+                                <span className="text-slate-200 dark:text-slate-700">—</span>
+                              )}
                             </td>
                           );
                         })}
@@ -1158,6 +1211,72 @@ export default function ShpenzimePage() {
           </div>
         )}
       </div>
+
+      {/* Modal — Faturat që përbëjnë një qelizë të Raportit Vjetor */}
+      {cellModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={() => setCellModal(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-white">
+                {cellModal.kategoriEmri} — {MONTHS[cellModal.month - 1]} {cellModal.year}
+              </h3>
+              <button onClick={() => setCellModal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-3">
+              <button onClick={openNewForCell} className="btn-secondary text-sm">
+                <Plus className="w-4 h-4" /> Shto Faturë të Re
+              </button>
+
+              {cellLoading ? (
+                <div className="py-10 text-center text-slate-400 text-sm">Duke ngarkuar...</div>
+              ) : cellRows.length === 0 ? (
+                <div className="py-10 text-center text-slate-400 text-sm">Asnjë faturë</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-700/50">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-slate-500 dark:text-slate-400">Data</th>
+                      <th className="text-left px-3 py-2 font-medium text-slate-500 dark:text-slate-400">Përshkrimi / Biznesi</th>
+                      <th className="text-right px-3 py-2 font-medium text-slate-500 dark:text-slate-400">Shuma</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-700/50">
+                    {cellRows.map(s => (
+                      <tr key={s.id}>
+                        <td className="px-3 py-2 text-slate-500 dark:text-slate-400 whitespace-nowrap">{formatDate(s.data)}</td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{s.emriBiznesit || s.pershkrim || "—"}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-slate-800 dark:text-white">{formatCurrency(s.shuma)}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => openEdit(s)} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleDelete(s.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-600">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t border-slate-100 dark:border-slate-700">
+                    <tr>
+                      <td colSpan={2} className="px-3 py-2 font-semibold text-slate-700 dark:text-slate-200">TOTALI</td>
+                      <td className="px-3 py-2 text-right font-bold text-red-600 dark:text-red-400">
+                        {formatCurrency(cellRows.reduce((sum, s) => sum + s.shuma, 0))}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal — Shto/Modifiko Shpenzim */}
       {showModal && (

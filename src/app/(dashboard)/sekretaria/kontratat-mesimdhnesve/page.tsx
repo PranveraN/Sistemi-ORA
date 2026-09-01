@@ -90,7 +90,7 @@ const NR2_ITEMS = [
 
 function ContractOrarPlote({ staff, onClose }: { staff: StaffMember; onClose: () => void }) {
   const today = new Date();
-  const todayFmt = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;
+  const todayFmt = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
 
   const [d, setD] = useState<ContractData>({
     emri: staff.emri || "",
@@ -201,15 +201,15 @@ function ContractOrarPlote({ staff, onClose }: { staff: StaffMember; onClose: ()
             <p style={P}>4.1. E punësuara themelon marrëdhënie pune, në:</p>
             <p style={P}>
               1) Kohë të caktuar, duke filluar nga:{" "}
-              <EF value={d.dataFillimit} onChange={set("dataFillimit")} placeholder="DD.MM.YYYY" width="100px" />, deri më:{" "}
-              <EF value={d.dataMbarimit} onChange={set("dataMbarimit")} placeholder="DD.MM.YYYY" width="100px" />.
+              <EF value={d.dataFillimit} onChange={set("dataFillimit")} placeholder="DD/MM/YYYY" width="100px" />, deri më:{" "}
+              <EF value={d.dataMbarimit} onChange={set("dataMbarimit")} placeholder="DD/MM/YYYY" width="100px" />.
             </p>
 
             {/* Neni 5 */}
             <div style={ART}>5. Neni 5</div>
             <p style={P}>
               E punësuara është e detyruar të fillojë punën, më:{" "}
-              <EF value={d.dataFillimitPune} onChange={set("dataFillimitPune")} placeholder="DD.MM.YYYY" width="100px" />, përveç rasteve kur institucioni u jep leje për arsye të ndryshme (pushimet vjetore etj).
+              <EF value={d.dataFillimitPune} onChange={set("dataFillimitPune")} placeholder="DD/MM/YYYY" width="100px" />, përveç rasteve kur institucioni u jep leje për arsye të ndryshme (pushimet vjetore etj).
             </p>
 
             {/* Neni 6 */}
@@ -306,7 +306,7 @@ function ContractOrarPlote({ staff, onClose }: { staff: StaffMember; onClose: ()
             <div style={ART}>20. Neni 20</div>
             <p style={P}>
               Pas njoftimit me përmbajtjen e Kontratës, kjo Kontratë nga palët kontraktuese u nënshkrua më datën:{" "}
-              <EF value={d.dataKontrates} onChange={set("dataKontrates")} placeholder="DD.MM.YYYY" width="100px" /> në Prishtinë, në dy kopje autentike, nga të cilat, secilës pale i mbetet nga një kopje.
+              <EF value={d.dataKontrates} onChange={set("dataKontrates")} placeholder="DD/MM/YYYY" width="100px" /> në Prishtinë, në dy kopje autentike, nga të cilat, secilës pale i mbetet nga një kopje.
             </p>
 
             {/* Nënshkrimet */}
@@ -361,7 +361,7 @@ interface PartContractData {
 
 function ContractOrarPjesshme({ staff, onClose }: { staff: StaffMember; onClose: () => void }) {
   const today = new Date();
-  const todayFmt = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;
+  const todayFmt = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
 
   const [d, setD] = useState<PartContractData>({
     emri: staff.emri || "",
@@ -475,15 +475,15 @@ function ContractOrarPjesshme({ staff, onClose }: { staff: StaffMember; onClose:
             <p style={P}>4.1. I punësuari themelon marrëdhënie pune, në:</p>
             <p style={P}>
               1) Kohë të caktuar, duke filluar nga: prej:{" "}
-              <EF value={d.dataFillimit} onChange={set("dataFillimit")} placeholder="DD.MM.YYYY" width="100px" /> dhe mbaron{" "}
-              <EF value={d.dataMbarimit} onChange={set("dataMbarimit")} placeholder="DD.MM.YYYY" width="100px" />.
+              <EF value={d.dataFillimit} onChange={set("dataFillimit")} placeholder="DD/MM/YYYY" width="100px" /> dhe mbaron{" "}
+              <EF value={d.dataMbarimit} onChange={set("dataMbarimit")} placeholder="DD/MM/YYYY" width="100px" />.
             </p>
 
             {/* Neni 5 */}
             <div style={ART}>5. Neni 5</div>
             <p style={P}>
               I punësuari është i detyruar të fillojë punën, më:{" "}
-              <EF value={d.dataFillimitPune} onChange={set("dataFillimitPune")} placeholder="DD.MM.YYYY" width="100px" />, përveç rasteve kur institucioni u jep leje për arsye të ndryshme (pushimet vjetore etj).
+              <EF value={d.dataFillimitPune} onChange={set("dataFillimitPune")} placeholder="DD/MM/YYYY" width="100px" />, përveç rasteve kur institucioni u jep leje për arsye të ndryshme (pushimet vjetore etj).
             </p>
 
             {/* Neni 6 */}
@@ -581,7 +581,7 @@ function ContractOrarPjesshme({ staff, onClose }: { staff: StaffMember; onClose:
             <div style={ART}>19. Neni 20</div>
             <p style={P}>
               Pas njoftimit me përmbajtjen e Kontratës, kjo Kontratë nga palët kontraktuese u nënshkrua më datën:{" "}
-              <EF value={d.dataKontrates} onChange={set("dataKontrates")} placeholder="DD.MM.YYYY" width="100px" /> në Prishtinë, në dy kopje autentike, nga të cilat, secilës pale i mbetet nga një kopje.
+              <EF value={d.dataKontrates} onChange={set("dataKontrates")} placeholder="DD/MM/YYYY" width="100px" /> në Prishtinë, në dy kopje autentike, nga të cilat, secilës pale i mbetet nga një kopje.
             </p>
 
             {/* Nënshkrimet */}

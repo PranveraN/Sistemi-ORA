@@ -4,11 +4,12 @@ import React, { useEffect, useState, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import {
   BookOpen, Plus, Search, X, Printer, Trash2, Loader2, Package, TrendingUp, ShoppingCart, AlertCircle,
-  TrendingDown, ArrowRightLeft, BarChart3, Download, Wallet, Medal,
+  TrendingDown, ArrowRightLeft, BarChart3, Download, Wallet, Medal, Users, CheckCircle,
 } from "lucide-react";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, getDateRange, type YearType } from "@/lib/academicYear";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, getDateRange, type YearType } from "@/lib/academicYear";
 import * as XLSX from "xlsx";
+import FamilyReceiptPrintModal from "@/components/finance/FamilyReceiptPrintModal";
 
 /* ── Types ─────────────────────────────────────────────── */
 interface Product {
@@ -296,11 +297,9 @@ export default function LibratPage() {
   const [tab, setTab] = useState<"shitjet" | "produktet" | "raport" | "dorezim">("shitjet");
 
   /* ── Periudha (Vit Akademik / Kalendarik + Muaj + Vit) ── */
-  const now = new Date();
-  const currentAcademicStart = now.getMonth() + 1 >= 9 ? now.getFullYear() : now.getFullYear() - 1;
   const [yearType, setYearType] = useState<YearType>("academic");
   const [month, setMonth] = useState(0); // 0 = "Të gjitha"
-  const [year, setYear]   = useState(currentAcademicStart);
+  const [year, setYear]   = useState(DEFAULT_ACADEMIC_YEAR);
 
   function dateRange(): { from?: string; to?: string } {
     if (year <= 0) return {};
@@ -338,6 +337,16 @@ export default function LibratPage() {
   const [newSaleModal, setNewSaleModal] = useState(false);
   const [detailSale, setDetailSale] = useState<Sale | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  /* ── Pagesë e përbashkët (familje) ── */
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [batchModal, setBatchModal] = useState(false);
+  const [batchSaving, setBatchSaving] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchParentName, setBatchParentName] = useState("");
+  const [batchParentPhone, setBatchParentPhone] = useState("");
+  const [batchMethod, setBatchMethod] = useState("CASH");
+  const [familyReceiptPrintId, setFamilyReceiptPrintId] = useState<number | null>(null);
 
   /* ── Stats ── */
   const totalRevenue = sales.reduce((s, x) => s + x.paidAmount, 0);
@@ -450,6 +459,48 @@ export default function LibratPage() {
     setDetailSale(null);
     fetchSales();
   }
+
+  function toggleSelect(id: number) {
+    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+
+  function openBatchModal() {
+    const first = sales.find(s => selected.has(s.id));
+    setBatchParentName(first?.studentName || "");
+    setBatchParentPhone("");
+    setBatchMethod("CASH");
+    setBatchError(null);
+    setBatchModal(true);
+  }
+
+  async function submitBatch() {
+    setBatchSaving(true);
+    setBatchError(null);
+    const res = await fetch("/api/family-receipts/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        parentName: batchParentName,
+        parentPhone: batchParentPhone,
+        method: batchMethod,
+        bookSaleIds: [...selected],
+      }),
+    });
+    setBatchSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setBatchError(d.error || "Gabim gjatë ruajtjes.");
+      return;
+    }
+    const d = await res.json();
+    setBatchModal(false);
+    setSelected(new Set());
+    setFamilyReceiptPrintId(d.id);
+    fetchSales();
+  }
+
+  const selectedSales = sales.filter(s => selected.has(s.id));
+  const selectedTotal = selectedSales.reduce((sum, s) => sum + s.paidAmount, 0);
 
   async function saveProd() {
     const body = { ...prodForm };
@@ -568,11 +619,21 @@ export default function LibratPage() {
               </button>
             </div>
 
+            {selected.size >= 2 && (
+              <div className="flex items-center justify-between p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-xl">
+                <span className="text-sm text-primary-700 dark:text-primary-300 font-medium">{selected.size} shitje të zgjedhura — {fmt(selectedTotal)} €</span>
+                <button onClick={openBatchModal} className="btn-primary text-sm">
+                  <Users className="w-4 h-4" /> Bashko në Pagesë Familjare
+                </button>
+              </div>
+            )}
+
             <div className="card overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
+                      <th className="table-header"></th>
                       <th className="table-header">#</th>
                       <th className="table-header">Nr. Faturës</th>
                       <th className="table-header">Nxënësi</th>
@@ -588,11 +649,14 @@ export default function LibratPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                     {salesLoading ? (
-                      <tr><td colSpan={11} className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" /></td></tr>
+                      <tr><td colSpan={12} className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" /></td></tr>
                     ) : sales.length === 0 ? (
-                      <tr><td colSpan={11} className="py-16 text-center text-slate-400 text-sm">Asnjë shitje</td></tr>
+                      <tr><td colSpan={12} className="py-16 text-center text-slate-400 text-sm">Asnjë shitje</td></tr>
                     ) : sales.map((sale, i) => (
                       <tr key={sale.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer" onClick={() => openDetail(sale)}>
+                        <td className="table-cell" onClick={e => e.stopPropagation()}>
+                          <input type="checkbox" checked={selected.has(sale.id)} onChange={() => toggleSelect(sale.id)} className="rounded accent-primary-600" />
+                        </td>
                         <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                         <td className="table-cell font-mono text-xs text-slate-500">{sale.receiptNumber || `#${sale.id}`}</td>
                         <td className="table-cell font-semibold text-slate-800 dark:text-white">{sale.studentName}</td>
@@ -1021,6 +1085,67 @@ export default function LibratPage() {
             if (r.ok) setDetailSale(await r.json());
             fetchSales();
           }}
+        />
+      )}
+
+      {/* ── Pagesë e Përbashkët (familje) ── */}
+      {batchModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setBatchModal(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary-500" /> Dëshmi Pagese e Përbashkët
+              </h3>
+              <button onClick={() => setBatchModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="space-y-1.5">
+                {selectedSales.map(s => (
+                  <div key={s.id} className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
+                    <span>{s.studentName}</span>
+                    <span className="font-semibold">{fmt(s.paidAmount)} €</span>
+                  </div>
+                ))}
+                <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold border-t border-slate-200 dark:border-slate-600 pt-2 mt-1">
+                  <span>TOTALI</span>
+                  <span>{fmt(selectedTotal)} €</span>
+                </div>
+              </div>
+              <div>
+                <label className="form-label">Emri i prindit</label>
+                <input className="form-input" value={batchParentName} onChange={e => setBatchParentName(e.target.value)} />
+              </div>
+              <div>
+                <label className="form-label">Telefoni</label>
+                <input className="form-input" value={batchParentPhone} onChange={e => setBatchParentPhone(e.target.value)} />
+              </div>
+              <div>
+                <label className="form-label">Mënyra</label>
+                <select className="form-input" value={batchMethod} onChange={e => setBatchMethod(e.target.value)}>
+                  <option value="CASH">Cash</option>
+                  <option value="BANK">Bankë</option>
+                  <option value="CARD">Kartelë</option>
+                </select>
+              </div>
+              {batchError && <p className="text-sm text-red-500">{batchError}</p>}
+            </div>
+            <div className="flex justify-end gap-2 p-5 pt-0">
+              <button onClick={() => setBatchModal(false)} className="btn-secondary">Anulo</button>
+              <button onClick={submitBatch} disabled={batchSaving} className="btn-primary disabled:opacity-50">
+                {batchSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                Regjistro & Printo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {familyReceiptPrintId && (
+        <FamilyReceiptPrintModal
+          familyReceiptId={familyReceiptPrintId}
+          onClose={() => setFamilyReceiptPrintId(null)}
         />
       )}
     </>

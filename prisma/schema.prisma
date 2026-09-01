@@ -23,6 +23,7 @@ model Organization {
   invoices         Invoice[]
   schoolYears      SchoolYear[]
   materialRequests MaterialRequest[]
+  familyReceipts   FamilyReceipt[]
 }
 
 model User {
@@ -316,15 +317,40 @@ model Payment {
   method        String?          // CASH, BANK, CARD, ONLINE
   status        String           @default("PENDING") // PENDING, PARTIAL, PAID, OVERDUE
   description   String?
+  note          String?          // shënim i lirë i stafit (p.sh. "borxh i vjetër nga 2025-2026")
   invoiceId     Int?
   invoice       Invoice?         @relation(fields: [invoiceId], references: [id])
   month         Int?             // 1-12 for monthly payments
   year          Int?
   receiptNumber  String?          @unique
+  familyReceiptId Int?            // grupon disa Payment (nga fëmijë të ndryshëm të së njëjtës familje)
+  familyReceipt   FamilyReceipt?  @relation(fields: [familyReceiptId], references: [id])
   organizationId Int              @default(1)
   organization   Organization     @relation(fields: [organizationId], references: [id])
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+
+  @@index([familyReceiptId])
+}
+
+// Grupon disa pagesa (Payment) nga fëmijë të ndryshëm të së njëjtës familje, të regjistruara
+// dhe të paguara njëkohësisht, në një dëshmi/fletëpagesë të vetme të printueshme — çdo Payment
+// mbetet i lidhur individualisht me nxënësin e tij (gjurma financiare e secilit qëndron e saktë),
+// vetëm printimi/faturimi i shfaqet stafit si një dokument i vetëm.
+model FamilyReceipt {
+  id             Int          @id @default(autoincrement())
+  receiptNumber  String       @unique  // FAM-{vit}-{sekuencë}
+  parentName     String?
+  parentPhone    String?
+  method         String?      // CASH, BANK, CARD, ONLINE
+  totalAmount    Float        @default(0)
+  paidDate       DateTime     @default(now())
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  payments       Payment[]
+  uniSales       UniSale[]
+  bookSales      BookSale[]
+  createdAt      DateTime     @default(now())
 }
 
 model Invoice {
@@ -419,8 +445,12 @@ model UniSale {
   notes         String?
   items         UniSaleItem[]
   payments      UniPayment[]
+  familyReceiptId Int?        // bashkuar në një dëshmi pagese familjeje me shitje të tjera
+  familyReceipt   FamilyReceipt? @relation(fields: [familyReceiptId], references: [id])
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+
+  @@index([familyReceiptId])
 }
 
 model UniSaleItem {
@@ -487,8 +517,12 @@ model BookSale {
   receiptNumber String?
   saleDate      DateTime @default(now())
   notes         String?
+  familyReceiptId Int?   // bashkuar në një dëshmi pagese familjeje me shitje të tjera
+  familyReceipt   FamilyReceipt? @relation(fields: [familyReceiptId], references: [id])
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@index([familyReceiptId])
 }
 
 model BookSaleItem {

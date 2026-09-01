@@ -6,7 +6,7 @@ import Link from "next/link";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
 import { CYCLES, getCycle } from "@/lib/school-cycles";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import { BADGE_CSS, buildBadgeCardHTML } from "@/lib/badge-html";
 import * as XLSX from "xlsx";
 import {
@@ -18,6 +18,8 @@ import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
 import PaymentReceiptModal from "@/components/finance/PaymentReceiptModal";
 import StudentBadgeModal from "@/components/students/StudentBadgeModal";
+import FamilyPaymentModal from "@/components/finance/FamilyPaymentModal";
+import FamilyReceiptPrintModal from "@/components/finance/FamilyReceiptPrintModal";
 
 type Tab = "income" | "expense" | "handover" | "report";
 
@@ -93,6 +95,7 @@ interface Payment {
   balance: number; discount: number; discountType: string | null;
   scholarship: number; method: string | null; paidDate: string | null;
   dueDate: string; status: string; description: string | null;
+  note: string | null;
   receiptNumber: string | null; month: number; year: number;
 }
 interface Class { id: number; name: string; level: string; }
@@ -252,9 +255,8 @@ function calcPrices(price2Meals: number, workingDays: number, monthsPerYear: num
 /* ═══════════════════════════════════════════════════════ */
 export default function UshqimiPage() {
   const now = new Date();
-  const currentAcademicStart = now.getMonth() + 1 >= 9 ? now.getFullYear() : now.getFullYear() - 1;
   const [month, setMonth]   = useState(now.getMonth() + 1);
-  const [year, setYear]     = useState(currentAcademicStart);
+  const [year, setYear]     = useState(DEFAULT_ACADEMIC_YEAR);
   const [yearType, setYearType] = useState<YearType>("academic");
   const [search, setSearch]   = useState("");
   const [classId, setClassId] = useState("");
@@ -273,13 +275,36 @@ export default function UshqimiPage() {
     });
   }, []);
 
-  // Pricing config
+  // Pricing config — çmimi (price2Meals) ruhet si parazgjedhje e sistemit (tabela
+  // Setting), jo vetëm në state të faqes — përndryshe çdo rifreskim/rihapje e
+  // kthente te 4€ i fiksuar, edhe pse stafi e kishte ndryshuar në 4.5€ (shih
+  // handleSavePrice2Meals më poshtë, e vetmja mënyrë që e ruan realisht).
   const [price2Meals,   setPrice2Meals]   = useState(4);
+  const [price2MealsSaved, setPrice2MealsSaved] = useState(4);
+  const [savingPrice,   setSavingPrice]   = useState(false);
   const [workingDays,   setWorkingDays]   = useState(20);
   const [monthsPerYear, setMonthsPerYear] = useState(10);
   const [periods,       setPeriods]       = useState<Period[]>(DEFAULT_PERIODS);
   const [showCalc,      setShowCalc]      = useState(true);
   const [showManual,    setShowManual]    = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings").then(r => r.json()).then(s => {
+      const v = parseFloat(s.ushqimiPrice2Meals);
+      if (!isNaN(v) && v > 0) { setPrice2Meals(v); setPrice2MealsSaved(v); }
+    });
+  }, []);
+
+  async function handleSavePrice2Meals() {
+    setSavingPrice(true);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ushqimiPrice2Meals: String(price2Meals) }),
+    });
+    setPrice2MealsSaved(price2Meals);
+    setSavingPrice(false);
+  }
 
   // Tab + category ID
   const [tab,        setTab]        = useState<Tab>("income");
@@ -301,6 +326,8 @@ export default function UshqimiPage() {
   const [calcModal,   setCalcModal]   = useState<StudentRow | null>(null);
   const [badgeModal,  setBadgeModal]  = useState<StudentRow | null>(null);
   const [calcAmount,  setCalcAmount]  = useState<number | undefined>();
+  const [familyModalOpen, setFamilyModalOpen] = useState(false);
+  const [familyReceiptPrintId, setFamilyReceiptPrintId] = useState<number | null>(null);
 
   const prices = calcPrices(price2Meals, workingDays, monthsPerYear);
   // Same fallback as fetchYearData — keeps period-bucket dates consistent with what was fetched.
@@ -627,6 +654,17 @@ export default function UshqimiPage() {
                     onChange={e => setPrice2Meals(parseFloat(e.target.value) || 0)}
                     className="form-input w-36" min="0" step="0.5" />
                 </div>
+                {price2Meals !== price2MealsSaved && (
+                  <button
+                    onClick={handleSavePrice2Meals}
+                    disabled={savingPrice}
+                    className="btn-primary text-sm pb-2.5"
+                    title="Ruaje si çmimin e ri të parazgjedhur — përndryshe kthehet te i vjetri kur rihapet faqja"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {savingPrice ? "Duke ruajtur..." : `Ruaj si parazgjedhje (${formatCurrency(price2MealsSaved)} → ${formatCurrency(price2Meals)})`}
+                  </button>
+                )}
                 <div className="flex items-center gap-1.5 text-xs text-slate-400 pb-2">
                   <Info className="w-3.5 h-3.5" />
                   Mengjesi: {formatCurrency(price2Meals * 3/8)}/ditë · Dreka: {formatCurrency(price2Meals * 5/8)}/ditë
@@ -862,6 +900,13 @@ export default function UshqimiPage() {
               Exporto Excel
             </button>
 
+            {/* Pagesë e Përbashkët — 2+ fëmijë të së njëjtës familje njëherësh */}
+            <button onClick={() => setFamilyModalOpen(true)} className="btn-secondary text-sm"
+              title="Regjistro dhe printo një dëshmi pagese për 2+ fëmijë të së njëjtës familje njëherësh">
+              <Users className="w-4 h-4" />
+              Pagesë e Përbashkët
+            </button>
+
             {/* Printo Bexhet — per klasen e filtruar aktualisht */}
             <button onClick={() => printClassBadges(displayed, selectedClassName)} className="btn-secondary text-sm" disabled={displayed.length === 0}>
               <IdCard className="w-4 h-4" />
@@ -943,6 +988,7 @@ export default function UshqimiPage() {
                             <button
                               type="button"
                               onClick={() => setPayModal({ student: s, month: period.canonicalMonth, existingPayment: payment })}
+                              title={payment?.note || undefined}
                               className={`w-full h-full px-2 py-2.5 text-xs font-medium transition-colors ${
                                 skipped
                                   ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 italic hover:bg-slate-200"
@@ -1044,6 +1090,7 @@ export default function UshqimiPage() {
           prices={prices}
           workingDays={workingDays}
           periods={periods}
+          periodCalYear={periodCalYear}
           overrideAmount={calcAmount}
           onClose={() => { setPayModal(null); setCalcAmount(undefined); }}
           onSave={async (rid) => { setPayModal(null); setCalcAmount(undefined); await fetchYearData(); if (rid) setReceiptPaymentId(rid); }}
@@ -1097,6 +1144,29 @@ export default function UshqimiPage() {
           onClose={() => setBadgeModal(null)}
         />
       )}
+      {familyModalOpen && categoryId && (
+        <FamilyPaymentModal
+          categoryId={categoryId}
+          categoryName="Ushqimi"
+          isMonthly={true}
+          defaultMonth={PERIOD_BUCKETS.find(p => p.months.includes(now.getMonth() + 1))?.canonicalMonth ?? PERIOD_BUCKETS[0].canonicalMonth}
+          schoolYearStart={effectiveYear}
+          periodOptions={PERIOD_BUCKETS.map(p => ({ label: p.label, canonicalMonth: p.canonicalMonth }))}
+          computeDefaultAmount={(_discountPct, month) => {
+            const idx = PERIOD_BUCKETS.findIndex(p => p.canonicalMonth === month);
+            const days = idx >= 0 ? (periods[idx]?.days ?? workingDays) : workingDays;
+            return Math.round(days * price2Meals * 100) / 100;
+          }}
+          onClose={() => setFamilyModalOpen(false)}
+          onSaved={(id) => { setFamilyModalOpen(false); setFamilyReceiptPrintId(id); fetchYearData(); }}
+        />
+      )}
+      {familyReceiptPrintId && (
+        <FamilyReceiptPrintModal
+          familyReceiptId={familyReceiptPrintId}
+          onClose={() => setFamilyReceiptPrintId(null)}
+        />
+      )}
     </>
   );
 }
@@ -1104,9 +1174,10 @@ export default function UshqimiPage() {
 /* ═══════════════════════════════════════════════════════ */
 /*  Payment Modal — specialized for meals                 */
 /* ═══════════════════════════════════════════════════════ */
-function UshqimiPayModal({ student, existingPayment, month, year, prices, workingDays, periods, onClose, onSave, overrideAmount }: {
+function UshqimiPayModal({ student, existingPayment, month, year, prices, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount }: {
   student: StudentRow; existingPayment: Payment | null; month: number; year: number;
   prices: Record<string, number>; workingDays: number; periods: Period[];
+  periodCalYear: (canonicalMonth: number) => number;
   overrideAmount?: number;
   onClose: () => void; onSave: (receiptPaymentId?: number) => void;
 }) {
@@ -1136,6 +1207,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       ? new Date(existing.paidDate).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0]
   );
+  const [note, setNote] = useState(existing?.note ?? "");
   const [saving, setSaving] = useState(false);
 
   const finalAmount = isCalc ? (overrideAmount ?? 0) : Math.round(days * pricePerDay * 100) / 100;
@@ -1161,6 +1233,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       paidDate: paid > 0 ? paidDate : null,
       month, year,
       description,
+      note: note || null,
     };
 
     const catRes = await fetch("/api/categories");
@@ -1230,6 +1303,62 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
 
   const markSkipped = () => markAs(SKIPPED_MARKER);
   const markFree    = () => markAs(FREE_MARKER);
+
+  // Disa familje paguajnë krejt vitin (5 periudhat) përnjëherë — llogarit çfarë
+  // mbetet pa u paguar në secilën periudhë dhe i mbyll të gjitha njëherësh, duke
+  // ruajtur intakte periudhat e shënuara "Ndërprerë"/"Falas" dhe ato tashmë të paguara.
+  function computeYearPlan() {
+    const items = PERIOD_BUCKETS.map((period, i) => {
+      const existing = findPeriodPayment(student.installments, period.months);
+      const calYear = periodCalYear(period.canonicalMonth);
+      if (existing && (existing.description === SKIPPED_MARKER || existing.description === FREE_MARKER)) {
+        return { period, index: i, existing, finalAmount: 0, remaining: 0, calYear };
+      }
+      const days = periods[i]?.days ?? workingDays;
+      const finalAmount = existing ? existing.finalAmount : Math.round(days * prices["2_shujta_ditë"] * 100) / 100;
+      const remaining = existing ? Math.max(0, existing.finalAmount - existing.paidAmount) : finalAmount;
+      return { period, index: i, existing, finalAmount, remaining, calYear };
+    });
+    const total = items.reduce((sum, it) => sum + it.remaining, 0);
+    return { items, total };
+  }
+
+  const yearPlan = computeYearPlan();
+
+  async function handlePayFullYear() {
+    if (yearPlan.total <= 0) return;
+    if (!confirm(`Do të shënohen si paguar plotësisht të gjitha periudhat e vitit për ${student.firstName} ${student.lastName} — gjithsej ${formatCurrency(yearPlan.total)}. Vazhdo?`)) return;
+
+    setSaving(true);
+    const catRes = await fetch("/api/categories");
+    const cats = await catRes.json();
+    const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
+    const catId = cat?.id ?? 2;
+
+    for (const it of yearPlan.items) {
+      if (it.remaining <= 0) continue;
+      const payload = {
+        studentId: student.id, categoryId: catId,
+        amount: it.finalAmount, discount: 0, discountType: null, scholarship: 0,
+        finalAmount: it.finalAmount, paidAmount: it.finalAmount,
+        method,
+        dueDate: it.existing?.dueDate
+          ? new Date(it.existing.dueDate).toISOString().split("T")[0]
+          : new Date(it.calYear, it.period.canonicalMonth - 1, 5).toISOString().split("T")[0],
+        paidDate,
+        month: it.period.canonicalMonth, year: it.calYear,
+        description: it.existing?.description ?? `${periods[it.index]?.days ?? workingDays} ditë × ${formatCurrency(prices["2_shujta_ditë"])} — ${it.period.label} ${it.calYear}`,
+        note: note || it.existing?.note || null,
+      };
+      if (it.existing) {
+        await fetch(`/api/payments/${it.existing.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      } else {
+        await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      }
+    }
+    setSaving(false);
+    onSave(undefined);
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -1308,6 +1437,12 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
             </div>
           </div>
 
+          <div>
+            <label className="form-label">Shënim (opsionale)</label>
+            <input type="text" value={note} onChange={e => setNote(e.target.value)}
+              className="form-input" placeholder='p.sh. "Borxh i vjetër" ose sqarim tjetër' />
+          </div>
+
           {/* Balance */}
           {balance > 0 && paid > 0 && (
             <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-sm">
@@ -1325,6 +1460,20 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
             >
               <CheckCircle className="w-4 h-4" />
               Shëno si paguar plotësisht ({formatCurrency(finalAmount)})
+            </button>
+          )}
+
+          {/* Pay full year at once — for families that settle all 5 periods together */}
+          {yearPlan.total > 0 && (
+            <button
+              type="button"
+              onClick={handlePayFullYear}
+              disabled={saving}
+              title="Shënon si paguar plotësisht të gjitha periudhat e mbetura të vitit, jo vetëm këtë"
+              className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              💰 Paguaj Krejt Vitin ({formatCurrency(yearPlan.total)})
             </button>
           )}
         </div>
