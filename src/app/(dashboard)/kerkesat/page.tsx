@@ -66,7 +66,10 @@ export default function KerkesatPage() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setSendError({ id, message: d.error || "Dërgimi dështoi" });
+        // Nëse serveri s'ktheu një mesazh të qartë (p.sh. një gabim i papritur
+        // që s'u kap askund), shto të paktën statusin HTTP — mjafton për të
+        // dalluar "s'është konfiguruar" nga "u thye diçka" pa qasje te logs.
+        setSendError({ id, message: d.error || `Dërgimi dështoi (gabim ${res.status})` });
         setSending(false);
         return;
       }
