@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Send, Loader2, Clock, CheckCircle, XCircle, Package, Plus, X } from "lucide-react";
+import { Send, Loader2, Clock, CheckCircle, XCircle, Package, Plus, X, Folder, ChevronDown } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 
 interface MaterialRequestRow {
   id: number;
@@ -32,12 +33,28 @@ export default function TeacherRequestsClient() {
   const [subjectOrClass, setSubjectOrClass] = useState("");
   const [reason, setReason] = useState("");
 
+  // "Folderë" sipas datës — mbahet e hapur vetëm data më e fundit, që lista
+  // të mos zgjatet e panevojshme kur grumbullohen shumë kërkesa me kalimin e kohës.
+  const [openDates, setOpenDates] = useState<Set<string>>(new Set());
+
   const loadRequests = useCallback(async () => {
     setLoading(true);
     const res = await fetch("/api/material-requests");
-    if (res.ok) setRequests(await res.json());
+    if (res.ok) {
+      const data: MaterialRequestRow[] = await res.json();
+      setRequests(data);
+      if (data.length) setOpenDates(new Set([formatDate(data[0].createdAt)]));
+    }
     setLoading(false);
   }, []);
+
+  function toggleDate(date: string) {
+    setOpenDates(prev => {
+      const next = new Set(prev);
+      next.has(date) ? next.delete(date) : next.add(date);
+      return next;
+    });
+  }
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
 
@@ -189,29 +206,65 @@ export default function TeacherRequestsClient() {
         ) : requests.length === 0 ? (
           <p className="text-sm text-slate-400 text-center py-6">Ende s&apos;ke bërë asnjë kërkesë.</p>
         ) : (
-          <div className="space-y-3">
-            {requests.map(r => {
-              const st = STATUS_LABEL[r.status];
+          <div className="space-y-2">
+            {Object.entries(
+              requests.reduce<Record<string, MaterialRequestRow[]>>((groups, r) => {
+                const date = formatDate(r.createdAt);
+                (groups[date] ??= []).push(r);
+                return groups;
+              }, {})
+            ).map(([date, dayRequests]) => {
+              const isOpen = openDates.has(date);
+              const pendingCount = dayRequests.filter(r => r.status === "PENDING").length;
               return (
-                <div key={r.id} className="border border-slate-200 dark:border-slate-700 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-slate-800 dark:text-white">
-                        {r.item} <span className="text-slate-400 text-sm">× {r.quantity}</span>
-                      </p>
-                      {r.subjectOrClass && (
-                        <p className="text-xs text-slate-400 mt-0.5">{r.subjectOrClass}</p>
+                <div key={date} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => toggleDate(date)}
+                    className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Folder className="w-4 h-4 text-primary-500" />
+                      <span className="font-medium text-sm text-slate-800 dark:text-white">{date}</span>
+                      <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded-full">
+                        {dayRequests.length} {dayRequests.length === 1 ? "kërkesë" : "kërkesa"}
+                      </span>
+                      {pendingCount > 0 && (
+                        <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">{pendingCount} në pritje</span>
                       )}
-                      <p className="text-sm text-slate-500 mt-1.5">{r.reason}</p>
                     </div>
-                    <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${st.color}`}>
-                      {st.icon}
-                      {st.label}
-                    </span>
-                  </div>
-                  {r.status !== "PENDING" && r.reviewNote && (
-                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 text-xs text-slate-500">
-                      <span className="font-medium">Shënim nga menaxhmenti:</span> {r.reviewNote}
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {isOpen && (
+                    <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-700 pt-3">
+                      {dayRequests.map(r => {
+                        const st = STATUS_LABEL[r.status];
+                        return (
+                          <div key={r.id} className="border border-slate-200 dark:border-slate-700 rounded-xl p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-medium text-slate-800 dark:text-white">
+                                  {r.item} <span className="text-slate-400 text-sm">× {r.quantity}</span>
+                                </p>
+                                {r.subjectOrClass && (
+                                  <p className="text-xs text-slate-400 mt-0.5">{r.subjectOrClass}</p>
+                                )}
+                                <p className="text-sm text-slate-500 mt-1.5">{r.reason}</p>
+                              </div>
+                              <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${st.color}`}>
+                                {st.icon}
+                                {st.label}
+                              </span>
+                            </div>
+                            {r.status !== "PENDING" && r.reviewNote && (
+                              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 text-xs text-slate-500">
+                                <span className="font-medium">Shënim nga menaxhmenti:</span> {r.reviewNote}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
