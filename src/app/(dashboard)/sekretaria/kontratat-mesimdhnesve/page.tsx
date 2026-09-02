@@ -748,7 +748,7 @@ export default function KontratetMesimdhnesve() {
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         s.tipi === "Menaxhment" ? "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" :
                         s.tipi === "Primar" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
-                        s.tipi === "Sekundar" ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300" :
+                        s.tipi === "Sekondar" ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300" :
                         "bg-slate-100 text-slate-500"
                       }`}>{s.tipi || "—"}</span>
                     </td>

@@ -34,12 +34,12 @@ const EMPTY: Omit<StaffMember, "id"> = {
   adresa: null, kodi: null, tipi: "Primar", status: "ACTIVE",
 };
 
-const TIPI_OPTIONS = ["", "Primar", "Sekundar", "Menaxhment"];
+const TIPI_OPTIONS = ["", "Primar", "Sekondar", "Menaxhment"];
 
 function tipiBadge(tipi: string | null) {
   if (tipi === "Menaxhment") return "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300";
   if (tipi === "Primar") return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
-  if (tipi === "Sekundar") return "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300";
+  if (tipi === "Sekondar") return "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300";
   return "bg-slate-100 text-slate-600";
 }
 
@@ -317,7 +317,7 @@ export default function StafiPage() {
                 <select className="input w-full" value={form.tipi ?? ""} onChange={e => setForm(f => ({ ...f, tipi: e.target.value || null }))}>
                   <option value="">—</option>
                   <option>Primar</option>
-                  <option>Sekundar</option>
+                  <option>Sekondar</option>
                   <option>Menaxhment</option>
                 </select>
               </div>
