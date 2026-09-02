@@ -57,8 +57,12 @@ export default function TeacherRegisterPage() {
     if (result?.error) {
       router.push("/login");
     } else {
-      router.push("/");
-      router.refresh();
+      // Navigim i PLOTË (jo router.push) — garanton që middleware-i i ri-
+      // ekzekutohet me sesionin e ri, kështu që roli TEACHER drejtohet
+      // gjithmonë saktë te /kerkesa-material, pa rrezik të shfaqet
+      // përkohësisht faqja e mëparshme (p.sh. Dashboard-i i administratës)
+      // e ruajtur në cache të klientit.
+      window.location.href = "/";
     }
   }
 

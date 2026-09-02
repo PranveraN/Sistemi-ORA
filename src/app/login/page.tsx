@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BookOpen, Eye, EyeOff, Lock, Mail } from "lucide-react";
 
@@ -12,7 +11,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -30,8 +28,11 @@ export default function LoginPage() {
     if (result?.error) {
       setError("Email ose fjalëkalimi është i gabuar.");
     } else {
-      router.push("/");
-      router.refresh();
+      // Navigim i PLOTË (jo router.push) — garanton që middleware-i i ri-
+      // ekzekutohet me sesionin e ri, kështu që roli (p.sh. TEACHER) drejtohet
+      // gjithmonë saktë, pa rrezik të shfaqet përkohësisht faqja e mëparshme
+      // e ruajtur në cache të klientit.
+      window.location.href = "/";
     }
   }
 
