@@ -24,10 +24,13 @@ interface Student {
   lastName: string;
   parentName: string | null;
   parentPhone: string | null;
+  fatherName: string | null;
+  motherName: string | null;
   motherPhone: string | null;
   fatherPhone: string | null;
   motherEmail: string | null;
   fatherEmail: string | null;
+  address: string | null;
   personalNumber: string | null;
   diaryNumber: string | null;
   kontrata: string | null;
@@ -289,27 +292,39 @@ export default function StudentsPage() {
       const fp   = finalPrice(s);
       const paid = totalPaid(s);
       const debt = Math.max(0, fp - paid);
+      // Rezervë e përgjithshme — plotësohet vetëm nëse s'ka fare baba/nënë të
+      // regjistruar veç e veç (të dhëna të vjetra që kanë vetëm prindin e përgjithshëm).
+      const hasParentSplit = !!(s.fatherName || s.motherName);
       return {
-        "#":              i + 1,
-        "Emri":           s.firstName,
-        "Mbiemri":        s.lastName,
-        "Klasa":          s.class?.name ?? "",
-        "Nr. Personal":   s.personalNumber ?? "",
-        "Telefoni":       s.parentPhone || s.fatherPhone || s.motherPhone || "",
-        "Email":          s.motherEmail || s.fatherEmail || "",
-        "Çmimi Bazë (€)": tuitionPrice,
-        "Zbritja (%)":    s.discountPct,
-        "Çmimi Final (€)":fp,
-        "Paguar (€)":     paid,
-        "Borxhi (€)":     debt,
-        "Statusi":        s.status === "ACTIVE" ? "Aktiv" : "Joaktiv",
+        "#":                    i + 1,
+        "Emri":                 s.firstName,
+        "Mbiemri":              s.lastName,
+        "Klasa":                s.class?.name ?? "",
+        "Nr. Personal":         s.personalNumber ?? "",
+        "Emri i Babait":        s.fatherName ?? "",
+        "Telefoni i Babait":    s.fatherPhone ?? "",
+        "Email i Babait":       s.fatherEmail ?? "",
+        "Emri i Nënës":         s.motherName ?? "",
+        "Telefoni i Nënës":     s.motherPhone ?? "",
+        "Email i Nënës":        s.motherEmail ?? "",
+        "Prindi (i përgjithshëm)":   hasParentSplit ? "" : (s.parentName ?? ""),
+        "Telefoni (i përgjithshëm)": hasParentSplit ? "" : (s.parentPhone ?? ""),
+        "Adresa":               s.address ?? "",
+        "Çmimi Bazë (€)":       tuitionPrice,
+        "Zbritja (%)":          s.discountPct,
+        "Çmimi Final (€)":      fp,
+        "Paguar (€)":           paid,
+        "Borxhi (€)":           debt,
+        "Statusi":              s.status === "ACTIVE" ? "Aktiv" : "Joaktiv",
       };
     });
 
     const ws = XLSX.utils.json_to_sheet(rows);
     ws["!cols"] = [
       { wch: 4 }, { wch: 16 }, { wch: 18 }, { wch: 8 }, { wch: 15 },
-      { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 10 },
+      { wch: 18 }, { wch: 14 }, { wch: 22 }, { wch: 18 }, { wch: 14 }, { wch: 22 },
+      { wch: 18 }, { wch: 16 }, { wch: 24 },
+      { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 10 },
     ];
 
     // Stil header (bold)
