@@ -5,7 +5,7 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import { formatDate } from "@/lib/utils";
 import { exportMaterialRequestsExcel, type ExportableRequest } from "@/lib/materialRequestExport";
-import { CheckCircle, XCircle, Clock, Package, Loader2, Send, Users, Download } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Package, Loader2, Send, Users, Download, X, Mail } from "lucide-react";
 
 interface MaterialRequestRow extends ExportableRequest {
   id: number;
@@ -24,6 +24,8 @@ export default function KerkesatPage() {
   const [actingId, setActingId] = useState<number | null>(null);
   const [furnitoriOraEmail, setFurnitoriOraEmail] = useState("");
   const [sendError, setSendError] = useState<{ id: number; message: string } | null>(null);
+  const [sendModal, setSendModal] = useState<{ id: number; email: string } | null>(null);
+  const [sending, setSending] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,25 +39,44 @@ export default function KerkesatPage() {
     fetch("/api/settings").then(r => r.json()).then(d => setFurnitoriOraEmail(d.furnitoriOraEmail || ""));
   }, []);
 
-  async function handleSend(id: number) {
-    const email = window.prompt("Dërgo te ky email:", furnitoriOraEmail || "");
-    if (!email) return;
-
+  function openSendModal(id: number) {
     setSendError(null);
-    setActingId(id);
-    const res = await fetch(`/api/material-requests/${id}/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    setActingId(null);
+    setSendModal({ id, email: furnitoriOraEmail || "" });
+  }
 
-    if (!res.ok) {
-      const d = await res.json();
-      setSendError({ id, message: d.error || "Dërgimi dështoi" });
+  // I mbështjellë me try/catch — pa të, një dështim rrjeti (jo vetëm një
+  // përgjigje jo-2xx) do të linte butonin "në ngarkim" pa asnjë sqarim,
+  // duke dhënë përshtypjen se klikimi "s'bëri asgjë".
+  async function confirmSend() {
+    if (!sendModal) return;
+    const { id, email } = sendModal;
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setSendError({ id, message: "Shkruaj një email para se të dërgosh." });
       return;
     }
-    load();
+
+    setSending(true);
+    setSendError(null);
+    try {
+      const res = await fetch(`/api/material-requests/${id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSendError({ id, message: d.error || "Dërgimi dështoi" });
+        setSending(false);
+        return;
+      }
+      setSending(false);
+      setSendModal(null);
+      load();
+    } catch {
+      setSending(false);
+      setSendError({ id, message: "Gabim rrjeti — provo përsëri." });
+    }
   }
 
   async function handleDecision(id: number, status: "APPROVED" | "REJECTED") {
@@ -191,15 +212,14 @@ export default function KerkesatPage() {
                         </span>
                       ) : (
                         <button
-                          onClick={() => handleSend(r.id)}
-                          disabled={actingId === r.id}
+                          onClick={() => openSendModal(r.id)}
                           className="btn-secondary text-sm"
                         >
-                          {actingId === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          <Send className="w-4 h-4" />
                           Dërgo te FurnitoriOra
                         </button>
                       )}
-                      {sendError?.id === r.id && (
+                      {sendError?.id === r.id && !sendModal && (
                         <p className="text-xs text-red-500 mt-2">{sendError.message}</p>
                       )}
                     </div>
@@ -210,6 +230,49 @@ export default function KerkesatPage() {
           </div>
         )}
       </div>
+
+      {sendModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !sending && setSendModal(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Send className="w-4 h-4 text-primary-500" />
+                Dërgo te FurnitoriOra
+              </h3>
+              <button onClick={() => !sending && setSendModal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="form-label">Email-i i marrësit</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="email"
+                    autoFocus
+                    value={sendModal.email}
+                    onChange={e => setSendModal(m => m && { ...m, email: e.target.value })}
+                    onKeyDown={e => e.key === "Enter" && confirmSend()}
+                    className="form-input pl-9"
+                    placeholder="furnitori@example.com"
+                  />
+                </div>
+              </div>
+              {sendError?.id === sendModal.id && (
+                <p className="text-sm text-red-500">{sendError.message}</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 p-5 pt-0">
+              <button onClick={() => setSendModal(null)} disabled={sending} className="btn-secondary disabled:opacity-50">Anulo</button>
+              <button onClick={confirmSend} disabled={sending} className="btn-primary disabled:opacity-50">
+                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                Dërgo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
