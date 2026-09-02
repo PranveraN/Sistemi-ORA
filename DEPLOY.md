@@ -45,6 +45,14 @@ Edit `.env.production` and set **both** `AUTH_SECRET` and `NEXTAUTH_SECRET` to
 that generated value. Leave `NEXTAUTH_URL`/`AUTH_URL` as
 `https://admin.akademiaora.com`. Change `APP_PORT` only if 3000 is taken.
 
+Also set `RESEND_API_KEY` (needed for the "Kërkesat" material-requests feature
+to email teachers/suppliers — get one at resend.com/api-keys) **and** verify
+`akademiaora.com` as a sender domain in the Resend dashboard (Domains → Add
+Domain, then add the DNS records it gives you). `src/lib/email.ts` sends from
+`onboarding@akademiaora.com`; Resend silently rejects sends from an
+unverified domain. Without either of these, the app still runs fine — emails
+for material requests just won't go out.
+
 `.env.production` is gitignored — it holds secrets, never commit it.
 
 ---
