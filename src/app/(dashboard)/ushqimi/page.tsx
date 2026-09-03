@@ -5,7 +5,7 @@ import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
-import { CYCLES, getCycle } from "@/lib/school-cycles";
+import { CYCLES, getCycle, isGrade1 } from "@/lib/school-cycles";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import { BADGE_CSS, buildBadgeCardHTML } from "@/lib/badge-html";
 import * as XLSX from "xlsx";
@@ -282,6 +282,10 @@ export default function UshqimiPage() {
   const [price2Meals,   setPrice2Meals]   = useState(4);
   const [price2MealsSaved, setPrice2MealsSaved] = useState(4);
   const [savingPrice,   setSavingPrice]   = useState(false);
+  // Klasa e parë ka çmim tjetër (zakonisht më i ulët) se pjesa tjetër e shkollës.
+  const [price2MealsG1,      setPrice2MealsG1]      = useState(4);
+  const [price2MealsG1Saved, setPrice2MealsG1Saved] = useState(4);
+  const [savingPriceG1,      setSavingPriceG1]      = useState(false);
   const [workingDays,   setWorkingDays]   = useState(20);
   const [monthsPerYear, setMonthsPerYear] = useState(10);
   const [periods,       setPeriods]       = useState<Period[]>(DEFAULT_PERIODS);
@@ -292,6 +296,8 @@ export default function UshqimiPage() {
     fetch("/api/settings").then(r => r.json()).then(s => {
       const v = parseFloat(s.ushqimiPrice2Meals);
       if (!isNaN(v) && v > 0) { setPrice2Meals(v); setPrice2MealsSaved(v); }
+      const v1 = parseFloat(s.ushqimiPrice2MealsGrade1);
+      if (!isNaN(v1) && v1 > 0) { setPrice2MealsG1(v1); setPrice2MealsG1Saved(v1); }
     });
   }, []);
 
@@ -304,6 +310,24 @@ export default function UshqimiPage() {
     });
     setPrice2MealsSaved(price2Meals);
     setSavingPrice(false);
+  }
+
+  async function handleSavePrice2MealsG1() {
+    setSavingPriceG1(true);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ushqimiPrice2MealsGrade1: String(price2MealsG1) }),
+    });
+    setPrice2MealsG1Saved(price2MealsG1);
+    setSavingPriceG1(false);
+  }
+
+  // Norma e saktë sipas klasës — përdoret kudo që llogaritet shuma e parazgjedhur
+  // e një pagese ushqimi, që nxënësit e Klasës së Parë të mos marrin gabimisht
+  // normën e përgjithshme.
+  function priceRateForClass(className: string | null | undefined) {
+    return isGrade1(className) ? price2MealsG1 : price2Meals;
   }
 
   // Tab + category ID
@@ -416,9 +440,10 @@ export default function UshqimiPage() {
       .filter(({ period }) => !findPeriodPayment(s.installments, period.months));
     if (!missing.length) return;
 
+    const rate = priceRateForClass(s.class?.name);
     await Promise.all(missing.map(({ period, i }) => {
       const days = periods[i]?.days ?? workingDays;
-      const finalAmount = Math.round(days * price2Meals * 100) / 100;
+      const finalAmount = Math.round(days * rate * 100) / 100;
       const calYear = periodCalYear(period.canonicalMonth);
       const dueDate = new Date(calYear, period.canonicalMonth - 1, 5).toISOString().split("T")[0];
       return fetch("/api/payments", {
@@ -431,7 +456,7 @@ export default function UshqimiPage() {
           method: "CASH",
           dueDate,
           month: period.canonicalMonth, year: calYear,
-          description: `${days} ditë × ${formatCurrency(price2Meals)} — ${period.label} ${calYear}`,
+          description: `${days} ditë × ${formatCurrency(rate)} — ${period.label} ${calYear}`,
         }),
       });
     }));
@@ -671,6 +696,31 @@ export default function UshqimiPage() {
                 </div>
               </div>
 
+              {/* Çmimi i veçantë për Klasën e Parë */}
+              <div className="px-5 pb-3 flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="form-label">Çmimi 2 shujta / ditë — Klasa e Parë (€)</label>
+                  <input type="number" value={price2MealsG1}
+                    onChange={e => setPrice2MealsG1(parseFloat(e.target.value) || 0)}
+                    className="form-input w-36" min="0" step="0.5" />
+                </div>
+                {price2MealsG1 !== price2MealsG1Saved && (
+                  <button
+                    onClick={handleSavePrice2MealsG1}
+                    disabled={savingPriceG1}
+                    className="btn-primary text-sm pb-2.5"
+                    title="Ruaje si çmimin e ri të parazgjedhur për Klasën e Parë"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {savingPriceG1 ? "Duke ruajtur..." : `Ruaj si parazgjedhje (${formatCurrency(price2MealsG1Saved)} → ${formatCurrency(price2MealsG1)})`}
+                  </button>
+                )}
+                <div className="flex items-center gap-1.5 text-xs text-slate-400 pb-2">
+                  <Info className="w-3.5 h-3.5" />
+                  Zbatohet automatikisht për nxënësit e klasave &quot;1A&quot;, &quot;1B&quot;, etj. — pjesa tjetër e shkollës vazhdon me çmimin e përgjithshëm më sipër.
+                </div>
+              </div>
+
               {/* Periods table */}
               <div className="overflow-x-auto px-5 pb-4">
                 <table className="w-full text-sm border-collapse">
@@ -691,7 +741,7 @@ export default function UshqimiPage() {
                       const total2   = p.days * price2Meals;
                       const mengjesi = p.days * price2Meals * 3/8;
                       const dreka    = p.days * price2Meals * 5/8;
-                      const klasa    = p.klasaDays * price2Meals;
+                      const klasa    = p.klasaDays * price2MealsG1;
                       const zbritje  = p.zbritjeDays * price2Meals;
                       return (
                         <tr key={p.name} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30">
@@ -745,7 +795,7 @@ export default function UshqimiPage() {
                           <td className="px-3 py-2.5 text-center text-primary-700 dark:text-primary-300">{formatCurrency(totalDays * price2Meals)}</td>
                           <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-200">{formatCurrency(totalDays * price2Meals * 3/8)}</td>
                           <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-200">{formatCurrency(totalDays * price2Meals * 5/8)}</td>
-                          <td className="px-3 py-2.5 text-center text-primary-700 dark:text-primary-300">{formatCurrency(totalKlasa * price2Meals)}</td>
+                          <td className="px-3 py-2.5 text-center text-primary-700 dark:text-primary-300">{formatCurrency(totalKlasa * price2MealsG1)}</td>
                           <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-200">{formatCurrency(totalZbritje * price2Meals)}</td>
                         </tr>
                       );
@@ -1087,7 +1137,7 @@ export default function UshqimiPage() {
           student={payModal.student}
           existingPayment={payModal.existingPayment}
           month={payModal.month} year={periodCalYear(payModal.month)}
-          prices={prices}
+          prices={calcPrices(priceRateForClass(payModal.student.class?.name), workingDays, monthsPerYear)}
           workingDays={workingDays}
           periods={periods}
           periodCalYear={periodCalYear}
@@ -1099,7 +1149,7 @@ export default function UshqimiPage() {
       {calcModal && (
         <UshqimiCalcModal
           student={calcModal}
-          price2Meals={price2Meals}
+          price2Meals={priceRateForClass(calcModal.class?.name)}
           periods={periods}
           onClose={() => setCalcModal(null)}
           onApply={(s, amount, canonicalMonth) => {
@@ -1152,10 +1202,10 @@ export default function UshqimiPage() {
           defaultMonth={PERIOD_BUCKETS.find(p => p.months.includes(now.getMonth() + 1))?.canonicalMonth ?? PERIOD_BUCKETS[0].canonicalMonth}
           schoolYearStart={effectiveYear}
           periodOptions={PERIOD_BUCKETS.map(p => ({ label: p.label, canonicalMonth: p.canonicalMonth }))}
-          computeDefaultAmount={(_discountPct, month) => {
+          computeDefaultAmount={(_discountPct, month, className) => {
             const idx = PERIOD_BUCKETS.findIndex(p => p.canonicalMonth === month);
             const days = idx >= 0 ? (periods[idx]?.days ?? workingDays) : workingDays;
-            return Math.round(days * price2Meals * 100) / 100;
+            return Math.round(days * priceRateForClass(className) * 100) / 100;
           }}
           onClose={() => setFamilyModalOpen(false)}
           onSaved={(id) => { setFamilyModalOpen(false); setFamilyReceiptPrintId(id); fetchYearData(); }}

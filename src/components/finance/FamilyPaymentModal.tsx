@@ -23,10 +23,11 @@ interface RowState {
 interface Props {
   categoryId: number;
   categoryName: string;
-  // Merr muajin (canonical, ose null për kategori jo-mujore) e kthen shumën parazgjedhje
-  // për atë periudhë — llogaritet në kohën e zgjedhjes, jo vetëm një herë te kërkimi,
-  // që të përditësohet nëse stafi ndryshon periudhën pasi ka gjetur familjen.
-  computeDefaultAmount: (discountPct: number, month: number | null) => number;
+  // Merr muajin (canonical, ose null për kategori jo-mujore) dhe klasën e fëmijës
+  // (disa kategori, p.sh. Ushqimi, kanë çmim tjetër për klasën e parë) e kthen
+  // shumën parazgjedhje — llogaritet në kohën e zgjedhjes, jo vetëm një herë te
+  // kërkimi, që të përditësohet nëse stafi ndryshon periudhën pasi ka gjetur familjen.
+  computeDefaultAmount: (discountPct: number, month: number | null, className: string | null) => number;
   isMonthly: boolean;
   defaultMonth: number;   // > 0 kur faqja mëmë ka zgjedhur një muaj/periudhë specifike
   schoolYearStart: number; // viti fillestar i vitit shkollor (p.sh. 2026 = "2026-2027")
@@ -84,7 +85,7 @@ export default function FamilyPaymentModal({ categoryId, categoryName, computeDe
       const current = r[id];
       if (current.checked) return { ...r, [id]: { ...current, checked: false } };
       const student = children.find(c => c.id === id);
-      const def = Math.max(0, computeDefaultAmount(student?.discountPct ?? 0, month));
+      const def = Math.max(0, computeDefaultAmount(student?.discountPct ?? 0, month, student?.class?.name ?? null));
       return { ...r, [id]: { ...current, checked: true, amount: String(def), paidAmount: String(def) } };
     });
   }

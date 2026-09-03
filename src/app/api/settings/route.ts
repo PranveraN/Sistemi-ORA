@@ -13,6 +13,7 @@ const DEFAULTS: Record<string, string> = {
   timiInvestEnabled: "true",
   furnitoriOraEmail: "",
   ushqimiPrice2Meals: "4",
+  ushqimiPrice2MealsGrade1: "4",
   transportLocations: JSON.stringify([
     { label: "Prishtinë",    price: 65 },
     { label: "Fushë Kosovë", price: 55 },

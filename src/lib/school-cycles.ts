@@ -15,3 +15,10 @@ export function getCycle(className: string | null | undefined): Cycle | null {
   if (num >= 6 && num <= 9) return "larte";
   return null;
 }
+
+// Klasa e parë (p.sh. "1A", "1B") ka çmim ushqimi më të ulët se pjesa tjetër
+// e shkollës — përdoret për të zgjedhur normën e saktë kur llogaritet pagesa.
+export function isGrade1(className: string | null | undefined): boolean {
+  if (!className) return false;
+  return parseInt(className, 10) === 1;
+}
