@@ -10,7 +10,7 @@ import {
   Shirt, BookMarked, NotebookPen, ClipboardList, Wallet, TrendingUp, Scale, Home, Archive, Building2, History, Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSidebar } from "@/components/layout/SidebarContext";
 
 type Role = "ADMIN" | "FINANCE" | "SECRETARY";
@@ -70,6 +70,25 @@ export default function Sidebar() {
   const role = ((session?.user as { role?: string } | undefined)?.role ?? "ADMIN") as Role;
   const { mobileOpen, close } = useSidebar();
 
+  // Numri i dukshëm te "Kërkesat" — kërkesa në pritje + aprovuara e padërguara,
+  // që stafi ta shohë menjëherë pa hapur faqen (plotëson popup-in periodik).
+  const [requestBadge, setRequestBadge] = useState(0);
+  useEffect(() => {
+    if (role !== "ADMIN" && role !== "FINANCE") return;
+    let cancelled = false;
+    async function check() {
+      try {
+        const res = await fetch("/api/material-requests/reminder-counts");
+        if (!res.ok || cancelled) return;
+        const d = await res.json();
+        setRequestBadge((d.pending ?? 0) + (d.approvedUnsent ?? 0));
+      } catch { /* provohet përsëri në ciklin tjetër */ }
+    }
+    check();
+    const t = setInterval(check, 60 * 1000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [role]);
+
   return (
     <>
       {/* Overlay — vetëm celular, kur sirtari është i hapur */}
@@ -125,6 +144,7 @@ export default function Sidebar() {
                 <ul className="space-y-0.5">
                   {visibleItems.map((item) => {
                     const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                    const badge = item.href === "/kerkesat" ? requestBadge : 0;
                     return (
                       <li key={item.href}>
                         <Link
@@ -137,11 +157,20 @@ export default function Sidebar() {
                               : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100",
                             collapsed && "justify-center px-2"
                           )}
-                          title={collapsed ? item.label : undefined}
+                          title={collapsed ? `${item.label}${badge > 0 ? ` (${badge})` : ""}` : undefined}
                         >
-                          <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
+                          <span className="relative flex-shrink-0">
+                            <item.icon className="w-[18px] h-[18px]" />
+                            {badge > 0 && collapsed && (
+                              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
+                            )}
+                          </span>
                           {!collapsed && <span>{item.label}</span>}
-                          {isActive && !collapsed && (
+                          {badge > 0 && !collapsed ? (
+                            <span className="ml-auto min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+                              {badge > 9 ? "9+" : badge}
+                            </span>
+                          ) : isActive && !collapsed && (
                             <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent-500 dark:bg-accent-400" />
                           )}
                         </Link>

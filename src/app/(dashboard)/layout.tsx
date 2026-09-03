@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { SessionProvider } from "next-auth/react";
 import Sidebar from "@/components/layout/Sidebar";
 import { SidebarProvider } from "@/components/layout/SidebarContext";
+import MaterialRequestReminder from "@/components/layout/MaterialRequestReminder";
 
 export default async function DashboardLayout({
   children,
@@ -23,6 +24,7 @@ export default async function DashboardLayout({
             </main>
           </div>
         </div>
+        <MaterialRequestReminder />
       </SidebarProvider>
     </SessionProvider>
   );
