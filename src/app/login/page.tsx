@@ -58,7 +58,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
             <div>
               <label className="form-label">Email</label>
               <div className="relative">
@@ -71,6 +71,8 @@ export default function LoginPage() {
                   placeholder="admin@akademiaora.al"
                   required
                   autoFocus
+                  autoComplete="off"
+                  name="login-email"
                 />
               </div>
             </div>
@@ -86,6 +88,8 @@ export default function LoginPage() {
                   className="form-input pl-10 pr-10"
                   placeholder="••••••••"
                   required
+                  autoComplete="off"
+                  name="login-password"
                 />
                 <button
                   type="button"
