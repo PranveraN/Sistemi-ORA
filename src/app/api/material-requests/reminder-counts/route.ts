@@ -17,8 +17,8 @@ export async function GET() {
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
   const [pending, approvedUnsent] = await Promise.all([
-    prisma.materialRequest.count({ where: { organizationId: orgId, status: "PENDING" } }),
-    prisma.materialRequest.count({ where: { organizationId: orgId, status: "APPROVED", sentAt: null } }),
+    prisma.materialRequest.count({ where: { organizationId: orgId, status: { in: ["SUBMITTED", "UNDER_REVIEW"] } } }),
+    prisma.materialRequest.count({ where: { organizationId: orgId, status: { in: ["APPROVED", "PARTIALLY_APPROVED"] }, sentAt: null } }),
   ]);
 
   return NextResponse.json({ pending, approvedUnsent });

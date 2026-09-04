@@ -5,16 +5,19 @@ import { useParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { formatDate } from "@/lib/utils";
 import { exportMaterialRequestsExcel, type ExportableRequest } from "@/lib/materialRequestExport";
+import { REQUEST_STATUS_MAP } from "@/lib/materialConstants";
 import { CheckCircle, XCircle, Clock, Download, Package } from "lucide-react";
 
 interface MaterialRequestRow extends ExportableRequest {
   id: number;
 }
 
-const STATUS_LABEL: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  PENDING:  { label: "Në pritje",  color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400", icon: <Clock className="w-3.5 h-3.5" /> },
-  APPROVED: { label: "Aprovuar",   color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400", icon: <CheckCircle className="w-3.5 h-3.5" /> },
-  REJECTED: { label: "Refuzuar",   color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400", icon: <XCircle className="w-3.5 h-3.5" /> },
+const STATUS_ICON: Record<string, React.ReactNode> = {
+  SUBMITTED: <Clock className="w-3.5 h-3.5" />,
+  UNDER_REVIEW: <Clock className="w-3.5 h-3.5" />,
+  APPROVED: <CheckCircle className="w-3.5 h-3.5" />,
+  PARTIALLY_APPROVED: <CheckCircle className="w-3.5 h-3.5" />,
+  REJECTED: <XCircle className="w-3.5 h-3.5" />,
 };
 
 export default function TeacherFolderPage() {
@@ -61,23 +64,35 @@ export default function TeacherFolderPage() {
         ) : (
           <div className="space-y-3">
             {requests.map(r => {
-              const st = STATUS_LABEL[r.status];
+              const st = REQUEST_STATUS_MAP[r.status] ?? { label: r.status, color: "bg-slate-100 text-slate-600" };
+              const isPending = r.status === "SUBMITTED" || r.status === "UNDER_REVIEW";
               return (
                 <div key={r.id} className="card p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-slate-800 dark:text-white">{r.item}</p>
-                        <span className="text-slate-400 text-sm">× {r.quantity}</span>
-                        {r.subjectOrClass && (
-                          <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-2 py-0.5 rounded-full">
-                            {r.subjectOrClass}
-                          </span>
-                        )}
+                      <div className="space-y-1">
+                        {r.items.map((it, idx) => (
+                          <div key={idx} className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-slate-800 dark:text-white">
+                              {it.isCustom ? it.customItemName : it.material?.name}
+                            </p>
+                            <span className="text-slate-400 text-sm">× {it.quantity} {it.unit}</span>
+                            {it.color && (
+                              <span className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">
+                                {it.color}
+                              </span>
+                            )}
+                          </div>
+                        ))}
                       </div>
+                      {(r.subject?.name || r.class?.name) && (
+                        <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-2 py-0.5 rounded-full">
+                          {r.subject?.name || r.class?.name}
+                        </span>
+                      )}
                       <p className="text-sm text-slate-500 mt-1.5">{r.reason}</p>
                       <p className="text-xs text-slate-400 mt-2">{formatDate(r.createdAt)}</p>
-                      {r.status !== "PENDING" && (
+                      {!isPending && (
                         <p className="text-xs text-slate-400 mt-1">
                           Shqyrtuar nga {r.reviewedBy?.name ?? "—"}
                           {r.reviewNote && <> — <span className="italic">{r.reviewNote}</span></>}
@@ -88,7 +103,7 @@ export default function TeacherFolderPage() {
                       )}
                     </div>
                     <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${st.color}`}>
-                      {st.icon}
+                      {STATUS_ICON[r.status]}
                       {st.label}
                     </span>
                   </div>

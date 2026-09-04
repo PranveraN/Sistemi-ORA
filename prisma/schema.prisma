@@ -24,6 +24,11 @@ model Organization {
   schoolYears      SchoolYear[]
   materialRequests MaterialRequest[]
   familyReceipts   FamilyReceipt[]
+  materialCategories MaterialCategory[]
+  subjects         Subject[]
+  materials        Material[]
+  materialOrders   MaterialOrder[]
+  materialInventoryTransactions MaterialInventoryTransaction[]
 }
 
 model User {
@@ -42,6 +47,9 @@ model User {
   promotionRuns  PromotionRun[]
   materialRequests         MaterialRequest[] @relation("MaterialRequestTeacher")
   reviewedMaterialRequests MaterialRequest[] @relation("MaterialRequestReviewer")
+  materialRequestStatusChanges MaterialRequestStatusHistory[] @relation("MaterialRequestStatusChangedBy")
+  createdMaterialOrders    MaterialOrder[]
+  materialInventoryTransactions MaterialInventoryTransaction[]
 }
 
 model Class {
@@ -52,6 +60,7 @@ model Class {
   organizationId Int          @default(1)
   organization   Organization @relation(fields: [organizationId], references: [id])
   students       Student[]
+  materialRequests MaterialRequest[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }
@@ -222,6 +231,8 @@ model Sipartner {
   email     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  materials      Material[]
+  materialOrders MaterialOrder[]
 
   @@index([emri])
 }
@@ -275,15 +286,26 @@ model ShpenzimBulkAction {
 
 // Kërkesa për material didaktik nga mësimdhënësit — regjistrohen nga vetë
 // mësimdhënësi (rol "TEACHER"), shqyrtohen nga menaxhmenti (ADMIN/FINANCE).
+// ── Moduli i Materialeve Didaktike ────────────────────────
+//
+// MaterialRequest mban ende fushat e vjetra "flat" (item/quantity/unit/
+// subjectOrClass) — nxënëse për prapa-përputhshmëri gjatë kalimit te struktura
+// e re (kërkesë + shumë artikuj, shih MaterialRequestItem). Ato do të hiqen
+// vetëm pasi çdo kod lexues/shkrues të kalojë te `items[]`, jo tani — shih
+// scripts/migrate-material-requests.ts dhe planin e migrimit.
 model MaterialRequest {
   id             Int          @id @default(autoincrement())
   teacherId      Int
   teacher        User         @relation("MaterialRequestTeacher", fields: [teacherId], references: [id])
-  item           String
-  quantity       Int          @default(1)
+  // Fusha të vjetra (nga struktura flat "1 kërkesë = 1 artikull") — lihen si
+  // opsionale (jo hequr) që rreshtat historikë të mos humbin të dhëna; që nga
+  // Faza 3 çdo kërkesë e re përdor items[] në vend të tyre.
+  item           String?
+  quantity       Int?
+  unit           String?      // copë, metër, kg, litër, paketë
   subjectOrClass String?
   reason         String
-  status         String       @default("PENDING") // PENDING, APPROVED, REJECTED
+  status         String       @default("PENDING") // PENDING, APPROVED, REJECTED — do të zgjerohet te statuset e reja pasi kodi konsumues të kalojë te items[]
   reviewedById   Int?
   reviewedBy     User?        @relation("MaterialRequestReviewer", fields: [reviewedById], references: [id])
   reviewNote     String?
@@ -295,8 +317,198 @@ model MaterialRequest {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  // Fusha të reja (nullable — shtim aditiv, s'prek rreshtat ekzistues)
+  priority       String?      // NORMAL, IMPORTANT, URGENT
+  dateNeeded     DateTime?
+  classId        Int?
+  class          Class?       @relation(fields: [classId], references: [id])
+  subjectId      Int?
+  subject        Subject?     @relation(fields: [subjectId], references: [id])
+  comment        String?
+  submittedAt    DateTime?
+
+  items          MaterialRequestItem[]
+  statusHistory  MaterialRequestStatusHistory[]
+
   @@index([status])
   @@index([teacherId])
+}
+
+model MaterialCategory {
+  id             Int          @id @default(autoincrement())
+  name           String
+  active         Boolean      @default(true)
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  materials      Material[]
+  customRequestItems MaterialRequestItem[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model Subject {
+  id             Int          @id @default(autoincrement())
+  name           String
+  active         Boolean      @default(true)
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  requests       MaterialRequest[]
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+}
+
+model Material {
+  id             Int          @id @default(autoincrement())
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  categoryId     Int
+  category       MaterialCategory @relation(fields: [categoryId], references: [id])
+  name           String
+  description    String?
+  defaultUnit    String       @default("copë")
+  needsColor     Boolean      @default(false)
+  sku            String?
+  supplierId     Int?
+  supplier       Sipartner?   @relation(fields: [supplierId], references: [id])
+  defaultPrice   Float?
+  minStock       Int          @default(0)
+  maxStock       Int?
+  currentStock   Int          @default(0)
+  active         Boolean      @default(true)
+  source         String       @default("CATALOG") // CATALOG, FROM_CUSTOM_REQUEST
+  requestItems   MaterialRequestItem[]
+  orderItems     MaterialOrderItem[]
+  transactions   MaterialInventoryTransaction[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, active])
+  @@index([organizationId, categoryId])
+}
+
+model MaterialRequestItem {
+  id                 Int              @id @default(autoincrement())
+  requestId          Int
+  request            MaterialRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  materialId         Int?
+  material           Material?        @relation(fields: [materialId], references: [id])
+  isCustom           Boolean          @default(false)
+  customItemName     String?
+  customDescription  String?
+  customCategoryId   Int?
+  customCategory     MaterialCategory? @relation(fields: [customCategoryId], references: [id])
+  productLink        String?          // vetëm artikull i veçantë
+  attachmentPath     String?          // vetëm artikull i veçantë
+  quantity           Int
+  unit               String
+  color              String?
+  itemReason         String?          // mbivendos arsyen e përbashkët të kërkesës, opsionale
+  status             String           @default("PENDING") // PENDING, APPROVED, REJECTED
+  approvedQuantity   Int?
+  approvalNote       String?
+  addedToCatalogAsId Int?             // vendoset kur admini e shton artikullin e veçantë në katalog
+  orderLinks         MaterialOrderRequestItem[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([requestId])
+  @@index([materialId])
+}
+
+model MaterialRequestStatusHistory {
+  id          Int             @id @default(autoincrement())
+  requestId   Int
+  request     MaterialRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  fromStatus  String?
+  toStatus    String
+  changedById Int
+  changedBy   User            @relation("MaterialRequestStatusChangedBy", fields: [changedById], references: [id])
+  note        String?
+  createdAt   DateTime        @default(now())
+
+  @@index([requestId])
+}
+
+model MaterialOrder {
+  id                   Int          @id @default(autoincrement())
+  organizationId       Int          @default(1)
+  organization         Organization @relation(fields: [organizationId], references: [id])
+  orderNumber          String       @unique // "MAT-{vit}-{sekuencë}"
+  supplierId           Int?
+  supplier             Sipartner?   @relation(fields: [supplierId], references: [id])
+  status               String       @default("DRAFT") // DRAFT, PENDING, ORDERED, PARTIALLY_RECEIVED, RECEIVED, CANCELLED
+  orderDate            DateTime     @default(now())
+  expectedDeliveryDate DateTime?
+  receivedDate         DateTime?
+  notes                String?
+  totalItems           Int          @default(0)
+  totalQuantity        Int          @default(0)
+  estimatedCost        Float        @default(0)
+  actualCost           Float        @default(0)
+  createdById          Int
+  createdBy            User         @relation(fields: [createdById], references: [id])
+  items                MaterialOrderItem[]
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@index([organizationId, status])
+}
+
+model MaterialOrderItem {
+  id               Int           @id @default(autoincrement())
+  orderId          Int
+  order            MaterialOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  materialId       Int?
+  material         Material?     @relation(fields: [materialId], references: [id])
+  customItemName   String?       // rezervë nëse artikulli s'është premtuar ende në katalog
+  color            String?       // artikujt me ngjyra të ndryshme grupohen në rreshta të ndarë
+  unit             String
+  quantity         Int           // sasia e porositur
+  unitPrice        Float?
+  totalPrice       Float?
+  receivedQuantity Int           @default(0)
+  receivedAt       DateTime?
+  receiveNotes     String?
+  requestLinks     MaterialOrderRequestItem[]
+  transactions     MaterialInventoryTransaction[]
+
+  @@index([orderId])
+}
+
+// Lidh një rresht porosie me disa kërkesa/artikuj individualë njëkohësisht
+// (p.sh. "7 mësimdhënëse kërkuan marker = 63 copë" grupuar në një rresht porosie).
+model MaterialOrderRequestItem {
+  id                  Int                 @id @default(autoincrement())
+  orderItemId         Int
+  orderItem           MaterialOrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  requestItemId       Int
+  requestItem         MaterialRequestItem @relation(fields: [requestItemId], references: [id], onDelete: Cascade)
+  quantityContributed Int
+
+  @@unique([orderItemId, requestItemId])
+  @@index([requestItemId])
+}
+
+model MaterialInventoryTransaction {
+  id             Int          @id @default(autoincrement())
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  materialId     Int
+  material       Material     @relation(fields: [materialId], references: [id])
+  type           String       // RECEIVED, ADJUSTMENT
+  quantity       Int          // e nënshkruar (+/-)
+  balanceAfter   Int
+  orderItemId    Int?
+  orderItem      MaterialOrderItem? @relation(fields: [orderItemId], references: [id])
+  note           String?
+  createdById    Int
+  createdBy      User         @relation(fields: [createdById], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, materialId])
 }
 
 model Payment {

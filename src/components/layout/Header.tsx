@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import {
   Moon, Sun, LogOut, Bell, ChevronLeft, Settings, User,
   AlertTriangle, Clock, CheckCircle, CreditCard, X, ChevronRight, Menu,
+  Package, Gauge,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -73,24 +74,30 @@ function dueDateLabel(iso: string | null) {
 /* ── types ───────────────────────────────────────────────── */
 type Notif = {
   id: string;
-  type: "reminder" | "task" | "overdue" | "paid";
+  type: "reminder" | "task" | "overdue" | "paid" | "material-request" | "low-stock";
   title: string;
   body: string;
   dueDate: string | null;
   urgent: boolean;
   category: string;
+  link?: string;
 };
 
 type NotifData = {
   notifications: Notif[];
-  counts: { reminders: number; overdue: number; urgentTasks: number; recentPayments: number; total: number };
+  counts: {
+    reminders: number; overdue: number; urgentTasks: number; recentPayments: number;
+    newRequests?: number; urgentRequests?: number; lowStock?: number; total: number;
+  };
 };
 
 const TYPE_CONFIG = {
-  reminder: { icon: Clock,         color: "text-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20"   },
-  task:     { icon: AlertTriangle,  color: "text-red-500",    bg: "bg-red-50 dark:bg-red-900/20"       },
-  overdue:  { icon: CreditCard,     color: "text-red-500",    bg: "bg-red-50 dark:bg-red-900/20"       },
-  paid:     { icon: CheckCircle,    color: "text-emerald-500",bg: "bg-emerald-50 dark:bg-emerald-900/20"},
+  reminder:          { icon: Clock,         color: "text-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20"   },
+  task:              { icon: AlertTriangle,  color: "text-red-500",    bg: "bg-red-50 dark:bg-red-900/20"       },
+  overdue:           { icon: CreditCard,     color: "text-red-500",    bg: "bg-red-50 dark:bg-red-900/20"       },
+  paid:              { icon: CheckCircle,    color: "text-emerald-500",bg: "bg-emerald-50 dark:bg-emerald-900/20"},
+  "material-request": { icon: Package,       color: "text-orange-500", bg: "bg-orange-50 dark:bg-orange-900/20" },
+  "low-stock":        { icon: Gauge,         color: "text-rose-500",   bg: "bg-rose-50 dark:bg-rose-900/20"     },
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -176,6 +183,16 @@ function NotifPanel({ onClose }: { onClose: () => void }) {
               <AlertTriangle className="w-3 h-3" /> {data.counts.urgentTasks} urgjente
             </span>
           )}
+          {!!data.counts.urgentRequests && data.counts.urgentRequests > 0 && (
+            <span className="flex items-center gap-1 text-xs px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-full font-medium">
+              <Package className="w-3 h-3" /> {data.counts.urgentRequests} kërkesa urgjente
+            </span>
+          )}
+          {!!data.counts.lowStock && data.counts.lowStock > 0 && (
+            <span className="flex items-center gap-1 text-xs px-2 py-1 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-full font-medium">
+              <Gauge className="w-3 h-3" /> {data.counts.lowStock} stok i ulët
+            </span>
+          )}
           {data.counts.total === 0 && data.counts.recentPayments === 0 && (
             <span className="text-xs text-slate-400">Asnjë njoftim aktiv</span>
           )}
@@ -200,8 +217,9 @@ function NotifPanel({ onClose }: { onClose: () => void }) {
               const cfg = TYPE_CONFIG[n.type];
               const Icon = cfg.icon;
               const isNew = !seenIds.has(n.id);
-              return (
-                <div key={n.id} className={`flex gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 ${isNew ? "bg-blue-50/40 dark:bg-blue-900/10" : ""}`}>
+              const isTimeAgoType = n.type === "paid" || n.type === "material-request";
+              const content = (
+                <>
                   <div className={`w-8 h-8 rounded-full ${cfg.bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
                     <Icon className={`w-4 h-4 ${cfg.color}`} />
                   </div>
@@ -213,11 +231,19 @@ function NotifPanel({ onClose }: { onClose: () => void }) {
                       {isNew && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0 mt-1" />}
                     </div>
                     {n.body && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">{n.body}</p>}
-                    <p className={`text-xs mt-1 font-medium ${n.urgent && n.type !== "paid" ? "text-red-500" : "text-slate-400"}`}>
-                      {n.type === "paid" ? timeAgo(n.dueDate) : dueDateLabel(n.dueDate)}
-                    </p>
+                    {(n.dueDate || n.type === "low-stock") && (
+                      <p className={`text-xs mt-1 font-medium ${n.urgent && n.type !== "paid" ? "text-red-500" : "text-slate-400"}`}>
+                        {n.type === "low-stock" ? (n.urgent ? "Pa stok" : "Nën minimum") : isTimeAgoType ? timeAgo(n.dueDate) : dueDateLabel(n.dueDate)}
+                      </p>
+                    )}
                   </div>
-                </div>
+                </>
+              );
+              const rowClass = `flex gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 ${isNew ? "bg-blue-50/40 dark:bg-blue-900/10" : ""}`;
+              return n.link ? (
+                <Link key={n.id} href={n.link} onClick={onClose} className={rowClass}>{content}</Link>
+              ) : (
+                <div key={n.id} className={rowClass}>{content}</div>
               );
             })}
           </div>

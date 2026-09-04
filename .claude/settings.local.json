@@ -3,7 +3,11 @@
     "allow": [
       "Bash(mkdir -p \"C:\\\\Users\\\\Akademia Ora\\\\Desktop\\\\Sistemi Ora\\\\src\\\\app\\\\api\\\\expenses\\\\[id]\" 2>/dev/null; echo \"done\")",
       "PowerShell(Get-Process -Name \"node\")",
-      "PowerShell(Stop-Process -Force)"
+      "PowerShell(Stop-Process -Force)",
+      "Bash(curl -s -b /tmp/teacher_cookies.txt http://localhost:3000/api/material-requests)",
+      "Bash(curl -s -b /tmp/admin_cookies.txt http://localhost:3000/api/material-requests)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d\\), 'requests'\\)\")",
+      "Bash(npm run *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Akademia Ora\\Desktop\\Sistemi Ora\\src\\app\\api\\expenses"

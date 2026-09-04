@@ -7,10 +7,13 @@ import { Folder, Clock, CheckCircle, XCircle } from "lucide-react";
 
 interface MaterialRequestRow {
   id: number;
-  status: "PENDING" | "APPROVED" | "REJECTED";
+  status: string;
   teacher: { name: string; email: string };
   teacherId?: number;
 }
+
+const PENDING_STATUSES = new Set(["SUBMITTED", "UNDER_REVIEW"]);
+const APPROVED_STATUSES = new Set(["APPROVED", "PARTIALLY_APPROVED"]);
 
 interface TeacherSummary {
   teacherId: number;
@@ -39,8 +42,8 @@ export default function MesimdhenesitFolderPage() {
             total: 0, pending: 0, approved: 0, rejected: 0,
           };
           existing.total++;
-          if (r.status === "PENDING") existing.pending++;
-          if (r.status === "APPROVED") existing.approved++;
+          if (PENDING_STATUSES.has(r.status)) existing.pending++;
+          if (APPROVED_STATUSES.has(r.status)) existing.approved++;
           if (r.status === "REJECTED") existing.rejected++;
           byTeacher.set(r.teacherId, existing);
         }
