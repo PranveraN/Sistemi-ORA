@@ -104,6 +104,7 @@ model Student {
   organization   Organization @relation(fields: [organizationId], references: [id])
   payments       Payment[]
   invoices       Invoice[]
+  invoiceItems   InvoiceItem[]
   yearHistory    StudentYearHistory[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -589,15 +590,22 @@ model Invoice {
 }
 
 model InvoiceItem {
-  id            Int     @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   invoiceId     Int
-  invoice       Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  // Cili fëmijë i përket ky zë — opsionale, që një faturë e vetme e prindit
+  // të mund të mbulojë disa fëmijë (secili zë me nxënësin e vet). Bosh =
+  // zë i përgjithshëm/i përbashkët, jo i lidhur me një fëmijë specifik.
+  studentId     Int?
+  student       Student? @relation(fields: [studentId], references: [id])
   description   String
-  quantity      Float   @default(1)
-  regularPrice  Float   @default(0)
-  discountPct   Float   @default(0)
+  quantity      Float    @default(1)
+  regularPrice  Float    @default(0)
+  discountPct   Float    @default(0)
   unitPrice     Float
   total         Float
+
+  @@index([studentId])
 }
 
 // ── Sistemi i Uniformave ──────────────────────────────────

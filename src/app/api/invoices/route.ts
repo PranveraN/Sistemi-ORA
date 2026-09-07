@@ -51,8 +51,33 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
+    type ItemInput = { description: string; quantity: number; regularPrice: number; discountPct: number; unitPrice: number; total: number; studentId?: number | string | null };
+    const rawItems: ItemInput[] = Array.isArray(body.items) ? body.items : [];
+
+    // Nxënësi i çdo zëri (opsional — bosh = zë i përgjithshëm, jo i lidhur me
+    // një fëmijë specifik). Verifikohen kundër organizatës për të shmangur
+    // referenca ndaj nxënësve të një organizate tjetër.
+    const itemStudentIds = [...new Set(rawItems.map(it => it.studentId).filter((id): id is number | string => !!id).map(id => parseInt(String(id))))];
+    if (itemStudentIds.length) {
+      const validStudents = await prisma.student.findMany({ where: { id: { in: itemStudentIds }, organizationId: orgId }, select: { id: true } });
+      if (validStudents.length !== itemStudentIds.length) {
+        return NextResponse.json({ message: "Një nga nxënësit e zgjedhur për zërat nuk ekziston" }, { status: 400 });
+      }
+    }
+
+    // Fatura vetë kërkon një nxënës kryesor (fushë e vjetër, e detyrueshme) —
+    // përdoret ai i dhënë eksplicit, përndryshe i pari nga zërat.
+    const primaryStudentId = body.studentId ? parseInt(String(body.studentId)) : itemStudentIds[0];
+    if (!primaryStudentId) {
+      return NextResponse.json({ message: "Zgjidh të paktën një nxënës" }, { status: 400 });
+    }
+    const primaryStudent = await prisma.student.findFirst({ where: { id: primaryStudentId, organizationId: orgId } });
+    if (!primaryStudent) {
+      return NextResponse.json({ message: "Nxënësi kryesor nuk ekziston" }, { status: 400 });
+    }
+
     const vatRate = parseFloat(body.vatRate) || 0;
-    const subtotal = body.items.reduce((sum: number, item: { regularPrice: number; discountPct: number; unitPrice: number; quantity: number; total: number }) => {
+    const subtotal = rawItems.reduce((sum: number, item) => {
       const reg  = parseFloat(String(item.regularPrice)) || 0;
       const disc = parseFloat(String(item.discountPct))  || 0;
       const unit = reg > 0 ? Math.round(reg * (1 - disc / 100) * 100) / 100 : (parseFloat(String(item.unitPrice)) || 0);
@@ -76,7 +101,7 @@ export async function POST(req: NextRequest) {
       data: {
         number,
         type: body.type,
-        studentId: parseInt(body.studentId),
+        studentId: primaryStudentId,
         organizationId: orgId,
         subtotal,
         vatRate,
@@ -86,7 +111,7 @@ export async function POST(req: NextRequest) {
         dueDate: body.dueDate ? new Date(body.dueDate) : null,
         notes: body.notes || null,
         items: {
-          create: body.items.map((item: { description: string; quantity: number; regularPrice: number; discountPct: number; unitPrice: number; total: number }) => {
+          create: rawItems.map((item) => {
             const reg  = parseFloat(String(item.regularPrice)) || 0;
             const disc = parseFloat(String(item.discountPct))  || 0;
             const unit = reg > 0 ? Math.round(reg * (1 - disc / 100) * 100) / 100 : (parseFloat(String(item.unitPrice)) || 0);
@@ -97,22 +122,24 @@ export async function POST(req: NextRequest) {
               discountPct:  disc,
               unitPrice:    unit,
               total:        Math.round(item.quantity * unit * 100) / 100,
+              studentId:    item.studentId ? parseInt(String(item.studentId)) : null,
             };
           }),
         },
       },
-      include: { items: true, student: true },
+      include: { items: { include: { student: { select: { id: true, firstName: true, lastName: true } } } }, student: true },
     });
 
     const userId = parseInt((session?.user as { id?: string } | undefined)?.id ?? "0");
     if (userId > 0) {
+      const childrenNote = itemStudentIds.length > 1 ? ` (${itemStudentIds.length} fëmijë)` : "";
       await prisma.auditLog.create({
         data: {
           userId,
           action: "CREATE",
           entity: "Invoice",
           entityId: invoice.id,
-          details: `Krijoi ${invoice.number} për nxënësin ${invoice.studentId}`,
+          details: `Krijoi ${invoice.number} për ${primaryStudent.firstName} ${primaryStudent.lastName}${childrenNote}`,
         },
       });
     }

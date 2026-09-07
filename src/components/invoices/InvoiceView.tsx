@@ -14,6 +14,7 @@ interface InvoiceItem {
   discountPct: number;
   unitPrice: number;
   total: number;
+  student: { id: number; firstName: string; lastName: string } | null;
 }
 
 interface Invoice {
@@ -48,6 +49,15 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
   const [converting, setConverting] = useState(false);
   const router = useRouter();
 
+  // Fëmijët e dallueshëm të referuar nga zërat — nëse fatura mbulon disa
+  // fëmijë të një prindi (secili zë me studentId të vet), tregohet "PRINDI"
+  // + lista e fëmijëve; përndryshe (rasti i zakonshëm, 1 fëmijë) mbetet si më
+  // parë "NXËNËSI" i vetëm, pa asnjë ndryshim pamor.
+  const distinctChildren = [...new Map(
+    invoice.items.filter(it => it.student).map(it => [it.student!.id, it.student!])
+  ).values()];
+  const isFamilyInvoice = distinctChildren.length > 1;
+
   async function updateStatus(status: string) {
     setUpdatingStatus(true);
     await fetch(`/api/invoices/${invoice.id}`, {
@@ -78,8 +88,10 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
     const itemRows = invoice.items.map(item => {
       const hasDiscount = item.regularPrice > 0 && item.discountPct > 0;
       const discAmt = hasDiscount ? Math.round(item.regularPrice * (item.discountPct / 100) * 100) / 100 : 0;
+      const studentCell = isFamilyInvoice ? `<td style="color:#64748b">${item.student ? `${item.student.firstName} ${item.student.lastName}` : "—"}</td>` : "";
       return `
       <tr>
+        ${studentCell}
         <td class="desc">${item.description}</td>
         <td class="center">${item.quantity}</td>
         <td class="right" style="color:#64748b">${item.regularPrice > 0 ? `${item.regularPrice.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €` : "—"}</td>
@@ -88,6 +100,11 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
         <td class="right bold">${item.total.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</td>
       </tr>`;
     }).join("");
+
+    const studentHeaderCell = isFamilyInvoice ? `<th style="width:90px">Nxënësi</th>` : "";
+    const childrenLine = isFamilyInvoice
+      ? `<div class="info-line">Fëmijët: ${distinctChildren.map(c => `${c.firstName} ${c.lastName}`).join(", ")}</div>`
+      : "";
 
     const vatRow = invoice.vatRate > 0
       ? `<div class="total-row"><span>TVSH (${invoice.vatRate}%)</span><span>${invoice.vatAmount.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</span></div>`
@@ -160,12 +177,18 @@ tr:nth-child(even) td { background: #f8fafc; }
 <hr class="divider"/>
 <div class="info-grid">
   <div class="info-section">
-    <div class="section-label">NXËNËSI</div>
+    <div class="section-label">${isFamilyInvoice ? "PRINDI" : "NXËNËSI"}</div>
+    ${isFamilyInvoice ? `
+    <div class="student-name">${invoice.student.parentName}</div>
+    <div class="info-line">Tel: ${invoice.student.parentPhone}</div>
+    ${childrenLine}
+    ` : `
     <div class="student-name">${invoice.student.firstName} ${invoice.student.lastName}</div>
     <div class="info-line">Prindi: ${invoice.student.parentName}</div>
     <div class="info-line">Tel: ${invoice.student.parentPhone}</div>
     ${invoice.student.address ? `<div class="info-line">${invoice.student.address}</div>` : ""}
     ${invoice.student.class ? `<div class="info-line">Klasa: ${invoice.student.class.name}</div>` : ""}
+    `}
   </div>
   <div class="info-section">
     <div class="section-label">STATUSI</div>
@@ -175,6 +198,7 @@ tr:nth-child(even) td { background: #f8fafc; }
 </div>
 <table>
   <thead><tr>
+    ${studentHeaderCell}
     <th>Përshkrimi</th>
     <th class="center" style="width:40px">Sasi</th>
     <th class="right" style="width:85px">Çm. Rregullt</th>
@@ -255,20 +279,25 @@ ${notesBlock}
     doc.setDrawColor(226, 232, 240);
     doc.line(20, 50, 190, 50);
 
-    // Student info
+    // Student/parent info
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
-    doc.text("NXËNËSI:", 20, 60);
+    doc.text(isFamilyInvoice ? "PRINDI:" : "NXËNËSI:", 20, 60);
     doc.setTextColor(15, 23, 42);
     doc.setFontSize(12);
-    doc.text(`${invoice.student.firstName} ${invoice.student.lastName}`, 20, 67);
+    doc.text(isFamilyInvoice ? invoice.student.parentName : `${invoice.student.firstName} ${invoice.student.lastName}`, 20, 67);
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Prindi: ${invoice.student.parentName}`, 20, 73);
-    doc.text(`Tel: ${invoice.student.parentPhone}`, 20, 79);
-    if (invoice.student.address) doc.text(`Adresa: ${invoice.student.address}`, 20, 85);
-    if (invoice.student.class) {
-      doc.text(`Klasa: ${invoice.student.class.name}`, 20, 91);
+    if (isFamilyInvoice) {
+      doc.text(`Tel: ${invoice.student.parentPhone}`, 20, 73);
+      doc.text(`Fëmijët: ${distinctChildren.map(c => `${c.firstName} ${c.lastName}`).join(", ")}`, 20, 79);
+    } else {
+      doc.text(`Prindi: ${invoice.student.parentName}`, 20, 73);
+      doc.text(`Tel: ${invoice.student.parentPhone}`, 20, 79);
+      if (invoice.student.address) doc.text(`Adresa: ${invoice.student.address}`, 20, 85);
+      if (invoice.student.class) {
+        doc.text(`Klasa: ${invoice.student.class.name}`, 20, 91);
+      }
     }
 
     // Status
@@ -279,15 +308,16 @@ ${notesBlock}
     doc.text(getStatusLabel(invoice.status), 140, 67);
 
     // Table
+    const tableHead = isFamilyInvoice ? ["Nxënësi", "Përshkrimi", "Sasia", "Çmimi (€)", "Totali (€)"] : ["Përshkrimi", "Sasia", "Çmimi (€)", "Totali (€)"];
+    const tableBody = invoice.items.map(item => {
+      const row = [item.description, item.quantity.toString(), item.unitPrice.toLocaleString(), item.total.toLocaleString()];
+      return isFamilyInvoice ? [item.student ? `${item.student.firstName} ${item.student.lastName}` : "—", ...row] : row;
+    });
+    const numCols = isFamilyInvoice ? 5 : 4;
     autoTable(doc, {
       startY: 100,
-      head: [["Përshkrimi", "Sasia", "Çmimi (€)", "Totali (€)"]],
-      body: invoice.items.map(item => [
-        item.description,
-        item.quantity.toString(),
-        item.unitPrice.toLocaleString(),
-        item.total.toLocaleString(),
-      ]),
+      head: [tableHead],
+      body: tableBody,
       headStyles: {
         fillColor: [37, 99, 235],
         textColor: 255,
@@ -297,9 +327,9 @@ ${notesBlock}
       bodyStyles: { fontSize: 10, textColor: [15, 23, 42] },
       alternateRowStyles: { fillColor: [248, 250, 252] },
       columnStyles: {
-        1: { halign: "center" },
-        2: { halign: "right" },
-        3: { halign: "right", fontStyle: "bold" },
+        [numCols - 3]: { halign: "center" },
+        [numCols - 2]: { halign: "right" },
+        [numCols - 1]: { halign: "right", fontStyle: "bold" },
       },
       margin: { left: 20, right: 20 },
     });
@@ -433,17 +463,29 @@ ${notesBlock}
         {/* Student info */}
         <div className="grid grid-cols-2 gap-6 mb-8 p-5 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
           <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">NXËNËSI</p>
-            <p className="font-bold text-slate-900 dark:text-white text-lg">
-              {invoice.student.firstName} {invoice.student.lastName}
-            </p>
-            <p className="text-sm text-slate-500">Prindi: {invoice.student.parentName}</p>
-            <p className="text-sm text-slate-500">Tel: {invoice.student.parentPhone}</p>
-            {invoice.student.address && (
-              <p className="text-sm text-slate-500">{invoice.student.address}</p>
-            )}
-            {invoice.student.class && (
-              <p className="text-sm text-slate-500">Klasa: {invoice.student.class.name}</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{isFamilyInvoice ? "PRINDI" : "NXËNËSI"}</p>
+            {isFamilyInvoice ? (
+              <>
+                <p className="font-bold text-slate-900 dark:text-white text-lg">{invoice.student.parentName}</p>
+                <p className="text-sm text-slate-500">Tel: {invoice.student.parentPhone}</p>
+                <p className="text-sm text-slate-500 mt-1">
+                  Fëmijët: {distinctChildren.map(c => `${c.firstName} ${c.lastName}`).join(", ")}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-bold text-slate-900 dark:text-white text-lg">
+                  {invoice.student.firstName} {invoice.student.lastName}
+                </p>
+                <p className="text-sm text-slate-500">Prindi: {invoice.student.parentName}</p>
+                <p className="text-sm text-slate-500">Tel: {invoice.student.parentPhone}</p>
+                {invoice.student.address && (
+                  <p className="text-sm text-slate-500">{invoice.student.address}</p>
+                )}
+                {invoice.student.class && (
+                  <p className="text-sm text-slate-500">Klasa: {invoice.student.class.name}</p>
+                )}
+              </>
             )}
           </div>
           <div>
@@ -460,6 +502,7 @@ ${notesBlock}
           <table className="w-full">
             <thead className="bg-primary-600 text-white">
               <tr>
+                {isFamilyInvoice && <th className="px-4 py-3 text-left text-sm font-semibold w-32">Nxënësi</th>}
                 <th className="px-4 py-3 text-left text-sm font-semibold">Përshkrimi</th>
                 <th className="px-4 py-3 text-center text-sm font-semibold w-16">Sasi</th>
                 <th className="px-4 py-3 text-right text-sm font-semibold w-32">Çm. Rregullt</th>
@@ -474,6 +517,9 @@ ${notesBlock}
                 const discAmt = hasDiscount ? Math.round(item.regularPrice * (item.discountPct / 100) * 100) / 100 : 0;
                 return (
                   <tr key={item.id} className={i % 2 === 0 ? "" : "bg-slate-50 dark:bg-slate-800/30"}>
+                    {isFamilyInvoice && (
+                      <td className="px-4 py-3 text-sm text-slate-500">{item.student ? `${item.student.firstName} ${item.student.lastName}` : "—"}</td>
+                    )}
                     <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-200">{item.description}</td>
                     <td className="px-4 py-3 text-sm text-center text-slate-600 dark:text-slate-300">{item.quantity}</td>
                     <td className="px-4 py-3 text-sm text-right text-slate-500">

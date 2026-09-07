@@ -9,7 +9,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
     where: { id: parseInt(id) },
     include: {
       student: { include: { class: true } },
-      items: true,
+      items: { include: { student: { select: { id: true, firstName: true, lastName: true } } } },
     },
   });
 

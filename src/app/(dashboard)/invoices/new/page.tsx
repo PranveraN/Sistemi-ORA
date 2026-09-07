@@ -4,16 +4,21 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
-import { ChevronLeft, Save, Plus, Trash2, X } from "lucide-react";
+import { ChevronLeft, Save, Plus, Trash2, X, Search, Users } from "lucide-react";
 
-interface Student { id: number; firstName: string; lastName: string }
+interface FamilyChild { id: number; firstName: string; lastName: string; class: { name: string } | null; status: string }
 interface InvoiceItem {
+  studentId: string;    // "" = zë i përgjithshëm, jo i lidhur me një fëmijë specifik
   description: string;
   quantity: number;
   regularPrice: number;
   discountPct: number;
   unitPrice: number;   // auto: regularPrice * (1 - discountPct/100)
   total: number;       // auto: quantity * unitPrice
+}
+
+function emptyItem(studentId = ""): InvoiceItem {
+  return { studentId, description: "", quantity: 1, regularPrice: 0, discountPct: 0, unitPrice: 0, total: 0 };
 }
 
 function calcItem(item: InvoiceItem): InvoiceItem {
@@ -34,55 +39,71 @@ function InvoiceForm() {
   const preType       = searchParams.get("type") || "";
   const initialType   = ["INVOICE", "PROFORMA", "OFFER"].includes(preType) ? preType : "INVOICE";
 
-  const [students, setStudents] = useState<Student[]>([]);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
-  const [studentQuery, setStudentQuery] = useState("");
-  const [showStudentSuggestions, setShowStudentSuggestions] = useState(false);
+
+  const [parentQuery, setParentQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [parentInfo, setParentInfo] = useState<{ name: string; phone: string | null } | null>(null);
+  const [familyChildren, setFamilyChildren] = useState<FamilyChild[]>([]);
 
   const [form, setForm] = useState({
-    studentId: preStudentId,
     type:      initialType,
     vatRate:   "0",
     dueDate:   "",
     notes:     "",
   });
 
-  const [items, setItems] = useState<InvoiceItem[]>([
-    { description: "", quantity: 1, regularPrice: 0, discountPct: 0, unitPrice: 0, total: 0 },
-  ]);
+  const [items, setItems] = useState<InvoiceItem[]>([emptyItem()]);
 
+  async function runFamilySearch(query: string) {
+    if (!query.trim()) return;
+    setSearching(true);
+    setError("");
+    const isPhone = /\d/.test(query);
+    const param = isPhone ? `phone=${encodeURIComponent(query)}` : `name=${encodeURIComponent(query)}`;
+    const res = await fetch(`/api/families?${param}`);
+    const data = await res.json();
+    setSearching(false);
+    setSearched(true);
+    if (!res.ok || !data.children?.length) {
+      setParentInfo(null);
+      setFamilyChildren([]);
+      return;
+    }
+    setParentInfo({ name: data.parent.name, phone: data.parent.parentPhone });
+    setFamilyChildren((data.children as FamilyChild[]).filter(c => c.status === "ACTIVE"));
+  }
+
+  // Nëse erdhëm nga profili i një nxënësi specifik (?studentId=), gjejmë
+  // familjen e tij automatikisht (telefoni/emri i prindit) — kështu i njëjti
+  // rrjedhë funksionon edhe kur ka vëllezër/motra, edhe kur s'ka.
   useEffect(() => {
-    fetch("/api/students?limit=2000&status=ACTIVE").then(r => r.json()).then(d => {
-      const sorted = [...(d.students || [])].sort((a: Student, b: Student) =>
-        a.lastName.localeCompare(b.lastName, "sq", { sensitivity: "base" }) ||
-        a.firstName.localeCompare(b.firstName, "sq", { sensitivity: "base" })
-      );
-      setStudents(sorted);
-      if (preStudentId) {
-        const pre = sorted.find(s => String(s.id) === preStudentId);
-        if (pre) setStudentQuery(`${pre.firstName} ${pre.lastName}`);
+    if (!preStudentId) return;
+    fetch(`/api/students/${preStudentId}`).then(r => r.json()).then(s => {
+      const key = s.parentPhone || s.fatherPhone || s.motherPhone || s.parentName || s.fatherName || s.motherName;
+      if (key) {
+        setParentQuery(key);
+        runFamilySearch(key).then(() => {
+          setItems([emptyItem(preStudentId)]);
+        });
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preStudentId]);
-
-  const filteredStudents = studentQuery.trim()
-    ? students.filter(s =>
-        `${s.firstName} ${s.lastName}`.toLowerCase().includes(studentQuery.trim().toLowerCase())
-      ).slice(0, 50)
-    : students.slice(0, 50);
 
   function setField(field: string, value: string) { setForm(f => ({ ...f, [field]: value })); }
 
   function updateItem(i: number, field: keyof InvoiceItem, value: string | number) {
     setItems(prev => prev.map((item, idx) => {
       if (idx !== i) return item;
-      return calcItem({ ...item, [field]: value });
+      return calcItem({ ...item, [field]: value } as InvoiceItem);
     }));
   }
 
-  function addItem() {
-    setItems(p => [...p, { description: "", quantity: 1, regularPrice: 0, discountPct: 0, unitPrice: 0, total: 0 }]);
+  function addItem(studentId = "") {
+    setItems(p => [...p, emptyItem(studentId)]);
   }
 
   function removeItem(i: number) { if (items.length > 1) setItems(p => p.filter((_, idx) => idx !== i)); }
@@ -92,18 +113,23 @@ function InvoiceForm() {
   const vatAmount = (subtotal * vatRate) / 100;
   const total     = subtotal + vatAmount;
 
+  function childName(id: string) {
+    const c = familyChildren.find(c => String(c.id) === id);
+    return c ? `${c.firstName} ${c.lastName}` : null;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.studentId) { setError("Zgjidh nxënësin nga lista e sugjerimeve."); return; }
+    if (!familyChildren.length) { setError("Kërko prindin (telefon ose emër) dhe zgjidh familjen fillimisht."); return; }
     setLoading(true); setError("");
     const res = await fetch("/api/invoices", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, items }),
+      body: JSON.stringify({ ...form, studentId: familyChildren[0].id, items }),
     });
     setLoading(false);
     if (res.ok) { const inv = await res.json(); router.push(`/invoices/${inv.id}`); }
-    else setError("Ndodhi një gabim. Provoni sërish.");
+    else { const d = await res.json().catch(() => ({})); setError(d.message || "Ndodhi një gabim. Provoni sërish."); }
   }
 
   return (
@@ -123,6 +149,49 @@ function InvoiceForm() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
 
+          {/* Prindi / Familja */}
+          <div className="card p-5 space-y-3">
+            <h3 className="section-title flex items-center gap-1.5"><Users className="w-4 h-4" /> Prindi / Familja</h3>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={parentQuery}
+                  onChange={e => setParentQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); runFamilySearch(parentQuery); } }}
+                  className="form-input pl-9"
+                  placeholder="Kërko me numër telefoni ose emrin e prindit..."
+                />
+              </div>
+              <button type="button" onClick={() => runFamilySearch(parentQuery)} disabled={searching || !parentQuery.trim()} className="btn-secondary">
+                {searching ? "Duke kërkuar..." : "Kërko"}
+              </button>
+            </div>
+
+            {searched && familyChildren.length === 0 && (
+              <p className="text-sm text-amber-600">Asnjë nxënës aktiv s&apos;u gjet me këtë telefon/emër.</p>
+            )}
+
+            {familyChildren.length > 0 && (
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                {parentInfo && (
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">
+                    <span className="font-semibold">{parentInfo.name}</span>
+                    {parentInfo.phone && <span className="text-slate-400"> · {parentInfo.phone}</span>}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  {familyChildren.map(c => (
+                    <span key={c.id} className="text-xs px-2.5 py-1 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300">
+                      {c.firstName} {c.lastName}{c.class && ` · ${c.class.name}`}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Header info */}
           <div className="card p-5 space-y-4">
             <h3 className="section-title">Informacioni i Faturës</h3>
@@ -134,38 +203,6 @@ function InvoiceForm() {
                   <option value="PROFORMA">Profaturë</option>
                   <option value="OFFER">Ofertë</option>
                 </select>
-              </div>
-              <div className="md:col-span-2 relative">
-                <label className="form-label">Nxënësi <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={studentQuery}
-                  onChange={e => { setStudentQuery(e.target.value); setField("studentId", ""); setShowStudentSuggestions(true); }}
-                  onFocus={() => setShowStudentSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowStudentSuggestions(false), 150)}
-                  className="form-input"
-                  placeholder="Kërko nxënësin me emër..."
-                  autoComplete="off"
-                />
-                {showStudentSuggestions && filteredStudents.length > 0 && (
-                  <ul className="absolute z-50 left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg max-h-56 overflow-y-auto">
-                    {filteredStudents.map(s => (
-                      <li key={s.id}>
-                        <button
-                          type="button"
-                          onMouseDown={() => {
-                            setField("studentId", String(s.id));
-                            setStudentQuery(`${s.firstName} ${s.lastName}`);
-                            setShowStudentSuggestions(false);
-                          }}
-                          className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm"
-                        >
-                          {s.firstName} {s.lastName}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
               <div>
                 <label className="form-label">Afati i Pagesës</label>
@@ -180,19 +217,27 @@ function InvoiceForm() {
 
           {/* Items */}
           <div className="card p-5">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h3 className="section-title">Zërat e Faturës</h3>
-              <button type="button" onClick={addItem} className="btn-secondary text-xs">
-                <Plus className="w-3.5 h-3.5" /> Shto Zë
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {familyChildren.map(c => (
+                  <button key={c.id} type="button" onClick={() => addItem(String(c.id))} className="btn-secondary text-xs">
+                    <Plus className="w-3.5 h-3.5" /> Zë për {c.firstName}
+                  </button>
+                ))}
+                <button type="button" onClick={() => addItem()} className="btn-secondary text-xs">
+                  <Plus className="w-3.5 h-3.5" /> Zë i Përgjithshëm
+                </button>
+              </div>
             </div>
 
             {/* Column headers */}
             <div className="grid grid-cols-12 gap-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2 mb-1">
-              <div className="col-span-4">Përshkrimi</div>
+              <div className="col-span-2">Nxënësi</div>
+              <div className="col-span-3">Përshkrimi</div>
               <div className="col-span-1 text-right">Sasi</div>
               <div className="col-span-2 text-right">Çm. Rregullt (€)</div>
-              <div className="col-span-2 text-right">Zbritja (%)</div>
+              <div className="col-span-1 text-right">Zbritja (%)</div>
               <div className="col-span-2 text-right">Çm. Final / Totali</div>
               <div className="col-span-1" />
             </div>
@@ -202,8 +247,16 @@ function InvoiceForm() {
                 const discAmt = item.regularPrice > 0 ? Math.round(item.regularPrice * (item.discountPct / 100) * 100) / 100 : 0;
                 return (
                   <div key={i} className="grid grid-cols-12 gap-2 items-start">
+                    {/* Nxënësi */}
+                    <div className="col-span-2">
+                      <select value={item.studentId} onChange={e => updateItem(i, "studentId", e.target.value)} className="form-input text-xs">
+                        <option value="">— i përgjithshëm —</option>
+                        {familyChildren.map(c => <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>)}
+                      </select>
+                    </div>
+
                     {/* Përshkrimi */}
-                    <div className="col-span-4">
+                    <div className="col-span-3">
                       <input
                         type="text"
                         value={item.description}
@@ -236,7 +289,7 @@ function InvoiceForm() {
                     </div>
 
                     {/* Zbritja % */}
-                    <div className="col-span-2">
+                    <div className="col-span-1">
                       <input
                         type="number" min="0" max="100" step="0.5"
                         value={item.discountPct || ""}
@@ -266,6 +319,12 @@ function InvoiceForm() {
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
+
+                    {item.studentId && childName(item.studentId) && (
+                      <div className="col-span-12 -mt-1 pl-2">
+                        <p className="text-[10px] text-slate-400">Për: {childName(item.studentId)}</p>
+                      </div>
+                    )}
                   </div>
                 );
               })}
