@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendDecisionEmail } from "@/lib/materialRequestEmails";
 
 const REQUEST_INCLUDE = {
   teacher: { select: { name: true, email: true } },
@@ -160,6 +161,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return req;
     });
 
+    sendDecisionEmail(updated, updated.status, reviewNote).catch(() => {});
+
     return NextResponse.json(updated);
   }
 
@@ -194,5 +197,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return req;
   });
 
+  sendDecisionEmail(updated, status, reviewNote).catch(() => {});
+
   return NextResponse.json(updated);
+}
+
+// Lejohet vetëm nëse asnjë artikull s'është përfshirë ende në ndonjë porosi
+// (do të prishte gjurmën e porosisë/pranimit) — përndryshe çaktivizo në vend
+// të fshirjes (statuset ekzistuese e mbulojnë këtë rast, s'ka "aktiv/joaktiv"
+// të veçantë për kërkesat, ndaj fshirja mbetet e vetmja rrugë kur nevojitet).
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const role = (session.user as { role?: string }).role;
+  if (role !== "ADMIN" && role !== "FINANCE") {
+    return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
+  }
+
+  const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
+  const { id } = await params;
+  const requestId = parseInt(id);
+
+  const existing = await prisma.materialRequest.findFirst({
+    where: { id: requestId, organizationId: orgId },
+    select: { items: { select: { id: true, orderLinks: { select: { id: true } } } } },
+  });
+  if (!existing) return NextResponse.json({ error: "Kërkesa nuk u gjet" }, { status: 404 });
+
+  const orderedCount = existing.items.filter(it => it.orderLinks.length > 0).length;
+  if (orderedCount > 0) {
+    return NextResponse.json(
+      { error: `${orderedCount} nga artikujt tashmë janë përfshirë në një porosi — kërkesa s'mund të fshihet` },
+      { status: 409 }
+    );
+  }
+
+  await prisma.materialRequest.delete({ where: { id: requestId } });
+  return NextResponse.json({ success: true });
 }

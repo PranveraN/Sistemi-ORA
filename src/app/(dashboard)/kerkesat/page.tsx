@@ -9,6 +9,7 @@ import { PRIORITY_MAP, REQUEST_STATUSES, REQUEST_STATUS_MAP } from "@/lib/materi
 import {
   CheckCircle, XCircle, Clock, Package, Loader2, Send, Users, Download, X, Mail,
   ClipboardCheck, AlertTriangle, ListFilter, Search, ChevronDown, Truck, History, BarChart3,
+  Trash2, Paperclip, Link as LinkIcon,
 } from "lucide-react";
 
 interface RequestItemRow {
@@ -17,11 +18,15 @@ interface RequestItemRow {
   materialId: number | null;
   material: { id: number; name: string; needsColor: boolean } | null;
   customItemName: string | null;
+  customDescription: string | null;
+  productLink: string | null;
+  attachmentPath: string | null;
   quantity: number;
   approvedQuantity: number | null;
   unit: string;
   color: string | null;
   itemReason: string | null;
+  approvalNote: string | null;
   status: "PENDING" | "APPROVED" | "REJECTED";
 }
 
@@ -61,6 +66,8 @@ export default function KerkesatPage() {
   const [sendError, setSendError] = useState<{ id: number; message: string } | null>(null);
   const [sendModal, setSendModal] = useState<{ id: number; email: string } | null>(null);
   const [sending, setSending] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,6 +167,17 @@ export default function KerkesatPage() {
       body: JSON.stringify({ status, reviewNote: note || undefined }),
     });
     setActingId(null);
+    load();
+  }
+
+  async function deleteRequest(r: MaterialRequestRow) {
+    const label = r.items.map(it => it.isCustom ? it.customItemName : it.material?.name).filter(Boolean).join(", ");
+    if (!confirm(`Fshi kërkesën "${label}" nga ${r.teacher.name}?`)) return;
+    setDeletingId(r.id);
+    const res = await fetch(`/api/material-requests/${r.id}`, { method: "DELETE" });
+    const d = await res.json().catch(() => ({}));
+    setDeletingId(null);
+    if (!res.ok) { alert(d.error || "Gabim gjatë fshirjes"); return; }
     load();
   }
 
@@ -317,6 +335,8 @@ export default function KerkesatPage() {
               const st = REQUEST_STATUS_MAP[r.status] ?? { label: r.status, color: "bg-slate-100 text-slate-600" };
               const isPending = r.status === "SUBMITTED" || r.status === "UNDER_REVIEW";
               const canSend = (r.status === "APPROVED" || r.status === "PARTIALLY_APPROVED") && r.items.some(it => it.status === "APPROVED");
+              const hasDetails = r.items.some(it => it.customDescription || it.productLink || it.attachmentPath || it.itemReason || it.approvalNote);
+              const isExpanded = expandedId === r.id;
               return (
                 <div key={r.id} className="card p-5">
                   <div className="flex items-start justify-between gap-3">
@@ -344,6 +364,47 @@ export default function KerkesatPage() {
                           </div>
                         ))}
                       </div>
+
+                      {hasDetails && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                          className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium mt-1.5"
+                        >
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                          {isExpanded ? "Fsheh detajet" : "Shiko detajet e materialeve"}
+                        </button>
+                      )}
+
+                      {isExpanded && (
+                        <div className="mt-2 space-y-2">
+                          {r.items.map(it => (
+                            (it.customDescription || it.productLink || it.attachmentPath || it.itemReason || it.approvalNote) && (
+                              <div key={it.id} className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg text-xs space-y-1">
+                                <p className="font-medium text-slate-600 dark:text-slate-300">
+                                  {it.isCustom ? it.customItemName : it.material?.name}
+                                </p>
+                                {it.customDescription && <p className="text-slate-500">{it.customDescription}</p>}
+                                {it.itemReason && <p className="text-slate-500"><span className="text-slate-400">Arsyeja e artikullit:</span> {it.itemReason}</p>}
+                                {it.productLink && (
+                                  <a href={it.productLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary-600 hover:underline w-fit">
+                                    <LinkIcon className="w-3 h-3" /> Lidhja e produktit
+                                  </a>
+                                )}
+                                {it.attachmentPath && (
+                                  <a href={`/api/material-requests/attachments/${it.attachmentPath}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary-600 hover:underline w-fit">
+                                    <Paperclip className="w-3 h-3" /> Bashkëngjitja
+                                  </a>
+                                )}
+                                {it.approvalNote && it.approvalNote !== r.reviewNote && (
+                                  <p className="text-slate-500"><span className="text-slate-400">Shënim vendimi:</span> {it.approvalNote}</p>
+                                )}
+                              </div>
+                            )
+                          ))}
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-2 flex-wrap mt-1.5">
                         {(r.subject?.name || r.class?.name) && (
                           <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-2 py-0.5 rounded-full">
@@ -455,23 +516,32 @@ export default function KerkesatPage() {
                     </div>
                   )}
 
-                  {canSend && (
-                    <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
-                      {r.sentAt ? (
-                        <span className="inline-flex items-center gap-1.5 text-sm text-green-600 font-medium">
-                          <CheckCircle className="w-4 h-4" />
-                          Dërguar te {r.sentToEmail}
-                        </span>
-                      ) : (
+                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex items-center gap-3 flex-wrap">
+                    {canSend && (
+                      <>
+                        {r.sentAt && (
+                          <span className="inline-flex items-center gap-1.5 text-sm text-green-600 font-medium">
+                            <CheckCircle className="w-4 h-4" />
+                            Dërguar te {r.sentToEmail}
+                          </span>
+                        )}
                         <button onClick={() => openSendModal(r.id)} className="btn-secondary text-sm">
                           <Send className="w-4 h-4" />
-                          Dërgo te FurnitoriOra
+                          {r.sentAt ? "Ridërgo te FurnitoriOra" : "Dërgo te FurnitoriOra"}
                         </button>
-                      )}
-                      {sendError?.id === r.id && !sendModal && (
-                        <p className="text-xs text-red-500 mt-2">{sendError.message}</p>
-                      )}
-                    </div>
+                      </>
+                    )}
+                    <button
+                      onClick={() => deleteRequest(r)}
+                      disabled={deletingId === r.id}
+                      className="text-sm text-slate-400 hover:text-red-600 flex items-center gap-1.5 ml-auto"
+                    >
+                      {deletingId === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      Fshi
+                    </button>
+                  </div>
+                  {sendError?.id === r.id && !sendModal && (
+                    <p className="text-xs text-red-500 mt-2">{sendError.message}</p>
                   )}
                 </div>
               );

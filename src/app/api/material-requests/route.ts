@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { UNIT_VALUES } from "@/lib/materialConstants";
+import { sendSubmissionConfirmationEmail } from "@/lib/materialRequestEmails";
 
 const PRIORITY_VALUES = ["NORMAL", "IMPORTANT", "URGENT"];
 
@@ -180,6 +181,10 @@ export async function POST(req: NextRequest) {
     },
     include: REQUEST_INCLUDE,
   });
+
+  // Best-effort — një dështim i email-it (p.sh. RESEND_API_KEY mungon) s'duhet
+  // ta bëjë dështim vetë krijimin e kërkesës, tashmë të ruajtur në bazë.
+  sendSubmissionConfirmationEmail(created).catch(() => {});
 
   return NextResponse.json(created, { status: 201 });
 }
