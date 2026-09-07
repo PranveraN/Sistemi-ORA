@@ -293,19 +293,17 @@ export default function ClassesPage() {
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1 group">
-                            <p className="text-xs text-slate-400 flex-1">
+                          <button
+                            onClick={() => { setEditId(cls.id); setEditTeacher(cls.teacher || ""); }}
+                            className="flex items-center gap-1.5 w-full text-left group/teacher"
+                          >
+                            <p className="text-xs flex-1">
                               {cls.teacher
                                 ? <span className="text-slate-600 dark:text-slate-300">Mësuesi: {cls.teacher}</span>
-                                : <span className="italic">Pa mësues</span>}
+                                : <span className="italic text-slate-400">Pa mësues — kliko për të shtuar</span>}
                             </p>
-                            <button
-                              onClick={() => { setEditId(cls.id); setEditTeacher(cls.teacher || ""); }}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-primary-500 transition-all"
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </button>
-                          </div>
+                            <Pencil className="w-3 h-3 text-slate-300 group-hover/teacher:text-primary-500 transition-colors flex-shrink-0" />
+                          </button>
                         )}
 
                         <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">

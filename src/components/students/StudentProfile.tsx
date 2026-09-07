@@ -144,7 +144,7 @@ interface Student {
   enrollDate: string;
   notes: string | null;
   discountPct: number;
-  class: { name: string; level: string } | null;
+  class: { name: string; level: string; teacher: string | null } | null;
   payments: Payment[];
   invoices: Invoice[];
   bookSales: BookSale[];
@@ -235,6 +235,7 @@ tfoot td { font-weight:800; border-top:2px solid #cbd5e1; border-bottom:none; pa
   <div class="info-grid">
     <div class="info-row"><span class="lbl">Nxënësi</span><span class="val">${student.firstName} ${student.lastName}</span></div>
     <div class="info-row"><span class="lbl">Klasa</span><span class="val">${student.class ? `${student.class.name} — ${student.class.level}` : "—"}</span></div>
+    ${student.class?.teacher ? `<div class="info-row"><span class="lbl">Mësuesi/ja</span><span class="val">${student.class.teacher}</span></div>` : ""}
     <div class="info-row"><span class="lbl">Nr. Personal</span><span class="val">${student.personalNumber || "—"}</span></div>
     <div class="info-row"><span class="lbl">Prindi</span><span class="val">${parentName}</span></div>
     <div class="info-row"><span class="lbl">Telefoni</span><span class="val">${phone}</span></div>
@@ -486,6 +487,9 @@ export default function StudentProfile({ student }: { student: Student }) {
               value={`${student.class.name} — ${student.class.level}`}
               icon={<GraduationCap className="w-3.5 h-3.5 text-primary-500" />}
             />
+          )}
+          {student.class?.teacher && (
+            <InfoRow label="Mësuesi/ja" value={student.class.teacher} />
           )}
 
           {/* Baba */}
