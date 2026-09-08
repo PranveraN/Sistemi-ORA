@@ -831,7 +831,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
                           </span>
                           <div>
                             <p style={{ ...P, marginBottom: "2px" }}><strong>6.1. Mundësia e parë:</strong></p>
-                            <p style={P}>Shuma e përgjithshme e pagesës së shkollimit paguhet komplet, ose ndahet në dy pjesë: Nëse paguhet në dy pjesë, atëherë gjysma paguhet në fillim të vitit shkollor (shtator) më së largu deri me datën 30 shtator, dhe gjysma tjetër më së largu deri me 15 dhjetor të atij viti shkollor. Pagesa bëhet në xhirollogarinë <strong>1971897927031291 BKT</strong>.</p>
+                            <p style={P}>Shuma e përgjithshme e pagesës së shkollimit paguhet komplet, ose ndahet në dy pjesë: Nëse paguhet në dy pjesë, atëherë kësti i parë paguhet më së largu deri me datën 15 shtator, dhe kësti i dytë më së largu deri me 30 nëntor të atij viti shkollor. Pagesa bëhet në xhirollogarinë <strong>1971897927031291 BKT</strong>.</p>
                           </div>
                         </div>
                       </div>

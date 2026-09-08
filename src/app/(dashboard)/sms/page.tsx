@@ -5,7 +5,7 @@ import Header from "@/components/layout/Header";
 import { formatDateTime } from "@/lib/utils";
 import {
   MessageSquare, Search, Users, GraduationCap, X, Send, Loader2,
-  CheckCircle, XCircle, History,
+  CheckCircle, XCircle, History, Wallet,
 } from "lucide-react";
 
 interface ClassOpt { id: number; name: string; level: string }
@@ -14,7 +14,15 @@ interface StudentRow {
   parentPhone: string | null; fatherPhone: string | null; motherPhone: string | null;
   class: { name: string } | null;
 }
+interface CategoryOpt { id: number; name: string }
+interface DebtStudentRow extends StudentRow {
+  class: { id: number; name: string } | null;
+  status: string;
+  payment: { status: string } | null;
+}
 interface Recipient { phone: string; name: string; studentId?: number }
+
+const MONTHS_SQ = ["Janar", "Shkurt", "Mars", "Prill", "Maj", "Qershor", "Korrik", "Gusht", "Shtator", "Tetor", "Nëntor", "Dhjetor"];
 
 interface SmsLogRow {
   id: number; batchId: string | null; recipientPhone: string; recipientName: string | null;
@@ -27,10 +35,20 @@ function studentPhone(s: StudentRow): string | null {
 }
 
 export default function SmsPage() {
-  const [mode, setMode] = useState<"class" | "family" | "individual">("class");
+  const [mode, setMode] = useState<"class" | "family" | "individual" | "debt">("class");
 
   const [classes, setClasses] = useState<ClassOpt[]>([]);
   const [classId, setClassId] = useState("");
+
+  const [categories, setCategories] = useState<CategoryOpt[]>([]);
+  const [debtCategory, setDebtCategory] = useState("");
+  const [debtMonth, setDebtMonth] = useState(String(new Date().getMonth() + 1));
+  const [debtYear, setDebtYear] = useState(String(new Date().getFullYear()));
+  const [debtClassId, setDebtClassId] = useState("");
+  const [debtStatus, setDebtStatus] = useState<"DEBT" | "PAID" | "ALL">("DEBT");
+  const [debtSearching, setDebtSearching] = useState(false);
+  const [debtSearched, setDebtSearched] = useState(false);
+  const [debtResults, setDebtResults] = useState<DebtStudentRow[]>([]);
 
   const [familyQuery, setFamilyQuery] = useState("");
   const [familySearching, setFamilySearching] = useState(false);
@@ -58,8 +76,40 @@ export default function SmsPage() {
 
   useEffect(() => {
     fetch("/api/classes").then(r => r.json()).then(setClasses);
+    fetch("/api/categories").then(r => r.json()).then((cats: CategoryOpt[]) => {
+      setCategories(cats);
+      const shkollimi = cats.find(c => c.name === "Shkollimi");
+      if (shkollimi) setDebtCategory(shkollimi.name);
+      else if (cats.length) setDebtCategory(cats[0].name);
+    });
     loadHistory();
   }, [loadHistory]);
+
+  async function searchDebt() {
+    if (!debtCategory) return;
+    setDebtSearching(true);
+    setDebtSearched(false);
+    const params = new URLSearchParams({ category: debtCategory, month: debtMonth || "0", year: debtYear || "0" });
+    const res = await fetch(`/api/category-payments?${params}`);
+    const d = await res.json();
+    setDebtSearching(false);
+    setDebtSearched(true);
+    if (!res.ok) { setDebtResults([]); return; }
+    const all: DebtStudentRow[] = d.students || [];
+    const filtered = all.filter(s => {
+      if (s.status !== "ACTIVE") return false;
+      if (debtClassId && s.class?.id !== Number(debtClassId)) return false;
+      const st = s.payment?.status || "PENDING";
+      if (debtStatus === "DEBT") return st !== "PAID";
+      if (debtStatus === "PAID") return st === "PAID";
+      return true;
+    });
+    setDebtResults(filtered);
+  }
+
+  function addAllDebtResults() {
+    for (const s of debtResults) addRecipient(studentPhone(s), `${s.firstName} ${s.lastName} (prindi)`, s.id);
+  }
 
   function addRecipient(phone: string | null, name: string, studentId?: number) {
     if (!phone) return;
@@ -144,7 +194,7 @@ export default function SmsPage() {
           <h2 className="section-title flex items-center gap-1.5"><MessageSquare className="w-4 h-4 text-primary-500" /> Kërko Marrësit</h2>
 
           <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-fit">
-            {([["class", "Sipas Klase"], ["family", "Familje"], ["individual", "Individual"]] as const).map(([key, label]) => (
+            {([["class", "Sipas Klase"], ["family", "Familje"], ["individual", "Individual"], ["debt", "Me Borxh"]] as const).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setMode(key)}
@@ -235,6 +285,64 @@ export default function SmsPage() {
                       <span className="text-xs text-slate-400">{s.class?.name}</span>
                     </button>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {mode === "debt" && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <select value={debtCategory} onChange={e => setDebtCategory(e.target.value)} className="form-input">
+                  {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+                <select value={debtMonth} onChange={e => setDebtMonth(e.target.value)} className="form-input">
+                  <option value="0">Çdo muaj</option>
+                  {MONTHS_SQ.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+                <input type="number" value={debtYear} onChange={e => setDebtYear(e.target.value)} className="form-input" placeholder="Viti" />
+                <select value={debtClassId} onChange={e => setDebtClassId(e.target.value)} className="form-input">
+                  <option value="">Çdo klasë</option>
+                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                  {([["DEBT", "Të papaguar"], ["PAID", "Paguar plotësisht"], ["ALL", "Të gjithë"]] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setDebtStatus(key)}
+                      className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${debtStatus === key ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={searchDebt} disabled={debtSearching || !debtCategory} className="btn-secondary text-sm ml-auto">
+                  <Wallet className="w-4 h-4" /> {debtSearching ? "Duke kërkuar..." : "Kërko"}
+                </button>
+              </div>
+
+              {debtSearched && debtResults.length === 0 && (
+                <p className="text-sm text-amber-600">Asnjë nxënës s&apos;përputhet me këto kritere.</p>
+              )}
+              {debtResults.length > 0 && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-slate-600 dark:text-slate-300">{debtResults.length} nxënës të gjetur</p>
+                    <button onClick={addAllDebtResults} className="text-xs text-primary-600 hover:text-primary-700 font-medium">+ Shto të gjithë</button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {debtResults.map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => addRecipient(studentPhone(s), `${s.firstName} ${s.lastName} (prindi)`, s.id)}
+                        className="text-xs px-2.5 py-1 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary-400 hover:text-primary-600"
+                      >
+                        + {s.firstName} {s.lastName}{s.class && ` (${s.class.name})`}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
