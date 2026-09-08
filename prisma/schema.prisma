@@ -29,6 +29,7 @@ model Organization {
   materials        Material[]
   materialOrders   MaterialOrder[]
   materialInventoryTransactions MaterialInventoryTransaction[]
+  smsMessages      SmsMessage[]
 }
 
 model User {
@@ -50,6 +51,7 @@ model User {
   materialRequestStatusChanges MaterialRequestStatusHistory[] @relation("MaterialRequestStatusChangedBy")
   createdMaterialOrders    MaterialOrder[]
   materialInventoryTransactions MaterialInventoryTransaction[]
+  sentSmsMessages          SmsMessage[]
 }
 
 model Class {
@@ -106,6 +108,7 @@ model Student {
   invoices       Invoice[]
   invoiceItems   InvoiceItem[]
   yearHistory    StudentYearHistory[]
+  smsMessages    SmsMessage[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -789,6 +792,32 @@ model AuditLog {
   details   String?
   ipAddress String?
   createdAt DateTime @default(now())
+}
+
+// ── SMS ───────────────────────────────────────────────────
+// Regjistër i çdo SMS-i të dërguar përmes gateway-t (RBSoft SMS Gateway apo
+// çfarëdo tjetër që ekspozon një API të ngjashme) — një rresht për marrës,
+// edhe kur dërgimi është "në grup" (bashkuar nën të njëjtin batchId që të
+// duket si një veprim i vetëm në histori).
+model SmsMessage {
+  id             Int          @id @default(autoincrement())
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  batchId        String?      // grupon dërgimet "në grup" (klasë/familje/shumë të zgjedhur)
+  recipientPhone String
+  recipientName  String?
+  studentId      Int?
+  student        Student?     @relation(fields: [studentId], references: [id])
+  message        String
+  status         String       @default("PENDING") // PENDING, SENT, FAILED
+  errorMessage   String?
+  sentById       Int
+  sentBy         User         @relation(fields: [sentById], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([batchId])
+  @@index([studentId])
 }
 
 // ── TIMI INVEST ───────────────────────────────────────────

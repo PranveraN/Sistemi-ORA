@@ -1,0 +1,326 @@
+"use client";
+
+import { useState, useEffect, useCallback, useMemo } from "react";
+import Header from "@/components/layout/Header";
+import { formatDateTime } from "@/lib/utils";
+import {
+  MessageSquare, Search, Users, GraduationCap, X, Send, Loader2,
+  CheckCircle, XCircle, History,
+} from "lucide-react";
+
+interface ClassOpt { id: number; name: string; level: string }
+interface StudentRow {
+  id: number; firstName: string; lastName: string;
+  parentPhone: string | null; fatherPhone: string | null; motherPhone: string | null;
+  class: { name: string } | null;
+}
+interface Recipient { phone: string; name: string; studentId?: number }
+
+interface SmsLogRow {
+  id: number; batchId: string | null; recipientPhone: string; recipientName: string | null;
+  message: string; status: string; errorMessage: string | null; createdAt: string;
+  sentBy: { name: string };
+}
+
+function studentPhone(s: StudentRow): string | null {
+  return s.parentPhone || s.fatherPhone || s.motherPhone || null;
+}
+
+export default function SmsPage() {
+  const [mode, setMode] = useState<"class" | "family" | "individual">("class");
+
+  const [classes, setClasses] = useState<ClassOpt[]>([]);
+  const [classId, setClassId] = useState("");
+
+  const [familyQuery, setFamilyQuery] = useState("");
+  const [familySearching, setFamilySearching] = useState(false);
+  const [familyResult, setFamilyResult] = useState<{ parent: { name: string; parentPhone: string | null } | null; children: StudentRow[] } | null>(null);
+
+  const [individualQuery, setIndividualQuery] = useState("");
+  const [individualResults, setIndividualResults] = useState<StudentRow[]>([]);
+  const [showIndividualSuggestions, setShowIndividualSuggestions] = useState(false);
+
+  const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ sent: number; failed: number; total: number; errors: string[] } | null>(null);
+  const [error, setError] = useState("");
+
+  const [history, setHistory] = useState<SmsLogRow[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  const loadHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    const res = await fetch("/api/sms");
+    if (res.ok) setHistory(await res.json());
+    setLoadingHistory(false);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/classes").then(r => r.json()).then(setClasses);
+    loadHistory();
+  }, [loadHistory]);
+
+  function addRecipient(phone: string | null, name: string, studentId?: number) {
+    if (!phone) return;
+    setRecipients(prev => prev.some(r => r.phone === phone) ? prev : [...prev, { phone, name, studentId }]);
+  }
+  function removeRecipient(phone: string) {
+    setRecipients(prev => prev.filter(r => r.phone !== phone));
+  }
+
+  async function addWholeClass() {
+    if (!classId) return;
+    const res = await fetch(`/api/students?classId=${classId}&status=ACTIVE&limit=500`);
+    const d = await res.json();
+    const students: StudentRow[] = d.students || [];
+    for (const s of students) {
+      addRecipient(studentPhone(s), `${s.firstName} ${s.lastName} (prindi)`, s.id);
+    }
+  }
+
+  async function searchFamily() {
+    if (!familyQuery.trim()) return;
+    setFamilySearching(true);
+    setFamilyResult(null);
+    const isPhone = /\d/.test(familyQuery);
+    const param = isPhone ? `phone=${encodeURIComponent(familyQuery)}` : `name=${encodeURIComponent(familyQuery)}`;
+    const res = await fetch(`/api/families?${param}`);
+    const d = await res.json();
+    setFamilySearching(false);
+    if (!res.ok || !d.children?.length) { setFamilyResult({ parent: null, children: [] }); return; }
+    setFamilyResult({ parent: d.parent, children: d.children.filter((c: { status: string }) => c.status === "ACTIVE") });
+  }
+
+  useEffect(() => {
+    if (individualQuery.trim().length < 2) { setIndividualResults([]); return; }
+    const t = setTimeout(async () => {
+      const res = await fetch(`/api/students?search=${encodeURIComponent(individualQuery)}&status=ACTIVE&limit=20`);
+      const d = await res.json();
+      setIndividualResults(d.students || []);
+      setShowIndividualSuggestions(true);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [individualQuery]);
+
+  const segments = Math.ceil((message.length || 0) / 160) || 0;
+
+  async function handleSend() {
+    setError("");
+    setResult(null);
+    if (!recipients.length) { setError("Zgjidh të paktën një marrës."); return; }
+    if (!message.trim()) { setError("Shkruaj mesazhin."); return; }
+    setSending(true);
+    const res = await fetch("/api/sms/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipients: recipients.map(r => ({ phone: r.phone, name: r.name, studentId: r.studentId })), message }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setSending(false);
+    if (!res.ok) { setError(d.error || "Dërgimi dështoi."); return; }
+    setResult(d);
+    setRecipients([]);
+    setMessage("");
+    loadHistory();
+  }
+
+  const groupedHistory = useMemo(() => {
+    const groups: { key: string; rows: SmsLogRow[] }[] = [];
+    const byBatch = new Map<string, SmsLogRow[]>();
+    for (const row of history) {
+      const key = row.batchId || `single-${row.id}`;
+      if (!byBatch.has(key)) { byBatch.set(key, []); groups.push({ key, rows: byBatch.get(key)! }); }
+      byBatch.get(key)!.push(row);
+    }
+    return groups;
+  }, [history]);
+
+  return (
+    <>
+      <Header title="Mesazhe SMS" />
+      <div className="p-6 max-w-4xl mx-auto space-y-5 animate-fade-in">
+        <div className="card p-5 space-y-4">
+          <h2 className="section-title flex items-center gap-1.5"><MessageSquare className="w-4 h-4 text-primary-500" /> Kërko Marrësit</h2>
+
+          <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-fit">
+            {([["class", "Sipas Klase"], ["family", "Familje"], ["individual", "Individual"]] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setMode(key)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${mode === key ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {mode === "class" && (
+            <div className="flex gap-2">
+              <select value={classId} onChange={e => setClassId(e.target.value)} className="form-input flex-1">
+                <option value="">Zgjidh klasën...</option>
+                {classes.map(c => <option key={c.id} value={c.id}>{c.name} — {c.level}</option>)}
+              </select>
+              <button onClick={addWholeClass} disabled={!classId} className="btn-secondary text-sm">
+                <GraduationCap className="w-4 h-4" /> Shto Klasën
+              </button>
+            </div>
+          )}
+
+          {mode === "family" && (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    value={familyQuery}
+                    onChange={e => setFamilyQuery(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && searchFamily()}
+                    className="form-input pl-9"
+                    placeholder="Kërko me telefon ose emrin e prindit..."
+                  />
+                </div>
+                <button onClick={searchFamily} disabled={familySearching || !familyQuery.trim()} className="btn-secondary text-sm">
+                  {familySearching ? "Duke kërkuar..." : "Kërko"}
+                </button>
+              </div>
+              {familyResult && familyResult.children.length === 0 && (
+                <p className="text-sm text-amber-600">Asnjë familje s&apos;u gjet.</p>
+              )}
+              {familyResult && familyResult.children.length > 0 && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl space-y-2">
+                  {familyResult.parent && (
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      <span className="font-semibold">{familyResult.parent.name}</span>
+                      {familyResult.parent.parentPhone && <span className="text-slate-400"> · {familyResult.parent.parentPhone}</span>}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {familyResult.children.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => addRecipient(studentPhone(c), `${c.firstName} ${c.lastName} (prindi)`, c.id)}
+                        className="text-xs px-2.5 py-1 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary-400 hover:text-primary-600"
+                      >
+                        + {c.firstName} {c.lastName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {mode === "individual" && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                value={individualQuery}
+                onChange={e => setIndividualQuery(e.target.value)}
+                onFocus={() => individualResults.length > 0 && setShowIndividualSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowIndividualSuggestions(false), 150)}
+                className="form-input pl-9"
+                placeholder="Kërko nxënësin me emër..."
+              />
+              {showIndividualSuggestions && individualResults.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                  {individualResults.map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onMouseDown={() => addRecipient(studentPhone(s), `${s.firstName} ${s.lastName} (prindi)`, s.id)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between gap-2"
+                    >
+                      <span>{s.firstName} {s.lastName}</span>
+                      <span className="text-xs text-slate-400">{s.class?.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Selected recipients */}
+          {recipients.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" /> {recipients.length} marrës të zgjedhur
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {recipients.map(r => (
+                  <span key={r.phone} className="text-xs pl-2.5 pr-1 py-1 rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 flex items-center gap-1.5">
+                    {r.name} <span className="text-primary-400">({r.phone})</span>
+                    <button onClick={() => removeRecipient(r.phone)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="form-label">Mesazhi</label>
+            <textarea value={message} onChange={e => setMessage(e.target.value)} className="form-input min-h-[100px] resize-none" placeholder="Shkruaj mesazhin..." />
+            <p className="text-xs text-slate-400 mt-1">{message.length} karaktere · {segments || 0} segment{segments === 1 ? "" : "e"} SMS</p>
+          </div>
+
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          {result && (
+            <p className="text-sm text-green-600">
+              U dërgua te {result.sent} nga {result.total} marrës{result.failed > 0 && ` — ${result.failed} dështuan (${result.errors.join(", ")})`}
+            </p>
+          )}
+
+          <button onClick={handleSend} disabled={sending || !recipients.length || !message.trim()} className="btn-primary">
+            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {sending ? "Duke dërguar..." : `Dërgo SMS${recipients.length ? ` (${recipients.length})` : ""}`}
+          </button>
+        </div>
+
+        {/* History */}
+        <div className="card overflow-hidden">
+          <div className="flex items-center gap-2 p-5 border-b border-slate-100 dark:border-slate-700">
+            <History className="w-4 h-4 text-primary-500" />
+            <h2 className="section-title">Historiku i Mesazheve</h2>
+          </div>
+          {loadingHistory ? (
+            <p className="text-sm text-slate-400 text-center py-8">Duke ngarkuar...</p>
+          ) : groupedHistory.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">Ende s&apos;është dërguar asnjë SMS.</p>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+              {groupedHistory.map(g => {
+                const first = g.rows[0];
+                const sentCount = g.rows.filter(r => r.status === "SENT").length;
+                const failedCount = g.rows.filter(r => r.status === "FAILED").length;
+                return (
+                  <div key={g.key} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-slate-700 dark:text-slate-200 line-clamp-2">{first.message}</p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {g.rows.length > 1 ? `${g.rows.length} marrës` : (first.recipientName || first.recipientPhone)}
+                          {" · "}{first.sentBy.name} · {formatDateTime(first.createdAt)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0 text-xs">
+                        {sentCount > 0 && <span className="flex items-center gap-1 text-green-600"><CheckCircle className="w-3.5 h-3.5" />{sentCount}</span>}
+                        {failedCount > 0 && <span className="flex items-center gap-1 text-red-500"><XCircle className="w-3.5 h-3.5" />{failedCount}</span>}
+                      </div>
+                    </div>
+                    {failedCount > 0 && (
+                      <div className="mt-2 space-y-0.5">
+                        {g.rows.filter(r => r.status === "FAILED").map(r => (
+                          <p key={r.id} className="text-xs text-red-500">{r.recipientName || r.recipientPhone}: {r.errorMessage}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
