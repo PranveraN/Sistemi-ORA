@@ -53,14 +53,15 @@ Domain, then add the DNS records it gives you). `src/lib/email.ts` sends from
 unverified domain. Without either of these, the app still runs fine — emails
 for material requests just won't go out.
 
-Also set `SMS_GATEWAY_URL`/`SMS_GATEWAY_TOKEN` (needed for the "Mesazhe SMS"
-feature) if you're using a self-hosted SMS gateway (e.g. RBSoft SMS Gateway) —
-`SMS_GATEWAY_URL` is your gateway instance's base URL, `SMS_GATEWAY_TOKEN` an
-API token from its admin panel. `src/lib/sms.ts` assumes the common
-`POST {url}/api/send/sms` + Bearer-token convention for this class of
-product — verify against your instance's own API docs before relying on it;
-if the exact path/fields differ, only that one file needs adjusting. Without
-these, the app still runs fine — SMS just won't go out.
+Also set `SMS_GATEWAY_URL`/`SMS_GATEWAY_TOKEN`/`SMS_GATEWAY_DEVICE_ID` (needed
+for the "Mesazhe SMS" feature — sms.porositweb.com, RBSoft SMS Gateway):
+`SMS_GATEWAY_URL` is the gateway's base URL, `SMS_GATEWAY_TOKEN` the "API Key"
+from its API tab, `SMS_GATEWAY_DEVICE_ID` the device ID to send from (shown
+in brackets next to the device name under Devices). The exact request format
+(`GET {url}/services/send.php?key=...&number=...&message=...&devices=...&
+type=sms&prioritize=0`) was verified directly against the panel's own
+"Generate Link to Test API" tool. Without these, the app still runs fine —
+SMS just won't go out.
 
 `.env.production` is gitignored — it holds secrets, never commit it.
 
