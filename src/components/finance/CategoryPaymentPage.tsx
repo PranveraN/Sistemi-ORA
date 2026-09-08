@@ -50,6 +50,11 @@ interface StudentRow {
   id: number;
   firstName: string;
   lastName: string;
+  parentName: string | null;
+  parentPhone: string | null;
+  fatherPhone: string | null;
+  motherPhone: string | null;
+  address: string | null;
   class: { id: number; name: string } | null;
   discountPct: number;
   paymentPlan: string | null;
@@ -107,8 +112,11 @@ function exportStudentsExcel(
 
   // Sheet 1: Lista nxënësve
   const rows: (string | number)[][] = [
-    [`${title} — ${period}`, "", "", "", "", "", ""],
-    ["#", "Emri", "Mbiemri", "Klasa", "Shuma (€)", "Paguar (€)", "Borxhi (€)", "Statusi"],
+    [`${title} — ${period}`, "", "", "", "", "", "", "", "", "", "", "", ""],
+    [
+      "#", "Emri", "Mbiemri", "Klasa", "Shuma (€)", "Paguar (€)", "Borxhi (€)", "Statusi",
+      "Emri i Prindit", "Tel. Prindi", "Tel. Babai", "Tel. Nëna", "Adresa",
+    ],
     ...students.map((s, i) => [
       i + 1,
       s.firstName,
@@ -123,6 +131,11 @@ function exportStudentsExcel(
           : s.payment.status === "OVERDUE" ? "Vonuar"
           : "Pa pagesë")
         : "Pa pagesë",
+      s.parentName ?? "",
+      s.parentPhone ?? "",
+      s.fatherPhone ?? "",
+      s.motherPhone ?? "",
+      s.address ?? "",
     ]),
   ];
 
@@ -130,6 +143,7 @@ function exportStudentsExcel(
   ws["!cols"] = [
     { wch: 5 }, { wch: 18 }, { wch: 18 }, { wch: 8 },
     { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 },
+    { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 28 },
   ];
   XLSX.utils.book_append_sheet(wb, ws, "Lista");
 
@@ -395,7 +409,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           )}
 
           <button
-            onClick={() => exportStudentsExcel(students, stats, title, month, resolvedYear, isMonthly)}
+            onClick={() => exportStudentsExcel(sorted, stats, title, month, resolvedYear, isMonthly)}
             className="btn-secondary text-sm"
             title="Exporto në Excel"
           >
