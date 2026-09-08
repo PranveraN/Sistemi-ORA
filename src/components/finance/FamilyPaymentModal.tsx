@@ -20,6 +20,8 @@ interface RowState {
   note: string;
 }
 
+interface FamilyGroup { parent: { name: string; parentPhone: string | null } | null; children: FamilyChild[] }
+
 interface Props {
   categoryId: number;
   categoryName: string;
@@ -42,8 +44,10 @@ export default function FamilyPaymentModal({ categoryId, categoryName, computeDe
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [parent, setParent] = useState<{ name: string; parentPhone: string | null } | null>(null);
-  const [children, setChildren] = useState<FamilyChild[]>([]);
+  const [familyGroups, setFamilyGroups] = useState<FamilyGroup[]>([]);
+  const [selectedFamily, setSelectedFamily] = useState<FamilyGroup | null>(null);
+  const parent   = selectedFamily?.parent ?? null;
+  const children = selectedFamily?.children ?? [];
   const [rows, setRows] = useState<Record<number, RowState>>({});
   const [method, setMethod] = useState("CASH");
   const [selMonth, setSelMonth] = useState(defaultMonth > 0 ? defaultMonth : (periodOptions?.[0]?.canonicalMonth ?? new Date().getMonth() + 1));
@@ -55,29 +59,33 @@ export default function FamilyPaymentModal({ categoryId, categoryName, computeDe
   // vitit kalendarik fillestar; Janar-Gusht (1-8) i takojnë vitit pasardhës.
   const year = isMonthly && selMonth <= 8 ? schoolYearStart + 1 : schoolYearStart;
 
+  function selectFamily(g: FamilyGroup) {
+    setSelectedFamily(g);
+    const initialRows: Record<number, RowState> = {};
+    for (const c of g.children) {
+      initialRows[c.id] = { checked: false, amount: "0", paidAmount: "0", note: "" };
+    }
+    setRows(initialRows);
+  }
+
   async function handleSearch() {
     if (!query.trim()) return;
     setSearching(true);
     setError(null);
+    setFamilyGroups([]);
+    setSelectedFamily(null);
     const isPhone = /\d/.test(query);
     const param = isPhone ? `phone=${encodeURIComponent(query)}` : `name=${encodeURIComponent(query)}`;
     const res = await fetch(`/api/families?${param}`);
     const data = await res.json();
     setSearching(false);
     setSearched(true);
-    if (!res.ok || !data.children?.length) {
-      setParent(null);
-      setChildren([]);
-      return;
-    }
-    setParent({ name: data.parent.name, parentPhone: data.parent.parentPhone });
-    const active = (data.children as FamilyChild[]).filter(c => c.status === "ACTIVE");
-    setChildren(active);
-    const initialRows: Record<number, RowState> = {};
-    for (const c of active) {
-      initialRows[c.id] = { checked: false, amount: "0", paidAmount: "0", note: "" };
-    }
-    setRows(initialRows);
+    if (!res.ok || !data.families?.length) return;
+    const groups: FamilyGroup[] = (data.families as FamilyGroup[])
+      .map(f => ({ parent: f.parent, children: f.children.filter(c => c.status === "ACTIVE") }))
+      .filter(f => f.children.length > 0);
+    setFamilyGroups(groups);
+    if (groups.length === 1) selectFamily(groups[0]);
   }
 
   function toggleChild(id: number) {
@@ -158,12 +166,37 @@ export default function FamilyPaymentModal({ categoryId, categoryName, computeDe
             </div>
           </div>
 
-          {searched && children.length === 0 && (
+          {searched && familyGroups.length === 0 && (
             <p className="text-sm text-slate-400 py-4 text-center">Nuk u gjet asnjë familje me këtë kërkim, ose familja ka më pak se 2 fëmijë aktivë.</p>
+          )}
+
+          {familyGroups.length > 1 && !selectedFamily && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl space-y-2">
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                U gjetën {familyGroups.length} familje të ndryshme me këtë emër — zgjidh njërën:
+              </p>
+              <div className="space-y-1.5">
+                {familyGroups.map((g, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => selectFamily(g)}
+                    className="w-full text-left px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:border-primary-400 text-sm"
+                  >
+                    <span className="font-semibold">{g.parent?.name || "—"}</span>
+                    {g.parent?.parentPhone && <span className="text-slate-400"> · {g.parent.parentPhone}</span>}
+                    <span className="text-slate-400"> · {g.children.map(c => `${c.firstName} ${c.lastName}`).join(", ")}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {children.length > 0 && (
             <>
+              {familyGroups.length > 1 && (
+                <button type="button" onClick={() => setSelectedFamily(null)} className="text-xs text-primary-600 hover:text-primary-700">‹ Familje tjetër</button>
+              )}
               <div className={`grid gap-3 ${isMonthly ? "grid-cols-3" : "grid-cols-2"}`}>
                 {isMonthly && (
                   <div>

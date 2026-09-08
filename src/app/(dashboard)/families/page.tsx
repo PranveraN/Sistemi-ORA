@@ -71,6 +71,7 @@ export default function FamiliesPage() {
 
   const [query, setQuery]   = useState(phoneParam || nameParam);
   const [data, setData]     = useState<FamilyData | null>(null);
+  const [familyChoices, setFamilyChoices] = useState<FamilyData[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
@@ -80,6 +81,7 @@ export default function FamiliesPage() {
     setLoading(true);
     setError(null);
     setData(null);
+    setFamilyChoices(null);
 
     const isPhone = /^[+\d\s]+$/.test(q.trim());
     const params  = isPhone ? `phone=${encodeURIComponent(q.trim())}` : `name=${encodeURIComponent(q.trim())}`;
@@ -88,9 +90,14 @@ export default function FamiliesPage() {
     const json = await res.json();
 
     if (!res.ok) { setError(json.error); setLoading(false); return; }
-    if (!json.children?.length) { setError("Nuk u gjet asnjë familje me këto të dhëna."); setLoading(false); return; }
+    if (!json.families?.length) { setError("Nuk u gjet asnjë familje me këto të dhëna."); setLoading(false); return; }
 
-    setData(json);
+    const families = json.families as FamilyData[];
+    if (families.length > 1) {
+      setFamilyChoices(families);
+    } else {
+      setData(families[0]);
+    }
     setLoading(false);
   }, []);
 
@@ -219,8 +226,36 @@ export default function FamiliesPage() {
           <div className="card p-6 text-center text-slate-400">{error}</div>
         )}
 
+        {familyChoices && !data && !loading && (
+          <div className="card p-5 space-y-2">
+            <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+              U gjetën {familyChoices.length} familje të ndryshme me këtë kërkim — zgjidh njërën:
+            </p>
+            <div className="space-y-1.5">
+              {familyChoices.map((f, i) => (
+                <button
+                  key={i}
+                  onClick={() => { setData(f); setFamilyChoices(null); }}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:border-primary-400 text-sm"
+                >
+                  <span className="font-semibold">{f.parent.fatherName || f.parent.motherName || f.parent.name}</span>
+                  {(f.parent.fatherPhone || f.parent.parentPhone) && (
+                    <span className="text-slate-400"> · {f.parent.fatherPhone || f.parent.parentPhone}</span>
+                  )}
+                  <span className="text-slate-400"> · {f.children.map(c => `${c.firstName} ${c.lastName}`).join(", ")}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {data && !loading && (
           <>
+            {familyChoices && familyChoices.length > 1 && (
+              <button onClick={() => { setFamilyChoices(familyChoices); setData(null); }} className="text-xs text-primary-600 hover:text-primary-700">
+                ‹ Familje tjetër
+              </button>
+            )}
             {/* Parent card */}
             <div className="card p-6">
               <div className="flex flex-col sm:flex-row sm:items-start gap-5">
@@ -407,7 +442,7 @@ export default function FamiliesPage() {
           </>
         )}
 
-        {!data && !loading && !error && (
+        {!data && !familyChoices && !loading && !error && (
           <div className="card p-12 text-center">
             <Users className="w-12 h-12 text-slate-200 dark:text-slate-700 mx-auto mb-4" />
             <p className="text-slate-400 text-sm">Kërko me emrin e prindit ose numrin e telefonit</p>

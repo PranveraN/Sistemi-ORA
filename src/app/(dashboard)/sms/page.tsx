@@ -15,6 +15,10 @@ interface StudentRow {
   class: { name: string } | null;
 }
 interface CategoryOpt { id: number; name: string }
+interface FamilyGroup {
+  parent: { name: string; parentPhone: string | null; fatherPhone?: string | null; motherPhone?: string | null } | null;
+  children: StudentRow[];
+}
 interface DebtStudentRow extends StudentRow {
   class: { id: number; name: string } | null;
   status: string;
@@ -52,7 +56,9 @@ export default function SmsPage() {
 
   const [familyQuery, setFamilyQuery] = useState("");
   const [familySearching, setFamilySearching] = useState(false);
-  const [familyResult, setFamilyResult] = useState<{ parent: { name: string; parentPhone: string | null } | null; children: StudentRow[] } | null>(null);
+  const [familySearched, setFamilySearched] = useState(false);
+  const [familyGroups, setFamilyGroups] = useState<FamilyGroup[]>([]);
+  const [selectedFamily, setSelectedFamily] = useState<FamilyGroup | null>(null);
 
   const [individualQuery, setIndividualQuery] = useState("");
   const [individualResults, setIndividualResults] = useState<StudentRow[]>([]);
@@ -132,14 +138,22 @@ export default function SmsPage() {
   async function searchFamily() {
     if (!familyQuery.trim()) return;
     setFamilySearching(true);
-    setFamilyResult(null);
+    setFamilySearched(false);
+    setFamilyGroups([]);
+    setSelectedFamily(null);
     const isPhone = /\d/.test(familyQuery);
     const param = isPhone ? `phone=${encodeURIComponent(familyQuery)}` : `name=${encodeURIComponent(familyQuery)}`;
     const res = await fetch(`/api/families?${param}`);
     const d = await res.json();
     setFamilySearching(false);
-    if (!res.ok || !d.children?.length) { setFamilyResult({ parent: null, children: [] }); return; }
-    setFamilyResult({ parent: d.parent, children: d.children.filter((c: { status: string }) => c.status === "ACTIVE") });
+    setFamilySearched(true);
+    if (!res.ok || !d.families?.length) return;
+    type RawFamily = { parent: FamilyGroup["parent"]; children: (StudentRow & { status: string })[] };
+    const groups: FamilyGroup[] = (d.families as RawFamily[])
+      .map(f => ({ parent: f.parent, children: f.children.filter(c => c.status === "ACTIVE") }))
+      .filter(f => f.children.length > 0);
+    setFamilyGroups(groups);
+    if (groups.length === 1) setSelectedFamily(groups[0]);
   }
 
   useEffect(() => {
@@ -234,19 +248,44 @@ export default function SmsPage() {
                   {familySearching ? "Duke kërkuar..." : "Kërko"}
                 </button>
               </div>
-              {familyResult && familyResult.children.length === 0 && (
+              {familySearched && familyGroups.length === 0 && (
                 <p className="text-sm text-amber-600">Asnjë familje s&apos;u gjet.</p>
               )}
-              {familyResult && familyResult.children.length > 0 && (
+
+              {familyGroups.length > 1 && !selectedFamily && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl space-y-2">
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    U gjetën {familyGroups.length} familje të ndryshme me këtë emër — zgjidh njërën:
+                  </p>
+                  <div className="space-y-1.5">
+                    {familyGroups.map((g, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedFamily(g)}
+                        className="w-full text-left px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:border-primary-400 text-sm"
+                      >
+                        <span className="font-semibold">{g.parent?.name || "—"}</span>
+                        {g.parent?.parentPhone && <span className="text-slate-400"> · {g.parent.parentPhone}</span>}
+                        <span className="text-slate-400"> · {g.children.map(c => `${c.firstName} ${c.lastName}`).join(", ")}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedFamily && (
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl space-y-2">
-                  {familyResult.parent && (
+                  <div className="flex items-center justify-between gap-2">
                     <p className="text-sm text-slate-600 dark:text-slate-300">
-                      <span className="font-semibold">{familyResult.parent.name}</span>
-                      {familyResult.parent.parentPhone && <span className="text-slate-400"> · {familyResult.parent.parentPhone}</span>}
+                      <span className="font-semibold">{selectedFamily.parent?.name}</span>
+                      {selectedFamily.parent?.parentPhone && <span className="text-slate-400"> · {selectedFamily.parent.parentPhone}</span>}
                     </p>
-                  )}
+                    {familyGroups.length > 1 && (
+                      <button onClick={() => setSelectedFamily(null)} className="text-xs text-primary-600 hover:text-primary-700 shrink-0">‹ Familje tjetër</button>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {familyResult.children.map(c => (
+                    {selectedFamily.children.map(c => (
                       <button
                         key={c.id}
                         onClick={() => addRecipient(studentPhone(c), `${c.firstName} ${c.lastName} (prindi)`, c.id)}

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ChevronLeft, Save, Plus, Trash2, X, Search, Users } from "lucide-react";
 
 interface FamilyChild { id: number; firstName: string; lastName: string; class: { name: string } | null; status: string }
+interface FamilyGroup { parent: { name: string; parentPhone: string | null } | null; children: FamilyChild[] }
 interface InvoiceItem {
   studentId: string;    // "" = zë i përgjithshëm, jo i lidhur me një fëmijë specifik
   description: string;
@@ -45,8 +46,10 @@ function InvoiceForm() {
   const [parentQuery, setParentQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [parentInfo, setParentInfo] = useState<{ name: string; phone: string | null } | null>(null);
-  const [familyChildren, setFamilyChildren] = useState<FamilyChild[]>([]);
+  const [familyGroups, setFamilyGroups] = useState<FamilyGroup[]>([]);
+  const [selectedFamily, setSelectedFamily] = useState<FamilyGroup | null>(null);
+  const parentInfo     = selectedFamily?.parent ? { name: selectedFamily.parent.name, phone: selectedFamily.parent.parentPhone } : null;
+  const familyChildren = selectedFamily?.children ?? [];
 
   const [form, setForm] = useState({
     type:      initialType,
@@ -61,19 +64,20 @@ function InvoiceForm() {
     if (!query.trim()) return;
     setSearching(true);
     setError("");
+    setFamilyGroups([]);
+    setSelectedFamily(null);
     const isPhone = /\d/.test(query);
     const param = isPhone ? `phone=${encodeURIComponent(query)}` : `name=${encodeURIComponent(query)}`;
     const res = await fetch(`/api/families?${param}`);
     const data = await res.json();
     setSearching(false);
     setSearched(true);
-    if (!res.ok || !data.children?.length) {
-      setParentInfo(null);
-      setFamilyChildren([]);
-      return;
-    }
-    setParentInfo({ name: data.parent.name, phone: data.parent.parentPhone });
-    setFamilyChildren((data.children as FamilyChild[]).filter(c => c.status === "ACTIVE"));
+    if (!res.ok || !data.families?.length) return;
+    const groups: FamilyGroup[] = (data.families as FamilyGroup[])
+      .map(f => ({ parent: f.parent, children: f.children.filter(c => c.status === "ACTIVE") }))
+      .filter(f => f.children.length > 0);
+    setFamilyGroups(groups);
+    if (groups.length === 1) setSelectedFamily(groups[0]);
   }
 
   // Nëse erdhëm nga profili i një nxënësi specifik (?studentId=), gjejmë
@@ -169,18 +173,45 @@ function InvoiceForm() {
               </button>
             </div>
 
-            {searched && familyChildren.length === 0 && (
+            {searched && familyGroups.length === 0 && (
               <p className="text-sm text-amber-600">Asnjë nxënës aktiv s&apos;u gjet me këtë telefon/emër.</p>
+            )}
+
+            {familyGroups.length > 1 && !selectedFamily && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl space-y-2">
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  U gjetën {familyGroups.length} familje të ndryshme me këtë emër — zgjidh njërën:
+                </p>
+                <div className="space-y-1.5">
+                  {familyGroups.map((g, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setSelectedFamily(g)}
+                      className="w-full text-left px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:border-primary-400 text-sm"
+                    >
+                      <span className="font-semibold">{g.parent?.name || "—"}</span>
+                      {g.parent?.parentPhone && <span className="text-slate-400"> · {g.parent.parentPhone}</span>}
+                      <span className="text-slate-400"> · {g.children.map(c => `${c.firstName} ${c.lastName}`).join(", ")}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
 
             {familyChildren.length > 0 && (
               <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                {parentInfo && (
-                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-                    <span className="font-semibold">{parentInfo.name}</span>
-                    {parentInfo.phone && <span className="text-slate-400"> · {parentInfo.phone}</span>}
-                  </p>
-                )}
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  {parentInfo && (
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      <span className="font-semibold">{parentInfo.name}</span>
+                      {parentInfo.phone && <span className="text-slate-400"> · {parentInfo.phone}</span>}
+                    </p>
+                  )}
+                  {familyGroups.length > 1 && (
+                    <button type="button" onClick={() => setSelectedFamily(null)} className="text-xs text-primary-600 hover:text-primary-700 shrink-0">‹ Familje tjetër</button>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-1.5">
                   {familyChildren.map(c => (
                     <span key={c.id} className="text-xs px-2.5 py-1 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300">
