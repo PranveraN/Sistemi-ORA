@@ -165,6 +165,7 @@ tr:nth-child(even) td { background: #f8fafc; }
       <div class="school-name">AKADEMIA ORA</div>
       <div class="school-sub">Shkollë Private</div>
       <div class="school-sub">Tel: +383 46 505 055</div>
+      <div class="school-sub">BKT: 1971897927031291</div>
     </div>
   </div>
   <div class="invoice-meta">
@@ -260,6 +261,7 @@ ${notesBlock}
     doc.setFont("helvetica", "normal");
     doc.text("Shkollë Private", 38, 25);
     doc.text("Tel: +383 46 505 055", 38, 31);
+    doc.text("BKT: 1971897927031291", 38, 37);
 
     // Invoice type
     doc.setFontSize(16);
@@ -447,6 +449,7 @@ ${notesBlock}
               </div>
             </div>
             <p className="text-sm text-slate-500">Tel: +383 46 505 055</p>
+            <p className="text-sm text-slate-500">BKT: 1971897927031291</p>
           </div>
           <div className="text-right">
             <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">

@@ -82,6 +82,7 @@ function buildBookReceiptHTML(sale: Sale, copy: "prind" | "shkolla", origin: str
       <div class="school-name">Akademia Ora</div>
       <div class="school-sub">Shkollë Private &bull; Prishtinë</div>
       <div class="school-sub">+383 46 505 055</div>
+      <div class="school-sub">BKT: 1971897927031291</div>
     </div>
     <div class="receipt-meta">
       <div class="receipt-title">FLETËPAGESË</div>
