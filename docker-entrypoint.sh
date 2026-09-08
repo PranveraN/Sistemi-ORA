@@ -29,5 +29,26 @@ fi
 
 npx prisma db push --skip-generate
 
-echo "[entrypoint] Schema is in sync. Starting: $*"
+echo "[entrypoint] Schema is in sync."
+
+# Skriptet e mbjelljes/migrimit — të gjitha idempotente (kontrollojnë çka
+# ekziston para se të krijojnë/ndryshojnë, ndaj janë të sigurta të
+# riekzekutohen në çdo nisje). Ekzekutohen automatikisht këtu sepse s'ka
+# qasje SSH në server për t'i nisur manualisht pas çdo deploy — kështu
+# katalogu/migrimet mbeten gjithmonë të përditësuara pa asnjë hap shtesë.
+# Një dështim këtu (p.sh. skript i ri me gabim) NUK e ndalon nisjen e
+# app-it — vetëm loget si paralajmërim.
+for script in \
+    scripts/seed-material-categories.ts \
+    scripts/seed-material-catalog-full.ts \
+    scripts/migrate-material-requests.ts \
+    scripts/migrate-invoice-items-student.ts \
+; do
+    if [ -f "$script" ]; then
+        echo "[entrypoint] Duke ekzekutuar $script..."
+        npx tsx "$script" || echo "[entrypoint] KUJDES: $script dështoi — nisja e app-it vazhdon"
+    fi
+done
+
+echo "[entrypoint] Starting: $*"
 exec "$@"
