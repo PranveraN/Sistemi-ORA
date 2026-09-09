@@ -1276,6 +1276,21 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
   const [note, setNote] = useState(existing?.note ?? "");
   const [saving, setSaving] = useState(false);
 
+  // Zgjedhje e lirë e disa periudhave njëherësh (p.sh. Shtator/Tetor +
+  // Nëntor/Dhjetor = 4 muaj) — përveç periudhës që u klikua për ta hapur
+  // modalin (parazgjedhje), admini mund të shtojë/heqë të tjera me tick,
+  // pa qenë e kufizuar vetëm në "një periudhë" ose "krejt vitin".
+  const [selectedPeriods, setSelectedPeriods] = useState<Set<number>>(
+    new Set(periodIndex >= 0 ? [periodIndex] : [])
+  );
+  function togglePeriod(i: number) {
+    setSelectedPeriods(prev => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  }
+
   const finalAmount = isCalc ? (overrideAmount ?? 0) : Math.round(days * pricePerDay * 100) / 100;
   const paid = parseFloat(paidAmount || "0");
   const balance = Math.max(0, finalAmount - paid);
@@ -1398,10 +1413,14 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
   }
 
   const yearPlan = computeYearPlan();
+  const selectedItems = yearPlan.items.filter(it => selectedPeriods.has(it.index) && it.remaining > 0);
+  const selectedTotal = selectedItems.reduce((sum, it) => sum + it.remaining, 0);
 
-  async function handlePayFullYear() {
-    if (yearPlan.total <= 0) return;
-    if (!confirm(`Do të shënohen si paguar plotësisht të gjitha periudhat e vitit për ${student.firstName} ${student.lastName} — gjithsej ${formatCurrency(yearPlan.total)}. Vazhdo?`)) return;
+  async function handlePaySelected() {
+    if (selectedItems.length === 0) return;
+    const allSelected = selectedPeriods.size === PERIOD_BUCKETS.length;
+    const label = allSelected ? "krejt vitin" : `${selectedItems.length} periudhat e zgjedhura`;
+    if (!confirm(`Do të shënohen si paguar plotësisht ${label} për ${student.firstName} ${student.lastName} — gjithsej ${formatCurrency(selectedTotal)}. Vazhdo?`)) return;
 
     setSaving(true);
     const catRes = await fetch("/api/categories");
@@ -1409,7 +1428,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
     const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
     const catId = cat?.id ?? 2;
 
-    for (const it of yearPlan.items) {
+    for (const it of selectedItems) {
       if (it.remaining <= 0) continue;
       const payload = {
         studentId: student.id, categoryId: catId,
@@ -1553,18 +1572,53 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
             </button>
           )}
 
-          {/* Pay full year at once — for families that settle all 5 periods together */}
+          {/* Paguaj disa periudha njëherësh — zgjidh me tick cilat, jo vetëm "krejt vitin" */}
           {yearPlan.total > 0 && (
-            <button
-              type="button"
-              onClick={handlePayFullYear}
-              disabled={saving}
-              title="Shënon si paguar plotësisht të gjitha periudhat e mbetura të vitit, jo vetëm këtë"
-              className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-              💰 Paguaj Krejt Vitin ({formatCurrency(yearPlan.total)})
-            </button>
+            <div className="border-2 border-dashed border-emerald-200 dark:border-emerald-800 rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">Paguaj disa periudha njëherësh</p>
+                <div className="flex items-center gap-2 text-xs">
+                  <button type="button" onClick={() => setSelectedPeriods(new Set(yearPlan.items.filter(it => it.remaining > 0).map(it => it.index)))} className="text-primary-600 hover:underline">Zgjidh të gjitha</button>
+                  <button type="button" onClick={() => setSelectedPeriods(new Set())} className="text-slate-400 hover:underline">Pastro</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {yearPlan.items.map(it => (
+                  <label
+                    key={it.index}
+                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs cursor-pointer border ${
+                      it.remaining <= 0
+                        ? "border-slate-100 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+                        : selectedPeriods.has(it.index)
+                          ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
+                          : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-emerald-600"
+                      checked={selectedPeriods.has(it.index)}
+                      disabled={it.remaining <= 0}
+                      onChange={() => togglePeriod(it.index)}
+                    />
+                    <span className="flex-1">{it.period.label}</span>
+                    {it.remaining > 0 && <span className="font-semibold">{formatCurrency(it.remaining)}</span>}
+                  </label>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handlePaySelected}
+                disabled={saving || selectedItems.length === 0}
+                title="Shënon si paguar plotësisht periudhat e zgjedhura më sipër"
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-40"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                💰 {selectedItems.length === 0
+                  ? "Zgjidh periudhat"
+                  : `Paguaj ${selectedItems.length} periudha (${formatCurrency(selectedTotal)})`}
+              </button>
+            </div>
           )}
         </div>
 
