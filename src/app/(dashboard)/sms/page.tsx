@@ -23,25 +23,52 @@ interface FamilyGroup {
 interface DebtStudentRow extends StudentRow {
   class: { id: number; name: string } | null;
   status: string;
-  payment: { status: string } | null;
-  // Rreshtat e papërmbledhur — nevojiten për Ushqimin, ku një "periudhë" e vetme
-  // (p.sh. Nëntor/Dhjetor) mbulon 2 muaj kalendarikë dhe s'mund të kontrollohet
-  // saktë me filtrin e thjeshtë "month" (përputhje e saktë e një muaji të vetëm).
-  installments: { month: number; finalAmount: number; paidAmount: number; status: string }[];
+  payment: { status: string; finalAmount: number; balance: number } | null;
+  timiInvest: unknown | null;
+  // Rreshtat e papërmbledhur — nevojiten (a) për Ushqimin, ku një "periudhë" e
+  // vetme (p.sh. Nëntor/Dhjetor) mbulon 2 muaj kalendarikë dhe s'mund të
+  // kontrollohet saktë me filtrin e thjeshtë "month", dhe (b) për të nxjerrë
+  // "formatin" real të pagesës — fusha `Student.paymentPlan` në bazë s'përdoret
+  // faktikisht nga shkolla (mbetet gjithmonë bosh); formati real shihet nga
+  // numri/lloji i këstëve, saktësisht si te faqja e Shkollimit/Ushqimit.
+  installments: { month: number; finalAmount: number; paidAmount: number; status: string; description: string | null }[];
 }
 
-// Statusi i një "periudhe" ushqimi (2 muaj) nga rreshtat e papërmbledhur —
-// e njëjta logjikë si `findPeriodPayment` te faqja e Ushqimit, por vetëm për
-// statusin (mjafton për filtrin "të papaguar/paguar" këtu).
-function periodStatus(installments: DebtStudentRow["installments"], months: number[]): string {
-  const matches = installments.filter(p => months.includes(p.month));
-  if (!matches.length) return "PENDING";
-  if (matches.length === 1) return matches[0].status;
+const PAYMENT_FORMAT_LABELS: Record<string, string> = {
+  TWO: "Dy pjesë", MONTHLY: "Me këste", FLEX: "Këste fleksibël",
+  TIMI_INVEST: "Përmes Timi Invest", FULL: "E plotë", NONE: "Pa të dhëna",
+};
+
+// Njëjtë si inferenca e formatit të pagesës te CategoryPaymentPage.tsx (hasMonthly/
+// hasFlex/hasTwo) — TI ka përparësi (financim i jashtëm, pavarësisht këstëve reale).
+function inferPaymentFormat(s: Pick<DebtStudentRow, "installments" | "timiInvest">): string {
+  if (s.timiInvest) return "TIMI_INVEST";
+  const hasMonthly = s.installments.some(p => p.description?.startsWith("MUAJI_"));
+  const hasFlex    = s.installments.some(p => p.description?.startsWith("FLEX_"));
+  if (hasMonthly) return "MONTHLY";
+  if (hasFlex) return "FLEX";
+  if (s.installments.length >= 2) return "TWO";
+  if (s.installments.length === 1) return "FULL";
+  return "NONE";
+}
+
+// Statusi + borxhi për muajt e kërkuar (p.sh. [9,10] për një periudhë
+// ushqimi, ose [9] për një muaj të vetëm Shkollimi, ose null = gjithë vitin
+// i mbledhur) — nga rreshtat e papërmbledhur, gjithmonë të marrë për tërë
+// vitin (shih searchDebt), sepse një plan "Dy pjesë" mund të ketë këstet e
+// veta të etiketuara nën muaj/vite krejt të ndryshëm (p.sh. K1 Shtator 2026,
+// K2 Nëntor 2025) — filtrimi me vetëm një muaj të saktë do të humbiste
+// këstin tjetër dhe do ta gabonte edhe formatin e inferuar (shih më poshtë).
+function periodInfo(installments: DebtStudentRow["installments"], months: number[] | null): { status: string; balance: number } {
+  const matches = months ? installments.filter(p => months.includes(p.month)) : installments;
+  if (!matches.length) return { status: "PENDING", balance: 0 };
   const finalAmount = matches.reduce((s, p) => s + p.finalAmount, 0);
   const paidAmount  = matches.reduce((s, p) => s + p.paidAmount, 0);
-  if (finalAmount > 0 && paidAmount >= finalAmount) return "PAID";
-  if (paidAmount > 0) return "PARTIAL";
-  return matches[0].status;
+  const balance = Math.max(0, finalAmount - paidAmount);
+  if (matches.length === 1) return { status: matches[0].status, balance };
+  if (finalAmount > 0 && paidAmount >= finalAmount) return { status: "PAID", balance };
+  if (paidAmount > 0) return { status: "PARTIAL", balance };
+  return { status: matches[0].status, balance };
 }
 interface Recipient { phone: string; name: string; studentId?: number }
 
@@ -68,10 +95,11 @@ export default function SmsPage() {
   const [debtMonth, setDebtMonth] = useState(String(new Date().getMonth() + 1));
   const [debtYear, setDebtYear] = useState(String(new Date().getFullYear()));
   const [debtClassId, setDebtClassId] = useState("");
+  const [debtFormat, setDebtFormat] = useState("");
   const [debtStatus, setDebtStatus] = useState<"DEBT" | "PAID" | "ALL">("DEBT");
   const [debtSearching, setDebtSearching] = useState(false);
   const [debtSearched, setDebtSearched] = useState(false);
-  const [debtResults, setDebtResults] = useState<DebtStudentRow[]>([]);
+  const [debtResults, setDebtResults] = useState<(DebtStudentRow & { debtBalance: number; format: string })[]>([]);
 
   const [familyQuery, setFamilyQuery] = useState("");
   const [familySearching, setFamilySearching] = useState(false);
@@ -121,31 +149,34 @@ export default function SmsPage() {
     setDebtSearching(true);
     setDebtSearched(false);
     const isFood = debtCategory === "Ushqimi";
-    const params = new URLSearchParams({ category: debtCategory, year: debtYear || "0" });
-    if (isFood) {
-      // Ushqimi faturohet në periudha 2-mujore (jo muaj-për-muaj) — merren të
-      // gjitha rreshtat e vitit akademik, dhe filtrimi sipas periudhës bëhet
-      // më poshtë, në krahasim me `bucket.months`.
-      params.set("month", "0");
-      params.set("yearType", "academic");
-    } else {
-      params.set("month", debtMonth || "0");
-    }
+    // Merren gjithmonë të gjitha këstet e vitit akademik (month=0), jo vetëm
+    // muaji i zgjedhur — përndryshe një plan "Dy pjesë" me këste të etiketuara
+    // nën muaj/vite të ndryshme (shih koment te periodInfo) do të shfaqej
+    // gabimisht si "E plotë" (vetëm një kësti do të gjendej). Statusi/borxhi
+    // dhe formati llogariten më poshtë, klient-anësisht, nga e njëjta listë.
+    const params = new URLSearchParams({ category: debtCategory, year: debtYear || "0", month: "0", yearType: "academic" });
     const res = await fetch(`/api/category-payments?${params}`);
     const d = await res.json();
     setDebtSearching(false);
     setDebtSearched(true);
     if (!res.ok) { setDebtResults([]); return; }
     const all: DebtStudentRow[] = d.students || [];
-    const bucket = isFood ? PERIOD_BUCKETS.find(p => p.canonicalMonth === Number(debtMonth)) : null;
-    const filtered = all.filter(s => {
-      if (s.status !== "ACTIVE") return false;
-      if (debtClassId && s.class?.id !== Number(debtClassId)) return false;
-      const st = bucket ? periodStatus(s.installments ?? [], bucket.months) : (s.payment?.status || "PENDING");
-      if (debtStatus === "DEBT") return st !== "PAID";
-      if (debtStatus === "PAID") return st === "PAID";
-      return true;
-    });
+    const targetMonths = isFood
+      ? PERIOD_BUCKETS.find(p => p.canonicalMonth === Number(debtMonth))?.months ?? null
+      : (Number(debtMonth) > 0 ? [Number(debtMonth)] : null);
+    const filtered = all
+      .filter(s => s.status === "ACTIVE")
+      .filter(s => !debtClassId || s.class?.id === Number(debtClassId))
+      .map(s => {
+        const info = periodInfo(s.installments ?? [], targetMonths);
+        return { ...s, __status: info.status, debtBalance: info.balance, format: inferPaymentFormat(s) };
+      })
+      .filter(s => !debtFormat || s.format === debtFormat)
+      .filter(s => {
+        if (debtStatus === "DEBT") return s.__status !== "PAID";
+        if (debtStatus === "PAID") return s.__status === "PAID";
+        return true;
+      });
     setDebtResults(filtered);
   }
 
@@ -367,7 +398,7 @@ export default function SmsPage() {
 
           {mode === "debt" && (
             <div className="space-y-2">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 <select
                   value={debtCategory}
                   onChange={e => {
@@ -403,6 +434,10 @@ export default function SmsPage() {
                   <option value="">Çdo klasë</option>
                   {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
+                <select value={debtFormat} onChange={e => setDebtFormat(e.target.value)} className="form-input">
+                  <option value="">Çdo format pagese</option>
+                  {Object.entries(PAYMENT_FORMAT_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                </select>
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
@@ -430,14 +465,22 @@ export default function SmsPage() {
                     <p className="text-sm text-slate-600 dark:text-slate-300">{debtResults.length} nxënës të gjetur</p>
                     <button onClick={addAllDebtResults} className="text-xs text-primary-600 hover:text-primary-700 font-medium">+ Shto të gjithë</button>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="space-y-1">
                     {debtResults.map(s => (
                       <button
                         key={s.id}
                         onClick={() => addRecipient(studentPhone(s), `${s.firstName} ${s.lastName} (prindi)`, s.id)}
-                        className="text-xs px-2.5 py-1 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary-400 hover:text-primary-600"
+                        className="w-full flex items-center justify-between gap-2 text-left px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:border-primary-400 text-xs"
                       >
-                        + {s.firstName} {s.lastName}{s.class && ` (${s.class.name})`}
+                        <span className="text-slate-700 dark:text-slate-200 font-medium">
+                          + {s.firstName} {s.lastName}{s.class && ` (${s.class.name})`}
+                        </span>
+                        <span className="flex items-center gap-1.5 shrink-0 text-slate-400">
+                          <span className={s.format === "TIMI_INVEST" ? "text-violet-500 font-semibold" : ""}>{PAYMENT_FORMAT_LABELS[s.format] ?? s.format}</span>
+                          {s.debtBalance > 0 && (
+                            <span className="text-red-500 font-semibold">{s.debtBalance.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</span>
+                          )}
+                        </span>
                       </button>
                     ))}
                   </div>
