@@ -1236,12 +1236,28 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
   // Ditët parazgjedhur duhet të përputhen me periudhën reale (Kalkulatori i Çmimeve),
   // jo me vlerën gjenerike "Ditë pune/muaj" — përndryshe të dyja vendet tregojnë numra të ndryshëm.
   const periodIndex = PERIOD_BUCKETS.findIndex(p => p.canonicalMonth === month);
+  const bucket = periodIndex >= 0 ? PERIOD_BUCKETS[periodIndex] : null;
   const periodDays = periodIndex >= 0 ? (periods[periodIndex]?.days ?? workingDays) : workingDays;
+
+  // Bileta e periudhës — një qelizë e grafikut mbulon 2 muaj (p.sh. "Nëntor/Dhjetor"),
+  // por disa familje paguajnë vetëm njërin nga ata dy muaj (p.sh. vetëm Nëntorin).
+  // Zgjedhja këtu vetëm rifreson vlerën parazgjedhur të ditëve/etiketës — numri i
+  // ditëve dhe çmimi mbeten plotësisht të editueshëm si më parë.
+  type SubPeriod = "full" | "first" | "second";
+  const initialSubPeriod: SubPeriod =
+    bucket && existing && existing.month === bucket.months[1] ? "second" : "full";
+  const [subPeriod, setSubPeriod] = useState<SubPeriod>(initialSubPeriod);
+
   const [days, setDays] = useState(
     existing && existing.finalAmount > 0 && prices["2_shujta_ditë"] > 0
       ? Math.max(1, Math.round(existing.finalAmount / prices["2_shujta_ditë"]))
       : periodDays
   );
+
+  function handleSubPeriodChange(sp: SubPeriod) {
+    setSubPeriod(sp);
+    setDays(sp === "full" ? periodDays : Math.round(periodDays / 2));
+  }
   const [pricePerDay, setPricePerDay] = useState(
     existing && days > 0 ? Math.round((existing.finalAmount / days) * 100) / 100 : prices["2_shujta_ditë"]
   );
@@ -1264,7 +1280,15 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
   const paid = parseFloat(paidAmount || "0");
   const balance = Math.max(0, finalAmount - paid);
 
-  const periodLabel = PERIOD_BUCKETS.find(p => p.canonicalMonth === month)?.label || MONTHS[month - 1];
+  // Muaji real që ruhet te pagesa — kur zgjidhet "vetëm njëri muaj", ruhet ai
+  // muaj specifik (jo gjithmonë muaji i parë i bileta), që Afati/etiketa të
+  // pasqyrojnë saktë periudhën reale që u pagua.
+  const effectiveMonth = !bucket || subPeriod === "full" ? month
+    : subPeriod === "first" ? bucket.months[0] : bucket.months[1];
+
+  const periodLabel = subPeriod === "full"
+    ? (bucket?.label ?? MONTHS[month - 1])
+    : MONTHS[effectiveMonth - 1];
   const description = isCalc
     ? `${periodLabel} ${year}`
     : `${days} ditë × ${formatCurrency(pricePerDay)} — ${periodLabel} ${year}`;
@@ -1281,7 +1305,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       method,
       dueDate,
       paidDate: paid > 0 ? paidDate : null,
-      month, year,
+      month: effectiveMonth, year,
       description,
       note: note || null,
     };
@@ -1421,7 +1445,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
             <p className="text-sm text-slate-400 mt-0.5">
               {student.firstName} {student.lastName}
               {student.class && <span> • Klasa {student.class.name}</span>}
-              {" • "}{MONTHS[month - 1]} {year}
+              {" • "}{periodLabel} {year}
             </p>
           </div>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
@@ -1438,20 +1462,36 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
               <span className="text-lg font-black text-amber-600">{formatCurrency(overrideAmount ?? 0)}</span>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="form-label">Numri i ditëve <span className="text-red-500">*</span></label>
-                <input type="number" value={days}
-                  onChange={e => setDays(parseInt(e.target.value) || 0)}
-                  className="form-input" min="0" />
+            <>
+              {bucket && (
+                <div>
+                  <label className="form-label">Periudha</label>
+                  <select
+                    value={subPeriod}
+                    onChange={e => handleSubPeriodChange(e.target.value as "full" | "first" | "second")}
+                    className="form-input"
+                  >
+                    <option value="full">{bucket.label} (të dy muajt)</option>
+                    <option value="first">Vetëm {MONTHS[bucket.months[0] - 1]}</option>
+                    <option value="second">Vetëm {MONTHS[bucket.months[1] - 1]}</option>
+                  </select>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">Numri i ditëve <span className="text-red-500">*</span></label>
+                  <input type="number" value={days}
+                    onChange={e => setDays(parseInt(e.target.value) || 0)}
+                    className="form-input" min="0" />
+                </div>
+                <div>
+                  <label className="form-label">Çmimi / ditë (€) <span className="text-red-500">*</span></label>
+                  <input type="number" value={pricePerDay}
+                    onChange={e => setPricePerDay(parseFloat(e.target.value) || 0)}
+                    className="form-input" min="0" step="0.01" />
+                </div>
               </div>
-              <div>
-                <label className="form-label">Çmimi / ditë (€) <span className="text-red-500">*</span></label>
-                <input type="number" value={pricePerDay}
-                  onChange={e => setPricePerDay(parseFloat(e.target.value) || 0)}
-                  className="form-input" min="0" step="0.01" />
-              </div>
-            </div>
+            </>
           )}
 
           {/* Summary */}
