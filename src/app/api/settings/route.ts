@@ -8,6 +8,7 @@ const DEFAULTS: Record<string, string> = {
   schoolAddress: "",
   schoolEmail:   "",
   schoolNipt:    "",
+  schoolUniqueNumber: "",
   schoolYear:    "2025/2026",
   schoolWebsite: "",
   timiInvestEnabled: "true",

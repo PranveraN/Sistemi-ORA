@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ChevronLeft, Printer, Download, Send, ArrowRightLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface InvoiceItem {
   id: number;
@@ -43,11 +43,34 @@ interface Invoice {
   };
 }
 
+interface BusinessInfo {
+  schoolName: string; schoolAddress: string; schoolPhone: string;
+  schoolNipt: string; schoolUniqueNumber: string;
+}
+
+const DEFAULT_BUSINESS: BusinessInfo = {
+  schoolName: "AKADEMIA ORA", schoolAddress: "", schoolPhone: "+383 46 505 055",
+  schoolNipt: "", schoolUniqueNumber: "",
+};
+
 export default function InvoiceView({ invoice }: { invoice: Invoice }) {
   const printRef = useRef<HTMLDivElement>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [biz, setBiz] = useState<BusinessInfo>(DEFAULT_BUSINESS);
   const router = useRouter();
+
+  useEffect(() => {
+    fetch("/api/settings").then(r => r.json()).then((s: Partial<BusinessInfo>) => {
+      setBiz({
+        schoolName:         s.schoolName || DEFAULT_BUSINESS.schoolName,
+        schoolAddress:      s.schoolAddress || "",
+        schoolPhone:        s.schoolPhone || DEFAULT_BUSINESS.schoolPhone,
+        schoolNipt:         s.schoolNipt || "",
+        schoolUniqueNumber: s.schoolUniqueNumber || "",
+      });
+    }).catch(() => {});
+  }, []);
 
   // Fëmijët e dallueshëm të referuar nga zërat — nëse fatura mbulon disa
   // fëmijë të një prindi (secili zë me studentId të vet), tregohet "PRINDI"
@@ -114,6 +137,15 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
       ? `<div class="notes"><p class="notes-label">SHËNIME</p><p class="notes-text">${invoice.notes}</p></div>`
       : "";
 
+    const bizLines = [
+      "Shkollë Private",
+      `Tel: ${biz.schoolPhone}`,
+      "BKT: 1971897927031291",
+      biz.schoolAddress ? biz.schoolAddress : "",
+      biz.schoolNipt ? `Nr. Fiskal: ${biz.schoolNipt}` : "",
+      biz.schoolUniqueNumber ? `Nr. Unik: ${biz.schoolUniqueNumber}` : "",
+    ].filter(Boolean).map(line => `<div class="school-sub">${line}</div>`).join("");
+
     const html = `<!DOCTYPE html><html lang="sq"><head>
 <meta charset="UTF-8"/>
 <title>${typeLabel} #${invoice.number}</title>
@@ -162,10 +194,8 @@ tr:nth-child(even) td { background: #f8fafc; }
   <div class="logo-block">
     <img src="${origin}/logo.png" class="logo" alt="Logo" onerror="this.style.display='none'"/>
     <div>
-      <div class="school-name">AKADEMIA ORA</div>
-      <div class="school-sub">Shkollë Private</div>
-      <div class="school-sub">Tel: +383 46 505 055</div>
-      <div class="school-sub">BKT: 1971897927031291</div>
+      <div class="school-name">${biz.schoolName}</div>
+      ${bizLines}
     </div>
   </div>
   <div class="invoice-meta">
@@ -255,13 +285,20 @@ ${notesBlock}
     doc.setFontSize(16);
     doc.setTextColor(37, 99, 235);
     doc.setFont("helvetica", "bold");
-    doc.text("AKADEMIA ORA", 38, 19);
+    doc.text(biz.schoolName, 38, 19);
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
     doc.setFont("helvetica", "normal");
-    doc.text("Shkollë Private", 38, 25);
-    doc.text("Tel: +383 46 505 055", 38, 31);
-    doc.text("BKT: 1971897927031291", 38, 37);
+    const bizLines = [
+      "Shkollë Private",
+      `Tel: ${biz.schoolPhone}`,
+      "BKT: 1971897927031291",
+      biz.schoolAddress,
+      biz.schoolNipt ? `Nr. Fiskal: ${biz.schoolNipt}` : "",
+      biz.schoolUniqueNumber ? `Nr. Unik: ${biz.schoolUniqueNumber}` : "",
+    ].filter(Boolean);
+    let bizY = 25;
+    for (const line of bizLines) { doc.text(line, 38, bizY); bizY += 6; }
 
     // Invoice type
     doc.setFontSize(16);
@@ -277,37 +314,44 @@ ${notesBlock}
       doc.text(`Afati: ${formatDate(invoice.dueDate)}`, 190, 44, { align: "right" });
     }
 
-    // Divider
+    // Divider — shifet poshtë nëse blloku i biznesit ka rreshta shtesë (adresa/nr. fiskal/nr. unik)
+    const dividerY = Math.max(50, bizY + 4);
     doc.setDrawColor(226, 232, 240);
-    doc.line(20, 50, 190, 50);
+    doc.line(20, dividerY, 190, dividerY);
 
     // Student/parent info
+    const blockTop = dividerY + 10;
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
-    doc.text(isFamilyInvoice ? "PRINDI:" : "NXËNËSI:", 20, 60);
+    doc.text(isFamilyInvoice ? "PRINDI:" : "NXËNËSI:", 20, blockTop);
     doc.setTextColor(15, 23, 42);
     doc.setFontSize(12);
-    doc.text(isFamilyInvoice ? invoice.student.parentName : `${invoice.student.firstName} ${invoice.student.lastName}`, 20, 67);
+    doc.text(isFamilyInvoice ? invoice.student.parentName : `${invoice.student.firstName} ${invoice.student.lastName}`, 20, blockTop + 7);
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
+    let studentBottom = blockTop + 7;
     if (isFamilyInvoice) {
-      doc.text(`Tel: ${invoice.student.parentPhone}`, 20, 73);
-      doc.text(`Fëmijët: ${distinctChildren.map(c => `${c.firstName} ${c.lastName}`).join(", ")}`, 20, 79);
+      doc.text(`Tel: ${invoice.student.parentPhone}`, 20, blockTop + 13);
+      doc.text(`Fëmijët: ${distinctChildren.map(c => `${c.firstName} ${c.lastName}`).join(", ")}`, 20, blockTop + 19);
+      studentBottom = blockTop + 19;
     } else {
-      doc.text(`Prindi: ${invoice.student.parentName}`, 20, 73);
-      doc.text(`Tel: ${invoice.student.parentPhone}`, 20, 79);
-      if (invoice.student.address) doc.text(`Adresa: ${invoice.student.address}`, 20, 85);
+      doc.text(`Prindi: ${invoice.student.parentName}`, 20, blockTop + 13);
+      doc.text(`Tel: ${invoice.student.parentPhone}`, 20, blockTop + 19);
+      studentBottom = blockTop + 19;
+      if (invoice.student.address) { doc.text(`Adresa: ${invoice.student.address}`, 20, blockTop + 25); studentBottom = blockTop + 25; }
       if (invoice.student.class) {
-        doc.text(`Klasa: ${invoice.student.class.name}`, 20, 91);
+        const classY = invoice.student.address ? blockTop + 31 : blockTop + 25;
+        doc.text(`Klasa: ${invoice.student.class.name}`, 20, classY);
+        studentBottom = classY;
       }
     }
 
     // Status
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
-    doc.text("STATUSI:", 140, 60);
+    doc.text("STATUSI:", 140, blockTop);
     doc.setTextColor(15, 23, 42);
-    doc.text(getStatusLabel(invoice.status), 140, 67);
+    doc.text(getStatusLabel(invoice.status), 140, blockTop + 7);
 
     // Table
     const tableHead = isFamilyInvoice ? ["Nxënësi", "Përshkrimi", "Sasia", "Çmimi (€)", "Totali (€)"] : ["Përshkrimi", "Sasia", "Çmimi (€)", "Totali (€)"];
@@ -317,7 +361,7 @@ ${notesBlock}
     });
     const numCols = isFamilyInvoice ? 5 : 4;
     autoTable(doc, {
-      startY: 100,
+      startY: Math.max(100, studentBottom + 9),
       head: [tableHead],
       body: tableBody,
       headStyles: {
@@ -444,12 +488,15 @@ ${notesBlock}
             <div className="flex items-center gap-3 mb-2">
               <img src="/logo.png" alt="Akademia Ora" className="h-12 w-auto object-contain" onError={e => { e.currentTarget.style.display = "none"; }} />
               <div>
-                <h2 className="text-xl font-bold text-primary-600">AKADEMIA ORA</h2>
+                <h2 className="text-xl font-bold text-primary-600">{biz.schoolName}</h2>
                 <p className="text-xs text-slate-400">Shkollë Private</p>
               </div>
             </div>
-            <p className="text-sm text-slate-500">Tel: +383 46 505 055</p>
+            <p className="text-sm text-slate-500">Tel: {biz.schoolPhone}</p>
             <p className="text-sm text-slate-500">BKT: 1971897927031291</p>
+            {biz.schoolAddress && <p className="text-sm text-slate-500">{biz.schoolAddress}</p>}
+            {biz.schoolNipt && <p className="text-sm text-slate-500">Nr. Fiskal: {biz.schoolNipt}</p>}
+            {biz.schoolUniqueNumber && <p className="text-sm text-slate-500">Nr. Unik: {biz.schoolUniqueNumber}</p>}
           </div>
           <div className="text-right">
             <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">

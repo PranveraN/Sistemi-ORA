@@ -15,7 +15,8 @@ import { formatCurrency, formatDateTime } from "@/lib/utils";
 /* ─── Types ───────────────────────────────────────────────── */
 interface SchoolInfo {
   schoolName: string; schoolPhone: string; schoolAddress: string;
-  schoolEmail: string; schoolNipt: string; schoolYear: string; schoolWebsite: string;
+  schoolEmail: string; schoolNipt: string; schoolUniqueNumber: string;
+  schoolYear: string; schoolWebsite: string;
   timiInvestEnabled: string;
   furnitoriOraEmail: string;
 }
@@ -125,7 +126,7 @@ export default function SettingsPage() {
 function SchoolSection() {
   const [info, setInfo] = useState<SchoolInfo>({
     schoolName: "", schoolPhone: "", schoolAddress: "",
-    schoolEmail: "", schoolNipt: "", schoolYear: "", schoolWebsite: "",
+    schoolEmail: "", schoolNipt: "", schoolUniqueNumber: "", schoolYear: "", schoolWebsite: "",
     timiInvestEnabled: "true",
     furnitoriOraEmail: "",
   });
@@ -176,11 +177,12 @@ function SchoolSection() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {field("Emri i Shkollës *", "schoolName", { placeholder: "Akademia Ora" })}
+        {field("Emri i Biznesit *", "schoolName", { placeholder: "Akademia Ora" })}
         {field("Viti Shkollor", "schoolYear", { placeholder: "2025/2026" })}
         {field("Telefoni", "schoolPhone", { placeholder: "+383 44 XXX XXX" })}
         {field("Email", "schoolEmail", { type: "email", placeholder: "info@akademia.com" })}
-        {field("NIPT / Nr. Fiskal", "schoolNipt", { placeholder: "LXXXXXXXXXXXXX" })}
+        {field("Numri Fiskal", "schoolNipt", { placeholder: "LXXXXXXXXXXXXX" })}
+        {field("Numri Unik i Biznesit (NUI)", "schoolUniqueNumber", { placeholder: "8XXXXXX" })}
         {field("Website", "schoolWebsite", { placeholder: "www.akademiaora.com" })}
         <div className="md:col-span-2">
           <label className="form-label">Adresa</label>
