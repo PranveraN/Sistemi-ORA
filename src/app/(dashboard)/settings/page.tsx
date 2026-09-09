@@ -897,94 +897,137 @@ function UsersSection() {
     fetchUsers();
   }
 
+  // Mësimdhënësit ndahen në seksion të vet, të veçantë nga stafi administrativ
+  // (Admin/Financë/Sekretari) — sepse mësimdhënësit mund të vetë-regjistrohen
+  // (llogaria fillon Joaktive derisa admini ta aktivizojë, shih register/route.ts),
+  // ndaj kjo listë duhet kontrolluar shpesh e veçmas nga stafi i shtuar dorazi.
+  // Ata në pritje aktivizimi renditen të parët, që të mos humbasin mes atyre
+  // tashmë aktivë.
+  const staffUsers   = users.filter(u => u.role !== "TEACHER");
+  const teacherUsers = [...users.filter(u => u.role === "TEACHER")]
+    .sort((a, b) => Number(a.active) - Number(b.active));
+  const pendingTeachers = teacherUsers.filter(u => !u.active).length;
+
+  function renderTable(list: UserRow[], emptyMessage: string, highlightPending: boolean) {
+    if (loading) return <div className="py-10 text-center text-slate-400 text-sm">Duke ngarkuar...</div>;
+    if (list.length === 0) return <div className="py-10 text-center text-slate-400 text-sm">{emptyMessage}</div>;
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 dark:bg-slate-800/50">
+            <tr>
+              <th className="table-header">Emri</th>
+              <th className="table-header">Email</th>
+              <th className="table-header">Roli</th>
+              <th className="table-header text-center">Statusi</th>
+              <th className="table-header w-24"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+            {list.map(u => {
+              const pending = highlightPending && !u.active;
+              return (
+              <tr key={u.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${!u.active && !pending ? "opacity-50" : ""} ${pending ? "bg-amber-50/50 dark:bg-amber-900/10" : ""}`}>
+                <td className="table-cell">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-xs font-bold text-primary-700 dark:text-primary-400 flex-shrink-0">
+                      {u.name[0]?.toUpperCase()}
+                    </div>
+                    <span className="font-medium text-slate-900 dark:text-white">{u.name}</span>
+                    {u.id === currentUserId && (
+                      <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-1.5 rounded">Ti</span>
+                    )}
+                    {pending && (
+                      <span className="text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">Në pritje</span>
+                    )}
+                  </div>
+                </td>
+                <td className="table-cell text-slate-500 text-xs">{u.email}</td>
+                <td className="table-cell">
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[u.role] || ""}`}>
+                    {ROLES.find(r => r.value === u.role)?.label || u.role}
+                  </span>
+                </td>
+                <td className="table-cell text-center">
+                  <button
+                    onClick={() => handleToggleActive(u)}
+                    disabled={u.id === currentUserId}
+                    title={u.active ? "Çaktivizo" : "Aktivizo"}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                      u.active
+                        ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-100"
+                        : pending
+                          ? "bg-amber-500 text-white hover:bg-amber-600"
+                          : "bg-slate-100 text-slate-500 dark:bg-slate-700 hover:bg-slate-200"
+                    } disabled:cursor-not-allowed`}
+                  >
+                    {u.active ? <><Eye className="w-3 h-3" /> Aktiv</> : <><EyeOff className="w-3 h-3" /> {pending ? "Aktivizo" : "Joaktiv"}</>}
+                  </button>
+                </td>
+                <td className="table-cell">
+                  <div className="flex gap-1 justify-end">
+                    <button onClick={() => openEdit(u)}
+                      className="p-1.5 rounded text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500 transition-colors"
+                      title="Modifiko">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleDelete(u)}
+                      disabled={u.id === currentUserId}
+                      className="p-1.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-500 transition-colors disabled:opacity-30"
+                      title="Fshi">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return (
-    <div className="card overflow-hidden">
-      <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-violet-50 dark:bg-violet-900/30 rounded-xl flex items-center justify-center">
-            <Users className="w-5 h-5 text-violet-500" />
+    <>
+    <div className="space-y-5">
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-violet-50 dark:bg-violet-900/30 rounded-xl flex items-center justify-center">
+              <Users className="w-5 h-5 text-violet-500" />
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-900 dark:text-white">Stafi Administrativ</h2>
+              <p className="text-xs text-slate-400">Admin, Financë, Sekretari</p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-bold text-slate-900 dark:text-white">Menaxhimi i Përdoruesve</h2>
-            <p className="text-xs text-slate-400">Shto dhe menaxho llogaritë e stafit</p>
-          </div>
+          <button onClick={openAdd} className="btn-primary text-sm">
+            <Plus className="w-4 h-4" /> Shto Përdorues
+          </button>
         </div>
-        <button onClick={openAdd} className="btn-primary text-sm">
-          <Plus className="w-4 h-4" /> Shto Përdorues
-        </button>
+        {renderTable(staffUsers, "Nuk ka staf", false)}
       </div>
 
-      {loading ? (
-        <div className="py-10 text-center text-slate-400 text-sm">Duke ngarkuar...</div>
-      ) : users.length === 0 ? (
-        <div className="py-10 text-center text-slate-400 text-sm">Nuk ka përdorues</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 dark:bg-slate-800/50">
-              <tr>
-                <th className="table-header">Emri</th>
-                <th className="table-header">Email</th>
-                <th className="table-header">Roli</th>
-                <th className="table-header text-center">Statusi</th>
-                <th className="table-header w-24"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-              {users.map(u => (
-                <tr key={u.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${!u.active ? "opacity-50" : ""}`}>
-                  <td className="table-cell">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-xs font-bold text-primary-700 dark:text-primary-400 flex-shrink-0">
-                        {u.name[0]?.toUpperCase()}
-                      </div>
-                      <span className="font-medium text-slate-900 dark:text-white">{u.name}</span>
-                      {u.id === currentUserId && (
-                        <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-1.5 rounded">Ti</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="table-cell text-slate-500 text-xs">{u.email}</td>
-                  <td className="table-cell">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[u.role] || ""}`}>
-                      {ROLES.find(r => r.value === u.role)?.label || u.role}
-                    </span>
-                  </td>
-                  <td className="table-cell text-center">
-                    <button
-                      onClick={() => handleToggleActive(u)}
-                      disabled={u.id === currentUserId}
-                      title={u.active ? "Çaktivizo" : "Aktivizo"}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold transition-colors ${
-                        u.active
-                          ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-100"
-                          : "bg-slate-100 text-slate-500 dark:bg-slate-700 hover:bg-slate-200"
-                      } disabled:cursor-not-allowed`}
-                    >
-                      {u.active ? <><Eye className="w-3 h-3" /> Aktiv</> : <><EyeOff className="w-3 h-3" /> Joaktiv</>}
-                    </button>
-                  </td>
-                  <td className="table-cell">
-                    <div className="flex gap-1 justify-end">
-                      <button onClick={() => openEdit(u)}
-                        className="p-1.5 rounded text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500 transition-colors"
-                        title="Modifiko">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => handleDelete(u)}
-                        disabled={u.id === currentUserId}
-                        className="p-1.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-500 transition-colors disabled:opacity-30"
-                        title="Fshi">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="card overflow-hidden">
+        <div className="flex items-center gap-3 p-5 border-b border-slate-100 dark:border-slate-700">
+          <div className="w-9 h-9 bg-blue-50 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
+            <GraduationCap className="w-5 h-5 text-blue-500" />
+          </div>
+          <div className="flex-1">
+            <h2 className="font-bold text-slate-900 dark:text-white">Mësimdhënësit</h2>
+            <p className="text-xs text-slate-400">Përfshin vetë-regjistrimet nga faqja e kërkesave për material</p>
+          </div>
+          {pendingTeachers > 0 && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              {pendingTeachers} në pritje aktivizimi
+            </span>
+          )}
         </div>
-      )}
+        {renderTable(teacherUsers, "Asnjë mësimdhënës", true)}
+      </div>
+    </div>
 
       {/* ── Modal Shto / Modifiko ── */}
       {modal !== null && (
@@ -1061,7 +1104,7 @@ function UsersSection() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
