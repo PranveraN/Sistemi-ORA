@@ -31,15 +31,28 @@ export async function GET(req: NextRequest) {
       select: { muaj: true, vit: true, shuma: true },
     }),
 
+    // Vit Akademik: llogaritet sipas AFATIT të pagesës (fushat month/year — cilit
+    // vit shkollor i takon), njësoj si te faqja e Shkollimit, jo sipas datës reale
+    // të arkëtimit — që Bilanci Akademik të përputhet gjithmonë me Shkollimin, edhe
+    // kur dikush ka paguar më herët/më vonë se afati (p.sh. Qershor për vitin që
+    // fillon Shtator). Vit Kalendarik: mbetet siç ishte — sipas datës reale (paidDate),
+    // sepse pikërisht kjo është arsyeja e ekzistencës së pamjes "Kalendarik".
     pagesimiKat
       ? prisma.payment.findMany({
-          where: {
-            categoryId: pagesimiKat.id,
-            paidDate:   { gte: start, lte: end },
-            paidAmount: { gt: 0 },
-            status:     { in: ["PAID", "PARTIAL"] },
-          },
-          select: { paidAmount: true, paidDate: true },
+          where: yearType === "academic"
+            ? {
+                categoryId: pagesimiKat.id,
+                paidAmount: { gt: 0 },
+                status:     { in: ["PAID", "PARTIAL"] },
+                OR: months.map(m => ({ month: m.calMonth, year: m.calYear })),
+              }
+            : {
+                categoryId: pagesimiKat.id,
+                paidDate:   { gte: start, lte: end },
+                paidAmount: { gt: 0 },
+                status:     { in: ["PAID", "PARTIAL"] },
+              },
+          select: { paidAmount: true, paidDate: true, month: true, year: true },
         })
       : Promise.resolve([]),
 
@@ -66,9 +79,16 @@ export async function GET(req: NextRequest) {
     hyraManMap[k] = (hyraManMap[k] ?? 0) + h.shuma;
   }
   for (const p of shkollimPayments) {
-    if (!p.paidDate) continue;
-    const d = new Date(p.paidDate);
-    const k = key(d.getMonth() + 1, d.getFullYear());
+    let k: string;
+    if (yearType === "academic") {
+      // month/year janë gjithmonë jo-null këtu — pyetja i filtron rreshtat
+      // pikërisht sipas përputhjes së saktë me këta muaj/vite (shih OR më sipër).
+      k = key(p.month ?? 0, p.year ?? 0);
+    } else {
+      if (!p.paidDate) continue;
+      const d = new Date(p.paidDate);
+      k = key(d.getMonth() + 1, d.getFullYear());
+    }
     hyraShkMap[k] = (hyraShkMap[k] ?? 0) + p.paidAmount;
   }
   for (const s of shpenzimetRaw) {
