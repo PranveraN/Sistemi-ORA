@@ -1,10 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { BookOpen, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
+import { BookOpen, CheckCircle, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 
 export default function TeacherRegisterPage() {
   const [teachers, setTeachers] = useState<string[]>([]);
@@ -15,7 +13,7 @@ export default function TeacherRegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const router = useRouter();
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     fetch("/api/teacher-auth/teachers-list")
@@ -44,26 +42,16 @@ export default function TeacherRegisterPage() {
       body: JSON.stringify({ name, email, password }),
     });
     const data = await res.json();
+    setLoading(false);
 
     if (!res.ok) {
       setError(data.error || "Diçka shkoi keq.");
-      setLoading(false);
       return;
     }
 
-    const result = await signIn("credentials", { email, password, redirect: false });
-    setLoading(false);
-
-    if (result?.error) {
-      router.push("/login");
-    } else {
-      // Navigim i PLOTË (jo router.push) — garanton që middleware-i i ri-
-      // ekzekutohet me sesionin e ri, kështu që roli TEACHER drejtohet
-      // gjithmonë saktë te /kerkesa-material, pa rrezik të shfaqet
-      // përkohësisht faqja e mëparshme (p.sh. Dashboard-i i administratës)
-      // e ruajtur në cache të klientit.
-      window.location.href = "/";
-    }
+    // Llogaria krijohet joaktive — duhet aktivizuar nga administrata para se
+    // të mund të kyçet, ndaj s'ka kuptim të provohet kyçja menjëherë këtu.
+    setPending(true);
   }
 
   return (
@@ -78,8 +66,23 @@ export default function TeacherRegisterPage() {
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8">
+          {pending ? (
+            <div className="text-center py-4">
+              <div className="inline-flex items-center justify-center w-14 h-14 bg-green-50 dark:bg-green-900/30 rounded-full mb-4">
+                <CheckCircle className="w-7 h-7 text-green-600" />
+              </div>
+              <h2 className="text-xl font-semibold text-slate-800 dark:text-white mb-2">Regjistrimi u pranua</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Llogaria jote pritet të aktivizohet nga administrata para se të mund të kyçesh. Kontakto administratën e shkollës nëse pret gjatë.
+              </p>
+              <Link href="/login" className="inline-block mt-5 text-primary-600 font-medium hover:underline text-sm">
+                Kthehu te faqja e kyçjes
+              </Link>
+            </div>
+          ) : (
+          <>
           <h2 className="text-xl font-semibold text-slate-800 dark:text-white mb-1">Regjistrohu</h2>
-          <p className="text-sm text-slate-400 mb-6">Vetëm hera e parë — pastaj kyçesh me email dhe fjalëkalim.</p>
+          <p className="text-sm text-slate-400 mb-6">Vetëm hera e parë — pastaj kyçesh me email dhe fjalëkalim, sapo llogaria të aktivizohet nga administrata.</p>
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -171,6 +174,8 @@ export default function TeacherRegisterPage() {
               Ke tashmë llogari? <Link href="/login" className="text-primary-600 font-medium hover:underline">Kyçu këtu</Link>
             </p>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>
