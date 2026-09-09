@@ -128,6 +128,35 @@ const SKIPPED_MARKER = "Ndërprerë";
 // SKIPPED_MARKER, thjesht me etikete/ngjyre te ndryshme ne tabele.
 const FREE_MARKER = "Falas";
 
+// Statusi/shuma REALE e nxënësit për tërë vitin — mbledh vetëm periudhat me
+// detyrim real (jashtë Ndërprerë/Falas, të cilat s'llogariten as si borxh as
+// si pagesë, njësoj si te tabela dhe skeda Raport). E domosdoshme sepse
+// `s.payment` (i llogaritur nga API-ja e përgjithshme category-payments) s'e
+// njeh fare këtë konventë — për një nxënës me periudha VETËM Falas/Ndërprerë,
+// `s.payment.status` del "Vonuar" (paidAmount=0 literalisht, edhe pse s'ka
+// asnjë detyrim real), duke shtrembëruar kartelat "Paguar"/"Vonuar" etj.
+function computeRealPaymentInfo(installments: Payment[]): { status: string; paidAmount: number; balance: number } {
+  let finalAmount = 0, paidAmount = 0, anyBilled = false, anyOverdue = false;
+  const now = new Date();
+  for (const period of PERIOD_BUCKETS) {
+    const p = findPeriodPayment(installments, period.months);
+    if (!p) continue;
+    if (p.description === SKIPPED_MARKER || p.description === FREE_MARKER) continue;
+    anyBilled = true;
+    finalAmount += p.finalAmount;
+    paidAmount  += p.paidAmount;
+    if (new Date(p.dueDate) < now && p.paidAmount === 0) anyOverdue = true;
+  }
+  const balance = Math.max(0, finalAmount - paidAmount);
+  let status: string;
+  if (!anyBilled) status = "PENDING";
+  else if (finalAmount > 0 && paidAmount >= finalAmount) status = "PAID";
+  else if (paidAmount > 0) status = "PARTIAL";
+  else if (anyOverdue) status = "OVERDUE";
+  else status = "PENDING";
+  return { status, paidAmount, balance };
+}
+
 function exportUshqimiGridExcel(students: StudentRow[], year: number) {
   const rows = students.map((s, i) => {
     const periodValues = PERIOD_BUCKETS.map(period => {
@@ -369,14 +398,17 @@ export default function UshqimiPage() {
   }
   const selectedClassName = classes.find(c => String(c.id) === classId)?.name || "Të gjitha klasat";
 
-  // Stats (year-wide, across all 5 periods)
+  // Stats (year-wide, across all 5 periods) — bazuar te statusi REAL (shih
+  // computeRealPaymentInfo), jo te `s.payment.status` i papërpunuar, që
+  // nxënësit "Falas"/"Ndërprerë" të mos numërohen gabimisht si "Vonuar".
   const enrolled    = yearStudents.filter(s => s.installments.length > 0).length;
   const notEnrolled = yearStudents.length - enrolled;
-  const paid    = yearStudents.filter(s => s.payment?.status === "PAID").length;
-  const overdue = yearStudents.filter(s => s.payment?.status === "OVERDUE").length;
-  const pending = yearStudents.filter(s => !s.payment || s.payment.status === "PENDING").length;
-  const totalRevenue = yearStudents.reduce((s, r) => s + (r.payment?.paidAmount || 0), 0);
-  const totalDebt    = yearStudents.reduce((s, r) => s + (r.payment?.balance   || 0), 0);
+  const realInfoById = new Map(yearStudents.map(s => [s.id, computeRealPaymentInfo(s.installments)]));
+  const paid    = yearStudents.filter(s => realInfoById.get(s.id)?.status === "PAID").length;
+  const overdue = yearStudents.filter(s => realInfoById.get(s.id)?.status === "OVERDUE").length;
+  const pending = yearStudents.filter(s => realInfoById.get(s.id)?.status === "PENDING").length;
+  const totalRevenue = yearStudents.reduce((s, r) => s + (realInfoById.get(r.id)?.paidAmount || 0), 0);
+  const totalDebt    = yearStudents.reduce((s, r) => s + (realInfoById.get(r.id)?.balance   || 0), 0);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -481,7 +513,7 @@ export default function UshqimiPage() {
 
   const sorted = [...yearStudents].sort((a, b) => {
     const order = ["OVERDUE", "PARTIAL", "PENDING", "PAID"];
-    return order.indexOf(a.payment?.status || "PENDING") - order.indexOf(b.payment?.status || "PENDING");
+    return order.indexOf(realInfoById.get(a.id)?.status || "PENDING") - order.indexOf(realInfoById.get(b.id)?.status || "PENDING");
   });
 
   const byEnrollment = showOnlyEnrolled ? sorted.filter(s => s.installments.length > 0) : sorted;
@@ -1768,13 +1800,14 @@ function StatListModal({ filter, students, onClose }: {
   students: StudentRow[];
   onClose: () => void;
 }) {
-  const filtered = students.filter(s => {
+  const withInfo = students.map(s => ({ s, info: computeRealPaymentInfo(s.installments) }));
+  const filtered = withInfo.filter(({ info }) => {
     if (filter === "all")     return true;
-    if (filter === "paid")    return s.payment?.status === "PAID";
-    if (filter === "overdue") return s.payment?.status === "OVERDUE";
-    if (filter === "pending") return !s.payment || s.payment.status === "PENDING";
-    if (filter === "revenue") return (s.payment?.paidAmount ?? 0) > 0;
-    if (filter === "debt")    return (s.payment?.balance ?? 0) > 0;
+    if (filter === "paid")    return info.status === "PAID";
+    if (filter === "overdue") return info.status === "OVERDUE";
+    if (filter === "pending") return info.status === "PENDING";
+    if (filter === "revenue") return info.paidAmount > 0;
+    if (filter === "debt")    return info.balance > 0;
     return false;
   });
 
@@ -1800,7 +1833,7 @@ function StatListModal({ filter, students, onClose }: {
             <p className="text-center text-slate-400 text-sm py-12">Asnjë nxënës</p>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filtered.map((s, i) => {
+              {filtered.map(({ s, info }, i) => {
                 const phoneProminent = filter === "overdue" || filter === "debt";
                 return (
                   <li key={s.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
@@ -1827,11 +1860,11 @@ function StatListModal({ filter, students, onClose }: {
                         )
                       )}
                     </div>
-                    {(filter === "revenue" || filter === "debt") && s.payment && (
+                    {(filter === "revenue" || filter === "debt") && (
                       <span className={`text-sm font-bold flex-shrink-0 ${filter === "debt" ? "text-red-500" : "text-green-600"}`}>
                         {filter === "revenue"
-                          ? formatCurrency(s.payment.paidAmount)
-                          : formatCurrency(s.payment.balance)}
+                          ? formatCurrency(info.paidAmount)
+                          : formatCurrency(info.balance)}
                       </span>
                     )}
                     {!phoneProminent && (
