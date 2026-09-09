@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Header from "@/components/layout/Header";
 import { formatDateTime } from "@/lib/utils";
+import { PERIOD_BUCKETS } from "@/lib/food-periods";
 import {
   MessageSquare, Search, Users, GraduationCap, X, Send, Loader2,
   CheckCircle, XCircle, History, Wallet,
@@ -23,6 +24,24 @@ interface DebtStudentRow extends StudentRow {
   class: { id: number; name: string } | null;
   status: string;
   payment: { status: string } | null;
+  // Rreshtat e papërmbledhur — nevojiten për Ushqimin, ku një "periudhë" e vetme
+  // (p.sh. Nëntor/Dhjetor) mbulon 2 muaj kalendarikë dhe s'mund të kontrollohet
+  // saktë me filtrin e thjeshtë "month" (përputhje e saktë e një muaji të vetëm).
+  installments: { month: number; finalAmount: number; paidAmount: number; status: string }[];
+}
+
+// Statusi i një "periudhe" ushqimi (2 muaj) nga rreshtat e papërmbledhur —
+// e njëjta logjikë si `findPeriodPayment` te faqja e Ushqimit, por vetëm për
+// statusin (mjafton për filtrin "të papaguar/paguar" këtu).
+function periodStatus(installments: DebtStudentRow["installments"], months: number[]): string {
+  const matches = installments.filter(p => months.includes(p.month));
+  if (!matches.length) return "PENDING";
+  if (matches.length === 1) return matches[0].status;
+  const finalAmount = matches.reduce((s, p) => s + p.finalAmount, 0);
+  const paidAmount  = matches.reduce((s, p) => s + p.paidAmount, 0);
+  if (finalAmount > 0 && paidAmount >= finalAmount) return "PAID";
+  if (paidAmount > 0) return "PARTIAL";
+  return matches[0].status;
 }
 interface Recipient { phone: string; name: string; studentId?: number }
 
@@ -85,8 +104,14 @@ export default function SmsPage() {
     fetch("/api/categories").then(r => r.json()).then((cats: CategoryOpt[]) => {
       setCategories(cats);
       const shkollimi = cats.find(c => c.name === "Shkollimi");
-      if (shkollimi) setDebtCategory(shkollimi.name);
-      else if (cats.length) setDebtCategory(cats[0].name);
+      const defaultCat = shkollimi?.name ?? cats[0]?.name;
+      if (!defaultCat) return;
+      setDebtCategory(defaultCat);
+      if (defaultCat === "Ushqimi") {
+        const now = new Date().getMonth() + 1;
+        const bucket = PERIOD_BUCKETS.find(p => p.months.includes(now)) ?? PERIOD_BUCKETS[0];
+        setDebtMonth(String(bucket.canonicalMonth));
+      }
     });
     loadHistory();
   }, [loadHistory]);
@@ -95,17 +120,28 @@ export default function SmsPage() {
     if (!debtCategory) return;
     setDebtSearching(true);
     setDebtSearched(false);
-    const params = new URLSearchParams({ category: debtCategory, month: debtMonth || "0", year: debtYear || "0" });
+    const isFood = debtCategory === "Ushqimi";
+    const params = new URLSearchParams({ category: debtCategory, year: debtYear || "0" });
+    if (isFood) {
+      // Ushqimi faturohet në periudha 2-mujore (jo muaj-për-muaj) — merren të
+      // gjitha rreshtat e vitit akademik, dhe filtrimi sipas periudhës bëhet
+      // më poshtë, në krahasim me `bucket.months`.
+      params.set("month", "0");
+      params.set("yearType", "academic");
+    } else {
+      params.set("month", debtMonth || "0");
+    }
     const res = await fetch(`/api/category-payments?${params}`);
     const d = await res.json();
     setDebtSearching(false);
     setDebtSearched(true);
     if (!res.ok) { setDebtResults([]); return; }
     const all: DebtStudentRow[] = d.students || [];
+    const bucket = isFood ? PERIOD_BUCKETS.find(p => p.canonicalMonth === Number(debtMonth)) : null;
     const filtered = all.filter(s => {
       if (s.status !== "ACTIVE") return false;
       if (debtClassId && s.class?.id !== Number(debtClassId)) return false;
-      const st = s.payment?.status || "PENDING";
+      const st = bucket ? periodStatus(s.installments ?? [], bucket.months) : (s.payment?.status || "PENDING");
       if (debtStatus === "DEBT") return st !== "PAID";
       if (debtStatus === "PAID") return st === "PAID";
       return true;
@@ -332,13 +368,36 @@ export default function SmsPage() {
           {mode === "debt" && (
             <div className="space-y-2">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <select value={debtCategory} onChange={e => setDebtCategory(e.target.value)} className="form-input">
+                <select
+                  value={debtCategory}
+                  onChange={e => {
+                    const newCat = e.target.value;
+                    const wasFood = debtCategory === "Ushqimi";
+                    const isFood  = newCat === "Ushqimi";
+                    setDebtCategory(newCat);
+                    if (isFood && !wasFood) {
+                      const now = new Date().getMonth() + 1;
+                      const bucket = PERIOD_BUCKETS.find(p => p.months.includes(now)) ?? PERIOD_BUCKETS[0];
+                      setDebtMonth(String(bucket.canonicalMonth));
+                    } else if (!isFood && wasFood) {
+                      setDebtMonth(String(new Date().getMonth() + 1));
+                    }
+                  }}
+                  className="form-input"
+                >
                   {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
-                <select value={debtMonth} onChange={e => setDebtMonth(e.target.value)} className="form-input">
-                  <option value="0">Çdo muaj</option>
-                  {MONTHS_SQ.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                </select>
+                {debtCategory === "Ushqimi" ? (
+                  <select value={debtMonth} onChange={e => setDebtMonth(e.target.value)} className="form-input">
+                    <option value="0">Çdo periudhë</option>
+                    {PERIOD_BUCKETS.map(p => <option key={p.canonicalMonth} value={p.canonicalMonth}>{p.label}</option>)}
+                  </select>
+                ) : (
+                  <select value={debtMonth} onChange={e => setDebtMonth(e.target.value)} className="form-input">
+                    <option value="0">Çdo muaj</option>
+                    {MONTHS_SQ.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                  </select>
+                )}
                 <input type="number" value={debtYear} onChange={e => setDebtYear(e.target.value)} className="form-input" placeholder="Viti" />
                 <select value={debtClassId} onChange={e => setDebtClassId(e.target.value)} className="form-input">
                   <option value="">Çdo klasë</option>
