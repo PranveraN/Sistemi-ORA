@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote } from "lucide-react";
+import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote, MessageSquare, Send, Wand2 } from "lucide-react";
 
 interface Payment {
   id: number;
@@ -278,6 +278,44 @@ export default function StudentProfile({ student }: { student: Student }) {
   // shfaqet më poshtë kartelë për kartelë.
   const totalDebt = categoryGroups.reduce((sum, g) => sum + g.balance, 0);
   const totalPaid = categoryGroups.reduce((sum, g) => sum + g.paidAmount, 0);
+
+  // SMS te prindi — direkt nga profili, pa dalë te faqja e përgjithshme /sms,
+  // që stafi financiar të ketë historikun/borxhin dhe dërgimin e mesazhit
+  // në të njëjtin vend gjatë arkëtimit.
+  const parentPhone = student.fatherPhone || student.motherPhone || student.parentPhone || null;
+  const debtGroups = categoryGroups.filter(g => g.balance > 0);
+  const [smsMessage, setSmsMessage] = useState("");
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsResult,  setSmsResult]  = useState<string | null>(null);
+  const [smsError,   setSmsError]   = useState<string | null>(null);
+
+  function fillDebtReminder() {
+    if (debtGroups.length === 0) return;
+    const parts = debtGroups.map(g => `${g.categoryName}: ${formatCurrency(g.balance)}`).join(", ");
+    setSmsMessage(
+      `Përshëndetje, ju informojmë se ${student.firstName} ${student.lastName} ka borxh të pashlyer prej ${formatCurrency(totalDebt)} (${parts}). Ju lutem rregulloni pagesën në administratën e shkollës. Akademia Ora`
+    );
+  }
+
+  async function sendSmsToParent() {
+    if (!parentPhone || !smsMessage.trim()) return;
+    setSmsSending(true);
+    setSmsResult(null);
+    setSmsError(null);
+    const res = await fetch("/api/sms/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipients: [{ phone: parentPhone, name: `${student.firstName} ${student.lastName} (prindi)`, studentId: student.id }],
+        message: smsMessage,
+      }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setSmsSending(false);
+    if (!res.ok || d.sent === 0) { setSmsError(d.error || (d.errors && d.errors[0]) || "Dërgimi dështoi."); return; }
+    setSmsResult("U dërgua me sukses.");
+    setSmsMessage("");
+  }
 
   async function handleDelete() {
     const ok = window.confirm(
@@ -564,6 +602,56 @@ export default function StudentProfile({ student }: { student: Student }) {
 
         {/* Payments & Invoices */}
         <div className="lg:col-span-2 space-y-5">
+          {/* SMS te prindi */}
+          <div id="sms" className="card">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="section-title flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-slate-400" />
+                Dërgo SMS te prindi
+              </h3>
+              {parentPhone ? (
+                <a href={`tel:${parentPhone}`} className="text-xs text-primary-600 hover:underline font-medium flex items-center gap-1">
+                  <Phone className="w-3 h-3" /> {parentPhone}
+                </a>
+              ) : (
+                <span className="text-xs text-slate-300">Pa numër telefoni</span>
+              )}
+            </div>
+            <div className="p-4 space-y-3">
+              {totalDebt > 0 && (
+                <div className="flex items-center justify-between gap-3 p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl">
+                  <div className="text-sm text-red-700 dark:text-red-400">
+                    <span className="font-bold">{formatCurrency(totalDebt)}</span> borxh i mbetur
+                    <span className="text-red-400 dark:text-red-500"> · {debtGroups.map(g => g.categoryName).join(", ")}</span>
+                  </div>
+                  <button onClick={fillDebtReminder} className="btn-secondary text-xs whitespace-nowrap">
+                    <Wand2 className="w-3.5 h-3.5" /> Mbush kujtesën
+                  </button>
+                </div>
+              )}
+              <textarea
+                value={smsMessage}
+                onChange={e => setSmsMessage(e.target.value)}
+                className="form-input min-h-[90px] resize-none"
+                placeholder={parentPhone ? "Shkruaj mesazhin..." : "Prindi s'ka numër telefoni të regjistruar"}
+                disabled={!parentPhone}
+              />
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-400">{smsMessage.length} karaktere</p>
+                <button
+                  onClick={sendSmsToParent}
+                  disabled={!parentPhone || !smsMessage.trim() || smsSending}
+                  className="btn-primary text-sm"
+                >
+                  {smsSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {smsSending ? "Duke dërguar..." : "Dërgo SMS"}
+                </button>
+              </div>
+              {smsResult && <p className="text-sm text-green-600">{smsResult}</p>}
+              {smsError  && <p className="text-sm text-red-500">{smsError}</p>}
+            </div>
+          </div>
+
           {/* Payments */}
           <div className="card">
             <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-700">

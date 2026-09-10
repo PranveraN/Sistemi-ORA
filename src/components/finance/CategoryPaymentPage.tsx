@@ -18,7 +18,7 @@ import {
   Search, CheckCircle, AlertCircle, Clock,
   Plus, X, Save, Users, Loader2, Printer,
   TrendingUp, TrendingDown, ArrowLeftRight, FileUp,
-  CalendarDays, Download, Trash2, Calculator, Lock, StickyNote,
+  CalendarDays, Download, Trash2, Calculator, Lock, StickyNote, MessageSquare,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
@@ -1035,6 +1035,13 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                               >
                                 <Printer className="w-4 h-4" />
                               </button>
+                              <Link
+                                href={`/students/${s.id}#sms`}
+                                title="Historiku, borxhi dhe SMS te prindi"
+                                className="p-1.5 rounded-lg text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500 dark:hover:text-violet-400 transition-colors"
+                              >
+                                <MessageSquare className="w-4 h-4" />
+                              </Link>
                               {(() => {
                                 const receiptId = s.payment?.receiptNumber
                                   ? s.payment.id
