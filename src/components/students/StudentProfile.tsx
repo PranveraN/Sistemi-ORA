@@ -313,11 +313,16 @@ export default function StudentProfile({ student }: { student: Student }) {
   const [smsResult,  setSmsResult]  = useState<string | null>(null);
   const [smsError,   setSmsError]   = useState<string | null>(null);
 
-  function fillDebtReminder() {
-    if (debtGroups.length === 0) return;
-    const parts = debtGroups.map(g => `${g.categoryName}: ${formatCurrency(g.balance)}`).join(", ");
+  // Kujtesë borxhi — për një kategori të vetme (kliku i saj) ose për të
+  // gjitha njëherësh (asnjë argument), që stafi të mund të zgjedhë saktë
+  // për çfarë po e kujton prindin, jo gjithmonë një mesazh me gjithçka bashkë.
+  function fillDebtReminder(only?: CategoryPaymentGroup) {
+    const groups = only ? [only] : debtGroups;
+    if (groups.length === 0) return;
+    const amount = groups.reduce((s, g) => s + g.balance, 0);
+    const categoryText = groups.map(g => g.categoryName).join(", ");
     setSmsMessage(
-      `Përshëndetje, ju informojmë se ${student.firstName} ${student.lastName} ka borxh të pashlyer prej ${formatCurrency(totalDebt)} (${parts}). Ju lutem rregulloni pagesën në administratën e shkollës. Akademia Ora`
+      `Përshëndetje, ju informojmë se ${student.firstName} ${student.lastName} ka borxh të pashlyer prej ${formatCurrency(amount)} (${categoryText}). Ju lutem rregulloni pagesën në administratën e shkollës. Akademia Ora`
     );
   }
 
@@ -646,14 +651,29 @@ export default function StudentProfile({ student }: { student: Student }) {
             </div>
             <div className="p-4 space-y-3">
               {totalDebt > 0 && (
-                <div className="flex items-center justify-between gap-3 p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl">
-                  <div className="text-sm text-red-700 dark:text-red-400">
-                    <span className="font-bold">{formatCurrency(totalDebt)}</span> borxh i mbetur
-                    <span className="text-red-400 dark:text-red-500"> · {debtGroups.map(g => g.categoryName).join(", ")}</span>
+                <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl space-y-2">
+                  <p className="text-xs font-semibold text-red-500 dark:text-red-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <Wand2 className="w-3.5 h-3.5" /> Kliko një kategori për ta mbushur kujtesën
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {debtGroups.length > 1 && (
+                      <button
+                        onClick={() => fillDebtReminder()}
+                        className="text-xs px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors"
+                      >
+                        Të gjitha · {formatCurrency(totalDebt)}
+                      </button>
+                    )}
+                    {debtGroups.map(g => (
+                      <button
+                        key={g.categoryName}
+                        onClick={() => fillDebtReminder(g)}
+                        className="text-xs px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                      >
+                        {g.categoryName} · {formatCurrency(g.balance)}
+                      </button>
+                    ))}
                   </div>
-                  <button onClick={fillDebtReminder} className="btn-secondary text-xs whitespace-nowrap">
-                    <Wand2 className="w-3.5 h-3.5" /> Mbush kujtesën
-                  </button>
                 </div>
               )}
               <textarea
