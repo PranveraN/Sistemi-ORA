@@ -5,8 +5,9 @@ import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
 import { CALENDAR_YEARS } from "@/lib/academicYear";
-import { Plus, Eye, CheckCircle, Loader2, Download, ArrowRightLeft } from "lucide-react";
+import { Plus, Eye, CheckCircle, Loader2, Download, ArrowRightLeft, Mail } from "lucide-react";
 import * as XLSX from "xlsx";
+import EmailInvoiceModal from "@/components/invoices/EmailInvoiceModal";
 
 interface Invoice {
   id: number;
@@ -17,7 +18,7 @@ interface Invoice {
   createdAt: string;
   dueDate: string | null;
   convertedInvoiceId: number | null;
-  student: { id: number; firstName: string; lastName: string };
+  student: { id: number; firstName: string; lastName: string; fatherEmail?: string | null; motherEmail?: string | null };
   items: { id: number }[];
 }
 
@@ -38,6 +39,7 @@ export default function InvoicesPage() {
   const [markingPaid, setMarkingPaid] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const [converting, setConverting] = useState<number | null>(null);
+  const [emailInvoice, setEmailInvoice] = useState<Invoice | null>(null);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
@@ -258,6 +260,15 @@ export default function InvoicesPage() {
                             {markingPaid === inv.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                           </button>
                         )}
+                        {inv.status !== "PAID" && inv.status !== "CANCELLED" && (
+                          <button
+                            onClick={() => setEmailInvoice(inv)}
+                            title="Dërgo me Email"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors inline-flex"
+                          >
+                            <Mail className="w-4 h-4" />
+                          </button>
+                        )}
                         <Link
                           href={`/invoices/${inv.id}`}
                           className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors inline-flex"
@@ -273,6 +284,16 @@ export default function InvoicesPage() {
           </div>
         </div>
       </div>
+
+      {emailInvoice && (
+        <EmailInvoiceModal
+          invoiceId={emailInvoice.id}
+          invoiceNumber={emailInvoice.number}
+          defaultEmail={emailInvoice.student.fatherEmail || emailInvoice.student.motherEmail || null}
+          onClose={() => setEmailInvoice(null)}
+          onSent={() => { setEmailInvoice(null); fetchInvoices(); }}
+        />
+      )}
     </>
   );
 }

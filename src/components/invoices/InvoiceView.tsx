@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft, Printer, Download, Send, ArrowRightLeft } from "lucide-react";
+import { ChevronLeft, Printer, Download, Send, ArrowRightLeft, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
+import EmailInvoiceModal from "./EmailInvoiceModal";
 
 interface InvoiceItem {
   id: number;
@@ -37,6 +38,8 @@ interface Invoice {
     lastName: string;
     parentName: string;
     parentPhone: string;
+    fatherEmail?: string | null;
+    motherEmail?: string | null;
     address: string | null;
     personalNumber: string;
     class: { name: string; level: string } | null;
@@ -58,6 +61,8 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [converting, setConverting] = useState(false);
   const [biz, setBiz] = useState<BusinessInfo>(DEFAULT_BUSINESS);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const parentEmail = invoice.student.fatherEmail || invoice.student.motherEmail || null;
   const router = useRouter();
 
   useEffect(() => {
@@ -450,16 +455,6 @@ ${notesBlock}
               </button>
             )
           )}
-          {invoice.status === "DRAFT" && (
-            <button
-              onClick={() => updateStatus("SENT")}
-              disabled={updatingStatus}
-              className="btn-secondary"
-            >
-              <Send className="w-4 h-4" />
-              Shëno si Dërguar
-            </button>
-          )}
           {(invoice.status === "DRAFT" || invoice.status === "SENT") && (
             <button
               onClick={() => updateStatus("PAID")}
@@ -467,6 +462,12 @@ ${notesBlock}
               className="btn-primary"
             >
               Shëno si Paguar
+            </button>
+          )}
+          {invoice.status !== "PAID" && invoice.status !== "CANCELLED" && (
+            <button onClick={() => setShowEmailModal(true)} className="btn-secondary" title={parentEmail ? `Dërgo te ${parentEmail}` : "S'ka email të regjistruar për prindin"}>
+              <Mail className="w-4 h-4" />
+              Dërgo
             </button>
           )}
           <button onClick={printInvoice} className="btn-secondary">
@@ -627,6 +628,16 @@ ${notesBlock}
           </p>
         </div>
       </div>
+
+      {showEmailModal && (
+        <EmailInvoiceModal
+          invoiceId={invoice.id}
+          invoiceNumber={invoice.number}
+          defaultEmail={parentEmail}
+          onClose={() => setShowEmailModal(false)}
+          onSent={() => { setShowEmailModal(false); router.refresh(); }}
+        />
+      )}
     </div>
   );
 }
