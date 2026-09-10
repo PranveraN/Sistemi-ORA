@@ -35,7 +35,39 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { customerName, customerPhone, studentId, items, paidAmount, method, notes, saleDate } = body;
+  const { customerName, customerPhone, studentId, items, paidAmount, method, notes, saleDate, debtOnly, amount } = body;
+
+  // Borxh i regjistruar (p.sh. nga viti i kaluar, ose uniformë e dhënë pa e
+  // shitur formalisht ende) — pa artikuj/produkte reale, pra pa prekur stokun.
+  // Përdoret nga faqja "Uniforma → Borxhet". Mekanizmi i pagesave/balancës
+  // mbetet plotësisht i njëjtë (UniPayment kundrejt këtij UniSale), ndaj shfaqet
+  // automatikisht te Shitjet dhe te historiku/SMS i nxënësit, njësoj si çdo shitje tjetër.
+  if (debtOnly) {
+    const totalAmount = parseFloat(amount);
+    if (!totalAmount || totalAmount <= 0) {
+      return NextResponse.json({ error: "Shuma e borxhit duhet të jetë më e madhe se 0" }, { status: 400 });
+    }
+    if (!customerName?.trim()) {
+      return NextResponse.json({ error: "Emri mungon" }, { status: 400 });
+    }
+    const paid    = parseFloat(paidAmount || "0");
+    const balance = Math.max(0, totalAmount - paid);
+    const status  = paid >= totalAmount ? "PAID" : paid > 0 ? "PARTIAL" : "PENDING";
+    const sale = await prisma.uniSale.create({
+      data: {
+        customerName: customerName.trim(),
+        customerPhone: customerPhone || null,
+        studentId: studentId ? parseInt(studentId) : null,
+        totalAmount, totalCost: 0, profit: totalAmount,
+        paidAmount: paid, balance, status,
+        notes:    notes    || null,
+        saleDate: saleDate ? new Date(saleDate) : new Date(),
+        ...(paid > 0 ? { payments: { create: { amount: paid, method: method || "CASH" } } } : {}),
+      },
+      include: { items: true, payments: true },
+    });
+    return NextResponse.json(sale, { status: 201 });
+  }
 
   if (!items?.length) return NextResponse.json({ error: "Asnjë artikull" }, { status: 400 });
 
