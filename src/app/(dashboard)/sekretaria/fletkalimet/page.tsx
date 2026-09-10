@@ -19,6 +19,9 @@ interface Student {
   diaryNumber: string | null;
 }
 
+// Lëndët e paracaktuara — vetëm pikënisje. Emrat janë të EDITUESHËM te
+// tabela (shih subjectNames/setSubj), sepse ndryshojnë shpesh (kurrikula,
+// klasa të ndryshme, etj.) — njësoj si te fletëkalimet CU/VCL/PN.
 const SUBJECTS = [
   "Gjuhë shqipe",
   "Gjuhë angleze",
@@ -40,9 +43,9 @@ const GRADE_COLS = ["vi", "vii", "viii", "x"] as const;
 type GradeCol = typeof GRADE_COLS[number];
 type Grades = Record<string, Record<GradeCol, string>>;
 
-const emptyGrades = (): Grades => {
+const emptyGrades = (subjectNames: string[]): Grades => {
   const g: Grades = {};
-  [...SUBJECTS, "mesimi_zgjedhor", "suksesi", "sjellja", "mungesat_a", "mungesat_pa"].forEach(s => {
+  [...subjectNames.map((s, i) => s || `lenda_${i + 1}`), "mesimi_zgjedhor", "suksesi", "sjellja", "mungesat_a", "mungesat_pa"].forEach(s => {
     g[s] = { vi: "", vii: "", viii: "", x: "" };
   });
   return g;
@@ -59,6 +62,7 @@ interface FKData {
   nrRendor: string;
   klasa: string;
   vitiShkollor: string;
+  subjectNames: string[];   // lëndët (të editueshme)
   grades: Grades;
   // Raport Kthyes
   rNrFletekalimit: string;
@@ -136,7 +140,8 @@ function FletekalimCLModal({ student, onClose, initialData }: { student: Student
     nrRendor: student.diaryNumber || "",
     klasa: student.class ? `${student.class.level} "${student.class.name}"` : "",
     vitiShkollor: `${today.getFullYear() - 1}/${today.getFullYear()}`,
-    grades: emptyGrades(),
+    subjectNames: [...SUBJECTS],
+    grades: emptyGrades(SUBJECTS),
     rNrFletekalimit: "",
     rData: todayFmt,
     rKlasa: "",
@@ -153,6 +158,8 @@ function FletekalimCLModal({ student, onClose, initialData }: { student: Student
   const set = (k: keyof FKData) => (v: string) => setD(p => ({ ...p, [k]: v }));
   const setGrade = (subject: string, col: GradeCol, v: string) =>
     setD(p => ({ ...p, grades: { ...p.grades, [subject]: { ...p.grades[subject], [col]: v } } }));
+  const setSubj = (i: number, v: string) =>
+    setD(p => { const a = [...p.subjectNames]; a[i] = v; return { ...p, subjectNames: a }; });
 
   const backdropRef = useRef(false);
 
@@ -296,17 +303,31 @@ function FletekalimCLModal({ student, onClose, initialData }: { student: Student
                 </tr>
               </thead>
               <tbody>
-                {SUBJECTS.map((subj, i) => (
-                  <tr key={subj}>
-                    <td style={{ border: "1px solid #000", textAlign: "center", padding: "1px" }}>{i + 1}</td>
-                    <td style={{ border: "1px solid #000", padding: "1px 4px", textDecoration: "underline" }}>{subj}</td>
-                    {GRADE_COLS.map(col => (
-                      <td key={col} style={{ border: "1px solid #000", padding: "1px", textAlign: "center" }}>
-                        <GC value={d.grades[subj][col]} onChange={v => setGrade(subj, col, v)} />
+                {d.subjectNames.map((subj, i) => {
+                  const key = subj || `lenda_${i + 1}`;
+                  return (
+                    <tr key={i}>
+                      <td style={{ border: "1px solid #000", textAlign: "center", padding: "1px" }}>{i + 1}</td>
+                      <td style={{ border: "1px solid #000", padding: "1px 4px" }}>
+                        <input
+                          type="text"
+                          value={subj}
+                          onChange={e => setSubj(i, e.target.value)}
+                          style={{
+                            width: "100%", fontFamily: "inherit", fontSize: "8.5pt",
+                            background: "transparent", border: "none", outline: "none",
+                            textDecoration: subj ? "underline" : "none",
+                          }}
+                        />
                       </td>
-                    ))}
-                  </tr>
-                ))}
+                      {GRADE_COLS.map(col => (
+                        <td key={col} style={{ border: "1px solid #000", padding: "1px", textAlign: "center" }}>
+                          <GC value={d.grades[key]?.[col] ?? ""} onChange={v => setGrade(key, col, v)} />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
                 {/* Mësimi zgjedhor row with rotated label */}
                 <tr>
                   <td colSpan={2} style={{ border: "1px solid #000", padding: "1px 4px" }}>
