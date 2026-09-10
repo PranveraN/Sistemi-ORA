@@ -96,7 +96,7 @@ export default function SmsPage() {
   const [debtYear, setDebtYear] = useState(String(new Date().getFullYear()));
   const [debtClassId, setDebtClassId] = useState("");
   const [debtFormat, setDebtFormat] = useState("");
-  const [debtStatus, setDebtStatus] = useState<"DEBT" | "PAID" | "ALL">("DEBT");
+  const [debtStatus, setDebtStatus] = useState<"DEBT" | "PARTIAL" | "PAID" | "ALL">("DEBT");
   const [debtSearching, setDebtSearching] = useState(false);
   const [debtSearched, setDebtSearched] = useState(false);
   const [debtResults, setDebtResults] = useState<(DebtStudentRow & { debtBalance: number; format: string })[]>([]);
@@ -174,6 +174,7 @@ export default function SmsPage() {
       .filter(s => !debtFormat || s.format === debtFormat)
       .filter(s => {
         if (debtStatus === "DEBT") return s.__status !== "PAID";
+        if (debtStatus === "PARTIAL") return s.__status === "PARTIAL";
         if (debtStatus === "PAID") return s.__status === "PAID";
         return true;
       });
@@ -439,9 +440,9 @@ export default function SmsPage() {
                   {Object.entries(PAYMENT_FORMAT_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </select>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
-                  {([["DEBT", "Të papaguar"], ["PAID", "Paguar plotësisht"], ["ALL", "Të gjithë"]] as const).map(([key, label]) => (
+              <div className="flex items-center flex-wrap gap-2">
+                <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg flex-wrap">
+                  {([["DEBT", "Të papaguar"], ["PARTIAL", "Pjesërisht"], ["PAID", "Paguar plotësisht"], ["ALL", "Të gjithë"]] as const).map(([key, label]) => (
                     <button
                       key={key}
                       onClick={() => setDebtStatus(key)}
@@ -451,6 +452,16 @@ export default function SmsPage() {
                     </button>
                   ))}
                 </div>
+                <button
+                  onClick={() => setDebtFormat(f => f === "TIMI_INVEST" ? "" : "TIMI_INVEST")}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                    debtFormat === "TIMI_INVEST"
+                      ? "bg-violet-600 border-violet-600 text-white"
+                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-500 hover:border-violet-300"
+                  }`}
+                >
+                  Përmes Timi Invest
+                </button>
                 <button onClick={searchDebt} disabled={debtSearching || !debtCategory} className="btn-secondary text-sm ml-auto">
                   <Wallet className="w-4 h-4" /> {debtSearching ? "Duke kërkuar..." : "Kërko"}
                 </button>
