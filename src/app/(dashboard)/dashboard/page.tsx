@@ -27,6 +27,7 @@ interface DashboardData {
   prevMonthRevenue: number;
   revenueChangePct: number | null;
   totalRevenue: number;
+  totalDebtAmount: number;
   overdueAmount: number;
   overdueCount: number;
   newStudentsThisMonth: number;
@@ -249,7 +250,7 @@ export default function DashboardPage() {
             </div>
             <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.studentsWithDebt}</p>
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Borxhe Aktive</p>
-            <p className="text-xs text-slate-400 mt-1">{formatCurrency(data.overdueAmount)} total</p>
+            <p className="text-xs text-slate-400 mt-1">{formatCurrency(data.totalDebtAmount)} total</p>
           </div>
 
         </div>
@@ -302,14 +303,14 @@ export default function DashboardPage() {
                   <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
                   <div>
                     <p className="text-xs text-red-600 dark:text-red-400">Borxhe</p>
-                    <p className="text-sm font-bold text-red-700 dark:text-red-300">{formatCurrency(data.overdueAmount)}</p>
+                    <p className="text-sm font-bold text-red-700 dark:text-red-300">{formatCurrency(data.totalDebtAmount)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
                   <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
                   <div>
                     <p className="text-xs text-amber-600 dark:text-amber-400">Vonuar</p>
-                    <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{data.overdueCount} nxënës</p>
+                    <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{formatCurrency(data.overdueAmount)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">

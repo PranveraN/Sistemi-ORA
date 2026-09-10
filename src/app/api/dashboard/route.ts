@@ -26,6 +26,7 @@ export async function GET() {
     prevMonthPaid,
     totalRevenue,
     recentPayments,
+    totalDebt,
     overduePayments,
     newStudentsThisMonth,
     expiringThisWeek,
@@ -36,9 +37,13 @@ export async function GET() {
     prisma.student.count({ where: { organizationId: orgId } }),
     prisma.student.count({ where: { organizationId: orgId, status: "ACTIVE" } }),
 
+    // Numri i nxënësve me borxh — vetëm sipas `balance > 0` (jo fushës `status`,
+    // e cila mbetet shpesh e ngrirë/e vjetruar: krijohet një herë dhe s'rillogaritet
+    // vetvetiu kur kalon afati apo ndryshon balanca; mbështetja tek ajo nënnumëronte
+    // borxhin real — shih edhe totalDebt/overduePayments më poshtë, e njëjta logjikë).
     prisma.payment.groupBy({
       by: ["studentId"],
-      where: { organizationId: orgId, balance: { gt: 0 }, status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } },
+      where: { organizationId: orgId, balance: { gt: 0 } },
       _count: true,
     }),
 
@@ -75,8 +80,18 @@ export async function GET() {
       },
     }),
 
+    // Borxhi TOTAL (pavarësisht afatit) — direkt nga `balance`, njësoj si Shkollimi/
+    // Ushqimi/Bilanci llogarisin borxhin gjetkë në sistem, jo nga `status`.
     prisma.payment.aggregate({
-      where: { organizationId: orgId, status: "OVERDUE" },
+      where: { organizationId: orgId, balance: { gt: 0 } },
+      _sum: { balance: true },
+    }),
+
+    // "Vonuar" — llogaritet DINAMIKISHT (afati ka kaluar + ka ende borxh), jo nga
+    // fusha `status`, sepse ajo s'kalon vetvetiu në OVERDUE kur kalon afati — mbetet
+    // "PENDING" derisa dikush ta ruajë pagesën sërish, ndaj nënnumëronte realisht.
+    prisma.payment.aggregate({
+      where: { organizationId: orgId, balance: { gt: 0 }, dueDate: { lt: now } },
       _sum: { balance: true },
       _count: true,
     }),
@@ -161,6 +176,7 @@ export async function GET() {
     prevMonthRevenue: prevMonthRev,
     revenueChangePct,
     totalRevenue: totalRevenue._sum.paidAmount || 0,
+    totalDebtAmount: totalDebt._sum.balance || 0,
     overdueAmount: overduePayments._sum.balance || 0,
     overdueCount: overduePayments._count,
     newStudentsThisMonth,
