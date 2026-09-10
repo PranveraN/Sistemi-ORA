@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote, MessageSquare, Send, Wand2 } from "lucide-react";
+import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote, MessageSquare, Send, Wand2, Camera } from "lucide-react";
 
 interface Payment {
   id: number;
@@ -424,6 +424,34 @@ export default function StudentProfile({ student }: { student: Student }) {
     setNotesSaved(true);
   }
 
+  // Foto e profilit — ripërdor saktë të njëjtin mekanizëm si te "Bexhi i
+  // Nxënësit" (src/lib/photo-storage.ts + /api/students/{id}/photo), tani
+  // të arritshëm direkt nga profili, jo vetëm nga modali i bexhit.
+  const [photoVersion, setPhotoVersion] = useState(() => Date.now());
+  const [photoMissing, setPhotoMissing] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const initials = `${student.firstName[0] ?? ""}${student.lastName[0] ?? ""}`.toUpperCase();
+
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPhotoError(null);
+    setPhotoUploading(true);
+    const form = new FormData();
+    form.append("file", file);
+    const r = await fetch(`/api/students/${student.id}/photo`, { method: "POST", body: form });
+    setPhotoUploading(false);
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      setPhotoError(d.error || "Gabim gjatë ngarkimit.");
+      return;
+    }
+    setPhotoMissing(false);
+    setPhotoVersion(Date.now());
+  }
+
   const [siblings, setSiblings] = useState<Sibling[]>([]);
   useEffect(() => {
     const params = new URLSearchParams({ excludeId: String(student.id), status: "ACTIVE", limit: "10" });
@@ -464,6 +492,27 @@ export default function StudentProfile({ student }: { student: Student }) {
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
+          <div className="relative w-14 h-14 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden flex-shrink-0 flex items-center justify-center group">
+            {photoMissing ? (
+              <span className="text-lg font-bold text-slate-300 dark:text-slate-600">{initials}</span>
+            ) : (
+              <img
+                src={`/api/students/${student.id}/photo?v=${photoVersion}`}
+                alt=""
+                className="w-full h-full object-cover"
+                onError={() => setPhotoMissing(true)}
+              />
+            )}
+            <label
+              className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center cursor-pointer transition-colors"
+              title="Ngarko foto"
+            >
+              {photoUploading
+                ? <Loader2 className="w-4 h-4 text-white animate-spin" />
+                : <Camera className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />}
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePhotoChange} disabled={photoUploading} />
+            </label>
+          </div>
           <div>
             <div className="flex items-center gap-3">
               <h1 className="page-title">{student.firstName} {student.lastName}</h1>
@@ -475,6 +524,7 @@ export default function StudentProfile({ student }: { student: Student }) {
               Regjistruar: {formatDate(student.enrollDate)}
               {student.class && ` • Klasa ${student.class.name}`}
             </p>
+            {photoError && <p className="text-xs text-red-500 mt-1">{photoError}</p>}
           </div>
         </div>
         <button onClick={printHistory} className="btn-secondary">
