@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
+  const klasa  = searchParams.get("class") || "";
   const from   = searchParams.get("from") || "";
   const to     = searchParams.get("to") || "";
   const page   = parseInt(searchParams.get("page") || "1");
@@ -30,6 +31,7 @@ export async function GET(req: NextRequest) {
 
   let where = "WHERE 1=1";
   if (status) where += ` AND bs.status='${status}'`;
+  if (klasa)  where += ` AND bs.studentClass='${klasa.replace(/'/g, "''")}'`;
   if (search) where += ` AND bs.studentName LIKE '%${search.replace(/'/g, "''")}%'`;
   if (from)   where += ` AND bs.saleDate >= '${from}'`;
   if (to)     where += ` AND bs.saleDate <= '${to}'`;

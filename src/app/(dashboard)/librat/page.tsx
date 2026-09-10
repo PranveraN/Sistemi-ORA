@@ -28,6 +28,7 @@ interface Sale {
   itemCount?: number; items?: SaleItem[]; payments?: Payment[];
 }
 interface Student { id: number; firstName: string; lastName: string; class: { name: string } | null; }
+interface ClassRow { id: number; name: string; level: string; }
 
 interface Handover {
   id: number; amount: number; description: string | null; recipient: string | null;
@@ -335,6 +336,8 @@ export default function LibratPage() {
   const [salesLoading, setSalesLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [classFilter, setClassFilter] = useState("");
+  const [classes, setClasses] = useState<ClassRow[]>([]);
   const [newSaleModal, setNewSaleModal] = useState(false);
   const [detailSale, setDetailSale] = useState<Sale | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -366,13 +369,14 @@ export default function LibratPage() {
     const { from, to } = dateRange();
     const p = new URLSearchParams({ search, limit: "100" });
     if (statusFilter) p.set("status", statusFilter);
+    if (classFilter) p.set("class", classFilter);
     if (from) p.set("from", from);
     if (to)   p.set("to", to);
     const r = await fetch(`/api/librat/sales?${p}`);
     if (r.ok) setSales((await r.json()).sales);
     setSalesLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, statusFilter, month, year, yearType]);
+  }, [search, statusFilter, classFilter, month, year, yearType]);
 
   /* ── Raport state ── */
   const [stats, setStats] = useState<Stats | null>(null);
@@ -439,6 +443,15 @@ export default function LibratPage() {
   }
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useEffect(() => {
+    fetch("/api/classes").then(r => r.json()).then((data: ClassRow[]) => {
+      setClasses([...data].sort((a, b) => {
+        const na = parseInt(a.name), nb = parseInt(b.name);
+        if (na !== nb) return na - nb;
+        return a.name.localeCompare(b.name, "sq");
+      }));
+    }).catch(() => {});
+  }, []);
   useEffect(() => {
     const t = setTimeout(fetchSales, 300);
     return () => clearTimeout(t);
@@ -614,6 +627,10 @@ export default function LibratPage() {
                 <option value="PAID">Paguar</option>
                 <option value="PARTIAL">Pjesërisht</option>
                 <option value="PENDING">Pa paguar</option>
+              </select>
+              <select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="form-input w-32">
+                <option value="">Të gjitha klasat</option>
+                {classes.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
               <button onClick={() => setNewSaleModal(true)} className="btn-primary ml-auto">
                 <Plus className="w-4 h-4" />Shitje e re
