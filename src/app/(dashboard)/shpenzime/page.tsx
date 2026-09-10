@@ -1041,7 +1041,13 @@ export default function ShpenzimePage() {
                                   {formatCurrency(val)}
                                 </button>
                               ) : (
-                                <span className="text-slate-200 dark:text-slate-700">—</span>
+                                <button
+                                  onClick={() => openCell(k.id, k.emri, i + 1)}
+                                  className="text-slate-200 dark:text-slate-700 hover:text-primary-500 dark:hover:text-primary-400 transition-colors"
+                                  title="Shto një shpenzim për këtë muaj/kategori"
+                                >
+                                  —
+                                </button>
                               )}
                             </td>
                           );
