@@ -37,6 +37,18 @@ interface CategoryPaymentGroup {
   paidAmount: number;
   balance: number;
   lastPaidDate: string | null;
+  noData?: boolean;
+}
+
+// Kategoritë që s'kanë ende asnjë pagesë/blerje regjistruar për nxënësin
+// shtohen si placeholder ("Ende pa regjistrim"), që stafi ta shohë menjëherë
+// nëse dikush "harroi" ta regjistrojë diku (jo vetëm borxhin real).
+function withMissingCategories(groups: CategoryPaymentGroup[], allNames: string[]): CategoryPaymentGroup[] {
+  const present = new Set(groups.map(g => g.categoryName));
+  const placeholders: CategoryPaymentGroup[] = allNames
+    .filter(name => !present.has(name))
+    .map(name => ({ categoryName: name, baseAmount: 0, finalAmount: 0, paidAmount: 0, balance: 0, lastPaidDate: null, noData: true }));
+  return [...groups, ...placeholders].sort((a, b) => a.categoryName.localeCompare(b.categoryName, "sq"));
 }
 
 function groupPaymentsByCategory(payments: Payment[]): CategoryPaymentGroup[] {
@@ -271,8 +283,20 @@ export default function StudentProfile({ student }: { student: Student }) {
   const payments = student.payments;
   const bookGroup = salesToGroup("Librat e Anglishtes", student.bookSales);
   const uniGroup  = salesToGroup("Uniforma", student.uniSales);
-  const categoryGroups = [...groupPaymentsByCategory(payments), ...(bookGroup ? [bookGroup] : []), ...(uniGroup ? [uniGroup] : [])]
+  const realGroups = [...groupPaymentsByCategory(payments), ...(bookGroup ? [bookGroup] : []), ...(uniGroup ? [uniGroup] : [])]
     .sort((a, b) => a.categoryName.localeCompare(b.categoryName, "sq"));
+
+  // Kategoritë e sistemit ("Ushqimi", "Platforma Digjitale", etj.) plus dyja
+  // pseudo-kategoritë (Librat e Anglishtes, Uniforma) — që të shfaqen si
+  // "Ende pa regjistrim" te ky nxënës edhe kur s'ka ende asnjë pagesë atje.
+  const [allCategoryNames, setAllCategoryNames] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/api/categories")
+      .then(r => r.json())
+      .then((cats: { name: string }[]) => setAllCategoryNames([...new Set([...cats.map(c => c.name), "Librat e Anglishtes", "Uniforma"])]))
+      .catch(() => {});
+  }, []);
+  const categoryGroups = withMissingCategories(realGroups, allCategoryNames);
   // Totalet nxirren nga grupet (jo nga `payments` e papërpunuara si më parë), që
   // të përfshijnë edhe Librat e Anglishtes dhe të përputhen saktë me atë që
   // shfaqet më poshtë kartelë për kartelë.
@@ -330,7 +354,10 @@ export default function StudentProfile({ student }: { student: Student }) {
   function printHistory() {
     const win = window.open("", "_blank", "width=900,height=1200");
     if (!win) return;
-    win.document.write(buildHistoryHTML(student, categoryGroups, totalPaid, totalDebt, window.location.origin));
+    // Vetëm kategoritë me pagesë reale — placeholder-at "Ende pa regjistrim"
+    // janë ndihmë vizuale për stafin gjatë përdorimit, jo pjesë e historikut
+    // financiar të printuar.
+    win.document.write(buildHistoryHTML(student, categoryGroups.filter(g => !g.noData), totalPaid, totalDebt, window.location.origin));
     win.document.close();
   }
 
@@ -341,7 +368,7 @@ export default function StudentProfile({ student }: { student: Student }) {
   const [tuitionPrice, setTuitionPrice] = useState(0);
   const [editingPrice, setEditingPrice] = useState(false);
   const [priceVal, setPriceVal] = useState("");
-  const shkollimiGroup = categoryGroups.find(g => g.categoryName === "Shkollimi");
+  const shkollimiGroup = categoryGroups.find(g => g.categoryName === "Shkollimi" && !g.noData);
   const hasShkollimiPlan = !!shkollimiGroup;
   const finalPrice = hasShkollimiPlan
     ? shkollimiGroup!.finalAmount
@@ -666,7 +693,19 @@ export default function StudentProfile({ student }: { student: Student }) {
             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
               {categoryGroups.length === 0 ? (
                 <p className="text-center text-slate-400 py-8 text-sm">Asnjë pagesë e regjistruar</p>
-              ) : categoryGroups.map(g => (
+              ) : categoryGroups.map(g => g.noData ? (
+                <div key={g.categoryName} className="p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-slate-400 dark:text-slate-500">{g.categoryName}</p>
+                    <span className="text-[10px] font-semibold bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 px-1.5 py-0.5 rounded-full">Ende pa regjistrim</span>
+                  </div>
+                  {CATEGORY_LINKS[g.categoryName] && (
+                    <Link href={CATEGORY_LINKS[g.categoryName]} className="text-primary-600 hover:underline text-xs font-medium shrink-0">
+                      Regjistro →
+                    </Link>
+                  )}
+                </div>
+              ) : (
                 <div key={g.categoryName} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30">
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white">{g.categoryName}</p>
