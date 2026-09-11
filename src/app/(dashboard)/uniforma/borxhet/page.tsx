@@ -6,7 +6,7 @@ import Header from "@/components/layout/Header";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   ChevronLeft, Plus, X, Save, Loader2, Search, Phone,
-  MessageSquare, Wallet, CreditCard, StickyNote,
+  MessageSquare, Wallet, CreditCard, StickyNote, Pencil, Trash2,
 } from "lucide-react";
 
 interface StudentOpt {
@@ -55,6 +55,18 @@ export default function UniformaBorxhetPage() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [payRow,  setPayRow]  = useState<DebtRow | null>(null);
+  const [editRow, setEditRow] = useState<DebtRow | null>(null);
+  const [deleteRow, setDeleteRow] = useState<DebtRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function confirmDeleteRow() {
+    if (!deleteRow) return;
+    setDeleting(true);
+    await fetch(`/api/uniforms/sales/${deleteRow.id}`, { method: "DELETE" });
+    setDeleting(false);
+    setDeleteRow(null);
+    fetchDebts();
+  }
 
   return (
     <>
@@ -150,6 +162,20 @@ export default function UniformaBorxhetPage() {
                               <MessageSquare className="w-4 h-4" />
                             </Link>
                           )}
+                          <button
+                            onClick={() => setEditRow(row)}
+                            title="Modifiko"
+                            className="p-1.5 rounded-lg text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 dark:text-slate-500 dark:hover:text-primary-400 transition-colors"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteRow(row)}
+                            title="Fshi"
+                            className="p-1.5 rounded-lg text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-500 dark:hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -166,6 +192,28 @@ export default function UniformaBorxhetPage() {
       )}
       {payRow && (
         <PayDebtModal row={payRow} onClose={() => setPayRow(null)} onSaved={() => { setPayRow(null); fetchDebts(); }} />
+      )}
+      {editRow && (
+        <EditDebtModal row={editRow} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); fetchDebts(); }} />
+      )}
+      {deleteRow && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDeleteRow(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6 text-red-500" />
+            </div>
+            <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Fshi këtë borxh?</h3>
+            <p className="text-sm text-slate-400 mb-6">
+              {deleteRow.student ? `${deleteRow.student.firstName} ${deleteRow.student.lastName}` : deleteRow.customerName} — {formatCurrency(deleteRow.balance)} borxh. Ky veprim nuk mund të kthehet.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteRow(null)} className="btn-ghost flex-1">Anulo</button>
+              <button onClick={confirmDeleteRow} disabled={deleting} className="btn-danger flex-1 justify-center">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Fshi"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
@@ -387,6 +435,96 @@ function PayDebtModal({ row, onClose, onSaved }: { row: DebtRow; onClose: () => 
           <button onClick={handleSave} disabled={saving} className="btn-primary flex-1 justify-center">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             {saving ? "Duke ruajtur..." : "Regjistro Pagesën"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════ */
+function EditDebtModal({ row, onClose, onSaved }: { row: DebtRow; onClose: () => void; onSaved: () => void }) {
+  const hasRealItems = row.itemsSummary != null;
+  const [customerName, setCustomerName] = useState(row.student ? `${row.student.firstName} ${row.student.lastName}` : row.customerName);
+  const [customerPhone, setCustomerPhone] = useState(row.customerPhone || "");
+  const [amount, setAmount] = useState(String(row.totalAmount));
+  const [notes, setNotes] = useState(row.notes || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    setError("");
+    if (!customerName.trim()) { setError("Emri mungon."); return; }
+    if (!hasRealItems) {
+      const amt = parseFloat(amount);
+      if (!amt || amt <= 0) { setError("Shkruaj shumën e borxhit."); return; }
+    }
+    setSaving(true);
+    const res = await fetch(`/api/uniforms/sales/${row.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customerName: customerName.trim(),
+        customerPhone: customerPhone || null,
+        studentId: row.studentId,
+        notes: notes || null,
+        ...(hasRealItems ? {} : { amount: parseFloat(amount) }),
+      }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) { setError(d.error || "Gabim gjatë ruajtjes."); return; }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+          <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Pencil className="w-4 h-4 text-primary-500" /> Modifiko Borxhin
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          {row.student ? (
+            <div className="p-2.5 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
+              <p className="text-sm font-semibold text-primary-800 dark:text-primary-300">{row.student.firstName} {row.student.lastName}</p>
+              {row.student.class && <p className="text-xs text-slate-500">Klasa {row.student.class.name}</p>}
+            </div>
+          ) : (
+            <div>
+              <label className="form-label">Emri i klientit *</label>
+              <input value={customerName} onChange={e => setCustomerName(e.target.value)} className="form-input" />
+            </div>
+          )}
+          <div>
+            <label className="form-label">Telefoni</label>
+            <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="form-input" placeholder="04X XXX XXX" />
+          </div>
+          {hasRealItems ? (
+            <div>
+              <label className="form-label">Shuma (€)</label>
+              <input value={formatCurrency(row.totalAmount)} disabled className="form-input disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed" />
+              <p className="text-[11px] text-slate-400 mt-1">E llogaritur nga artikujt e shitjes — s'mund të ndryshohet drejtpërdrejt këtu.</p>
+            </div>
+          ) : (
+            <div>
+              <label className="form-label">Shuma e borxhit (€) *</label>
+              <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="form-input" min="0" step="0.01" />
+            </div>
+          )}
+          <div>
+            <label className="form-label">Shënim</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} className="form-input" placeholder='p.sh. "Borxh nga viti 2025-2026"' />
+          </div>
+        </div>
+        <div className="flex gap-3 p-5 pt-0">
+          <button onClick={onClose} className="btn-ghost flex-1">Anulo</button>
+          <button onClick={handleSave} disabled={saving} className="btn-primary flex-1 justify-center">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? "Duke ruajtur..." : "Ruaj Ndryshimet"}
           </button>
         </div>
       </div>
