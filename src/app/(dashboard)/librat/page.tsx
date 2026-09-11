@@ -339,6 +339,7 @@ export default function LibratPage() {
   const [classFilter, setClassFilter] = useState("");
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [newSaleModal, setNewSaleModal] = useState(false);
+  const [newSaleStudent, setNewSaleStudent] = useState<Student | null>(null);
   const [detailSale, setDetailSale] = useState<Sale | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
@@ -377,6 +378,42 @@ export default function LibratPage() {
     setSalesLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, statusFilter, classFilter, month, year, yearType]);
+
+  /* ── Nxënës pa blerje — roster i plotë (jo vetëm shitjet e listuara), minus
+     kush ka tashmë ndonjë shitje në periudhën aktuale (pavarësisht statusit të
+     pagesës, ndaj llogaritet veç, jo nga `sales` që mund të filtrohet nga
+     statusFilter) ── */
+  const [missingStudents, setMissingStudents] = useState<Student[]>([]);
+  const [missingLoading, setMissingLoading] = useState(false);
+
+  const fetchMissing = useCallback(async () => {
+    setMissingLoading(true);
+    const { from, to } = dateRange();
+    const soldP = new URLSearchParams({ limit: "2000" });
+    if (from) soldP.set("from", from);
+    if (to)   soldP.set("to", to);
+    const rosterP = new URLSearchParams({ status: "ACTIVE", limit: "2000" });
+    if (search) rosterP.set("search", search);
+    const classObj = classes.find(c => c.name === classFilter);
+    if (classObj) rosterP.set("classId", String(classObj.id));
+
+    const [soldRes, rosterRes] = await Promise.all([
+      fetch(`/api/librat/sales?${soldP}`),
+      fetch(`/api/students?${rosterP}`),
+    ]);
+    const soldIds = new Set<number>();
+    if (soldRes.ok) {
+      const d = await soldRes.json();
+      (d.sales || []).forEach((s: Sale) => { if (s.studentId != null) soldIds.add(s.studentId); });
+    }
+    if (rosterRes.ok) {
+      const d = await rosterRes.json();
+      const roster: Student[] = d.students || [];
+      setMissingStudents(roster.filter(s => !soldIds.has(s.id)));
+    }
+    setMissingLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, classFilter, classes, month, year, yearType]);
 
   /* ── Raport state ── */
   const [stats, setStats] = useState<Stats | null>(null);
@@ -456,6 +493,11 @@ export default function LibratPage() {
     const t = setTimeout(fetchSales, 300);
     return () => clearTimeout(t);
   }, [fetchSales]);
+  useEffect(() => {
+    if (tab !== "shitjet") return;
+    const t = setTimeout(fetchMissing, 300);
+    return () => clearTimeout(t);
+  }, [tab, fetchMissing]);
   useEffect(() => { if (tab === "raport") fetchStats(); }, [tab, fetchStats]);
   useEffect(() => { if (tab === "dorezim") fetchHandovers(); }, [tab, fetchHandovers]);
 
@@ -472,6 +514,7 @@ export default function LibratPage() {
     await fetch(`/api/librat/sales/${id}`, { method: "DELETE" });
     setDetailSale(null);
     fetchSales();
+    fetchMissing();
   }
 
   function toggleSelect(id: number) {
@@ -707,6 +750,43 @@ export default function LibratPage() {
                         </td>
                       </tr>
                     ))}
+                    {!salesLoading && missingStudents.length > 0 && (
+                      <>
+                        <tr>
+                          <td colSpan={12} className="table-cell bg-amber-50/60 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 text-xs font-semibold uppercase tracking-wide">
+                            Nuk kanë blerë ende ({missingStudents.length}){missingLoading && <Loader2 className="w-3 h-3 inline-block ml-2 animate-spin" />}
+                          </td>
+                        </tr>
+                        {missingStudents.map(s => (
+                          <tr key={`missing-${s.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                            <td className="table-cell"></td>
+                            <td className="table-cell"></td>
+                            <td className="table-cell font-mono text-xs text-slate-300 dark:text-slate-600">—</td>
+                            <td className="table-cell font-semibold text-slate-800 dark:text-white">{s.firstName} {s.lastName}</td>
+                            <td className="table-cell">
+                              {s.class && (
+                                <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-2 py-0.5 rounded text-xs font-medium">{s.class.name}</span>
+                              )}
+                            </td>
+                            <td className="table-cell text-slate-300 dark:text-slate-600 text-sm">—</td>
+                            <td className="table-cell text-slate-300 dark:text-slate-600">—</td>
+                            <td className="table-cell text-slate-300 dark:text-slate-600">—</td>
+                            <td className="table-cell text-slate-300 dark:text-slate-600">—</td>
+                            <td className="table-cell"><span className="badge bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pa blerë</span></td>
+                            <td className="table-cell text-slate-300 dark:text-slate-600 text-xs">—</td>
+                            <td className="table-cell">
+                              <button
+                                onClick={() => { setNewSaleStudent(s); setNewSaleModal(true); }}
+                                title="Regjistro shitje për këtë nxënës"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                              >
+                                <Plus className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1084,8 +1164,9 @@ export default function LibratPage() {
       {newSaleModal && (
         <NewSaleModal
           products={products}
-          onClose={() => setNewSaleModal(false)}
-          onSave={() => { setNewSaleModal(false); fetchSales(); }}
+          presetStudent={newSaleStudent}
+          onClose={() => { setNewSaleModal(false); setNewSaleStudent(null); }}
+          onSave={() => { setNewSaleModal(false); setNewSaleStudent(null); fetchSales(); fetchMissing(); }}
         />
       )}
 
@@ -1171,10 +1252,10 @@ export default function LibratPage() {
 }
 
 /* ── New Sale Modal ─────────────────────────────────────── */
-function NewSaleModal({ products, onClose, onSave }: { products: Product[]; onClose: () => void; onSave: () => void }) {
+function NewSaleModal({ products, presetStudent, onClose, onSave }: { products: Product[]; presetStudent?: Student | null; onClose: () => void; onSave: () => void }) {
   const [studentSearch, setStudentSearch] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
-  const [selStudent, setSelStudent] = useState<Student | null>(null);
+  const [selStudent, setSelStudent] = useState<Student | null>(presetStudent ?? null);
   const [items, setItems] = useState<{ productId: number; quantity: number; sellPrice: number }[]>([]);
   const [paidAmount, setPaidAmount] = useState("");
   const [method, setMethod] = useState("CASH");
