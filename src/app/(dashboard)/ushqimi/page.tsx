@@ -1175,7 +1175,11 @@ export default function UshqimiPage() {
           periodCalYear={periodCalYear}
           overrideAmount={calcAmount}
           onClose={() => { setPayModal(null); setCalcAmount(undefined); }}
-          onSave={async (rid) => { setPayModal(null); setCalcAmount(undefined); await fetchYearData(); if (rid) setReceiptPaymentId(rid); }}
+          onSave={async (result) => {
+            setPayModal(null); setCalcAmount(undefined); await fetchYearData();
+            if (result?.paymentId) setReceiptPaymentId(result.paymentId);
+            if (result?.familyReceiptId) setFamilyReceiptPrintId(result.familyReceiptId);
+          }}
         />
       )}
       {calcModal && (
@@ -1261,7 +1265,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
   prices: Record<string, number>; workingDays: number; periods: Period[];
   periodCalYear: (canonicalMonth: number) => number;
   overrideAmount?: number;
-  onClose: () => void; onSave: (receiptPaymentId?: number) => void;
+  onClose: () => void; onSave: (result?: { paymentId?: number; familyReceiptId?: number }) => void;
 }) {
   const existing = existingPayment;
   const isCalc = overrideAmount != null;
@@ -1383,7 +1387,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       }
     }
     setSaving(false);
-    onSave(withPrint ? receiptPaymentId : undefined);
+    onSave(withPrint && receiptPaymentId ? { paymentId: receiptPaymentId } : undefined);
   }
 
   const isSkipped = existing?.description === SKIPPED_MARKER;
@@ -1460,8 +1464,48 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
     const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
     const catId = cat?.id ?? 2;
 
-    for (const it of selectedItems) {
-      if (it.remaining <= 0) continue;
+    const toPay = selectedItems.filter(it => it.remaining > 0);
+
+    // Kur zgjidhen 2+ periudha njëherësh, i grupojmë nën një "Dëshmi Pagese" të
+    // vetme (FamilyReceipt — infrastrukturë ekzistuese, jo e kufizuar në familje
+    // me shumë fëmijë) që të mund të printohet vetëm një fletëpagesë e
+    // përmbledhur, në vend që prindi/arkëtari të printojë faturë veç e veç për
+    // secilën periudhe.
+    if (toPay.length >= 2) {
+      const res = await fetch("/api/family-receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parentName: `${student.firstName} ${student.lastName}${student.class ? ` (${student.class.name})` : ""}`,
+          parentPhone: student.parentPhone || null,
+          method,
+          children: toPay.map(it => ({
+            studentId: student.id, categoryId: catId,
+            amount: it.finalAmount, discount: 0, discountType: null, scholarship: 0,
+            paidAmount: it.finalAmount,
+            method,
+            dueDate: it.existing?.dueDate
+              ? new Date(it.existing.dueDate).toISOString().split("T")[0]
+              : new Date(it.calYear, it.period.canonicalMonth - 1, 5).toISOString().split("T")[0],
+            paidDate,
+            month: it.period.canonicalMonth, year: it.calYear,
+            description: it.existing?.description ?? `${periods[it.index]?.days ?? workingDays} ditë × ${formatCurrency(prices["2_shujta_ditë"])} — ${it.period.label} ${it.calYear}`,
+            note: note || it.existing?.note || null,
+          })),
+        }),
+      });
+      setSaving(false);
+      if (res.ok) {
+        const { id } = await res.json();
+        onSave({ familyReceiptId: id });
+      } else {
+        onSave(undefined);
+      }
+      return;
+    }
+
+    let receiptPaymentId: number | undefined;
+    for (const it of toPay) {
       const payload = {
         studentId: student.id, categoryId: catId,
         amount: it.finalAmount, discount: 0, discountType: null, scholarship: 0,
@@ -1476,13 +1520,15 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
         note: note || it.existing?.note || null,
       };
       if (it.existing) {
-        await fetch(`/api/payments/${it.existing.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const r = await fetch(`/api/payments/${it.existing.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        if (r.ok) receiptPaymentId = it.existing.id;
       } else {
-        await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const r = await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        if (r.ok) receiptPaymentId = (await r.json()).id;
       }
     }
     setSaving(false);
-    onSave(undefined);
+    onSave(receiptPaymentId ? { paymentId: receiptPaymentId } : undefined);
   }
 
   return (
