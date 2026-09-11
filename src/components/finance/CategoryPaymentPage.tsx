@@ -1409,6 +1409,12 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     isAlreadyMonthly ? "monthly" : isAlreadyFlex ? "flex" : isAlreadyTwo ? "two" : "single"
   );
   const [saving, setSaving] = useState(false);
+  // "Çmimi Bazë" kyçet parazgjedhur pasi ka këste reale (shih komentin te
+  // `hasExistingInstallmentPlan`), por administrata duhet mundësi për ta
+  // shkyçur qëllimisht kur ka bërë vetë një gabim (p.sh. shumë e gabuar) —
+  // përndryshe e vetmja rrugë për ta korrigjuar do të ishte fshirja e kësteve.
+  const [unlockBase, setUnlockBase] = useState(false);
+  const baseLocked = hasExistingInstallmentPlan && !unlockBase;
 
   // Shuma bazë e GJITHË planit ekzistues (jo vetëm e këstit/muajit të parë që
   // gjendet). Përndryshe, kur rihapej "Modifiko" për një plan me Dy Këste (ku
@@ -2025,13 +2031,22 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
               Çmimi Bazë & Zbritja
-              {hasExistingInstallmentPlan && <Lock className="w-3 h-3 text-slate-400" />}
+              {baseLocked && <Lock className="w-3 h-3 text-slate-400" />}
+              {hasExistingInstallmentPlan && (
+                <button
+                  type="button"
+                  onClick={() => setUnlockBase(v => !v)}
+                  className="ml-auto text-[11px] font-medium normal-case text-primary-600 hover:underline"
+                >
+                  {unlockBase ? "Rikyç" : "Redakto (ka qenë gabim)"}
+                </button>
+              )}
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="form-label">Çmimi bazë (€) <span className="text-red-500">*</span></label>
                 <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)}
-                  disabled={hasExistingInstallmentPlan}
+                  disabled={baseLocked}
                   className="form-input disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
                   placeholder="0.00" min="0" step="0.01" />
               </div>
@@ -2039,13 +2054,13 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                 <label className="form-label">Zbritja</label>
                 <div className="flex gap-1">
                   <select value={form.discountType} onChange={e => set("discountType", e.target.value)}
-                    disabled={hasExistingInstallmentPlan}
+                    disabled={baseLocked}
                     className="form-input w-16 text-xs disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed">
                     <option value="fixed">€</option>
                     <option value="percentage">%</option>
                   </select>
                   <input type="number" value={form.discount} onChange={e => set("discount", e.target.value)}
-                    disabled={hasExistingInstallmentPlan}
+                    disabled={baseLocked}
                     className="form-input flex-1 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
                     placeholder="0" min="0" />
                 </div>
@@ -2055,10 +2070,15 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
               <span className="text-slate-500">Shuma finale (pas zbritjes):</span>
               <span className="font-bold text-primary-700 dark:text-primary-400">{formatCurrency(totalFinal)}</span>
             </div>
-            {hasExistingInstallmentPlan ? (
+            {unlockBase ? (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1">
+                <Lock className="w-3 h-3 shrink-0" />
+                Shkyçur — nëse e ndryshon, kontrollo edhe shumat e kësteve/muajve më poshtë që të përputhen me totalin e ri.
+              </p>
+            ) : hasExistingInstallmentPlan ? (
               <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
                 <Lock className="w-3 h-3 shrink-0" />
-                Çmimi bazë është fiksuar sepse ka tashmë këste reale — për ta ndryshuar, modifiko shumën e vetë kështit/muajit/rreshtit më poshtë.
+                Çmimi bazë është fiksuar sepse ka tashmë këste reale — për ta ndryshuar shumën e një kësti/muaji, modifiko atë më poshtë, ose kliko &quot;Redakto&quot; nëse çmimi bazë vetë ishte gabim.
               </p>
             ) : mode === "flex" && (
               <p className="text-[11px] text-slate-400 mt-1.5">
