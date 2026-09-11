@@ -30,6 +30,7 @@ model Organization {
   materialOrders   MaterialOrder[]
   materialInventoryTransactions MaterialInventoryTransaction[]
   smsMessages      SmsMessage[]
+  paymentHandovers PaymentHandover[]
 }
 
 model User {
@@ -131,7 +132,31 @@ model PaymentCategory {
   payments       Payment[]
   expenses       Expense[]
   prices         PaymentCategoryPrice[]
+  handovers      PaymentHandover[]
   createdAt      DateTime     @default(now())
+}
+
+// Dorëzim parash për kategoritë e Payment-it (Shkollimi, Ushqimi, Eshkollori,
+// etj) — regjistër i thjeshtë, i pavarur nga pagesat konkrete, njësoj si
+// UniHandover/BookHandover (shih ato më poshtë) por i lidhur opsionalisht me
+// një PaymentCategory, që administrata të dijë sa është dorëzuar nga secila.
+// `categoryId` null = dorëzim i përgjithshëm, jo i lidhur me një kategori të vetme.
+model PaymentHandover {
+  id             Int              @id @default(autoincrement())
+  categoryId     Int?
+  category       PaymentCategory? @relation(fields: [categoryId], references: [id])
+  amount         Float
+  description    String?
+  recipient      String?
+  method         String           @default("CASH")
+  reference      String?
+  handoverAt     DateTime         @default(now())
+  organizationId Int              @default(1)
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime         @default(now())
+
+  @@index([categoryId])
+  @@index([handoverAt])
 }
 
 // ── Vitet Shkollore ───────────────────────────────────────

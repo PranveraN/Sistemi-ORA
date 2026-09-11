@@ -13,6 +13,7 @@ import OfertaModal from "@/components/OfertaModal";
 import TimiInvestModal from "@/components/TimiInvestModal";
 import QuickActions from "@/components/dashboard/QuickActions";
 import SchoolCalendar from "@/components/dashboard/SchoolCalendar";
+import FinancialOverview from "@/components/dashboard/FinancialOverview";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -380,6 +381,9 @@ export default function DashboardPage() {
             </table>
           </div>
         </div>
+
+        {/* Pasqyrë Financiare — seksion i ri, redesign i kërkuar; s'prek asgjë sipër */}
+        <FinancialOverview />
       </div>
 
       {showOferta && <OfertaModal initialView={ofertaView} onClose={() => setShowOferta(false)} />}
