@@ -58,6 +58,23 @@ export default function UniformaBorxhetPage() {
   const [editRow, setEditRow] = useState<DebtRow | null>(null);
   const [deleteRow, setDeleteRow] = useState<DebtRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const q = search.trim().toLowerCase();
+  const filteredRows = q
+    ? rows.filter(row => {
+        const name = row.student ? `${row.student.firstName} ${row.student.lastName}` : row.customerName;
+        const className = row.student?.class?.name ?? "";
+        const phone = debtPhone(row) ?? "";
+        return (
+          name.toLowerCase().includes(q) ||
+          className.toLowerCase().includes(q) ||
+          phone.toLowerCase().includes(q) ||
+          (row.itemsSummary ?? "").toLowerCase().includes(q) ||
+          (row.notes ?? "").toLowerCase().includes(q)
+        );
+      })
+    : rows;
 
   async function confirmDeleteRow() {
     if (!deleteRow) return;
@@ -95,11 +112,23 @@ export default function UniformaBorxhetPage() {
           </div>
         </div>
 
+        <div className="relative max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Kërko nxënësin/klientin..."
+            className="form-input pl-9"
+          />
+        </div>
+
         <div className="card overflow-hidden">
           {loading ? (
             <div className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" /></div>
           ) : rows.length === 0 ? (
             <p className="py-16 text-center text-slate-400 text-sm">Asnjë borxh i mbetur — të gjitha shitjet janë paguar plotësisht.</p>
+          ) : filteredRows.length === 0 ? (
+            <p className="py-16 text-center text-slate-400 text-sm">Asnjë rezultat për &quot;{search}&quot;.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -115,7 +144,7 @@ export default function UniformaBorxhetPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                  {rows.map(row => (
+                  {filteredRows.map(row => (
                     <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                       <td className="table-cell">
                         {row.student ? (
