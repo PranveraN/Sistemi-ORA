@@ -43,9 +43,18 @@ const GRADE_COLS = ["vi", "vii", "viii", "x"] as const;
 type GradeCol = typeof GRADE_COLS[number];
 type Grades = Record<string, Record<GradeCol, string>>;
 
-const emptyGrades = (subjectNames: string[]): Grades => {
+// Lëndët zgjedhore — fillimisht vetëm "Mësimi zgjedhor" (siç ishte), tani me
+// edhe 3 rreshta shtesë të lira, që sekretaria të shtojë lëndë të tjera
+// zgjedhore (ndryshojnë shpesh, njësoj si lëndët kryesore më sipër).
+const DEFAULT_ELECTIVES = ["Mësimi zgjedhor", "", "", ""];
+
+const emptyGrades = (subjectNames: string[], electiveNames: string[] = DEFAULT_ELECTIVES): Grades => {
   const g: Grades = {};
-  [...subjectNames.map((s, i) => s || `lenda_${i + 1}`), "mesimi_zgjedhor", "suksesi", "sjellja", "mungesat_a", "mungesat_pa"].forEach(s => {
+  [
+    ...subjectNames.map((s, i) => s || `lenda_${i + 1}`),
+    ...electiveNames.map((s, i) => s || `zgjedhor_${i + 1}`),
+    "suksesi", "sjellja", "mungesat_a", "mungesat_pa",
+  ].forEach(s => {
     g[s] = { vi: "", vii: "", viii: "", x: "" };
   });
   return g;
@@ -63,6 +72,7 @@ interface FKData {
   klasa: string;
   vitiShkollor: string;
   subjectNames: string[];   // lëndët (të editueshme)
+  electiveNames: string[];  // lëndët zgjedhore (të editueshme)
   grades: Grades;
   // Raport Kthyes
   rNrFletekalimit: string;
@@ -141,6 +151,7 @@ function FletekalimCLModal({ student, onClose, initialData }: { student: Student
     klasa: student.class ? `${student.class.level} "${student.class.name}"` : "",
     vitiShkollor: `${today.getFullYear() - 1}/${today.getFullYear()}`,
     subjectNames: [...SUBJECTS],
+    electiveNames: [...DEFAULT_ELECTIVES],
     grades: emptyGrades(SUBJECTS),
     rNrFletekalimit: "",
     rData: todayFmt,
@@ -160,6 +171,8 @@ function FletekalimCLModal({ student, onClose, initialData }: { student: Student
     setD(p => ({ ...p, grades: { ...p.grades, [subject]: { ...p.grades[subject], [col]: v } } }));
   const setSubj = (i: number, v: string) =>
     setD(p => { const a = [...p.subjectNames]; a[i] = v; return { ...p, subjectNames: a }; });
+  const setElective = (i: number, v: string) =>
+    setD(p => { const a = [...p.electiveNames]; a[i] = v; return { ...p, electiveNames: a }; });
 
   const backdropRef = useRef(false);
 
@@ -328,17 +341,31 @@ function FletekalimCLModal({ student, onClose, initialData }: { student: Student
                     </tr>
                   );
                 })}
-                {/* Mësimi zgjedhor row with rotated label */}
-                <tr>
-                  <td colSpan={2} style={{ border: "1px solid #000", padding: "1px 4px" }}>
-                    <span style={{ fontSize: "8pt", fontStyle: "italic" }}>Mësimi zgjedhor</span>
-                  </td>
-                  {GRADE_COLS.map(col => (
-                    <td key={col} style={{ border: "1px solid #000", padding: "1px", textAlign: "center" }}>
-                      <GC value={d.grades["mesimi_zgjedhor"][col]} onChange={v => setGrade("mesimi_zgjedhor", col, v)} />
-                    </td>
-                  ))}
-                </tr>
+                {/* Lëndët zgjedhore — emri i editueshëm (si lëndët kryesore), disa rreshta */}
+                {d.electiveNames.map((subj, i) => {
+                  const key = subj || `zgjedhor_${i + 1}`;
+                  return (
+                    <tr key={`elective-${i}`}>
+                      <td colSpan={2} style={{ border: "1px solid #000", padding: "1px 4px" }}>
+                        <input
+                          type="text"
+                          value={subj}
+                          placeholder={i === 0 ? "Mësimi zgjedhor" : "Lëndë zgjedhore"}
+                          onChange={e => setElective(i, e.target.value)}
+                          style={{
+                            width: "100%", fontFamily: "inherit", fontSize: "8pt", fontStyle: "italic",
+                            background: "transparent", border: "none", outline: "none",
+                          }}
+                        />
+                      </td>
+                      {GRADE_COLS.map(col => (
+                        <td key={col} style={{ border: "1px solid #000", padding: "1px", textAlign: "center" }}>
+                          <GC value={d.grades[key]?.[col] ?? ""} onChange={v => setGrade(key, col, v)} />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
                 {/* Summary rows */}
                 {[
                   ["suksesi", "Suksesi i përgjithshëm"],
