@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   X, Plus, Trash2, Printer, BookOpen, ShoppingBag,
   MapPin, Package, Monitor, History, ArrowLeft, Save, Pencil, Loader2,
@@ -63,6 +63,20 @@ export default function OfertaModal({
 }) {
   const [view, setView] = useState<"form" | "history">(initialView);
   const [history, setHistory] = useState<OfferRecord[]>([]);
+
+  // Mbyllja "kliko jashtë modalit" nuk duhet të aktivizohet kur admini vetëm po
+  // përzgjedh (selekton) tekst me maus brenda modalit dhe zvarritja del jashtë
+  // kufirit — përndryshe mbyllet gabimisht dhe humbet krejt oferta e papërfunduar.
+  // Mbyllet VETËM kur edhe mousedown edhe click kanë ndodhur direkt te vetë
+  // sfondi (jo brenda përmbajtjes, e cila ndalon përhapjen më poshtë).
+  const backdropDownRef = useRef(false);
+  function onBackdropMouseDown(e: React.MouseEvent) {
+    backdropDownRef.current = e.target === e.currentTarget;
+  }
+  function onBackdropClick(e: React.MouseEvent, close: () => void) {
+    if (backdropDownRef.current && e.target === e.currentTarget) close();
+    backdropDownRef.current = false;
+  }
 
   useEffect(() => { setHistory(loadHistory()); }, []);
 
@@ -350,7 +364,7 @@ ${_totDsc > 0 ? `<div class="savings"><span>Kursim total nga t&euml; gjitha zbri
   /* ══════ HISTORY VIEW ══════ */
   if (view === "history") {
     return (
-      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={onBackdropMouseDown} onClick={e => onBackdropClick(e, onClose)}>
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
             <button onClick={() => setView("form")} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
@@ -434,7 +448,7 @@ ${_totDsc > 0 ? `<div class="savings"><span>Kursim total nga t&euml; gjitha zbri
 
   /* ══════ FORM VIEW ══════ */
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={onBackdropMouseDown} onClick={e => onBackdropClick(e, onClose)}>
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -814,7 +828,7 @@ ${_totDsc > 0 ? `<div class="savings"><span>Kursim total nga t&euml; gjitha zbri
       </div>
 
       {editingLocations && (
-        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setEditingLocations(false)}>
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={onBackdropMouseDown} onClick={e => onBackdropClick(e, () => setEditingLocations(false))}>
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
               <h3 className="font-bold text-slate-900 dark:text-white">Çmimet e Vendbanimeve — Transporti</h3>
