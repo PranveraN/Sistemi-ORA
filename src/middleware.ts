@@ -10,10 +10,12 @@ export default auth((req) => {
   const isSuperAdminPage = nextUrl.pathname.startsWith("/superadmin");
   const isTeacherArea = nextUrl.pathname.startsWith("/kerkesa-material");
   const isTeacherPublicPage = nextUrl.pathname === "/kerkesa-material/regjistrohu";
+  const isClassesArea = nextUrl.pathname.startsWith("/classes");
 
   if (isLoginPage && isLoggedIn) {
     if (role === "SUPERADMIN") return NextResponse.redirect(new URL("/superadmin", nextUrl));
     if (role === "TEACHER") return NextResponse.redirect(new URL("/kerkesa-material", nextUrl));
+    if (role === "PEDAGOGIA") return NextResponse.redirect(new URL("/classes", nextUrl));
     return NextResponse.redirect(new URL("/dashboard", nextUrl));
   }
 
@@ -28,6 +30,12 @@ export default auth((req) => {
   // Mësimdhënësit shohin VETËM zonën e tyre — jo asnjë faqe tjetër të stafit.
   if (isLoggedIn && role === "TEACHER" && !isTeacherArea) {
     return NextResponse.redirect(new URL("/kerkesa-material", nextUrl));
+  }
+
+  // Pedagogia sheh VETËM "Klasat" (numri i nxënësve + klasat) — asgjë tjetër,
+  // sipas kërkesës eksplicite (rol i ngushtë, i ndarë nga SECRETARY normale).
+  if (isLoggedIn && role === "PEDAGOGIA" && !isClassesArea) {
+    return NextResponse.redirect(new URL("/classes", nextUrl));
   }
 
   return NextResponse.next();

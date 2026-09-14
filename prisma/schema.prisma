@@ -38,7 +38,7 @@ model User {
   email          String       @unique
   name           String
   password       String
-  role           String       @default("SECRETARY") // ADMIN, FINANCE, SECRETARY, SUPERADMIN, TEACHER
+  role           String       @default("SECRETARY") // ADMIN, FINANCE, SECRETARY, SUPERADMIN, TEACHER, PEDAGOGIA (vetëm /classes)
   active         Boolean      @default(true)
   organizationId Int          @default(1)
   organization   Organization @relation(fields: [organizationId], references: [id])

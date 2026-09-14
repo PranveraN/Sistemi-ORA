@@ -8,6 +8,9 @@ export async function PATCH(
 ) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if ((session.user as { role?: string }).role === "PEDAGOGIA") {
+    return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
+  }
 
   const { id } = await params;
   const body = await req.json();
@@ -30,6 +33,9 @@ export async function DELETE(
 ) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if ((session.user as { role?: string }).role === "PEDAGOGIA") {
+    return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
+  }
 
   const { id } = await params;
   // Detach students first

@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useSidebar } from "@/components/layout/SidebarContext";
 
-type Role = "ADMIN" | "FINANCE" | "SECRETARY";
+type Role = "ADMIN" | "FINANCE" | "SECRETARY" | "PEDAGOGIA";
 
 const navSections = [
   {
@@ -55,11 +55,11 @@ const navSections = [
   },
   {
     label: "Tjetër",
-    roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[],
+    roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[],
     items: [
       { href: "/arkiva",   icon: Archive,        label: "Arkiva",    roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
       { href: "/fletorja", icon: NotebookPen,    label: "Fletorja",  roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
-      { href: "/classes",  icon: GraduationCap,  label: "Klasat",    roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
+      { href: "/classes",  icon: GraduationCap,  label: "Klasat",    roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[] },
       { href: "/reports",  icon: BarChart3,      label: "Raportet",  roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/historiku", icon: History,       label: "Historiku", roles: ["ADMIN"] as Role[] },
       { href: "/settings", icon: Settings,       label: "Cilësimet", roles: ["ADMIN"] as Role[] },

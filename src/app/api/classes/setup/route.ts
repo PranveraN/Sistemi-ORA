@@ -11,6 +11,9 @@ const CLASS_STRUCTURE = [
 export async function POST() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if ((session.user as { role?: string }).role === "PEDAGOGIA") {
+    return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
+  }
 
   // 1. Save existing student → class-name mapping before we reset
   const existingStudents = await prisma.student.findMany({

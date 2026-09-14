@@ -19,6 +19,10 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Pedagogia sheh Klasat vetëm si lexim — asnjë krijim/modifikim.
+  if ((session.user as { role?: string }).role === "PEDAGOGIA") {
+    return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
+  }
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
   const body = await req.json();

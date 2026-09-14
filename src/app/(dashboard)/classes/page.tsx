@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import {
   GraduationCap, Plus, Users, X, Save,
   Settings2, CheckCircle, Loader2, Pencil,
@@ -20,6 +21,11 @@ interface Class {
 const LEVELS = Array.from({ length: 9 }, (_, i) => i + 1);
 
 export default function ClassesPage() {
+  const { data: session } = useSession();
+  // Pedagogia sheh vetëm klasat/numrin e nxënësve — pa krijim, edito apo qasje
+  // te lista e plotë e nxënësve (shih middleware.ts + Sidebar.tsx për pjesën
+  // tjetër të kufizimit të këtij roli).
+  const readOnly = (session?.user as { role?: string } | undefined)?.role === "PEDAGOGIA";
   const [classes,  setClasses]  = useState<Class[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -102,19 +108,21 @@ export default function ClassesPage() {
               {classes.length} klasa &nbsp;·&nbsp; {totalStudents} nxënës gjithsej
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setShowSetup(true); setSetupResult(null); }}
-              className="btn-secondary"
-            >
-              <Settings2 className="w-4 h-4" />
-              Konfigurim Automatik (1A–9B)
-            </button>
-            <button onClick={() => setShowForm(true)} className="btn-primary">
-              <Plus className="w-4 h-4" />
-              Shto Klasë
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setShowSetup(true); setSetupResult(null); }}
+                className="btn-secondary"
+              >
+                <Settings2 className="w-4 h-4" />
+                Konfigurim Automatik (1A–9B)
+              </button>
+              <button onClick={() => setShowForm(true)} className="btn-primary">
+                <Plus className="w-4 h-4" />
+                Shto Klasë
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── Setup confirmation dialog ── */}
@@ -275,7 +283,13 @@ export default function ClassesPage() {
                         </div>
 
                         {/* Teacher */}
-                        {editId === cls.id ? (
+                        {readOnly ? (
+                          <p className="text-xs">
+                            {cls.teacher
+                              ? <span className="text-slate-600 dark:text-slate-300">Mësuesi: {cls.teacher}</span>
+                              : <span className="italic text-slate-400">Pa mësues</span>}
+                          </p>
+                        ) : editId === cls.id ? (
                           <div className="flex items-center gap-2 mt-1">
                             <input
                               value={editTeacher}
@@ -313,12 +327,14 @@ export default function ClassesPage() {
                               {cls._count.students} nxënës
                             </span>
                           </div>
-                          <Link
-                            href={`/students?classId=${cls.id}`}
-                            className="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 hover:underline"
-                          >
-                            Shiko →
-                          </Link>
+                          {!readOnly && (
+                            <Link
+                              href={`/students?classId=${cls.id}`}
+                              className="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 hover:underline"
+                            >
+                              Shiko →
+                            </Link>
+                          )}
                         </div>
                       </div>
                     ))}
