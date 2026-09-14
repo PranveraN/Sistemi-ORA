@@ -171,6 +171,10 @@ export default function SmsPage() {
         const info = periodInfo(s.installments ?? [], targetMonths);
         return { ...s, __status: info.status, debtBalance: info.balance, format: inferPaymentFormat(s) };
       })
+      // Përjashto nxënësit që kurrë s'janë ngarkuar në këtë kategori (format
+      // "NONE" = 0 pagesa gjatë gjithë vitit) — "s'ka të dhëna" do të thotë
+      // s'e ka fare këtë shërbim (p.sh. s'ha ushqim në shkollë), jo që ka borxh.
+      .filter(s => s.format !== "NONE")
       .filter(s => !debtFormat || s.format === debtFormat)
       .filter(s => {
         if (debtStatus === "DEBT") return s.__status !== "PAID";
@@ -437,7 +441,7 @@ export default function SmsPage() {
                 </select>
                 <select value={debtFormat} onChange={e => setDebtFormat(e.target.value)} className="form-input">
                   <option value="">Çdo format pagese</option>
-                  {Object.entries(PAYMENT_FORMAT_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  {Object.entries(PAYMENT_FORMAT_LABELS).filter(([key]) => key !== "NONE").map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </select>
               </div>
               <div className="flex items-center flex-wrap gap-2">
