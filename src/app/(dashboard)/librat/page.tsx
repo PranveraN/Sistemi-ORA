@@ -126,22 +126,12 @@ function buildBookReceiptHTML(sale: Sale, copy: "prind" | "shkolla", origin: str
 </div>`;
 }
 
-function printReceipt(sale: Sale) {
-  const origin = window.location.origin;
-  const html1  = buildBookReceiptHTML(sale, "prind",   origin);
-  const html2  = buildBookReceiptHTML(sale, "shkolla", origin);
-
-  const w = window.open("", "_blank", "width=820,height=1200");
-  if (!w) return;
-
-  w.document.write(`<!DOCTYPE html><html lang="sq"><head>
-<meta charset="UTF-8"/>
-<title>Fletëpagesë ${sale.receiptNumber || ""}</title>
-<style>
+const RECEIPT_STYLE = `
 @page { size: A4 portrait; margin: 8mm; }
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body { height:100%; font-family:Arial,Helvetica,sans-serif; background:#fff; color:#000; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-.page { width:100%; height:100%; display:flex; flex-direction:column; }
+.page { width:100%; height:100%; display:flex; flex-direction:column; page-break-after:always; }
+.page:last-child { page-break-after:auto; }
 .receipt { flex:1 1 0; min-height:0; padding:9mm 13mm 7mm; overflow:hidden; }
 .cut-line { flex:0 0 auto; border:none; border-top:1px dashed #888; margin:3mm 13mm; position:relative; text-align:center; }
 .cut-line::after { content:"✂"; position:absolute; top:-9px; left:50%; transform:translateX(-50%); background:#fff; padding:0 5px; font-size:13px; color:#aaa; }
@@ -175,12 +165,59 @@ td { padding:3px 6px; border-bottom:1px solid #e2e8f0; }
 .sig-line { border-top:1px solid #94a3b8; margin-bottom:3px; margin-top:16px; }
 .sig-lbl { font-size:7.5px; color:#64748b; text-align:center; }
 .copy-label { display:inline-block; margin-top:6px; font-size:7.5px; font-weight:700; color:#fff; background:#475569; padding:2px 7px; border-radius:3px; letter-spacing:.06em; text-transform:uppercase; }
-</style></head><body>
+`;
+
+function printReceipt(sale: Sale) {
+  const origin = window.location.origin;
+  const html1  = buildBookReceiptHTML(sale, "prind",   origin);
+  const html2  = buildBookReceiptHTML(sale, "shkolla", origin);
+
+  const w = window.open("", "_blank", "width=820,height=1200");
+  if (!w) return;
+
+  w.document.write(`<!DOCTYPE html><html lang="sq"><head>
+<meta charset="UTF-8"/>
+<title>Fletëpagesë ${sale.receiptNumber || ""}</title>
+<style>${RECEIPT_STYLE}</style></head><body>
 <div class="page">
   ${html1}
   <div class="cut-line"></div>
   ${html2}
 </div>
+<script>window.onload=()=>window.print()</script>
+</body></html>`);
+  w.document.close();
+}
+
+// Printon fletëpagesat e disa shitjeve njëherësh (p.sh. gjithë klasa e filtruar,
+// ose vetëm rreshtat e zgjedhur) — një dokument i vetëm, çdo shitje faqja e
+// vet (2 kopje), një print job i vetëm në vend që të hapen N dritare.
+async function printAllReceipts(list: Sale[]) {
+  if (list.length === 0) return;
+  const origin = window.location.origin;
+
+  // Lista e "Shitjet" s'i mban artikujt (`items`) — merren vetëm ato që mungojnë.
+  const full = await Promise.all(list.map(async s => {
+    if (s.items) return s;
+    const r = await fetch(`/api/librat/sales/${s.id}`);
+    return r.ok ? ((await r.json()) as Sale) : s;
+  }));
+
+  const pages = full.map(sale => `
+<div class="page">
+  ${buildBookReceiptHTML(sale, "prind", origin)}
+  <div class="cut-line"></div>
+  ${buildBookReceiptHTML(sale, "shkolla", origin)}
+</div>`).join("");
+
+  const w = window.open("", "_blank", "width=820,height=1200");
+  if (!w) return;
+
+  w.document.write(`<!DOCTYPE html><html lang="sq"><head>
+<meta charset="UTF-8"/>
+<title>Fletëpagesat (${full.length})</title>
+<style>${RECEIPT_STYLE}</style></head><body>
+${pages}
 <script>window.onload=()=>window.print()</script>
 </body></html>`);
   w.document.close();
@@ -675,7 +712,16 @@ export default function LibratPage() {
                 <option value="">Të gjitha klasat</option>
                 {classes.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
-              <button onClick={() => setNewSaleModal(true)} className="btn-primary ml-auto">
+              <button
+                onClick={() => printAllReceipts(selected.size > 0 ? selectedSales : sales)}
+                disabled={sales.length === 0}
+                className="btn-secondary ml-auto"
+                title="Printo fletëpagesat e shitjeve të zgjedhura, ose të gjitha shitjet e filtruara nëse s'ke zgjedhur asnjë"
+              >
+                <Printer className="w-4 h-4" />
+                Printo Fletëpagesat {selected.size > 0 ? `(${selected.size})` : sales.length > 0 ? `(${sales.length})` : ""}
+              </button>
+              <button onClick={() => setNewSaleModal(true)} className="btn-primary">
                 <Plus className="w-4 h-4" />Shitje e re
               </button>
             </div>
@@ -1293,7 +1339,7 @@ function NewSaleModal({ products, presetStudent, onClose, onSave }: { products: 
   async function handleSave() {
     if (!selStudent || items.length === 0) return;
     setSaving(true);
-    await fetch("/api/librat/sales", {
+    const res = await fetch("/api/librat/sales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1303,6 +1349,14 @@ function NewSaleModal({ products, presetStudent, onClose, onSave }: { products: 
         items, paidAmount: paid, method, notes,
       }),
     });
+    // Butoni thotë "Ruaj & Gjenero Fletëpagesë" — printo direkt pas ruajtjes,
+    // jo vetëm mbyllja e modalit. Fletëpagesa kërkon artikujt e plotë (`items`),
+    // të cilët POST-i i shitjes s'i kthen mbrapsht, ndaj merret detaji i plotë.
+    if (res.ok) {
+      const created = await res.json();
+      const detailRes = await fetch(`/api/librat/sales/${created.id}`);
+      if (detailRes.ok) printReceipt(await detailRes.json());
+    }
     setSaving(false);
     onSave();
   }
