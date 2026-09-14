@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Wallet, CreditCard, Landmark, ArrowRightLeft, AlertCircle, CheckCircle,
   XCircle, Clock, CreditCard as CardIcon, Search, Loader2, ArrowRight,
+  MessageSquare, X, Send,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
@@ -12,7 +13,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 
-interface StudentRow { id: number; name: string; className: string | null; finalAmount: number; paidAmount: number; balance: number; }
+interface StudentRow { id: number; name: string; className: string | null; finalAmount: number; paidAmount: number; balance: number; phone: string | null; }
 interface RevenueRow { id: number; studentName: string; category: string; amount: number; method: string | null; paidDate: string | null; }
 interface HandoverRow { id: number; categoryName: string; amount: number; method: string; recipient: string | null; handoverAt: string; }
 interface ExpenseRow { id: number; kategoria: string; shuma: number; lloji: string; data: string; marres: string | null; }
@@ -69,12 +70,57 @@ export default function FinancialOverview() {
   const [methodFilter, setMethodFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
+  // SMS te prindi — mesazh i gjeneruar automatikisht sipas bucket-it (Kanë
+  // paguar/Pjesërisht/S'kanë paguar/TIMI Invest) të nga u klikua, njësoj si
+  // "Dërgo SMS te prindi" te profili i nxënësit (StudentProfile.tsx).
+  const [smsTarget, setSmsTarget] = useState<{ row: StudentRow; tab: Tab } | null>(null);
+  const [smsMessage, setSmsMessage] = useState("");
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsResult, setSmsResult] = useState<string | null>(null);
+  const [smsError, setSmsError] = useState<string | null>(null);
+
   useEffect(() => {
     fetch("/api/dashboard/financial-overview")
       .then(r => r.json())
       .then(setData)
       .finally(() => setLoading(false));
   }, []);
+
+  function buildStudentMessage(row: StudentRow, tab: Tab): string {
+    if (tab === "unpaid" || tab === "partial") {
+      return `Përshëndetje, ju informojmë se ${row.name} ka borxh të pashlyer prej ${formatCurrency(row.balance)} (Shkollimi). Ju lutem rregulloni pagesën në administratën e shkollës. Akademia Ora`;
+    }
+    if (tab === "paid") {
+      return `Përshëndetje, ju falënderojmë — pagesa e Shkollimit për ${row.name} është e rregulluar plotësisht. Akademia Ora`;
+    }
+    return `Përshëndetje, ju kujtojmë të kontrolloni pagesën mujore të TIMI Invest për ${row.name}. Akademia Ora`;
+  }
+
+  function openSms(row: StudentRow, tab: Tab) {
+    setSmsTarget({ row, tab });
+    setSmsMessage(buildStudentMessage(row, tab));
+    setSmsResult(null);
+    setSmsError(null);
+  }
+
+  async function sendSms() {
+    if (!smsTarget?.row.phone || !smsMessage.trim()) return;
+    setSmsSending(true);
+    setSmsResult(null);
+    setSmsError(null);
+    const res = await fetch("/api/sms/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipients: [{ phone: smsTarget.row.phone, name: `${smsTarget.row.name} (prindi)`, studentId: smsTarget.row.id }],
+        message: smsMessage,
+      }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setSmsSending(false);
+    if (!res.ok || d.sent === 0) { setSmsError(d.error || (d.errors && d.errors[0]) || "Dërgimi dështoi."); return; }
+    setSmsResult("U dërgua me sukses.");
+  }
 
   function goTo(tab: Tab, method?: string | null) {
     setActiveTab(tab);
@@ -255,23 +301,34 @@ export default function FinancialOverview() {
                   <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase">Klasa</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500 uppercase">Paguar</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500 uppercase">Mbetet</th>
+                  <th className="text-center px-3 py-2 text-xs font-semibold text-slate-500 uppercase">SMS</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                 {studentRows.length === 0 && (
-                  <tr><td colSpan={5} className="text-center py-8 text-slate-400 text-sm">Asnjë rezultat</td></tr>
+                  <tr><td colSpan={6} className="text-center py-8 text-slate-400 text-sm">Asnjë rezultat</td></tr>
                 )}
                 {studentRows.map((s, i) => (
                   <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                     <td className="px-3 py-2 text-slate-400 text-xs">{i + 1}</td>
                     <td className="px-3 py-2">
-                      <Link href={`/students/${s.id}`} className="font-medium text-slate-800 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">{s.name}</Link>
+                      <div className="flex items-center gap-1.5">
+                        <Link href={`/students/${s.id}`} className="font-medium text-slate-800 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">{s.name}</Link>
+                        <button
+                          onClick={() => openSms(s, activeTab)}
+                          title={s.phone ? "Dërgo SMS te prindi" : "Nuk ka numër telefoni të regjistruar"}
+                          className="p-1 rounded-lg text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500 dark:hover:text-violet-400 transition-colors"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-slate-500">{s.className ?? "—"}</td>
                     <td className="px-3 py-2 text-right text-green-600 font-medium">{formatCurrency(s.paidAmount)}</td>
                     <td className="px-3 py-2 text-right">
                       {s.balance > 0 ? <span className="text-red-600 font-semibold">{formatCurrency(s.balance)}</span> : <span className="text-green-500 text-xs">✓ Pa borxh</span>}
                     </td>
+                    <td className="px-3 py-2 text-center text-slate-400 text-xs">{s.phone ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -393,6 +450,49 @@ export default function FinancialOverview() {
           )}
         </div>
       </div>
+
+      {smsTarget && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSmsTarget(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-violet-500" /> SMS te prindi
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">{smsTarget.row.name}{smsTarget.row.className ? ` • Klasa ${smsTarget.row.className}` : ""}</p>
+              </div>
+              <button onClick={() => setSmsTarget(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              {!smsTarget.row.phone && (
+                <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4" /> Nxënësi s&apos;ka numër telefoni të regjistruar te prindërit.
+                </p>
+              )}
+              {smsTarget.row.phone && <p className="text-xs text-slate-400">Dërgohet te: <span className="font-medium text-slate-600 dark:text-slate-300">{smsTarget.row.phone}</span></p>}
+              <textarea
+                value={smsMessage}
+                onChange={e => setSmsMessage(e.target.value)}
+                rows={4}
+                className="form-input resize-none w-full"
+              />
+              {smsError && <p className="text-sm text-red-500">{smsError}</p>}
+              {smsResult && <p className="text-sm text-green-600">{smsResult}</p>}
+            </div>
+            <div className="flex gap-3 p-5 pt-0">
+              <button onClick={() => setSmsTarget(null)} className="btn-secondary flex-1">Mbyll</button>
+              <button
+                onClick={sendSms}
+                disabled={smsSending || !smsTarget.row.phone || !smsMessage.trim()}
+                className="btn-primary flex-1 justify-center"
+              >
+                {smsSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {smsSending ? "Duke dërguar..." : "Dërgo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

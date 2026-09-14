@@ -7,7 +7,7 @@ import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 // rresht ekzistues. Ushqen seksionin "Pasqyrë Financiare" të shtuar në fund
 // të Dashboard-it (shih src/components/dashboard/FinancialOverview.tsx).
 
-type StudentRow = { id: number; name: string; className: string | null; finalAmount: number; paidAmount: number; balance: number };
+type StudentRow = { id: number; name: string; className: string | null; finalAmount: number; paidAmount: number; balance: number; phone: string | null };
 
 export async function GET() {
   const session = await auth();
@@ -29,7 +29,10 @@ export async function GET() {
     prisma.paymentCategory.findMany({ where: { organizationId: orgId }, select: { id: true, name: true } }),
     prisma.student.findMany({
       where: { organizationId: orgId, status: "ACTIVE" },
-      select: { id: true, firstName: true, lastName: true, class: { select: { name: true } } },
+      select: {
+        id: true, firstName: true, lastName: true, class: { select: { name: true } },
+        fatherPhone: true, motherPhone: true, parentPhone: true,
+      },
     }),
     prisma.timiInvestStudent.findMany({
       where: { active: true, studentId: { not: null } },
@@ -58,13 +61,14 @@ export async function GET() {
   for (const s of activeStudents) {
     const name = `${s.firstName} ${s.lastName}`;
     const className = s.class?.name ?? null;
+    const phone = s.fatherPhone || s.motherPhone || s.parentPhone || null;
     if (timiInvestIds.has(s.id)) {
-      timiInvest.push({ id: s.id, name, className, finalAmount: 0, paidAmount: 0, balance: 0 });
+      timiInvest.push({ id: s.id, name, className, finalAmount: 0, paidAmount: 0, balance: 0, phone });
       continue;
     }
     const payments = byStudent.get(s.id) ?? [];
     const { finalAmount, paidAmount, balance } = aggregatePaymentTotals(payments);
-    const row: StudentRow = { id: s.id, name, className, finalAmount, paidAmount, balance };
+    const row: StudentRow = { id: s.id, name, className, finalAmount, paidAmount, balance, phone };
     if (payments.length === 0 || paidAmount <= 0) unpaid.push(row);
     else if (balance <= 0) paid.push(row);
     else partial.push(row);
