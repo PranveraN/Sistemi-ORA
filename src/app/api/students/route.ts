@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
+import { getDateRange, getAcademicMonths, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 
 function parseDate(val: unknown): Date | undefined {
   if (!val) return undefined;
@@ -32,6 +33,12 @@ export async function GET(req: NextRequest) {
   const excludeId = searchParams.get("excludeId") || "";
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "20");
+  const year     = parseInt(searchParams.get("year") || String(DEFAULT_ACADEMIC_YEAR));
+  const yearType = (searchParams.get("yearType") || "academic") as YearType;
+  const { start: periodStart, end: periodEnd } = getDateRange(year, yearType);
+  const periodMonths = yearType === "academic"
+    ? getAcademicMonths(year)
+    : Array.from({ length: 12 }, (_, i) => ({ calMonth: i + 1, calYear: year }));
 
   const where: Record<string, unknown> = { organizationId: orgId };
 
@@ -82,6 +89,20 @@ export async function GET(req: NextRequest) {
   if (classId) where.classId = parseInt(classId);
   if (excludeId) where.NOT = { id: parseInt(excludeId) };
 
+  // "Aktivë" — regjistruar/pjesë e shkollës GJATË periudhës së zgjedhur (jo
+  // fusha e tanishme `status`, e cila s'pasqyron historikisht kush ishte aktiv
+  // në një vit të kaluar). E NJËJTA logjikë si `activeStudents` te /api/dashboard,
+  // që numrat e dy faqeve të përputhen për të njëjtin vit.
+  const activePeriodWhere = {
+    enrollDate: { lte: periodEnd },
+    OR: [{ inactiveDate: null }, { inactiveDate: { gte: periodStart } }],
+  };
+  // Borxhi akrual i periudhës — afati/etiketa brenda vitit të zgjedhur (si
+  // Bilanci/Shkollimi), jo balanca e papërpunuar e tanishme pavarësisht vitit.
+  const debtAccrualWhere = yearType === "academic"
+    ? { OR: periodMonths.map(m => ({ month: m.calMonth, year: m.calYear })) }
+    : { dueDate: { gte: periodStart, lte: periodEnd } };
+
   const [rawStudents, total, activeCount, debtCount] = await Promise.all([
     prisma.student.findMany({
       where,
@@ -91,15 +112,13 @@ export async function GET(req: NextRequest) {
       take: limit,
     }),
     prisma.student.count({ where }),
-    status === "ACTIVE"
-      ? prisma.student.count({ where })
-      : prisma.student.count({ where: { ...where, status: "ACTIVE" } }),
+    prisma.student.count({ where: { AND: [where, activePeriodWhere] } }),
     // "Borxhi"/"Paguar" te kjo listë krahasohen me "Çmimi Final" (çmimi i
     // Shkollimit — vetëm një kategori, shih `tuitionPrice` në frontend), prandaj
     // edhe këtu kufizohet vetëm te kategoria "Shkollimi" — përndryshe një student
     // pa borxh në Shkollimi por me borxh te p.sh. Ushqimi numërohej gabimisht si
     // "me borxh" këtu, duke mos përputhur me atë që tregon rreshti i tij.
-    prisma.student.count({ where: { ...where, payments: { some: { balance: { gt: 0 }, category: { name: "Shkollimi", organizationId: orgId } } } } }),
+    prisma.student.count({ where: { ...where, payments: { some: { balance: { gt: 0 }, category: { name: "Shkollimi", organizationId: orgId }, ...debtAccrualWhere } } } }),
   ]);
 
   const studentIds = rawStudents.map(s => s.id);

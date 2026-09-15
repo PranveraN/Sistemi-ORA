@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import {
@@ -14,25 +14,26 @@ import TimiInvestModal from "@/components/TimiInvestModal";
 import QuickActions from "@/components/dashboard/QuickActions";
 import SchoolCalendar from "@/components/dashboard/SchoolCalendar";
 import FinancialOverview from "@/components/dashboard/FinancialOverview";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from "recharts";
 
 interface DashboardData {
+  period: { year: number; yearType: YearType; label: string };
   totalStudents: number;
   activeStudents: number;
   cycleCounts: { ulet: number; larte: number; paCaktuar: number };
   studentsWithDebt: number;
-  monthlyRevenue: number;
-  prevMonthRevenue: number;
+  periodRevenue: number;
+  prevPeriodRevenue: number;
   revenueChangePct: number | null;
   totalRevenue: number;
   totalDebtAmount: number;
   overdueAmount: number;
   overdueCount: number;
-  newStudentsThisMonth: number;
-  expiringThisWeek: number;
+  newInPeriod: number;
   recentPayments: Array<{
     id: number;
     paidAmount: number;
@@ -42,10 +43,12 @@ interface DashboardData {
     student: { firstName: string; lastName: string };
     category: { name: string };
   }>;
-  monthlyChartData: Array<{ month: string; total: number; enrolled: number }>;
+  monthlyChartData: Array<{ month: string; total: number }>;
 }
 
 export default function DashboardPage() {
+  const [yearType, setYearType] = useState<YearType>("academic");
+  const [year, setYear] = useState(DEFAULT_ACADEMIC_YEAR);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showOferta, setShowOferta] = useState(false);
@@ -53,16 +56,30 @@ export default function DashboardPage() {
   const [showTimiInvest, setShowTimiInvest] = useState(false);
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
 
+  const years = yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+
+  function switchYearType(yt: YearType) {
+    setYearType(yt);
+    const yrs = yt === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+    if (!yrs.includes(year)) setYear(yrs[yrs.length - 2] ?? yrs[0]);
+  }
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch(`/api/dashboard?year=${year}&yearType=${yearType}`);
+    const d = await r.json();
+    setData(d);
+    setLoading(false);
+  }, [year, yearType]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => {
-    fetch("/api/dashboard")
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); });
     fetch("/api/settings")
       .then(r => r.json())
       .then(s => setTimiInvestEnabled(s.timiInvestEnabled !== "false"));
   }, []);
 
-  if (loading) return (
+  if (loading && !data) return (
     <>
       <Header title="Dashboard" />
       <div className="p-6 flex items-center justify-center h-96">
@@ -86,6 +103,28 @@ export default function DashboardPage() {
     <>
       <Header title="Dashboard" />
       <div className="p-4 sm:p-6 space-y-6 animate-fade-in">
+
+        {/* Selektori i periudhës — Akademik/Kalendarik + Viti, si te Bilanci/Shkollimi.
+            Krejt faqja (përfshi kartat më poshtë) respekton këtë periudhë. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600 text-sm font-medium">
+            {([["calendar", "📅 Kalendarik"], ["academic", "🎓 Akademik"]] as [YearType, string][]).map(([yt, lbl]) => (
+              <button key={yt} onClick={() => switchYearType(yt)}
+                className={`px-4 py-2 transition-colors ${yearType === yt ? "bg-primary-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {years.map(y => (
+              <button key={y} onClick={() => setYear(y)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${year === y ? "bg-primary-600 text-white shadow-sm" : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary-300"}`}>
+                {yearType === "academic" ? `${y}–${y + 1}` : y}
+              </button>
+            ))}
+          </div>
+          {loading && <Clock className="w-4 h-4 text-slate-300 animate-spin" />}
+        </div>
 
         {/* Quick Actions bar */}
         <QuickActions />
@@ -158,7 +197,7 @@ export default function DashboardPage() {
         {/* KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
 
-          {/* Të Hyra Mujore + trend */}
+          {/* Të Hyra + trend */}
           <div className="card p-5">
             <div className="flex items-start justify-between mb-3">
               <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-900/30 flex items-center justify-center">
@@ -175,12 +214,12 @@ export default function DashboardPage() {
                 </span>
               )}
             </div>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{formatCurrency(data.monthlyRevenue)}</p>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Të Hyra Mujore</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-white">{formatCurrency(data.periodRevenue)}</p>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Të Hyra — {data.period.label}</p>
             <p className="text-xs text-slate-400 mt-1">
               {revPct !== null
-                ? `${revUp ? "+" : ""}${revPct}% vs muaji i kaluar (${formatCurrency(data.prevMonthRevenue)})`
-                : "Muaji aktual"}
+                ? `${revUp ? "+" : ""}${revPct}% vs periudha e kaluar (${formatCurrency(data.prevPeriodRevenue)})`
+                : "Pa krahasim"}
             </p>
           </div>
 
@@ -190,10 +229,10 @@ export default function DashboardPage() {
               <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
                 <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
-              {data.newStudentsThisMonth > 0 && (
+              {data.newInPeriod > 0 && (
                 <span className="inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400">
                   <UserPlus className="w-3 h-3" />
-                  +{data.newStudentsThisMonth} të rinj
+                  +{data.newInPeriod} të rinj
                 </span>
               )}
             </div>
@@ -208,36 +247,36 @@ export default function DashboardPage() {
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              {data.newStudentsThisMonth > 0
-                ? `${data.newStudentsThisMonth} të regjistruar këtë muaj`
+              {data.newInPeriod > 0
+                ? `${data.newInPeriod} të regjistruar gjatë kësaj periudhe`
                 : `${data.totalStudents} gjithsej`}
             </p>
           </div>
 
-          {/* Pagesa që skadojnë */}
+          {/* Pagesa të vonuara */}
           <div className="card p-5">
             <div className="flex items-start justify-between mb-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                data.expiringThisWeek > 0
+                data.overdueCount > 0
                   ? "bg-amber-50 dark:bg-amber-900/30"
                   : "bg-slate-100 dark:bg-slate-700"
               }`}>
                 <CalendarClock className={`w-5 h-5 ${
-                  data.expiringThisWeek > 0
+                  data.overdueCount > 0
                     ? "text-amber-600 dark:text-amber-400"
                     : "text-slate-400"
                 }`} />
               </div>
-              {data.expiringThisWeek > 0 && (
+              {data.overdueCount > 0 && (
                 <span className="inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
-                  ⚠ këtë javë
+                  ⚠ vonuar
                 </span>
               )}
             </div>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.expiringThisWeek}</p>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Pagesa Skadojnë</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.overdueCount}</p>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Pagesa të Vonuara</p>
             <p className="text-xs text-slate-400 mt-1">
-              {data.expiringThisWeek > 0 ? "Brenda 7 ditëve" : "Asnjë afat këtë javë"}
+              {data.overdueCount > 0 ? `${formatCurrency(data.overdueAmount)} gjithsej` : "Asnjë pagesë e vonuar"}
             </p>
           </div>
 
@@ -250,7 +289,7 @@ export default function DashboardPage() {
               <CreditCard className="w-4 h-4 text-slate-300" />
             </div>
             <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.studentsWithDebt}</p>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Borxhe Aktive</p>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Borxhe — {data.period.label}</p>
             <p className="text-xs text-slate-400 mt-1">{formatCurrency(data.totalDebtAmount)} total</p>
           </div>
 
@@ -269,7 +308,7 @@ export default function DashboardPage() {
 
             {/* Revenue Chart */}
             <div className="card p-5 flex-1">
-              <h2 className="section-title mb-4">Të Hyrat — 6 Muajt e Fundit</h2>
+              <h2 className="section-title mb-4">Të Hyrat — {data.period.label}</h2>
               <ResponsiveContainer width="100%" height={200}>
                 <AreaChart data={data.monthlyChartData}>
                   <defs>
@@ -330,7 +369,7 @@ export default function DashboardPage() {
         {/* Recent Payments */}
         <div className="card">
           <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
-            <h2 className="section-title">Pagesat e Fundit</h2>
+            <h2 className="section-title">Pagesat e Fundit — {data.period.label}</h2>
             <a href="/payments" className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium">
               Shiko të gjitha →
             </a>
@@ -373,7 +412,7 @@ export default function DashboardPage() {
                 {data.recentPayments.length === 0 && (
                   <tr>
                     <td colSpan={6} className="table-cell text-center text-slate-400 py-8">
-                      Asnjë pagesë e regjistruar
+                      Asnjë pagesë e regjistruar për këtë periudhë
                     </td>
                   </tr>
                 )}
@@ -382,8 +421,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Pasqyrë Financiare — seksion i ri, redesign i kërkuar; s'prek asgjë sipër */}
-        <FinancialOverview />
+        {/* Pasqyrë Financiare — respekton të njëjtën periudhë të zgjedhur sipër */}
+        <FinancialOverview yearType={yearType} year={year} />
       </div>
 
       {showOferta && <OfertaModal initialView={ofertaView} onClose={() => setShowOferta(false)} />}

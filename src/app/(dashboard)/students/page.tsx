@@ -10,6 +10,7 @@ import {
   Eye, Edit, Users, AlertCircle, Upload, FileSignature, Trash2, Download, X, Plus, Lock,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 
 
 interface Class {
@@ -59,6 +60,8 @@ export default function StudentsPage() {
   const [classId, setClassId] = useState(classIdParam);
   const [classes, setClasses] = useState<Class[]>([]);
   const [page, setPage] = useState(1);
+  const [yearType, setYearType] = useState<YearType>("academic");
+  const [year, setYear] = useState(DEFAULT_ACADEMIC_YEAR);
   const [tuitionPrice, setTuitionPrice] = useState<number>(2000);
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
   const limit = 20;
@@ -167,7 +170,7 @@ export default function StudentsPage() {
   const fetchStudents = useCallback(async (isFirst = false) => {
     if (isFirst) setLoading(true); else setRefreshing(true);
     const params = new URLSearchParams({
-      search, status, page: String(page), limit: String(limit),
+      search, status, page: String(page), limit: String(limit), year: String(year), yearType,
     });
     if (classId) params.set("classId", classId);
     const res = await fetch(`/api/students?${params}`);
@@ -182,7 +185,13 @@ export default function StudentsPage() {
     setDebtCount(data.debtCount ?? 0);
     setLoading(false);
     setRefreshing(false);
-  }, [search, status, page, classId]);
+  }, [search, status, page, classId, year, yearType]);
+
+  function switchYearType(yt: YearType) {
+    setYearType(yt);
+    const yrs = yt === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+    if (!yrs.includes(year)) setYear(yrs[yrs.length - 2] ?? yrs[0]);
+  }
 
 
   const _firstRender = useRef(true);
@@ -354,6 +363,27 @@ export default function StudentsPage() {
       <Header title="Nxënësit" />
       <div className="p-4 sm:p-6 space-y-4 animate-fade-in">
 
+        {/* Selektori i periudhës — Akademik/Kalendarik + Viti, si te Dashboard/Bilanci.
+            "Aktivë"/"Me borxhe" më poshtë respektojnë këtë periudhë. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600 text-sm font-medium">
+            {([["calendar", "📅 Kalendarik"], ["academic", "🎓 Akademik"]] as [YearType, string][]).map(([yt, lbl]) => (
+              <button key={yt} onClick={() => switchYearType(yt)}
+                className={`px-4 py-2 transition-colors ${yearType === yt ? "bg-primary-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {(yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS).map(y => (
+              <button key={y} onClick={() => setYear(y)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${year === y ? "bg-primary-600 text-white shadow-sm" : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary-300"}`}>
+                {yearType === "academic" ? `${y}–${y + 1}` : y}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Actions bar */}
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div className="flex flex-1 gap-3 items-center w-full sm:max-w-xl">
@@ -427,7 +457,7 @@ export default function StudentsPage() {
             </div>
             <div className="min-w-0">
               <p className="text-lg font-bold text-slate-900 dark:text-white">{activeCount}</p>
-              <p className="text-xs text-slate-400 truncate">Aktivë</p>
+              <p className="text-xs text-slate-400 truncate">Aktivë {yearType === "academic" ? `${year}–${year + 1}` : year}</p>
             </div>
           </div>
           <div className="card p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
@@ -436,7 +466,7 @@ export default function StudentsPage() {
             </div>
             <div className="min-w-0">
               <p className="text-lg font-bold text-slate-900 dark:text-white">{debtCount}</p>
-              <p className="text-xs text-slate-400 truncate">Me borxhe</p>
+              <p className="text-xs text-slate-400 truncate">Me borxhe {yearType === "academic" ? `${year}–${year + 1}` : year}</p>
             </div>
           </div>
         </div>

@@ -1,24 +1,45 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
+import { getDateRange, getAcademicMonths, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { MONTHS } from "@/lib/utils";
 
 // E RE, e ndarë krejtësisht nga /api/dashboard — vetëm lexon, nuk prek asnjë
 // rresht ekzistues. Ushqen seksionin "Pasqyrë Financiare" të shtuar në fund
 // të Dashboard-it (shih src/components/dashboard/FinancialOverview.tsx).
+// Periudha (yearType/year) i vjen nga faqja mëmë — e njëjta që përdor edhe
+// pjesa tjetër e Dashboard-it (/api/dashboard), që numrat të përputhen.
 
 type StudentRow = { id: number; name: string; className: string | null; finalAmount: number; paidAmount: number; balance: number; phone: string | null };
+type PeriodMonth = { calMonth: number; calYear: number };
 
-export async function GET() {
+// Njësoj si /api/dashboard/route.ts — akruale (etiketa month/year) për vitin
+// akademik, sipas datës reale të arkëtimit (paidDate) për vitin kalendarik.
+function revenueWhere(orgId: number, yearType: YearType, months: PeriodMonth[], start: Date, end: Date) {
+  return yearType === "academic"
+    ? {
+        organizationId: orgId, paidAmount: { gt: 0 }, status: { in: ["PAID", "PARTIAL"] },
+        OR: months.map(m => ({ month: m.calMonth, year: m.calYear })),
+      }
+    : {
+        organizationId: orgId, paidDate: { gte: start, lte: end },
+        paidAmount: { gt: 0 }, status: { in: ["PAID", "PARTIAL"] },
+      };
+}
+
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
-  const now = new Date();
-  const thisYear = now.getFullYear();
-  const thisMonth = now.getMonth();
-  const firstDayThisMonth = new Date(thisYear, thisMonth, 1);
-  const lastDayThisMonth  = new Date(thisYear, thisMonth + 1, 0, 23, 59, 59);
+  const { searchParams } = new URL(req.url);
+  const year     = parseInt(searchParams.get("year") || String(DEFAULT_ACADEMIC_YEAR));
+  const yearType = (searchParams.get("yearType") || "academic") as YearType;
+  const { start, end, label } = getDateRange(year, yearType);
+  const months = yearType === "academic"
+    ? getAcademicMonths(year)
+    : Array.from({ length: 12 }, (_, i) => ({ calMonth: i + 1, calYear: year }));
 
   const [
     categories,
@@ -43,10 +64,12 @@ export async function GET() {
 
   const timiInvestIds = new Set(timiInvestLinks.map(t => t.studentId as number));
 
-  // ── Statusi i pagesave (Shkollimi) — Paguar / Pjesërisht / S'ka paguar / Me TIMI Invest ──
+  // ── Statusi i pagesave (Shkollimi, brenda periudhës) — Paguar / Pjesërisht / S'ka paguar / Me TIMI Invest ──
   const shkollimiPayments = shkollimiCategory
     ? await prisma.payment.findMany({
-        where: { studentId: { in: activeStudents.map(s => s.id) }, categoryId: shkollimiCategory.id },
+        where: yearType === "academic"
+          ? { studentId: { in: activeStudents.map(s => s.id) }, categoryId: shkollimiCategory.id, OR: months.map(m => ({ month: m.calMonth, year: m.calYear })) }
+          : { studentId: { in: activeStudents.map(s => s.id) }, categoryId: shkollimiCategory.id, dueDate: { gte: start, lte: end } },
         select: { studentId: true, paidAmount: true, finalAmount: true, description: true },
       })
     : [];
@@ -74,41 +97,42 @@ export async function GET() {
     else partial.push(row);
   }
 
-  // ── Të hyrat sipas metodës (muaji aktual) ──
-  const [monthlyPayments, revenueList] = await Promise.all([
+  // ── Të hyrat sipas metodës (brenda periudhës) ──
+  const [periodPayments, revenueList] = await Promise.all([
     prisma.payment.findMany({
-      where: { organizationId: orgId, paidDate: { gte: firstDayThisMonth, lte: lastDayThisMonth }, status: { in: ["PAID", "PARTIAL"] } },
+      where: revenueWhere(orgId, yearType, months, start, end),
       select: { paidAmount: true, method: true },
     }),
     prisma.payment.findMany({
-      where: { organizationId: orgId, paidDate: { gte: firstDayThisMonth, lte: lastDayThisMonth }, status: { in: ["PAID", "PARTIAL"] } },
+      where: revenueWhere(orgId, yearType, months, start, end),
       include: { student: { select: { firstName: true, lastName: true } }, category: { select: { name: true } } },
       orderBy: { paidDate: "desc" },
       take: 300,
     }),
   ]);
   const byMethod: Record<string, number> = { CASH: 0, BANK: 0, CARD: 0, ONLINE: 0 };
-  let totalRevenueThisMonth = 0;
-  for (const p of monthlyPayments) {
+  let totalRevenuePeriod = 0;
+  for (const p of periodPayments) {
     const m = p.method || "CASH";
     byMethod[m] = (byMethod[m] ?? 0) + p.paidAmount;
-    totalRevenueThisMonth += p.paidAmount;
+    totalRevenuePeriod += p.paidAmount;
   }
 
-  // ── Të hyrat mujore sipas metodës — 6 muajt e fundit ──
-  const sixMonthsAgo = new Date(thisYear, thisMonth - 5, 1);
-  const last6MonthsPayments = await prisma.payment.findMany({
-    where: { organizationId: orgId, paidDate: { gte: sixMonthsAgo }, status: { in: ["PAID", "PARTIAL"] } },
-    select: { paidDate: true, paidAmount: true, method: true },
-  });
-  const monthKeys = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(thisYear, thisMonth - (5 - i), 1);
-    return { date: d, key: `${d.getFullYear()}-${d.getMonth()}` };
+  // ── Të hyrat mujore sipas metodës — 12 muajt e periudhës së zgjedhur ──
+  const periodPaymentsWithDate = await prisma.payment.findMany({
+    where: revenueWhere(orgId, yearType, months, start, end),
+    select: { paidDate: true, paidAmount: true, method: true, month: true, year: true },
   });
   const byMonthMethod = new Map<string, { CASH: number; BANK: number; OTHER: number }>();
-  for (const p of last6MonthsPayments) {
-    if (!p.paidDate) continue;
-    const key = `${p.paidDate.getFullYear()}-${p.paidDate.getMonth()}`;
+  for (const p of periodPaymentsWithDate) {
+    let key: string;
+    if (yearType === "academic") {
+      key = `${p.month}-${p.year}`;
+    } else {
+      if (!p.paidDate) continue;
+      const d = new Date(p.paidDate);
+      key = `${d.getMonth() + 1}-${d.getFullYear()}`;
+    }
     const entry = byMonthMethod.get(key) ?? { CASH: 0, BANK: 0, OTHER: 0 };
     const m = p.method || "CASH";
     if (m === "CASH") entry.CASH += p.paidAmount;
@@ -116,20 +140,20 @@ export async function GET() {
     else entry.OTHER += p.paidAmount;
     byMonthMethod.set(key, entry);
   }
-  const monthlyByMethod = monthKeys.map(({ date, key }) => {
-    const entry = byMonthMethod.get(key) ?? { CASH: 0, BANK: 0, OTHER: 0 };
-    return { month: new Intl.DateTimeFormat("sq-AL", { month: "short" }).format(date), ...entry };
+  const monthlyByMethod = months.map(m => {
+    const entry = byMonthMethod.get(`${m.calMonth}-${m.calYear}`) ?? { CASH: 0, BANK: 0, OTHER: 0 };
+    return { month: MONTHS[m.calMonth - 1], ...entry };
   });
 
-  // ── Dorëzimet (muaji aktual) ──
+  // ── Dorëzimet (brenda periudhës) ──
   const [handoverGroups, handoverList] = await Promise.all([
     prisma.paymentHandover.groupBy({
       by: ["categoryId"],
-      where: { organizationId: orgId, handoverAt: { gte: firstDayThisMonth, lte: lastDayThisMonth } },
+      where: { organizationId: orgId, handoverAt: { gte: start, lte: end } },
       _sum: { amount: true },
     }),
     prisma.paymentHandover.findMany({
-      where: { organizationId: orgId, handoverAt: { gte: firstDayThisMonth, lte: lastDayThisMonth } },
+      where: { organizationId: orgId, handoverAt: { gte: start, lte: end } },
       include: { category: { select: { name: true } } },
       orderBy: { handoverAt: "desc" },
     }),
@@ -140,17 +164,17 @@ export async function GET() {
     categoryName: g.categoryId ? (categoryNameById.get(g.categoryId) ?? "—") : "Të përgjithshme",
     amount: g._sum.amount ?? 0,
   }));
-  const totalHandedOverThisMonth = handoversByCategory.reduce((s, h) => s + h.amount, 0);
+  const totalHandedOverPeriod = handoversByCategory.reduce((s, h) => s + h.amount, 0);
 
-  // ── Shpenzimet sipas llojit (muaji aktual) — Shpenzim s'ka organizationId (global, si gjetkë në app) ──
+  // ── Shpenzimet sipas llojit (brenda periudhës) — Shpenzim s'ka organizationId (global, si gjetkë në app) ──
   const [expenseGroups, expenseList] = await Promise.all([
     prisma.shpenzim.groupBy({
       by: ["lloji"],
-      where: { data: { gte: firstDayThisMonth, lte: lastDayThisMonth } },
+      where: { data: { gte: start, lte: end } },
       _sum: { shuma: true },
     }),
     prisma.shpenzim.findMany({
-      where: { data: { gte: firstDayThisMonth, lte: lastDayThisMonth } },
+      where: { data: { gte: start, lte: end } },
       include: { kategori: { select: { emri: true } } },
       orderBy: { data: "desc" },
       take: 300,
@@ -158,11 +182,11 @@ export async function GET() {
   ]);
   const expensesByType: Record<string, number> = { ZYRE: 0, BANKE: 0 };
   for (const g of expenseGroups) expensesByType[g.lloji] = g._sum.shuma ?? 0;
-  const totalExpensesThisMonth = expensesByType.ZYRE + expensesByType.BANKE;
+  const totalExpensesPeriod = expensesByType.ZYRE + expensesByType.BANKE;
 
-  // ── Borxhi i papaguar — të gjitha kategoritë, gjendja aktuale ──
+  // ── Borxhi i papaguar — të gjitha kategoritë, afati brenda periudhës (si /api/dashboard) ──
   const debtPayments = await prisma.payment.findMany({
-    where: { organizationId: orgId, balance: { gt: 0 } },
+    where: { organizationId: orgId, balance: { gt: 0 }, dueDate: { gte: start, lte: end } },
     include: { student: { select: { firstName: true, lastName: true, class: { select: { name: true } } } }, category: { select: { name: true } } },
     orderBy: { balance: "desc" },
     take: 500,
@@ -170,13 +194,13 @@ export async function GET() {
   const totalDebt = debtPayments.reduce((s, p) => s + p.balance, 0);
 
   return NextResponse.json({
-    period: { month: thisMonth + 1, year: thisYear },
+    period: { year, yearType, label },
     studentStatus: {
       counts: { paid: paid.length, partial: partial.length, unpaid: unpaid.length, timiInvest: timiInvest.length, total: activeStudents.length },
       lists: { paid, partial, unpaid, timiInvest },
     },
     revenue: {
-      totalThisMonth: totalRevenueThisMonth,
+      totalThisMonth: totalRevenuePeriod,
       byMethod,
       list: revenueList.map(p => ({
         id: p.id, studentName: `${p.student.firstName} ${p.student.lastName}`, category: p.category.name,
@@ -185,7 +209,7 @@ export async function GET() {
     },
     monthlyByMethod,
     handovers: {
-      totalThisMonth: totalHandedOverThisMonth,
+      totalThisMonth: totalHandedOverPeriod,
       byCategory: handoversByCategory,
       list: handoverList.map(h => ({
         id: h.id, categoryName: h.category?.name ?? "Të përgjithshme", amount: h.amount,
@@ -193,7 +217,7 @@ export async function GET() {
       })),
     },
     expenses: {
-      totalThisMonth: totalExpensesThisMonth,
+      totalThisMonth: totalExpensesPeriod,
       byType: expensesByType,
       list: expenseList.map(e => ({
         id: e.id, kategoria: e.kategori.emri, shuma: e.shuma, lloji: e.lloji, data: e.data, marres: e.marres,

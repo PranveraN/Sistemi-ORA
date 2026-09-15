@@ -1,77 +1,100 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCycle } from "@/lib/school-cycles";
+import { getDateRange, getAcademicMonths, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { MONTHS } from "@/lib/utils";
 
-export async function GET() {
+type PeriodMonth = { calMonth: number; calYear: number };
+
+// "Të Hyra" — akruale (etiketa month/year, si Bilanci/Shkollimi) për vitin
+// akademik, që numrat të përputhen gjithmonë me Shkollimin edhe kur dikush
+// paguan më herët/më vonë se afati; sipas datës reale të arkëtimit (paidDate)
+// për vitin kalendarik — arsyeja pse ekziston pamja "Kalendarik" fare.
+// Mbulon TË GJITHA kategoritë (jo vetëm Shkollimin, ndryshe nga Bilanci).
+function revenueWhere(orgId: number, yearType: YearType, months: PeriodMonth[], start: Date, end: Date) {
+  return yearType === "academic"
+    ? {
+        organizationId: orgId, paidAmount: { gt: 0 }, status: { in: ["PAID", "PARTIAL"] },
+        OR: months.map(m => ({ month: m.calMonth, year: m.calYear })),
+      }
+    : {
+        organizationId: orgId, paidDate: { gte: start, lte: end },
+        paidAmount: { gt: 0 }, status: { in: ["PAID", "PARTIAL"] },
+      };
+}
+
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
-  const now = new Date();
-  const thisYear  = now.getFullYear();
-  const thisMonth = now.getMonth();
+  const { searchParams } = new URL(req.url);
+  const year     = parseInt(searchParams.get("year") || String(DEFAULT_ACADEMIC_YEAR));
+  const yearType = (searchParams.get("yearType") || "academic") as YearType;
 
-  const firstDayThisMonth = new Date(thisYear, thisMonth, 1);
-  const lastDayThisMonth  = new Date(thisYear, thisMonth + 1, 0, 23, 59, 59);
-  const firstDayPrevMonth = new Date(thisYear, thisMonth - 1, 1);
-  const lastDayPrevMonth  = new Date(thisYear, thisMonth, 0, 23, 59, 59);
-  const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const now = new Date();
+  const { start, end, label } = getDateRange(year, yearType);
+  // Periudha ekuivalente PARAARDHËSE (një vit mbrapa) — për krahasimin %.
+  const { start: prevStart, end: prevEnd } = getDateRange(year - 1, yearType);
+
+  const months = yearType === "academic"
+    ? getAcademicMonths(year)
+    : Array.from({ length: 12 }, (_, i) => ({ calMonth: i + 1, calYear: year }));
+  const prevMonths = yearType === "academic"
+    ? getAcademicMonths(year - 1)
+    : Array.from({ length: 12 }, (_, i) => ({ calMonth: i + 1, calYear: year - 1 }));
+
+  // "Vonuar" — kufizohet te vetëm afatet BRENDA periudhës që tashmë kanë kaluar
+  // (min i fundit të periudhës dhe "tani", që një vit i ardhshëm/aktual mos
+  // numërojë afate që ende s'kanë ardhur).
+  const overdueUpperBound = end < now ? end : now;
 
   const [
     totalStudents,
-    activeStudents,
-    studentsWithDebt,
-    monthlyPaid,
-    prevMonthPaid,
-    totalRevenue,
+    activeInPeriod,
+    debtGroups,
+    periodRevenueAgg,
+    prevPeriodRevenueAgg,
+    totalRevenueAgg,
     recentPayments,
-    totalDebt,
-    overduePayments,
-    newStudentsThisMonth,
-    expiringThisWeek,
-    allMonthlyPayments,
-    allEnrollments,
-    activeStudentsByClass,
+    debtAgg,
+    overdueAgg,
+    newInPeriod,
+    monthlyRevenueRows,
   ] = await Promise.all([
     prisma.student.count({ where: { organizationId: orgId } }),
-    prisma.student.count({ where: { organizationId: orgId, status: "ACTIVE" } }),
 
-    // Numri i nxënësve me borxh — vetëm sipas `balance > 0` (jo fushës `status`,
-    // e cila mbetet shpesh e ngrirë/e vjetruar: krijohet një herë dhe s'rillogaritet
-    // vetvetiu kur kalon afati apo ndryshon balanca; mbështetja tek ajo nënnumëronte
-    // borxhin real — shih edhe totalDebt/overduePayments më poshtë, e njëjta logjikë).
+    // Nxënës "aktivë gjatë periudhës" — regjistruar para mbarimit të periudhës
+    // dhe (s'është bërë ende joaktiv OSE u bë joaktiv brenda/pas fillimit të
+    // periudhës) — kështu për vitin AKTUAL përputhet me `status: "ACTIVE"" e
+    // sotme, por për një vit të kaluar pasqyron realisht kush ishte aktiv
+    // atëherë. E NJËJTA logjikë përdoret te faqja e Nxënësve ("Aktivë"), që
+    // numrat e dy faqeve të përputhen për të njëjtin vit.
+    prisma.student.findMany({
+      where: {
+        organizationId: orgId,
+        enrollDate: { lte: end },
+        OR: [{ inactiveDate: null }, { inactiveDate: { gte: start } }],
+      },
+      select: { id: true, class: { select: { name: true } } },
+    }),
+
+    // Nxënësit me borxh — nga `balance` (jo fusha `status`, shpesh e ngrirë/e
+    // vjetruar), kufizuar te afatet BRENDA periudhës së zgjedhur.
     prisma.payment.groupBy({
       by: ["studentId"],
-      where: { organizationId: orgId, balance: { gt: 0 } },
+      where: { organizationId: orgId, balance: { gt: 0 }, dueDate: { gte: start, lte: end } },
       _count: true,
     }),
 
-    prisma.payment.aggregate({
-      where: {
-        organizationId: orgId,
-        paidDate: { gte: firstDayThisMonth, lte: lastDayThisMonth },
-        status: { in: ["PAID", "PARTIAL"] },
-      },
-      _sum: { paidAmount: true },
-    }),
-
-    prisma.payment.aggregate({
-      where: {
-        organizationId: orgId,
-        paidDate: { gte: firstDayPrevMonth, lte: lastDayPrevMonth },
-        status: { in: ["PAID", "PARTIAL"] },
-      },
-      _sum: { paidAmount: true },
-    }),
-
-    prisma.payment.aggregate({
-      where: { organizationId: orgId, status: "PAID" },
-      _sum: { paidAmount: true },
-    }),
+    prisma.payment.aggregate({ where: revenueWhere(orgId, yearType, months, start, end), _sum: { paidAmount: true } }),
+    prisma.payment.aggregate({ where: revenueWhere(orgId, yearType, prevMonths, prevStart, prevEnd), _sum: { paidAmount: true } }),
+    // Për kartën "Statusi i Pagesave → Të Paguara" — e njëjta shumë si "Të Hyra".
+    prisma.payment.aggregate({ where: revenueWhere(orgId, yearType, months, start, end), _sum: { paidAmount: true } }),
 
     prisma.payment.findMany({
-      where: { organizationId: orgId, paidDate: { not: null } },
+      where: { organizationId: orgId, paidDate: { gte: start, lte: end } },
       orderBy: { paidDate: "desc" },
       take: 8,
       include: {
@@ -80,107 +103,75 @@ export async function GET() {
       },
     }),
 
-    // Borxhi TOTAL (pavarësisht afatit) — direkt nga `balance`, njësoj si Shkollimi/
-    // Ushqimi/Bilanci llogarisin borxhin gjetkë në sistem, jo nga `status`.
+    // Borxhi TOTAL i periudhës (afati brenda periudhës, pavarësisht kur u
+    // paguan pjesërisht) — mbulon TË GJITHA kategoritë, si te grupimi sipër.
     prisma.payment.aggregate({
-      where: { organizationId: orgId, balance: { gt: 0 } },
+      where: { organizationId: orgId, balance: { gt: 0 }, dueDate: { gte: start, lte: end } },
       _sum: { balance: true },
     }),
 
-    // "Vonuar" — llogaritet DINAMIKISHT (afati ka kaluar + ka ende borxh), jo nga
-    // fusha `status`, sepse ajo s'kalon vetvetiu në OVERDUE kur kalon afati — mbetet
-    // "PENDING" derisa dikush ta ruajë pagesën sërish, ndaj nënnumëronte realisht.
+    // "Vonuar" — afati ka kaluar (deri te "tani" ose fundi i periudhës, cilido
+    // vjen më parë) DHE ka ende borxh, e llogaritur dinamikisht nga `balance`.
     prisma.payment.aggregate({
-      where: { organizationId: orgId, balance: { gt: 0 }, dueDate: { lt: now } },
+      where: { organizationId: orgId, balance: { gt: 0 }, dueDate: { gte: start, lte: overdueUpperBound } },
       _sum: { balance: true },
       _count: true,
     }),
 
-    prisma.student.count({
-      where: { organizationId: orgId, enrollDate: { gte: firstDayThisMonth, lte: lastDayThisMonth } },
-    }),
-
-    prisma.payment.count({
-      where: {
-        organizationId: orgId,
-        dueDate: { gte: now, lte: weekEnd },
-        status: { in: ["PENDING", "PARTIAL"] },
-        balance: { gt: 0 },
-      },
-    }),
+    prisma.student.count({ where: { organizationId: orgId, enrollDate: { gte: start, lte: end } } }),
 
     prisma.payment.findMany({
-      where: {
-        organizationId: orgId,
-        paidDate: { gte: new Date(thisYear, thisMonth - 5, 1) },
-        status: { in: ["PAID", "PARTIAL"] },
-      },
-      select: { paidDate: true, paidAmount: true },
-    }),
-
-    prisma.student.findMany({
-      where: { organizationId: orgId, enrollDate: { gte: new Date(thisYear, thisMonth - 5, 1) } },
-      select: { enrollDate: true },
-    }),
-
-    prisma.student.findMany({
-      where: { organizationId: orgId, status: "ACTIVE" },
-      select: { class: { select: { name: true } } },
+      where: revenueWhere(orgId, yearType, months, start, end),
+      select: { paidAmount: true, paidDate: true, month: true, year: true },
     }),
   ]);
 
   const cycleCounts = { ulet: 0, larte: 0, paCaktuar: 0 };
-  for (const s of activeStudentsByClass) {
+  for (const s of activeInPeriod) {
     const cycle = getCycle(s.class?.name);
     if (cycle === "ulet") cycleCounts.ulet++;
     else if (cycle === "larte") cycleCounts.larte++;
     else cycleCounts.paCaktuar++;
   }
 
-  const months = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(thisYear, thisMonth - (5 - i), 1);
-    return { date: d, key: `${d.getFullYear()}-${d.getMonth()}` };
-  });
-
-  const revenueByMonth = new Map<string, number>();
-  for (const p of allMonthlyPayments) {
-    if (!p.paidDate) continue;
-    const key = `${p.paidDate.getFullYear()}-${p.paidDate.getMonth()}`;
-    revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + p.paidAmount);
+  // Grafiku — 12 muajt e periudhës së zgjedhur (jo më 6 muaj rrotullues nga sot).
+  const revByMonthKey = new Map<string, number>();
+  for (const p of monthlyRevenueRows) {
+    let key: string;
+    if (yearType === "academic") {
+      key = `${p.month}-${p.year}`;
+    } else {
+      if (!p.paidDate) continue;
+      const d = new Date(p.paidDate);
+      key = `${d.getMonth() + 1}-${d.getFullYear()}`;
+    }
+    revByMonthKey.set(key, (revByMonthKey.get(key) ?? 0) + p.paidAmount);
   }
-
-  const enrollByMonth = new Map<string, number>();
-  for (const s of allEnrollments) {
-    const key = `${s.enrollDate.getFullYear()}-${s.enrollDate.getMonth()}`;
-    enrollByMonth.set(key, (enrollByMonth.get(key) ?? 0) + 1);
-  }
-
-  const monthlyChartData = months.map(({ date, key }) => ({
-    month:    new Intl.DateTimeFormat("sq-AL", { month: "short" }).format(date),
-    total:    revenueByMonth.get(key) ?? 0,
-    enrolled: enrollByMonth.get(key)  ?? 0,
+  const monthlyChartData = months.map(m => ({
+    month: MONTHS[m.calMonth - 1],
+    total: Math.round((revByMonthKey.get(`${m.calMonth}-${m.calYear}`) ?? 0) * 100) / 100,
   }));
 
-  const thisMonthRev = monthlyPaid._sum.paidAmount || 0;
-  const prevMonthRev = prevMonthPaid._sum.paidAmount || 0;
-  const revenueChangePct = prevMonthRev > 0
-    ? Math.round(((thisMonthRev - prevMonthRev) / prevMonthRev) * 100)
+  const periodRev     = periodRevenueAgg._sum.paidAmount || 0;
+  const prevPeriodRev  = prevPeriodRevenueAgg._sum.paidAmount || 0;
+  const revenueChangePct = prevPeriodRev > 0
+    ? Math.round(((periodRev - prevPeriodRev) / prevPeriodRev) * 100)
     : null;
 
   return NextResponse.json({
+    period: { year, yearType, label },
     totalStudents,
-    activeStudents,
+    activeStudents: activeInPeriod.length,
     cycleCounts,
-    studentsWithDebt: studentsWithDebt.length,
-    monthlyRevenue: thisMonthRev,
-    prevMonthRevenue: prevMonthRev,
+    studentsWithDebt: debtGroups.length,
+    periodRevenue: periodRev,
+    prevPeriodRevenue: prevPeriodRev,
     revenueChangePct,
-    totalRevenue: totalRevenue._sum.paidAmount || 0,
-    totalDebtAmount: totalDebt._sum.balance || 0,
-    overdueAmount: overduePayments._sum.balance || 0,
-    overdueCount: overduePayments._count,
-    newStudentsThisMonth,
-    expiringThisWeek,
+    totalRevenue: totalRevenueAgg._sum.paidAmount || 0,
+    totalDebtAmount: debtAgg._sum.balance || 0,
+    overdueAmount: overdueAgg._sum.balance || 0,
+    overdueCount: overdueAgg._count,
+    newInPeriod,
     recentPayments,
     monthlyChartData,
   });

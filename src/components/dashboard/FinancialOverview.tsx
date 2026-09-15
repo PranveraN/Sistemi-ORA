@@ -8,6 +8,7 @@ import {
   MessageSquare, X, Send,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import type { YearType } from "@/lib/academicYear";
 import {
   PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -20,7 +21,7 @@ interface ExpenseRow { id: number; kategoria: string; shuma: number; lloji: stri
 interface DebtRow { id: number; studentName: string; className: string | null; category: string; balance: number; }
 
 interface Overview {
-  period: { month: number; year: number };
+  period: { year: number; yearType: YearType; label: string };
   studentStatus: {
     counts: { paid: number; partial: number; unpaid: number; timiInvest: number; total: number };
     lists: { paid: StudentRow[]; partial: StudentRow[]; unpaid: StudentRow[]; timiInvest: StudentRow[] };
@@ -63,7 +64,7 @@ function Kpi({ icon, label, value, sub, color, onClick }: {
   );
 }
 
-export default function FinancialOverview() {
+export default function FinancialOverview({ yearType, year }: { yearType: YearType; year: number }) {
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("paid");
@@ -80,11 +81,12 @@ export default function FinancialOverview() {
   const [smsError, setSmsError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/dashboard/financial-overview")
+    setLoading(true);
+    fetch(`/api/dashboard/financial-overview?year=${year}&yearType=${yearType}`)
       .then(r => r.json())
       .then(setData)
       .finally(() => setLoading(false));
-  }, []);
+  }, [year, yearType]);
 
   function buildStudentMessage(row: StudentRow, tab: Tab): string {
     if (tab === "unpaid" || tab === "partial") {
@@ -159,7 +161,7 @@ export default function FinancialOverview() {
   const totalBank = data.revenue.byMethod.BANK ?? 0;
   const totalCash = data.revenue.byMethod.CASH ?? 0;
   const diferenca = data.revenue.totalThisMonth - data.handovers.totalThisMonth;
-  const monthLabel = new Intl.DateTimeFormat("sq-AL", { month: "long", year: "numeric" }).format(new Date(data.period.year, data.period.month - 1, 1));
+  const periodLabel = (data.period.yearType === "academic" ? "Viti Akademik " : "Viti Kalendarik ") + data.period.label;
 
   const q = search.trim().toLowerCase();
   const studentRows = (activeTab === "paid" ? data.studentStatus.lists.paid
@@ -183,7 +185,7 @@ export default function FinancialOverview() {
       <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
         <div>
           <h2 className="section-title">Pasqyrë Financiare</h2>
-          <p className="text-xs text-slate-400 mt-0.5 capitalize">{monthLabel}</p>
+          <p className="text-xs text-slate-400 mt-0.5">{periodLabel}</p>
         </div>
         <Link href="/dorezimet" className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium inline-flex items-center gap-1">
           Dorëzimet <ArrowRight className="w-3.5 h-3.5" />
@@ -194,7 +196,7 @@ export default function FinancialOverview() {
         {/* KPI row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
           <Kpi icon={<Wallet className="w-4.5 h-4.5 text-emerald-600" />} color="bg-emerald-50 dark:bg-emerald-900/30"
-            label="Të Hyra Gjithsej" value={formatCurrency(data.revenue.totalThisMonth)} sub="këtë muaj"
+            label="Të Hyra Gjithsej" value={formatCurrency(data.revenue.totalThisMonth)} sub="këtë periudhë"
             onClick={() => goTo("revenue", null)} />
           <Kpi icon={<Landmark className="w-4.5 h-4.5 text-blue-600" />} color="bg-blue-50 dark:bg-blue-900/30"
             label="Pagesa në Bankë" value={formatCurrency(totalBank)}
@@ -205,7 +207,7 @@ export default function FinancialOverview() {
             sub={data.revenue.totalThisMonth > 0 ? `${Math.round((totalCash / data.revenue.totalThisMonth) * 100)}% e të hyrave` : undefined}
             onClick={() => goTo("revenue", "CASH")} />
           <Kpi icon={<ArrowRightLeft className="w-4.5 h-4.5 text-violet-600" />} color="bg-violet-50 dark:bg-violet-900/30"
-            label="Të Dorëzuara" value={formatCurrency(data.handovers.totalThisMonth)} sub="këtë muaj"
+            label="Të Dorëzuara" value={formatCurrency(data.handovers.totalThisMonth)} sub="këtë periudhë"
             onClick={() => goTo("handovers")} />
           <Kpi icon={diferenca >= 0 ? <CheckCircle className="w-4.5 h-4.5 text-slate-600" /> : <AlertCircle className="w-4.5 h-4.5 text-red-600" />}
             color={diferenca >= 0 ? "bg-slate-100 dark:bg-slate-700" : "bg-red-50 dark:bg-red-900/30"}
@@ -246,7 +248,7 @@ export default function FinancialOverview() {
           </div>
 
           <div className="card p-4">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Të Hyrat Mujore — Bankë / Cash</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Të Hyrat — Bankë / Cash ({data.period.label})</p>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={data.monthlyByMethod}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -377,7 +379,7 @@ export default function FinancialOverview() {
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                 {handoverRows.length === 0 && (
                   <tr><td colSpan={5} className="text-center py-8 text-slate-400 text-sm">
-                    Asnjë dorëzim i regjistruar këtë muaj — <Link href="/dorezimet" className="text-primary-600 hover:underline">regjistro një</Link>
+                    Asnjë dorëzim i regjistruar këtë periudhë — <Link href="/dorezimet" className="text-primary-600 hover:underline">regjistro një</Link>
                   </td></tr>
                 )}
                 {handoverRows.map(h => (
@@ -434,7 +436,7 @@ export default function FinancialOverview() {
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                 {expenseRows.length === 0 && (
-                  <tr><td colSpan={5} className="text-center py-8 text-slate-400 text-sm">Asnjë shpenzim këtë muaj</td></tr>
+                  <tr><td colSpan={5} className="text-center py-8 text-slate-400 text-sm">Asnjë shpenzim këtë periudhë</td></tr>
                 )}
                 {expenseRows.map(e => (
                   <tr key={e.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
