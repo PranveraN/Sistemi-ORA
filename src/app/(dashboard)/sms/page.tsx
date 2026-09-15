@@ -39,6 +39,17 @@ const PAYMENT_FORMAT_LABELS: Record<string, string> = {
   TIMI_INVEST: "Përmes Timi Invest", FULL: "E plotë", NONE: "Pa të dhëna",
 };
 
+// "NONE" (0 pagesa gjithë vitin) ka kuptim krejt tjetër sipas kategorisë:
+// për Shkollimin (tarifë e detyrueshme për të gjithë) do të thotë "ende s'i
+// është prerë fatura" — pikërisht borxhi më i plotë/urgjent, ndaj etiketohet
+// "Borxh i plotë" dhe PËRFSHIHET në rezultate. Për kategoritë opsionale
+// (Ushqimi, Uniforma, etj) do të thotë "s'e ka fare këtë shërbim", ndaj
+// PËRJASHTOHET (shih searchDebt) dhe mbetet "Pa të dhëna" nëse shfaqet ndokund.
+function formatLabel(format: string, category: string): string {
+  if (format === "NONE" && category === "Shkollimi") return "Borxh i plotë";
+  return PAYMENT_FORMAT_LABELS[format] ?? format;
+}
+
 // Njëjtë si inferenca e formatit të pagesës te CategoryPaymentPage.tsx (hasMonthly/
 // hasFlex/hasTwo) — TI ka përparësi (financim i jashtëm, pavarësisht këstëve reale).
 function inferPaymentFormat(s: Pick<DebtStudentRow, "installments" | "timiInvest">): string {
@@ -172,10 +183,16 @@ export default function SmsPage() {
         return { ...s, __status: info.status, debtBalance: info.balance, format: inferPaymentFormat(s) };
       })
       // Përjashto nxënësit që kurrë s'janë ngarkuar në këtë kategori (format
-      // "NONE" = 0 pagesa gjatë gjithë vitit) — "s'ka të dhëna" do të thotë
-      // s'e ka fare këtë shërbim (p.sh. s'ha ushqim në shkollë), jo që ka borxh.
-      .filter(s => s.format !== "NONE")
-      .filter(s => !debtFormat || s.format === debtFormat)
+      // "NONE" = 0 pagesa gjatë gjithë vitit) — VETËM për kategoritë opsionale,
+      // ku "s'ka të dhëna" do të thotë s'e ka fare këtë shërbim (p.sh. s'ha
+      // ushqim në shkollë), jo që ka borxh. Për Shkollimin (tarifë e detyrueshme
+      // për të gjithë) "0 pagesa" përkundrazi është pikërisht borxhi më i plotë —
+      // duhet PËRFSHIRË, jo fshehur (shih formatLabel: "Borxh i plotë").
+      .filter(s => debtCategory === "Shkollimi" || s.format !== "NONE")
+      // TIMI Invest është financim krejt i veçantë (kompani e jashtme) — s'duhet
+      // të përzihet me listat e zakonshme të borxhit, vetëm kur kërkohet eksplicit
+      // (toggle-i "Përmes Timi Invest" ose zgjedhur direkt në dropdown).
+      .filter(s => debtFormat ? s.format === debtFormat : s.format !== "TIMI_INVEST")
       .filter(s => {
         if (debtStatus === "DEBT") return s.__status !== "PAID";
         if (debtStatus === "PARTIAL") return s.__status === "PARTIAL";
@@ -441,7 +458,9 @@ export default function SmsPage() {
                 </select>
                 <select value={debtFormat} onChange={e => setDebtFormat(e.target.value)} className="form-input">
                   <option value="">Çdo format pagese</option>
-                  {Object.entries(PAYMENT_FORMAT_LABELS).filter(([key]) => key !== "NONE").map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  {Object.keys(PAYMENT_FORMAT_LABELS)
+                    .filter(key => key !== "NONE" || debtCategory === "Shkollimi")
+                    .map(key => <option key={key} value={key}>{formatLabel(key, debtCategory)}</option>)}
                 </select>
               </div>
               <div className="flex items-center flex-wrap gap-2">
@@ -491,7 +510,7 @@ export default function SmsPage() {
                           + {s.firstName} {s.lastName}{s.class && ` (${s.class.name})`}
                         </span>
                         <span className="flex items-center gap-1.5 shrink-0 text-slate-400">
-                          <span className={s.format === "TIMI_INVEST" ? "text-violet-500 font-semibold" : ""}>{PAYMENT_FORMAT_LABELS[s.format] ?? s.format}</span>
+                          <span className={s.format === "TIMI_INVEST" ? "text-violet-500 font-semibold" : ""}>{formatLabel(s.format, debtCategory)}</span>
                           {s.debtBalance > 0 && (
                             <span className="text-red-500 font-semibold">{s.debtBalance.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</span>
                           )}
