@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import YearPicker from "@/components/dashboard/YearPicker";
 
 
 interface Class {
@@ -374,14 +375,7 @@ export default function StudentsPage() {
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap gap-1">
-            {(yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS).map(y => (
-              <button key={y} onClick={() => setYear(y)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${year === y ? "bg-primary-600 text-white shadow-sm" : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary-300"}`}>
-                {yearType === "academic" ? `${y}–${y + 1}` : y}
-              </button>
-            ))}
-          </div>
+          <YearPicker years={yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS} year={year} yearType={yearType} onSelect={setYear} />
         </div>
 
         {/* Actions bar */}

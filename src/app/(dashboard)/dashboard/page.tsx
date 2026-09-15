@@ -5,8 +5,9 @@ import Header from "@/components/layout/Header";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import {
   Users, CreditCard, TrendingUp, AlertCircle,
-  ArrowUpRight, CheckCircle, Clock, FileText, History, Receipt,
+  CheckCircle, Clock, FileText, History, Receipt,
   TrendingDown, UserPlus, CalendarClock, Wallet,
+  GraduationCap, Landmark, Wallet as WalletIcon,
 } from "lucide-react";
 import Link from "next/link";
 import OfertaModal from "@/components/OfertaModal";
@@ -14,6 +15,7 @@ import TimiInvestModal from "@/components/TimiInvestModal";
 import QuickActions from "@/components/dashboard/QuickActions";
 import SchoolCalendar from "@/components/dashboard/SchoolCalendar";
 import FinancialOverview from "@/components/dashboard/FinancialOverview";
+import YearPicker from "@/components/dashboard/YearPicker";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -43,7 +45,15 @@ interface DashboardData {
     student: { firstName: string; lastName: string };
     category: { name: string };
   }>;
-  monthlyChartData: Array<{ month: string; total: number }>;
+  monthlyChartData: Array<{ month: string; total: number; isFuture: boolean }>;
+  tuitionOverview: {
+    expected: number;
+    paid: number;
+    debt: number;
+    timiInvestCount: number;
+    timiInvestExpected: number;
+    expenses: number;
+  };
 }
 
 export default function DashboardPage() {
@@ -55,6 +65,7 @@ export default function DashboardPage() {
   const [ofertaView, setOfertaView] = useState<"form" | "history">("form");
   const [showTimiInvest, setShowTimiInvest] = useState(false);
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
+  const [mainTab, setMainTab] = useState<"permbledhje" | "financat">("permbledhje");
 
   const years = yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
 
@@ -99,6 +110,19 @@ export default function DashboardPage() {
   const revPct = data.revenueChangePct;
   const revUp  = revPct !== null && revPct >= 0;
 
+  // Grafiku — ndaj "deri tani" (vijë e plotë) nga muajt e ardhshëm (vijë e
+  // ndërprerë) — përndryshe një vit sapo-fillo duket sikur të hyrat "u shembën".
+  const firstFutureIdx = data.monthlyChartData.findIndex(m => m.isFuture);
+  const chartData = data.monthlyChartData.map((m, i) => ({
+    month: m.month,
+    total: firstFutureIdx === -1 || i < firstFutureIdx ? m.total : undefined,
+    totalFuture: firstFutureIdx === -1 ? undefined : (i >= firstFutureIdx - 1 ? m.total : undefined),
+  }));
+
+  const tuitionCoveredPct = data.totalRevenue + data.totalDebtAmount > 0
+    ? Math.round((data.totalRevenue / (data.totalRevenue + data.totalDebtAmount)) * 100)
+    : 0;
+
   return (
     <>
       <Header title="Dashboard" />
@@ -115,83 +139,36 @@ export default function DashboardPage() {
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap gap-1">
-            {years.map(y => (
-              <button key={y} onClick={() => setYear(y)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${year === y ? "bg-primary-600 text-white shadow-sm" : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary-300"}`}>
-                {yearType === "academic" ? `${y}–${y + 1}` : y}
-              </button>
-            ))}
-          </div>
+          <YearPicker years={years} year={year} yearType={yearType} onSelect={setYear} />
           {loading && <Clock className="w-4 h-4 text-slate-300 animate-spin" />}
         </div>
 
-        {/* Quick Actions bar */}
-        <QuickActions />
-
-        {/* Quick action cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-          <button onClick={() => { setOfertaView("form"); setShowOferta(true); }}
-            className="flex items-center gap-3 p-4 card hover:ring-2 hover:ring-primary-300 dark:hover:ring-primary-700 transition-all text-left group">
-            <div className="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center flex-shrink-0 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/50 transition-colors">
-              <FileText className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-white text-sm">Krijo Ofertë &amp; Parafaturë</p>
-              <p className="text-xs text-slate-400 mt-0.5">Gjenero ofertë me çmimet e shërbimeve</p>
-            </div>
-            <ArrowUpRight className="w-4 h-4 text-slate-300 ml-auto flex-shrink-0 group-hover:text-primary-500 transition-colors" />
-          </button>
-
-          <button onClick={() => { setOfertaView("history"); setShowOferta(true); }}
-            className="flex items-center gap-3 p-4 card hover:ring-2 hover:ring-slate-300 dark:hover:ring-slate-600 transition-all text-left group">
-            <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700/60 flex items-center justify-center flex-shrink-0 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 transition-colors">
-              <History className="w-5 h-5 text-slate-500 dark:text-slate-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-white text-sm">Historiku i Ofertave</p>
-              <p className="text-xs text-slate-400 mt-0.5">Shiko dhe printo ofertat e ruajtura</p>
-            </div>
-            <ArrowUpRight className="w-4 h-4 text-slate-300 ml-auto flex-shrink-0 group-hover:text-slate-500 transition-colors" />
-          </button>
-
-          <Link href="/faturat-rregullta"
-            className="flex items-center gap-3 p-4 card hover:ring-2 hover:ring-emerald-300 dark:hover:ring-emerald-700 transition-all text-left group">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/50 transition-colors">
-              <Receipt className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-white text-sm">Faturat e Rregullta</p>
-              <p className="text-xs text-slate-400 mt-0.5">ATK · R-Kosovës · TVSH</p>
-            </div>
-            <ArrowUpRight className="w-4 h-4 text-slate-300 ml-auto flex-shrink-0 group-hover:text-emerald-500 transition-colors" />
-          </Link>
-
-          {timiInvestEnabled && (
-            <button onClick={() => setShowTimiInvest(true)}
-              className="flex items-center gap-3 p-4 card hover:ring-2 hover:ring-amber-300 dark:hover:ring-amber-700 transition-all text-left group">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0 group-hover:bg-amber-100 dark:group-hover:bg-amber-900/50 transition-colors">
-                <CreditCard className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-white text-sm">TIMI INVEST</p>
-                <p className="text-xs text-slate-400 mt-0.5">Nxënësit, faturat dhe profaturët</p>
-              </div>
-              <ArrowUpRight className="w-4 h-4 text-slate-300 ml-auto flex-shrink-0 group-hover:text-amber-500 transition-colors" />
-            </button>
-          )}
-
-          <Link href="/shpenzime"
-            className="flex items-center gap-3 p-4 card hover:ring-2 hover:ring-red-300 dark:hover:ring-red-700 transition-all text-left group">
-            <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0 group-hover:bg-red-100 dark:group-hover:bg-red-900/50 transition-colors">
-              <Wallet className="w-5 h-5 text-red-600 dark:text-red-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-white text-sm">Shpenzimet</p>
-              <p className="text-xs text-slate-400 mt-0.5">Regjistro dhe menaxho shpenzimet</p>
-            </div>
-            <ArrowUpRight className="w-4 h-4 text-slate-300 ml-auto flex-shrink-0 group-hover:text-red-500 transition-colors" />
-          </Link>
+        {/* Veprime — një zonë e vetme (bar-i + kartat kompakte poshtë tij) */}
+        <div className="space-y-2">
+          <QuickActions />
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+            {[
+              { icon: FileText,   label: "Krijo Ofertë & Parafaturë", color: "text-primary-600 dark:text-primary-400", bg: "bg-primary-50 dark:bg-primary-900/30", onClick: () => { setOfertaView("form"); setShowOferta(true); } },
+              { icon: History,    label: "Historiku i Ofertave",      color: "text-slate-500 dark:text-slate-400",     bg: "bg-slate-100 dark:bg-slate-700/60",    onClick: () => { setOfertaView("history"); setShowOferta(true); } },
+              { icon: Receipt,    label: "Faturat e Rregullta",       color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/30", href: "/faturat-rregullta" },
+              ...(timiInvestEnabled ? [{ icon: CreditCard, label: "TIMI INVEST", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/30", onClick: () => setShowTimiInvest(true) }] : []),
+              { icon: Wallet,     label: "Shpenzimet",                color: "text-red-600 dark:text-red-400",         bg: "bg-red-50 dark:bg-red-900/30",         href: "/shpenzime" },
+            ].map((a, i) => {
+              const Icon = a.icon;
+              const content = (
+                <>
+                  <div className={`w-8 h-8 rounded-lg ${a.bg} flex items-center justify-center flex-shrink-0`}>
+                    <Icon className={`w-4 h-4 ${a.color}`} />
+                  </div>
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">{a.label}</span>
+                </>
+              );
+              const cls = "flex items-center gap-2 px-3 py-2 card hover:ring-2 hover:ring-primary-200 dark:hover:ring-primary-800 transition-all text-left";
+              return a.href
+                ? <Link key={i} href={a.href} className={cls}>{content}</Link>
+                : <button key={i} onClick={a.onClick} className={cls}>{content}</button>;
+            })}
+          </div>
         </div>
 
         {/* KPI Cards */}
@@ -219,7 +196,7 @@ export default function DashboardPage() {
             <p className="text-xs text-slate-400 mt-1">
               {revPct !== null
                 ? `${revUp ? "+" : ""}${revPct}% vs periudha e kaluar (${formatCurrency(data.prevPeriodRevenue)})`
-                : "Pa krahasim"}
+                : "Vit i ri — pa krahasim ende"}
             </p>
           </div>
 
@@ -295,134 +272,187 @@ export default function DashboardPage() {
 
         </div>
 
-        {/* Kalendarit + Grafiku + Statusi */}
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-
-          {/* Kalendari */}
-          <div className="xl:col-span-1">
-            <SchoolCalendar />
+        {/* Pasqyrë Shkollimi — vetëm kategoria Shkollimi, për vitin e zgjedhur */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <GraduationCap className="w-4.5 h-4.5 text-primary-500" />
+            <h2 className="section-title">Pasqyrë Shkollimi — {data.period.label}</h2>
           </div>
-
-          {/* Grafiku + Statusi */}
-          <div className="xl:col-span-3 flex flex-col gap-4">
-
-            {/* Revenue Chart */}
-            <div className="card p-5 flex-1">
-              <h2 className="section-title mb-4">Të Hyrat — {data.period.label}</h2>
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={data.monthlyChartData}>
-                  <defs>
-                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false}
-                    tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
-                  <Tooltip formatter={(v: number) => [formatCurrency(v), "Të hyra"]}
-                    contentStyle={{ background: "#1e293b", border: "none", borderRadius: "8px", color: "#f8fafc", fontSize: "12px" }} />
-                  <Area type="monotone" dataKey="total" stroke="#2563eb" strokeWidth={2} fill="url(#colorRevenue)" />
-                </AreaChart>
-              </ResponsiveContainer>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60">
+              <p className="text-xs text-slate-400 mb-0.5">Pritet gjithsej</p>
+              <p className="text-lg font-bold text-slate-800 dark:text-white">{formatCurrency(data.tuitionOverview.expected)}</p>
             </div>
+            <div className="p-3 rounded-xl bg-green-50 dark:bg-green-900/20">
+              <p className="text-xs text-green-600 dark:text-green-400 mb-0.5">Paguar</p>
+              <p className="text-lg font-bold text-green-700 dark:text-green-300">{formatCurrency(data.tuitionOverview.paid)}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20">
+              <p className="text-xs text-red-600 dark:text-red-400 mb-0.5">Borxh</p>
+              <p className="text-lg font-bold text-red-700 dark:text-red-300">{formatCurrency(data.tuitionOverview.debt)}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20">
+              <p className="text-xs text-violet-600 dark:text-violet-400 mb-0.5 flex items-center gap-1">
+                <Landmark className="w-3 h-3" /> Përmes TIMI Invest
+              </p>
+              <p className="text-lg font-bold text-violet-700 dark:text-violet-300">{formatCurrency(data.tuitionOverview.timiInvestExpected)}</p>
+              <p className="text-[11px] text-violet-500 dark:text-violet-400 mt-0.5">{data.tuitionOverview.timiInvestCount} nxënës</p>
+            </div>
+            <div className="p-3 rounded-xl bg-orange-50 dark:bg-orange-900/20">
+              <p className="text-xs text-orange-600 dark:text-orange-400 mb-0.5 flex items-center gap-1">
+                <WalletIcon className="w-3 h-3" /> Shpenzime (faturat)
+              </p>
+              <p className="text-lg font-bold text-orange-700 dark:text-orange-300">{formatCurrency(data.tuitionOverview.expenses)}</p>
+            </div>
+          </div>
+        </div>
 
-            {/* Statusi i Pagesave — horizontal */}
-            <div className="card p-4">
-              <h2 className="section-title mb-3">Statusi i Pagesave</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="flex items-center gap-2.5 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
-                  <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+        {/* Tabs — Përmbledhje vs Financat e Detajuara */}
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">
+          {([["permbledhje", "Përmbledhje"], ["financat", "Financat e Detajuara"]] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setMainTab(key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${mainTab === key ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mainTab === "permbledhje" && (
+          <>
+            {/* Kalendarit + Grafiku + Statusi */}
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+
+              {/* Kalendari */}
+              <div className="xl:col-span-1">
+                <SchoolCalendar />
+              </div>
+
+              {/* Grafiku + Statusi */}
+              <div className="xl:col-span-3 flex flex-col gap-4">
+
+                {/* Revenue Chart */}
+                <div className="card p-5 flex-1">
+                  <h2 className="section-title mb-4">Të Hyrat — {data.period.label}</h2>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <AreaChart data={chartData}>
+                      <defs>
+                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15} />
+                          <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="colorRevenueFuture" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.1} />
+                          <stop offset="95%" stopColor="#94a3b8" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false}
+                        tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+                      <Tooltip formatter={(v: number, key: string) => [formatCurrency(v), key === "totalFuture" ? "Ende s'ka ardhur" : "Të hyra"]}
+                        contentStyle={{ background: "#1e293b", border: "none", borderRadius: "8px", color: "#f8fafc", fontSize: "12px" }} />
+                      <Area type="monotone" dataKey="total" stroke="#2563eb" strokeWidth={2} fill="url(#colorRevenue)" connectNulls={false} />
+                      <Area type="monotone" dataKey="totalFuture" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" fill="url(#colorRevenueFuture)" connectNulls={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Statusi i Pagesave — horizontal, thjeshtuar (Borxhe/Nxënës Aktivë tashmë lart) */}
+                <div className="card p-4">
+                  <h2 className="section-title mb-3">Statusi i Pagesave</h2>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="flex items-center gap-2.5 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
+                      <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs text-green-600 dark:text-green-400">Të Paguara</p>
+                        <p className="text-sm font-bold text-green-700 dark:text-green-300">{formatCurrency(data.totalRevenue)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+                      <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs text-amber-600 dark:text-amber-400">Vonuar</p>
+                        <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{formatCurrency(data.overdueAmount)}</p>
+                      </div>
+                    </div>
+                  </div>
                   <div>
-                    <p className="text-xs text-green-600 dark:text-green-400">Të Paguara</p>
-                    <p className="text-sm font-bold text-green-700 dark:text-green-300">{formatCurrency(data.totalRevenue)}</p>
+                    <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+                      <span>Mbuluar nga pagesat</span>
+                      <span className="font-semibold text-slate-600 dark:text-slate-300">{tuitionCoveredPct}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-red-100 dark:bg-red-900/30 overflow-hidden">
+                      <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${tuitionCoveredPct}%` }} />
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl">
-                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-red-600 dark:text-red-400">Borxhe</p>
-                    <p className="text-sm font-bold text-red-700 dark:text-red-300">{formatCurrency(data.totalDebtAmount)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2.5 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
-                  <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-amber-600 dark:text-amber-400">Vonuar</p>
-                    <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{formatCurrency(data.overdueAmount)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2.5 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-                  <Users className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-blue-600 dark:text-blue-400">Nxënës Aktivë</p>
-                    <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{data.activeStudents}</p>
-                  </div>
-                </div>
+
+              </div>
+            </div>
+          </>
+        )}
+
+        {mainTab === "financat" && (
+          <>
+            {/* Recent Payments */}
+            <div className="card">
+              <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+                <h2 className="section-title">Pagesat e Fundit — {data.period.label}</h2>
+                <a href="/payments" className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium">
+                  Shiko të gjitha →
+                </a>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50">
+                    <tr>
+                      <th className="table-header">Nxënësi</th>
+                      <th className="table-header">Kategoria</th>
+                      <th className="table-header">Shuma</th>
+                      <th className="table-header">Metoda</th>
+                      <th className="table-header">Data</th>
+                      <th className="table-header">Statusi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                    {data.recentPayments.map((p) => (
+                      <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                        <td className="table-cell font-medium text-slate-900 dark:text-white">
+                          {p.student.firstName} {p.student.lastName}
+                        </td>
+                        <td className="table-cell text-slate-500 dark:text-slate-400">{p.category.name}</td>
+                        <td className="table-cell font-semibold text-slate-900 dark:text-white">
+                          {formatCurrency(p.paidAmount)}
+                        </td>
+                        <td className="table-cell text-slate-500 dark:text-slate-400">
+                          {getStatusLabel(p.method)}
+                        </td>
+                        <td className="table-cell text-slate-500 dark:text-slate-400">
+                          {formatDate(p.paidDate)}
+                        </td>
+                        <td className="table-cell">
+                          <span className={`badge ${getStatusColor(p.status)}`}>
+                            {getStatusLabel(p.status)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {data.recentPayments.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="table-cell text-center text-slate-400 py-8">
+                          Asnjë pagesë e regjistruar për këtë periudhë
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
-          </div>
-        </div>
-
-        {/* Recent Payments */}
-        <div className="card">
-          <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
-            <h2 className="section-title">Pagesat e Fundit — {data.period.label}</h2>
-            <a href="/payments" className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium">
-              Shiko të gjitha →
-            </a>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 dark:bg-slate-800/50">
-                <tr>
-                  <th className="table-header">Nxënësi</th>
-                  <th className="table-header">Kategoria</th>
-                  <th className="table-header">Shuma</th>
-                  <th className="table-header">Metoda</th>
-                  <th className="table-header">Data</th>
-                  <th className="table-header">Statusi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                {data.recentPayments.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                    <td className="table-cell font-medium text-slate-900 dark:text-white">
-                      {p.student.firstName} {p.student.lastName}
-                    </td>
-                    <td className="table-cell text-slate-500 dark:text-slate-400">{p.category.name}</td>
-                    <td className="table-cell font-semibold text-slate-900 dark:text-white">
-                      {formatCurrency(p.paidAmount)}
-                    </td>
-                    <td className="table-cell text-slate-500 dark:text-slate-400">
-                      {getStatusLabel(p.method)}
-                    </td>
-                    <td className="table-cell text-slate-500 dark:text-slate-400">
-                      {formatDate(p.paidDate)}
-                    </td>
-                    <td className="table-cell">
-                      <span className={`badge ${getStatusColor(p.status)}`}>
-                        {getStatusLabel(p.status)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {data.recentPayments.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="table-cell text-center text-slate-400 py-8">
-                      Asnjë pagesë e regjistruar për këtë periudhë
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Pasqyrë Financiare — respekton të njëjtën periudhë të zgjedhur sipër */}
-        <FinancialOverview yearType={yearType} year={year} />
+            {/* Pasqyrë Financiare — respekton të njëjtën periudhë të zgjedhur sipër */}
+            <FinancialOverview yearType={yearType} year={year} />
+          </>
+        )}
       </div>
 
       {showOferta && <OfertaModal initialView={ofertaView} onClose={() => setShowOferta(false)} />}

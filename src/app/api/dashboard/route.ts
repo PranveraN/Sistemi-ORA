@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCycle } from "@/lib/school-cycles";
 import { getDateRange, getAcademicMonths, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import { MONTHS } from "@/lib/utils";
+import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 
 type PeriodMonth = { calMonth: number; calYear: number };
 
@@ -50,6 +51,14 @@ export async function GET(req: NextRequest) {
   // numërojë afate që ende s'kanë ardhur).
   const overdueUpperBound = end < now ? end : now;
 
+  // ── Pasqyrë Shkollimi (për "Pasqyrë Shkollimi" te Dashboard) ──
+  const shkollimiCategory = await prisma.paymentCategory.findFirst({ where: { name: "Shkollimi", organizationId: orgId } });
+  const tuitionAccrualWhere = shkollimiCategory ? (
+    yearType === "academic"
+      ? { organizationId: orgId, categoryId: shkollimiCategory.id, OR: months.map(m => ({ month: m.calMonth, year: m.calYear })) }
+      : { organizationId: orgId, categoryId: shkollimiCategory.id, dueDate: { gte: start, lte: end } }
+  ) : null;
+
   const [
     totalStudents,
     activeInPeriod,
@@ -62,6 +71,9 @@ export async function GET(req: NextRequest) {
     overdueAgg,
     newInPeriod,
     monthlyRevenueRows,
+    timiInvestLinks,
+    tuitionRows,
+    expenseGroups,
   ] = await Promise.all([
     prisma.student.count({ where: { organizationId: orgId } }),
 
@@ -124,6 +136,24 @@ export async function GET(req: NextRequest) {
       where: revenueWhere(orgId, yearType, months, start, end),
       select: { paidAmount: true, paidDate: true, month: true, year: true },
     }),
+
+    prisma.timiInvestStudent.findMany({
+      where: { active: true, studentId: { not: null } },
+      select: { studentId: true, regularPrice: true, discountPct: true, manualDiscAmt: true },
+    }),
+
+    tuitionAccrualWhere
+      ? prisma.payment.findMany({
+          where: tuitionAccrualWhere,
+          select: { studentId: true, finalAmount: true, paidAmount: true, description: true },
+        })
+      : Promise.resolve([]),
+
+    prisma.shpenzim.groupBy({
+      by: ["lloji"],
+      where: { data: { gte: start, lte: end } },
+      _sum: { shuma: true },
+    }),
   ]);
 
   const cycleCounts = { ulet: 0, larte: 0, paCaktuar: 0 };
@@ -150,13 +180,47 @@ export async function GET(req: NextRequest) {
   const monthlyChartData = months.map(m => ({
     month: MONTHS[m.calMonth - 1],
     total: Math.round((revByMonthKey.get(`${m.calMonth}-${m.calYear}`) ?? 0) * 100) / 100,
+    // Muaj që ende s'ka ardhur — grafiku e stilizon ndryshe, të mos duket si
+    // "rënie" e të hyrave (thjesht muaji ende s'ka kaluar).
+    isFuture: new Date(m.calYear, m.calMonth - 1, 1) > now,
   }));
 
   const periodRev     = periodRevenueAgg._sum.paidAmount || 0;
   const prevPeriodRev  = prevPeriodRevenueAgg._sum.paidAmount || 0;
-  const revenueChangePct = prevPeriodRev > 0
+  // Krahasimi % kundrejt periudhës paraardhëse s'ka kuptim praktik kur periudha
+  // e zgjedhur sapo ka filluar (p.sh. 1 muaj i vitit akademik kundrejt gjithë
+  // vitit paraardhës del si "+3000%") — shfaqet vetëm pas ~45 ditësh.
+  const daysSincePeriodStart = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+  const revenueChangePct = prevPeriodRev > 0 && daysSincePeriodStart >= 45
     ? Math.round(((periodRev - prevPeriodRev) / prevPeriodRev) * 100)
     : null;
+
+  // ── Pasqyrë Shkollimi ──
+  const timiInvestIds = new Set(timiInvestLinks.map(t => t.studentId as number));
+  const timiInvestCount = timiInvestLinks.length;
+  const timiInvestExpected = timiInvestLinks.reduce((sum, t) => {
+    const discAmt = t.regularPrice * (t.discountPct / 100);
+    return sum + Math.max(0, t.regularPrice - discAmt - (t.manualDiscAmt || 0));
+  }, 0);
+
+  const tuitionByStudent = new Map<number, { finalAmount: number; paidAmount: number; description: string | null }[]>();
+  for (const p of tuitionRows) {
+    const arr = tuitionByStudent.get(p.studentId) ?? [];
+    arr.push(p);
+    tuitionByStudent.set(p.studentId, arr);
+  }
+  let tuitionExpected = 0, tuitionPaid = 0, tuitionDebt = 0;
+  for (const [studentId, rows] of tuitionByStudent) {
+    if (timiInvestIds.has(studentId)) continue; // numërohen veç sipër, jo dyfish këtu
+    const { finalAmount, paidAmount, balance } = aggregatePaymentTotals(rows);
+    tuitionExpected += finalAmount;
+    tuitionPaid += paidAmount;
+    tuitionDebt += balance;
+  }
+
+  const expensesByType: Record<string, number> = { ZYRE: 0, BANKE: 0 };
+  for (const g of expenseGroups) expensesByType[g.lloji] = g._sum.shuma ?? 0;
+  const tuitionExpenses = expensesByType.ZYRE + expensesByType.BANKE;
 
   return NextResponse.json({
     period: { year, yearType, label },
@@ -174,5 +238,13 @@ export async function GET(req: NextRequest) {
     newInPeriod,
     recentPayments,
     monthlyChartData,
+    tuitionOverview: {
+      expected: Math.round(tuitionExpected * 100) / 100,
+      paid: Math.round(tuitionPaid * 100) / 100,
+      debt: Math.round(tuitionDebt * 100) / 100,
+      timiInvestCount,
+      timiInvestExpected: Math.round(timiInvestExpected * 100) / 100,
+      expenses: Math.round(tuitionExpenses * 100) / 100,
+    },
   });
 }
