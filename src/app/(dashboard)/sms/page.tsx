@@ -25,6 +25,7 @@ interface DebtStudentRow extends StudentRow {
   status: string;
   payment: { status: string; finalAmount: number; balance: number } | null;
   timiInvest: unknown | null;
+  discountPct: number | null;
   // Rreshtat e papërmbledhur — nevojiten (a) për Ushqimin, ku një "periudhë" e
   // vetme (p.sh. Nëntor/Dhjetor) mbulon 2 muaj kalendarikë dhe s'mund të
   // kontrollohet saktë me filtrin e thjeshtë "month", dhe (b) për të nxjerrë
@@ -172,6 +173,7 @@ export default function SmsPage() {
     setDebtSearched(true);
     if (!res.ok) { setDebtResults([]); return; }
     const all: DebtStudentRow[] = d.students || [];
+    const categoryDefaultAmount: number = d.category?.defaultAmount ?? 0;
     const targetMonths = isFood
       ? PERIOD_BUCKETS.find(p => p.canonicalMonth === Number(debtMonth))?.months ?? null
       : (Number(debtMonth) > 0 ? [Number(debtMonth)] : null);
@@ -180,7 +182,15 @@ export default function SmsPage() {
       .filter(s => !debtClassId || s.class?.id === Number(debtClassId))
       .map(s => {
         const info = periodInfo(s.installments ?? [], targetMonths);
-        return { ...s, __status: info.status, debtBalance: info.balance, format: inferPaymentFormat(s) };
+        const format = inferPaymentFormat(s);
+        // "Borxh i plotë" (Shkollimi, 0 pagesa) s'ka kurrfarë kësti prej nga
+        // të llogaritet borxhi — shfaqet tarifa standarde e kategorisë e
+        // përshtatur me zbritjen e nxënësit, njësoj si te totalDebt në
+        // /api/students dhe /api/category-payments (shih Math.round(...)).
+        const debtBalance = (format === "NONE" && debtCategory === "Shkollimi")
+          ? Math.round(categoryDefaultAmount * (1 - (s.discountPct ?? 0) / 100))
+          : info.balance;
+        return { ...s, __status: info.status, debtBalance, format };
       })
       // Përjashto nxënësit që kurrë s'janë ngarkuar në këtë kategori (format
       // "NONE" = 0 pagesa gjatë gjithë vitit) — VETËM për kategoritë opsionale,
