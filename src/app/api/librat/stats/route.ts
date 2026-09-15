@@ -9,34 +9,51 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const from = searchParams.get("from");
-  const to   = searchParams.get("to");
+  const from = searchParams.get("from") || "";
+  const to   = searchParams.get("to") || "";
 
-  const dateFilter = from || to ? {
-    ...(from ? { gte: new Date(from) } : {}),
-    ...(to   ? { lte: new Date(to) }   : {}),
-  } : undefined;
+  // SQL i papërpunuar për filtrin e datës (jo `saleDate: {gte,lte}` i Prisma-s) —
+  // sepse BookSale.saleDate/BookHandover.handoverAt shkruhen gjithmonë nëpërmjet
+  // SQL-it të papërpunuar (`datetime('now')`, shih /api/librat/sales/route.ts),
+  // jo `.create()` i Prisma-s. Formati i ruajtur në SQLite s'përputhet me atë që
+  // pret motori i pyetjeve TIPIZUARA të Prisma-s për `lte`/`lt` — krahasimi i
+  // tillë kthen 0 rezultate edhe kur data është qartazi brenda intervalit
+  // (konfirmuar me teste direkte: `gte` funksiononte, `lte` jo, as për "lte 2030").
+  // Krahasimi tekstual i thjeshtë (siç bën /api/librat/sales) funksionon saktë.
+  let saleWhere = "WHERE 1=1";
+  if (from) saleWhere += ` AND saleDate >= '${from}'`;
+  if (to)   saleWhere += ` AND saleDate <= '${to}'`;
+  let handoverWhere = "WHERE 1=1";
+  if (from) handoverWhere += ` AND handoverAt >= '${from}'`;
+  if (to)   handoverWhere += ` AND handoverAt <= '${to}'`;
 
-  const [sales, handovers, products] = await Promise.all([
-    prisma.bookSale.findMany({
-      where: dateFilter ? { saleDate: dateFilter } : {},
-      select: { id: true, totalAmount: true, totalCost: true, profit: true, paidAmount: true, balance: true, status: true },
-    }),
-    prisma.bookHandover.findMany({
-      where: dateFilter ? { handoverAt: dateFilter } : {},
-      select: { amount: true },
-    }),
+  const [salesRaw, handoversRaw, products] = await Promise.all([
+    prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+      `SELECT id, totalAmount, totalCost, profit, paidAmount, balance, status FROM BookSale ${saleWhere}`
+    ),
+    prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+      `SELECT amount FROM BookHandover ${handoverWhere}`
+    ),
     prisma.bookProduct.findMany({
       select: { id: true, name: true, stock: true, buyPrice: true, sellPrice: true, active: true },
     }),
   ]);
 
+  const sales = salesRaw.map(s => ({
+    id: Number(s.id), totalAmount: Number(s.totalAmount), totalCost: Number(s.totalCost),
+    profit: Number(s.profit), paidAmount: Number(s.paidAmount), balance: Number(s.balance),
+    status: String(s.status),
+  }));
+  const handovers = handoversRaw.map(h => ({ amount: Number(h.amount) }));
+
   // BookSaleItem s'ka relacion Prisma drejt BookSale (vetëm saleId si kolonë e thjeshtë),
   // ndaj kufizohet me listën e ID-ve të shitjeve tashmë të filtruara sipas datës.
-  const saleItems = await prisma.bookSaleItem.findMany({
-    where: { saleId: { in: sales.map(s => s.id) } },
-    select: { productId: true, quantity: true, total: true, profit: true, buyPrice: true, sellPrice: true },
-  });
+  const saleItems = sales.length
+    ? await prisma.bookSaleItem.findMany({
+        where: { saleId: { in: sales.map(s => s.id) } },
+        select: { productId: true, quantity: true, total: true, profit: true, buyPrice: true, sellPrice: true },
+      })
+    : [];
 
   const totalRevenue    = sales.reduce((s, x) => s + x.totalAmount, 0);
   const totalCost       = sales.reduce((s, x) => s + x.totalCost,   0);
