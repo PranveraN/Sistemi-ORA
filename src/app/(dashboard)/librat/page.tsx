@@ -390,11 +390,6 @@ export default function LibratPage() {
   const [batchMethod, setBatchMethod] = useState("CASH");
   const [familyReceiptPrintId, setFamilyReceiptPrintId] = useState<number | null>(null);
 
-  /* ── Stats ── */
-  const totalRevenue = sales.reduce((s, x) => s + x.paidAmount, 0);
-  const totalDebt    = sales.reduce((s, x) => s + x.balance, 0);
-  const totalProfit  = sales.reduce((s, x) => s + x.profit, 0);
-
   const fetchProducts = useCallback(async () => {
     setProdLoading(true);
     const r = await fetch("/api/librat/products");
@@ -535,7 +530,11 @@ export default function LibratPage() {
     const t = setTimeout(fetchMissing, 300);
     return () => clearTimeout(t);
   }, [tab, fetchMissing]);
-  useEffect(() => { if (tab === "raport") fetchStats(); }, [tab, fetchStats]);
+  // Gjithmonë (jo vetëm te tab-i "Raport") — KPI kartat lart (Shitje/Të Hyra/
+  // Borxhe/Fitimi) janë gjithmonë të dukshme dhe duhet ta lexojnë këtë burim
+  // (shih më poshtë), jo listën `sales` të tabit "Shitjet", e cila është e
+  // kufizuar te 100 rreshta dhe ndryshon sipas kërkim/filtrave të tabit.
+  useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { if (tab === "dorezim") fetchHandovers(); }, [tab, fetchHandovers]);
 
   async function openDetail(sale: Sale) {
@@ -552,6 +551,7 @@ export default function LibratPage() {
     setDetailSale(null);
     fetchSales();
     fetchMissing();
+    fetchStats();
   }
 
   function toggleSelect(id: number) {
@@ -591,6 +591,7 @@ export default function LibratPage() {
     setSelected(new Set());
     setFamilyReceiptPrintId(d.id);
     fetchSales();
+    fetchStats();
   }
 
   const selectedSales = sales.filter(s => selected.has(s.id));
@@ -618,7 +619,8 @@ export default function LibratPage() {
       <Header title="Librat e Anglishtes" />
       <div className="p-6 space-y-5 animate-fade-in">
 
-        {/* KPI cards */}
+        {/* KPI cards — nga /api/librat/stats (gjithë periudha, jo lista e kufizuar
+            e tabit "Shitjet" te 100 rreshta, që i tregonte gabimisht/pjesërisht) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="card p-3">
             <div className="flex items-center gap-2 mb-1">
@@ -627,22 +629,22 @@ export default function LibratPage() {
               </div>
               <span className="text-xs text-slate-400">Shitje</span>
             </div>
-            <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{sales.length}</p>
+            <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{stats?.salesCount ?? "—"}</p>
           </div>
           <div className="card p-3">
             <p className="text-xs text-slate-400 mb-0.5">Të Hyra</p>
-            <p className="text-lg font-bold text-green-600">{fmt(totalRevenue)} €</p>
+            <p className="text-lg font-bold text-green-600">{fmt(stats?.totalCollected ?? 0)} €</p>
           </div>
           <div className="card p-3">
             <p className="text-xs text-slate-400 mb-0.5">Borxhe</p>
-            <p className="text-lg font-bold text-red-500">{fmt(totalDebt)} €</p>
+            <p className="text-lg font-bold text-red-500">{fmt(stats?.totalDebt ?? 0)} €</p>
           </div>
           <div className="card p-3">
             <div className="flex items-center gap-1 mb-0.5">
               <TrendingUp className="w-3 h-3 text-emerald-500" />
               <p className="text-xs text-slate-400">Fitimi</p>
             </div>
-            <p className="text-lg font-bold text-emerald-600">{fmt(totalProfit)} €</p>
+            <p className="text-lg font-bold text-emerald-600">{fmt(stats?.totalProfit ?? 0)} €</p>
           </div>
         </div>
 
@@ -1212,7 +1214,7 @@ export default function LibratPage() {
           products={products}
           presetStudent={newSaleStudent}
           onClose={() => { setNewSaleModal(false); setNewSaleStudent(null); }}
-          onSave={() => { setNewSaleModal(false); setNewSaleStudent(null); fetchSales(); fetchMissing(); }}
+          onSave={() => { setNewSaleModal(false); setNewSaleStudent(null); fetchSales(); fetchMissing(); fetchStats(); }}
         />
       )}
 
@@ -1229,6 +1231,7 @@ export default function LibratPage() {
             const r = await fetch(`/api/librat/sales/${detailSale.id}`);
             if (r.ok) setDetailSale(await r.json());
             fetchSales();
+            fetchStats();
           }}
         />
       )}
