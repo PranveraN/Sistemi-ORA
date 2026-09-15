@@ -75,6 +75,7 @@ export default function ShpenzimePage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"shpenzime" | "raport" | "raport-zb" | "kategorite">("shpenzime");
   const [llojiFilter, setLlojiFilter] = useState<"" | "ZYRE" | "BANKE">("");
+  const [katFilter, setKatFilter] = useState<number | "">("");
 
   // Raport vjetor
   type RaportKat = { id: number; emri: string; ngjyra: string | null; ikona: string | null; muajt: Record<number, number>; total: number };
@@ -626,8 +627,10 @@ export default function ShpenzimePage() {
     XLSX.writeFile(wb, "Template-Partneret-Biznesit.xlsx");
   }
 
-  // Filtrim sipas llojit (Zyre/Banke)
-  const shpenzimeFiltruara = llojiFilter ? shpenzime.filter(s => s.lloji === llojiFilter) : shpenzime;
+  // Filtrim sipas llojit (Zyre/Banke) dhe/ose kategorisë (dropdown ose kliku i çipit "Sipas kategorisë")
+  const shpenzimeFiltruara = shpenzime
+    .filter(s => !llojiFilter || s.lloji === llojiFilter)
+    .filter(s => !katFilter || s.kategori.id === katFilter);
 
   const totalZyre   = shpenzime.filter(s => s.lloji === "ZYRE" || !s.lloji).reduce((sum, s) => sum + s.shuma, 0);
   const totalBanke  = shpenzime.filter(s => s.lloji === "BANKE").reduce((sum, s) => sum + s.shuma, 0);
@@ -653,6 +656,10 @@ export default function ShpenzimePage() {
           </select>
           <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-24">
             {[2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select value={katFilter} onChange={e => setKatFilter(e.target.value ? parseInt(e.target.value) : "")} className="form-input w-44">
+            <option value="">Të gjitha kategoritë</option>
+            {kategorite.map(k => <option key={k.id} value={k.id}>{k.ikona} {k.emri}</option>)}
           </select>
 
           {/* Filtri Zyre / Banke */}
@@ -716,15 +723,32 @@ export default function ShpenzimePage() {
             {/* Category breakdown */}
             {byCat.length > 0 && (
               <div className="card p-4">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Sipas kategorisë</p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                    Sipas kategorisë <span className="normal-case font-normal">— kliko për të filtruar listën poshtë</span>
+                  </p>
+                  {katFilter && (
+                    <button onClick={() => setKatFilter("")} className="text-xs text-primary-600 hover:underline">
+                      Pastro filtrin
+                    </button>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {byCat.map(k => (
-                    <div key={k.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 text-sm">
+                    <button
+                      key={k.id}
+                      onClick={() => setKatFilter(f => f === k.id ? "" : k.id)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                        katFilter === k.id
+                          ? "bg-primary-600 text-white ring-2 ring-primary-300 dark:ring-primary-700"
+                          : "bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700"
+                      }`}
+                    >
                       <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: k.ngjyra || "#64748b" }} />
-                      <span className="text-slate-700 dark:text-slate-300 font-medium">{k.emri}</span>
-                      <span className="text-red-600 dark:text-red-400 font-semibold">{formatCurrency(k.total)}</span>
-                      <span className="text-slate-400 text-xs">({k.count})</span>
-                    </div>
+                      <span className={`font-medium ${katFilter === k.id ? "text-white" : "text-slate-700 dark:text-slate-300"}`}>{k.emri}</span>
+                      <span className={`font-semibold ${katFilter === k.id ? "text-white" : "text-red-600 dark:text-red-400"}`}>{formatCurrency(k.total)}</span>
+                      <span className={`text-xs ${katFilter === k.id ? "text-primary-100" : "text-slate-400"}`}>({k.count})</span>
+                    </button>
                   ))}
                 </div>
               </div>
