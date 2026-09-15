@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Header from "@/components/layout/Header";
 import { formatDateTime } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
 import {
   MessageSquare, Search, Users, GraduationCap, X, Send, Loader2,
-  CheckCircle, XCircle, History, Wallet,
+  CheckCircle, XCircle, History, Wallet, Sparkles,
 } from "lucide-react";
 
 interface ClassOpt { id: number; name: string; level: string }
@@ -88,9 +88,20 @@ const MONTHS_SQ = ["Janar", "Shkurt", "Mars", "Prill", "Maj", "Qershor", "Korrik
 
 interface SmsLogRow {
   id: number; batchId: string | null; recipientPhone: string; recipientName: string | null;
+  studentId: number | null;
   message: string; status: string; errorMessage: string | null; createdAt: string;
   sentBy: { name: string };
 }
+
+// Shabllone të mesazheve më të shpeshta (nga historiku real i dërgimeve) —
+// {emri}/{klasa} zëvendësohen automatikisht për secilin marrës nga serveri
+// (shih /api/sms/send), kështu që i njëjti mesazh mund t'i dërgohet gjithë
+// klasës njëherësh pa u shkruar emri manualisht për secilin nxënës.
+const MESSAGE_TEMPLATES: { label: string; text: string }[] = [
+  { label: "Kujtesë borxhi", text: "Përshëndetje, I nderuar prind, Ju kujtojmë se {emri} ka ende borxh të papaguar. Ju lutem kontaktoni shkollën për rregullim. Faleminderit, Akademia Ora" },
+  { label: "Fletëkalim", text: "Përshëndetje, I nderuar prind, Shpresoj se jeni mirë, Ju lutem që ta sillni fletëkalimin nga shkolla e mëparshme për {emri}, Faleminderit për bashkëpunimin, Akademia Ora" },
+  { label: "Njoftim i përgjithshëm", text: "Përshëndetje, I nderuar prind, " },
+];
 
 function studentPhone(s: StudentRow): string | null {
   return s.parentPhone || s.fatherPhone || s.motherPhone || null;
@@ -125,12 +136,15 @@ export default function SmsPage() {
 
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [message, setMessage] = useState("");
+  const messageRef = useRef<HTMLTextAreaElement>(null);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sent: number; failed: number; total: number; errors: string[] } | null>(null);
   const [error, setError] = useState("");
 
   const [history, setHistory] = useState<SmsLogRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyFilter, setHistoryFilter] = useState<"all" | "today" | "week" | "failed">("all");
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
@@ -268,11 +282,30 @@ export default function SmsPage() {
 
   const segments = Math.ceil((message.length || 0) / 160) || 0;
 
+  function insertToken(token: string) {
+    const el = messageRef.current;
+    if (!el) { setMessage(m => m + token); return; }
+    const start = el.selectionStart ?? message.length;
+    const end = el.selectionEnd ?? message.length;
+    const next = message.slice(0, start) + token + message.slice(end);
+    setMessage(next);
+    requestAnimationFrame(() => { el.focus(); el.selectionStart = el.selectionEnd = start + token.length; });
+  }
+
   async function handleSend() {
     setError("");
     setResult(null);
     if (!recipients.length) { setError("Zgjidh të paktën një marrës."); return; }
     if (!message.trim()) { setError("Shkruaj mesazhin."); return; }
+    // Konfirmim para dërgimit për grupe të mëdha — parandalon një klikim
+    // aksidental me kosto/pasojë të konsiderueshme (p.sh. "Shto të gjithë"
+    // te "Me Borxh" me qindra marrës).
+    if (recipients.length > 5) {
+      const ok = window.confirm(
+        `Do t'i dërgohet SMS ${recipients.length} marrësve (${segments} segment${segments === 1 ? "" : "e"} secili). Vazhdo?`
+      );
+      if (!ok) return;
+    }
     setSending(true);
     const res = await fetch("/api/sms/send", {
       method: "POST",
@@ -298,6 +331,32 @@ export default function SmsPage() {
     }
     return groups;
   }, [history]);
+
+  const filteredHistory = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfToday.getTime() - 6 * 86400000);
+    return groupedHistory.filter(g => {
+      if (q && !g.rows.some(r =>
+        (r.recipientName ?? "").toLowerCase().includes(q) || r.recipientPhone.toLowerCase().includes(q)
+      )) return false;
+      if (historyFilter === "failed" && !g.rows.some(r => r.status === "FAILED")) return false;
+      if (historyFilter === "today" && new Date(g.rows[0].createdAt) < startOfToday) return false;
+      if (historyFilter === "week" && new Date(g.rows[0].createdAt) < startOfWeek) return false;
+      return true;
+    });
+  }, [groupedHistory, historySearch, historyFilter]);
+
+  function reuseMessage(g: { rows: SmsLogRow[] }) {
+    setMessage(g.rows[0].message);
+    setRecipients(g.rows.map(r => ({
+      phone: r.recipientPhone,
+      name: r.recipientName || r.recipientPhone,
+      studentId: r.studentId ?? undefined,
+    })));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   return (
     <>
@@ -552,8 +611,28 @@ export default function SmsPage() {
 
           <div>
             <label className="form-label">Mesazhi</label>
-            <textarea value={message} onChange={e => setMessage(e.target.value)} className="form-input min-h-[100px] resize-none" placeholder="Shkruaj mesazhin..." />
-            <p className="text-xs text-slate-400 mt-1">{message.length} karaktere · {segments || 0} segment{segments === 1 ? "" : "e"} SMS</p>
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {MESSAGE_TEMPLATES.map(t => (
+                <button key={t.label} type="button" onClick={() => setMessage(t.text)}
+                  className="text-xs px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> {t.label}
+                </button>
+              ))}
+              <span className="w-px bg-slate-200 dark:bg-slate-700 my-0.5" />
+              <button type="button" onClick={() => insertToken("{emri}")}
+                className="text-xs px-2.5 py-1 rounded-full border border-dashed border-primary-300 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                + {"{emri}"}
+              </button>
+              <button type="button" onClick={() => insertToken("{klasa}")}
+                className="text-xs px-2.5 py-1 rounded-full border border-dashed border-primary-300 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                + {"{klasa}"}
+              </button>
+            </div>
+            <textarea ref={messageRef} value={message} onChange={e => setMessage(e.target.value)} className="form-input min-h-[100px] resize-none" placeholder="Shkruaj mesazhin... (opsionale: {emri}, {klasa})" />
+            <p className={`text-xs mt-1 ${segments > 1 ? "text-amber-600 font-medium" : "text-slate-400"}`}>
+              {message.length} karaktere · {segments || 0} segment{segments === 1 ? "" : "e"} SMS
+              {segments > 1 && " — kosto e shtuar për çdo marrës"}
+            </p>
           </div>
 
           {error && <p className="text-sm text-red-500">{error}</p>}
@@ -575,18 +654,44 @@ export default function SmsPage() {
             <History className="w-4 h-4 text-primary-500" />
             <h2 className="section-title">Historiku i Mesazheve</h2>
           </div>
+          {!loadingHistory && groupedHistory.length > 0 && (
+            <div className="px-5 pt-4 pb-1 space-y-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input
+                  value={historySearch}
+                  onChange={e => setHistorySearch(e.target.value)}
+                  className="form-input pl-8 py-1.5 text-sm"
+                  placeholder="Kërko sipas emrit ose telefonit..."
+                />
+              </div>
+              <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-fit flex-wrap">
+                {([["all", "Të gjitha"], ["today", "Sot"], ["week", "Këtë javë"], ["failed", "Vetëm dështimet"]] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setHistoryFilter(key)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${historyFilter === key ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {loadingHistory ? (
             <p className="text-sm text-slate-400 text-center py-8">Duke ngarkuar...</p>
           ) : groupedHistory.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-8">Ende s&apos;është dërguar asnjë SMS.</p>
+          ) : filteredHistory.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">Asnjë mesazh s&apos;përputhet me këto kritere.</p>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-              {groupedHistory.map(g => {
+              {filteredHistory.map(g => {
                 const first = g.rows[0];
                 const sentCount = g.rows.filter(r => r.status === "SENT").length;
                 const failedCount = g.rows.filter(r => r.status === "FAILED").length;
                 return (
-                  <div key={g.key} className="p-4">
+                  <div key={g.key} className="p-4 group">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="text-sm text-slate-700 dark:text-slate-200 line-clamp-2">{first.message}</p>
@@ -598,6 +703,13 @@ export default function SmsPage() {
                       <div className="flex items-center gap-1.5 shrink-0 text-xs">
                         {sentCount > 0 && <span className="flex items-center gap-1 text-green-600"><CheckCircle className="w-3.5 h-3.5" />{sentCount}</span>}
                         {failedCount > 0 && <span className="flex items-center gap-1 text-red-500"><XCircle className="w-3.5 h-3.5" />{failedCount}</span>}
+                        <button
+                          onClick={() => reuseMessage(g)}
+                          title="Përdor përsëri"
+                          className="text-slate-300 group-hover:text-primary-600 hover:text-primary-700 transition-colors font-medium px-1.5"
+                        >
+                          ↺
+                        </button>
                       </div>
                     </div>
                     {failedCount > 0 && (

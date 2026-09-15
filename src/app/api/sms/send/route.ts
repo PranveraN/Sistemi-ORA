@@ -42,13 +42,41 @@ export async function POST(req: NextRequest) {
 
   const batchId = recipients.length > 1 ? randomUUID() : null;
 
+  // {emri}/{klasa} lejojnë një mesazh të vetëm "shabllon" për gjithë grupin
+  // (p.sh. tërë klasën) që personalizohet automatikisht për secilin marrës —
+  // të dhënat merren nga vetë Student (jo nga `name`-i i dërguar nga klienti),
+  // që të jetë gjithmonë emri i saktë i nxënësit, jo i prindit.
+  const needsPersonalize = message.includes("{emri}") || message.includes("{klasa}");
+  const studentIds = Array.from(new Set(
+    recipients.filter(r => r.studentId).map(r => parseInt(String(r.studentId)))
+  ));
+  const students = needsPersonalize && studentIds.length
+    ? await prisma.student.findMany({
+        where: { id: { in: studentIds } },
+        select: { id: true, firstName: true, lastName: true, class: { select: { name: true } } },
+      })
+    : [];
+  const studentMap = new Map(students.map(s => [s.id, s]));
+
+  function personalize(r: RecipientInput): string {
+    if (!needsPersonalize) return message;
+    const sid = r.studentId ? parseInt(String(r.studentId)) : null;
+    const student = sid ? studentMap.get(sid) : undefined;
+    const emri = student
+      ? `${student.firstName} ${student.lastName}`
+      : String(r.name ?? "").replace(/\s*\(prindi\)\s*$/i, "").trim();
+    const klasa = student?.class?.name ?? "";
+    return message.replaceAll("{emri}", emri).replaceAll("{klasa}", klasa).replace(/ {2,}/g, " ").trim();
+  }
+
   let sent = 0;
   let failed = 0;
   const errors: string[] = [];
 
   for (const r of recipients) {
     const phone = String(r.phone).trim();
-    const result = await sendSms(phone, message);
+    const personalizedMessage = personalize(r);
+    const result = await sendSms(phone, personalizedMessage);
 
     await prisma.smsMessage.create({
       data: {
@@ -57,7 +85,7 @@ export async function POST(req: NextRequest) {
         recipientPhone: phone,
         recipientName: r.name ? String(r.name).trim() : null,
         studentId: r.studentId ? parseInt(String(r.studentId)) : null,
-        message,
+        message: personalizedMessage,
         status: result.ok ? "SENT" : "FAILED",
         errorMessage: result.ok ? null : result.error,
         sentById: userId,
