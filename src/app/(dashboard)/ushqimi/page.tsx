@@ -105,6 +105,7 @@ interface Class { id: number; name: string; level: string; }
 interface StudentRow {
   id: number; firstName: string; lastName: string;
   parentPhone: string | null;
+  parentName: string | null;
   class: { id: number; name: string } | null;
   payment: Payment | null;
   installments: Payment[];
@@ -1142,6 +1143,9 @@ export default function UshqimiPage() {
                         <Link href={`/students/${s.id}`} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
                           {s.firstName} {s.lastName}
                         </Link>
+                        {s.parentName && (
+                          <span className="text-xs text-slate-400 font-normal"> ({s.parentName})</span>
+                        )}
                       </td>
                       <td className="table-cell">
                         {s.class

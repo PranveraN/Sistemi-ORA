@@ -22,6 +22,7 @@ interface DebtRow {
     id: number; firstName: string; lastName: string; status: string;
     class: { name: string } | null;
     parentPhone: string | null; fatherPhone: string | null; motherPhone: string | null;
+    parentName: string | null;
   } | null;
   customerName: string;
   customerPhone: string | null;
@@ -216,9 +217,14 @@ export default function UniformaBorxhetPage() {
                       </td>
                       <td className="table-cell">
                         {row.student ? (
-                          <Link href={`/students/${row.student.id}`} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
-                            {row.student.firstName} {row.student.lastName}
-                          </Link>
+                          <>
+                            <Link href={`/students/${row.student.id}`} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
+                              {row.student.firstName} {row.student.lastName}
+                            </Link>
+                            {row.student.parentName && (
+                              <span className="text-xs text-slate-400 font-normal"> ({row.student.parentName})</span>
+                            )}
+                          </>
                         ) : (
                           <span className="font-semibold text-slate-900 dark:text-white">{row.customerName}</span>
                         )}

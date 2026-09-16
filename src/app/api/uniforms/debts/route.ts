@@ -22,7 +22,7 @@ export async function GET() {
         select: {
           id: true, firstName: true, lastName: true, status: true,
           class: { select: { name: true } },
-          parentPhone: true, fatherPhone: true, motherPhone: true,
+          parentPhone: true, fatherPhone: true, motherPhone: true, parentName: true,
         },
       })
     : [];
