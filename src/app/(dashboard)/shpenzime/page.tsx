@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import { useSession } from "next-auth/react";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
-import { Plus, Trash2, Edit, X, Save, Settings, TrendingDown, Calendar, BarChart3, Download, Upload, Loader2, History, Undo2, FileUp, Check } from "lucide-react";
+import { Plus, Trash2, Edit, X, Save, Settings, TrendingDown, Calendar, BarChart3, Download, Upload, Loader2, History, Undo2, FileUp, Check, Combine } from "lucide-react";
 import { MONTHS } from "@/lib/utils";
 import * as XLSX from "xlsx";
 
@@ -193,6 +193,29 @@ export default function ShpenzimePage() {
   const [editKatId, setEditKatId] = useState<number | null>(null);
   const [katForm, setKatForm] = useState({ emri: "", ngjyra: NGJYRAT[0], ikona: "" });
   const [saving, setSaving] = useState(false);
+
+  // Bashko kategoritë (p.sh. dyfishime aksidentale si "Mirëmbajtja hixhienike"
+  // vs "Mirëmbajtje Hixhienike") — zhvendos të gjitha shpenzimet te kategoria
+  // e zgjedhur, pastaj fshin origjinalen (tashmë bosh); asnjë shpenzim s'humbet.
+  const [mergeKat, setMergeKat] = useState<Kategori | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState("");
+  const [merging, setMerging] = useState(false);
+
+  async function handleMergeKat() {
+    if (!mergeKat || !mergeTargetId) return;
+    setMerging(true);
+    const res = await fetch("/api/shpenzime/kategorite/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceId: mergeKat.id, targetId: Number(mergeTargetId) }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setMerging(false);
+    if (!res.ok) { window.alert(d.error || "Bashkimi dështoi."); return; }
+    setMergeKat(null);
+    setMergeTargetId("");
+    fetchData();
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -1229,6 +1252,9 @@ export default function ShpenzimePage() {
                     <p className="font-medium text-slate-800 dark:text-white">{k.emri}</p>
                     <p className="text-xs text-slate-400">{k._count?.shpenzime ?? 0} shpenzime</p>
                   </div>
+                  <button onClick={() => setMergeKat(k)} title="Bashko me një kategori tjetër" className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors">
+                    <Combine className="w-4 h-4" />
+                  </button>
                   <button onClick={() => openEditKat(k)} className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors">
                     <Edit className="w-4 h-4" />
                   </button>
@@ -1679,6 +1705,40 @@ export default function ShpenzimePage() {
               <button onClick={() => setShowKatModal(false)} className="btn-secondary flex-1 justify-center">Anulo</button>
               <button onClick={handleSaveKategori} disabled={saving || !katForm.emri} className="btn-primary flex-1 justify-center">
                 {saving ? "Duke ruajtur..." : editKatId ? "Ruaj Ndryshimet" : "Shto"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — Bashko Kategori */}
+      {mergeKat && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setMergeKat(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Combine className="w-4 h-4 text-violet-500" /> Bashko Kategorinë
+              </h3>
+              <button onClick={() => setMergeKat(null)}><X className="w-5 h-5 text-slate-400" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Të gjitha shpenzimet ({mergeKat._count?.shpenzime ?? 0}) e kategorisë <span className="font-semibold text-slate-700 dark:text-slate-200">{mergeKat.emri}</span> do të zhvendosen te kategoria e zgjedhur më poshtë, pastaj <span className="font-semibold">{mergeKat.emri}</span> do të fshihet. Asnjë shpenzim s&apos;fshihet.
+              </p>
+              <div>
+                <label className="form-label">Bashko me...</label>
+                <select value={mergeTargetId} onChange={e => setMergeTargetId(e.target.value)} className="form-input">
+                  <option value="">Zgjedh kategorinë...</option>
+                  {kategorite.filter(k => k.id !== mergeKat.id).map(k => (
+                    <option key={k.id} value={k.id}>{k.ikona} {k.emri}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 pt-0">
+              <button onClick={() => setMergeKat(null)} className="btn-secondary flex-1 justify-center">Anulo</button>
+              <button onClick={handleMergeKat} disabled={merging || !mergeTargetId} className="btn-primary flex-1 justify-center">
+                {merging ? "Duke bashkuar..." : "Bashko"}
               </button>
             </div>
           </div>
