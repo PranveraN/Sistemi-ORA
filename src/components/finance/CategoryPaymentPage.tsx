@@ -18,7 +18,7 @@ import {
   Search, CheckCircle, AlertCircle, Clock,
   Plus, X, Save, Users, Loader2, Printer,
   TrendingUp, TrendingDown, ArrowLeftRight, FileUp,
-  CalendarDays, Download, Trash2, Calculator, Lock, StickyNote, MessageSquare,
+  CalendarDays, Download, Trash2, Calculator, Lock, StickyNote, MessageSquare, Send, Bot,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
@@ -27,6 +27,8 @@ import ExpensesSection from "./ExpensesSection";
 import OldDebtImportModal from "./OldDebtImportModal";
 import FamilyPaymentModal from "./FamilyPaymentModal";
 import FamilyReceiptPrintModal from "./FamilyReceiptPrintModal";
+import NotificationPreviewModal, { type NotificationRecipient } from "@/components/notifications/NotificationPreviewModal";
+import { buildObligationMessage, deriveObligationStatus, type Obligation, type Frequency } from "@/lib/notificationTemplates";
 
 interface Payment {
   id: number;
@@ -204,6 +206,16 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [oldDebtModalOpen, setOldDebtModalOpen] = useState(false);
   const [familyModalOpen, setFamilyModalOpen] = useState(false);
   const [familyReceiptPrintId, setFamilyReceiptPrintId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [notifyRecipients, setNotifyRecipients] = useState<NotificationRecipient[] | null>(null);
+
+  function toggleSelect(id: number) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     fetch("/api/settings")
@@ -237,6 +249,59 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   function switchYearType(yt: YearType) {
     if (year > 0) setYear(yt === "academic" ? schoolYearStart : resolvedYear);
     setYearType(yt);
+  }
+
+  function studentPhone(s: StudentRow): string | null {
+    return s.parentPhone || s.fatherPhone || s.motherPhone || null;
+  }
+
+  // Ndërton "detyrimin" e njësuar për motorin e njoftimeve (notificationTemplates.ts)
+  // nga të dhënat që rreshti i ka TASHMË — asnjë llogaritje financiare e re,
+  // vetëm rimarrje e saktë e asaj çfarë tabela vetë e shfaq (p.sh. `expectedPrice`
+  // është saktësisht fallback-u i njëjtë si te "Borxh i plotë" në SMS/students).
+  function rowToObligation(s: StudentRow): Obligation {
+    const p = s.payment;
+    const basePrice = category?.defaultAmount ?? 0;
+    const expectedPrice = Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100));
+    const frequency: Frequency = !isMonthly ? "ANNUAL" : (month > 0 ? "MONTHLY" : "ANNUAL");
+    const periodLabel = frequency === "MONTHLY" ? `${MONTHS[month - 1]} ${resolvedYear}` : null;
+    const schoolYearLabel = schoolYearStart > 0 ? `${schoolYearStart}–${schoolYearStart + 1}` : null;
+    return {
+      category: categoryName,
+      frequency,
+      periodLabel,
+      schoolYearLabel,
+      totalAmount: p ? p.finalAmount : expectedPrice,
+      paidAmount: p ? p.paidAmount : 0,
+      balance: p ? p.balance : expectedPrice,
+      dueDate: p?.dueDate ?? null,
+      paidDate: p?.paidDate ?? null,
+      receiptNumber: p?.receiptNumber ?? s.installments.find(i => i.receiptNumber)?.receiptNumber ?? null,
+    };
+  }
+
+  function generateNotificationsFor(rows: StudentRow[]) {
+    const recipients: NotificationRecipient[] = [];
+    let skippedNoMessage = 0;
+    for (const s of rows) {
+      const phone = studentPhone(s);
+      if (!phone) continue;
+      const msg = buildObligationMessage({ firstName: s.firstName, lastName: s.lastName, className: s.class?.name ?? null }, rowToObligation(s));
+      if (!msg) { skippedNoMessage++; continue; }
+      recipients.push({ phone, name: `${s.firstName} ${s.lastName} (prindi)`, studentId: s.id, message: msg });
+    }
+    if (!recipients.length) {
+      window.alert(skippedNoMessage > 0
+        ? "Nxënësit e zgjedhur e kanë pagesën të paguar plotësisht — s'ka nevojë për njoftim."
+        : "Asnjë nga nxënësit e zgjedhur s'ka numër telefoni të regjistruar.");
+      return;
+    }
+    setNotifyRecipients(recipients);
+  }
+
+  function generateAutoNotifications() {
+    const candidates = sorted.filter(s => s.status === "ACTIVE" && deriveObligationStatus(rowToObligation(s)) !== "PAID");
+    generateNotificationsFor(candidates);
   }
 
   const fetchData = useCallback(async () => {
@@ -607,6 +672,9 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                   className="form-input pl-9"
                 />
               </div>
+              <button onClick={generateAutoNotifications} className="btn-secondary text-sm shrink-0">
+                <Bot className="w-4 h-4" /> Gjenero automatikisht
+              </button>
               <div className="flex items-center gap-2 flex-wrap">
                 {statusFilter && (
                   <button onClick={() => setStatusFilter("")}
@@ -676,12 +744,28 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
               </div>
             )}
 
+            {selected.size > 0 && (
+              <div className="card p-3 flex items-center gap-3 bg-primary-50 dark:bg-primary-900/10 border-primary-200 dark:border-primary-800">
+                <span className="text-sm text-primary-700 dark:text-primary-300 font-medium">{selected.size} nxënës të zgjedhur</span>
+                <button
+                  onClick={() => generateNotificationsFor(sorted.filter(s => selected.has(s.id)))}
+                  className="btn-secondary text-sm ml-auto"
+                >
+                  <Send className="w-4 h-4" /> Gjenero njoftime për të zgjedhurit ({selected.size})
+                </button>
+                <button onClick={() => setSelected(new Set())} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             {/* Student table */}
             <div className="card overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
+                      <th className="table-header w-8"></th>
                       <th className="table-header w-8">#</th>
                       <th className="table-header">Nxënësi</th>
 
@@ -794,13 +878,13 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                     {loading ? (
                       <tr>
-                        <td colSpan={12} className="py-16 text-center">
+                        <td colSpan={13} className="py-16 text-center">
                           <Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" />
                         </td>
                       </tr>
                     ) : sorted.length === 0 ? (
                       <tr>
-                        <td colSpan={12} className="py-16 text-center text-slate-400 text-sm">
+                        <td colSpan={13} className="py-16 text-center text-slate-400 text-sm">
                           Asnjë nxënës nuk u gjet
                         </td>
                       </tr>
@@ -832,7 +916,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                         <React.Fragment key={s.id}>
                         {isFirstInactive && inactiveStudents.length > 0 && (
                           <tr>
-                            <td colSpan={12} className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800/60 border-t-2 border-slate-300 dark:border-slate-600">
+                            <td colSpan={13} className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800/60 border-t-2 border-slate-300 dark:border-slate-600">
                               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                                 ✕ Joaktiv — {inactiveStudents.length} nxënës · të përjashtuar nga statistikat dhe mesatarja
                               </span>
@@ -840,6 +924,9 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                           </tr>
                         )}
                         <tr className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${rowBg}`}>
+                          <td className="table-cell">
+                            <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} className="rounded accent-primary-600" />
+                          </td>
                           <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                           <td className="table-cell">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1042,6 +1129,13 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                               >
                                 <MessageSquare className="w-4 h-4" />
                               </Link>
+                              <button
+                                onClick={() => generateNotificationsFor([s])}
+                                title="Gjenero njoftim"
+                                className="p-1.5 rounded-lg text-slate-300 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:text-slate-500 dark:hover:text-blue-400 transition-colors"
+                              >
+                                <Send className="w-4 h-4" />
+                              </button>
                               {(() => {
                                 const receiptId = s.payment?.receiptNumber
                                   ? s.payment.id
@@ -1128,6 +1222,14 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
         <PaymentReceiptModal
           paymentId={receiptPaymentId}
           onClose={() => setReceiptPaymentId(null)}
+        />
+      )}
+
+      {notifyRecipients && (
+        <NotificationPreviewModal
+          recipients={notifyRecipients}
+          onClose={() => setNotifyRecipients(null)}
+          onSent={() => setSelected(new Set())}
         />
       )}
 

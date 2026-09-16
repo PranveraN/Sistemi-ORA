@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/sms";
 import { logAction } from "@/lib/audit";
 
-interface RecipientInput { phone: string; name?: string; studentId?: number | string }
+interface RecipientInput { phone: string; name?: string; studentId?: number | string; message?: string }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -23,7 +23,12 @@ export async function POST(req: NextRequest) {
   const message = String(body.message ?? "").trim();
   const rawRecipients: RecipientInput[] = Array.isArray(body.recipients) ? body.recipients : [];
 
-  if (!message) return NextResponse.json({ error: "Mesazhi mungon" }, { status: 400 });
+  // Mesazhi i përbashkët (klasë/familje/individual/debt) mbetet i detyrueshëm
+  // si më parë, PËRVEÇ kur çdo marrës ka mesazhin e vet të gatshëm — rasti i
+  // njoftimeve të gjeneruara automatikisht (shih notificationTemplates.ts),
+  // ku çdo marrës ndryshon në shifra reale, jo vetëm emër/klasë.
+  const everyRecipientHasOwnMessage = rawRecipients.length > 0 && rawRecipients.every(r => String(r.message ?? "").trim());
+  if (!message && !everyRecipientHasOwnMessage) return NextResponse.json({ error: "Mesazhi mungon" }, { status: 400 });
   if (!rawRecipients.length) return NextResponse.json({ error: "Zgjidh të paktën një marrës" }, { status: 400 });
 
   // Deduplikim sipas telefonit — dërgimi "në grup" (klasë/familje) mund të
@@ -46,7 +51,8 @@ export async function POST(req: NextRequest) {
   // (p.sh. tërë klasën) që personalizohet automatikisht për secilin marrës —
   // të dhënat merren nga vetë Student (jo nga `name`-i i dërguar nga klienti),
   // që të jetë gjithmonë emri i saktë i nxënësit, jo i prindit.
-  const needsPersonalize = message.includes("{emri}") || message.includes("{klasa}");
+  const needsPersonalize = (message.includes("{emri}") || message.includes("{klasa}"))
+    && recipients.some(r => !String(r.message ?? "").trim());
   const studentIds = Array.from(new Set(
     recipients.filter(r => r.studentId).map(r => parseInt(String(r.studentId)))
   ));
@@ -59,6 +65,8 @@ export async function POST(req: NextRequest) {
   const studentMap = new Map(students.map(s => [s.id, s]));
 
   function personalize(r: RecipientInput): string {
+    const ownMessage = String(r.message ?? "").trim();
+    if (ownMessage) return ownMessage;
     if (!needsPersonalize) return message;
     const sid = r.studentId ? parseInt(String(r.studentId)) : null;
     const student = sid ? studentMap.get(sid) : undefined;
