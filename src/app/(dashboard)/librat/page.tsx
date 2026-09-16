@@ -63,6 +63,12 @@ function methodLabel(m: string) {
   return m === "CASH" ? "Cash" : m === "BANK" ? "Bankë" : m === "CARD" ? "Kartelë" : m;
 }
 
+// Lista "Shitjet" ishte e kufizuar te 100 rreshta pa asnjë tregues — nëse
+// periudha kishte më shumë, pjesa tjetër s'shfaqej fare, pa paralajmërim,
+// duke bërë krahasimin manual kundrejt "Të Hyra" (që mbledh TË GJITHA
+// shitjet server-anësisht) të pamundur. Tani faqosje reale + "X nga Y".
+const SALES_PAGE_SIZE = 100;
+
 /* ── Receipt print ──────────────────────────────────────── */
 function buildBookReceiptHTML(sale: Sale, copy: "prind" | "shkolla", origin: string): string {
   const dateStr = formatDate(sale.saleDate);
@@ -371,6 +377,8 @@ export default function LibratPage() {
   /* ── Sales state ── */
   const [sales, setSales] = useState<Sale[]>([]);
   const [salesLoading, setSalesLoading] = useState(true);
+  const [salesPage, setSalesPage] = useState(1);
+  const [salesTotal, setSalesTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [classFilter, setClassFilter] = useState("");
@@ -400,16 +408,25 @@ export default function LibratPage() {
   const fetchSales = useCallback(async () => {
     setSalesLoading(true);
     const { from, to } = dateRange();
-    const p = new URLSearchParams({ search, limit: "100" });
+    const p = new URLSearchParams({ search, limit: String(SALES_PAGE_SIZE), page: String(salesPage) });
     if (statusFilter) p.set("status", statusFilter);
     if (classFilter) p.set("class", classFilter);
     if (from) p.set("from", from);
     if (to)   p.set("to", to);
     const r = await fetch(`/api/librat/sales?${p}`);
-    if (r.ok) setSales((await r.json()).sales);
+    if (r.ok) {
+      const d = await r.json();
+      setSales(d.sales);
+      setSalesTotal(d.total ?? d.sales.length);
+    }
     setSalesLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, statusFilter, classFilter, month, year, yearType]);
+  }, [search, statusFilter, classFilter, month, year, yearType, salesPage]);
+
+  // Ndryshimi i ndonjë filtri tjetër (jo faqja vetë) kthehet gjithmonë te
+  // faqja e parë — përndryshe mund të mbetesh te "faqja 3" e një kërkimi të
+  // ri që ka vetëm 1 faqe rezultate, dhe lista del bosh pa shpjegim.
+  useEffect(() => { setSalesPage(1); }, [search, statusFilter, classFilter, month, year, yearType]);
 
   /* ── Nxënës pa blerje — roster i plotë (jo vetëm shitjet e listuara), minus
      kush ka tashmë ndonjë shitje në periudhën aktuale (pavarësisht statusit të
@@ -714,11 +731,14 @@ export default function LibratPage() {
                 <option value="">Të gjitha klasat</option>
                 {classes.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
+              <span className="text-sm text-slate-400 ml-auto">
+                {salesTotal > 0 && `${(salesPage - 1) * SALES_PAGE_SIZE + 1}–${Math.min(salesPage * SALES_PAGE_SIZE, salesTotal)} nga ${salesTotal}`}
+              </span>
               <button
                 onClick={() => printAllReceipts(selected.size > 0 ? selectedSales : sales)}
                 disabled={sales.length === 0}
-                className="btn-secondary ml-auto"
-                title="Printo fletëpagesat e shitjeve të zgjedhura, ose të gjitha shitjet e filtruara nëse s'ke zgjedhur asnjë"
+                className="btn-secondary"
+                title="Printo fletëpagesat e shitjeve të zgjedhura, ose të gjitha shitjet e faqes aktuale nëse s'ke zgjedhur asnjë"
               >
                 <Printer className="w-4 h-4" />
                 Printo Fletëpagesat {selected.size > 0 ? `(${selected.size})` : sales.length > 0 ? `(${sales.length})` : ""}
@@ -766,7 +786,7 @@ export default function LibratPage() {
                         <td className="table-cell" onClick={e => e.stopPropagation()}>
                           <input type="checkbox" checked={selected.has(sale.id)} onChange={() => toggleSelect(sale.id)} className="rounded accent-primary-600" />
                         </td>
-                        <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
+                        <td className="table-cell text-slate-400 text-xs">{(salesPage - 1) * SALES_PAGE_SIZE + i + 1}</td>
                         <td className="table-cell font-mono text-xs text-slate-500">{sale.receiptNumber || `#${sale.id}`}</td>
                         <td className="table-cell font-semibold text-slate-800 dark:text-white">{sale.studentName}</td>
                         <td className="table-cell">
@@ -838,6 +858,29 @@ export default function LibratPage() {
                   </tbody>
                 </table>
               </div>
+              {salesTotal > SALES_PAGE_SIZE && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 dark:border-slate-700">
+                  <span className="text-xs text-slate-400">
+                    Faqja {salesPage} nga {Math.ceil(salesTotal / SALES_PAGE_SIZE)}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSalesPage(p => Math.max(1, p - 1))}
+                      disabled={salesPage === 1}
+                      className="btn-ghost text-sm disabled:opacity-40"
+                    >
+                      ‹ Mëparshme
+                    </button>
+                    <button
+                      onClick={() => setSalesPage(p => p + 1)}
+                      disabled={salesPage * SALES_PAGE_SIZE >= salesTotal}
+                      className="btn-ghost text-sm disabled:opacity-40"
+                    >
+                      Tjetra ›
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}
