@@ -765,8 +765,8 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                 <table className="w-full">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
-                      <th className="table-header w-8"></th>
                       <th className="table-header w-8">#</th>
+                      <th className="table-header w-8"></th>
                       <th className="table-header">Nxënësi</th>
 
                       {/* KLASA + CIKLI — dropdown filters */}
@@ -924,15 +924,18 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                           </tr>
                         )}
                         <tr className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${rowBg}`}>
+                          <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                           <td className="table-cell">
                             <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} className="rounded accent-primary-600" />
                           </td>
-                          <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                           <td className="table-cell">
                             <div className="flex items-center gap-2 flex-wrap">
                               <Link href={`/students/${s.id}`} className={`font-semibold hover:text-primary-600 dark:hover:text-primary-400 ${isInactive ? "text-slate-400 dark:text-slate-500 line-through" : "text-slate-900 dark:text-white"}`}>
                                 {s.firstName} {s.lastName}
                               </Link>
+                              {s.parentName && (
+                                <span className="text-xs text-slate-400 font-normal">({s.parentName})</span>
+                              )}
                               {isInactive && (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-semibold">
                                   ✕ Joaktiv
