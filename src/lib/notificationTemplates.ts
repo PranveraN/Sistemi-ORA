@@ -29,7 +29,8 @@ export interface StudentInfo {
 }
 
 function studentLabel(s: StudentInfo): string {
-  return `${s.firstName} ${s.lastName}${s.className ? ` (${s.className})` : ""}`;
+  const name = `${s.firstName} ${s.lastName}`.replace(/\s+/g, " ").trim();
+  return `${name}${s.className ? ` (${s.className})` : ""}`;
 }
 
 // Kategoria si emër i lakuar për fjali natyrale shqip ("pagesa e shkollimit",

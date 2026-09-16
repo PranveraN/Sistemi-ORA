@@ -6,8 +6,10 @@ import Header from "@/components/layout/Header";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   ChevronLeft, Plus, X, Save, Loader2, Search, Phone,
-  MessageSquare, Wallet, CreditCard, StickyNote, Pencil, Trash2,
+  MessageSquare, Wallet, CreditCard, StickyNote, Pencil, Trash2, Send, Bot,
 } from "lucide-react";
+import NotificationPreviewModal, { type NotificationRecipient } from "@/components/notifications/NotificationPreviewModal";
+import { buildObligationMessage, type Obligation } from "@/lib/notificationTemplates";
 
 interface StudentOpt {
   id: number; firstName: string; lastName: string;
@@ -59,6 +61,48 @@ export default function UniformaBorxhetPage() {
   const [deleteRow, setDeleteRow] = useState<DebtRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [notifyRecipients, setNotifyRecipients] = useState<NotificationRecipient[] | null>(null);
+
+  function toggleSelect(id: number) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  // Uniforma s'ka koncept afati/viti shkollor në modelin UniSale (shitje
+  // një-herëshe) — detyrimi ndërtohet drejtpërdrejt nga rreshti i borxhit.
+  function rowToObligation(row: DebtRow): Obligation {
+    return {
+      category: "Uniforma", frequency: "ONE_TIME", periodLabel: null, schoolYearLabel: null,
+      totalAmount: row.totalAmount, paidAmount: row.paidAmount, balance: row.balance,
+      dueDate: null, paidDate: null, receiptNumber: null,
+    };
+  }
+
+  function generateNotificationsFor(list: DebtRow[]) {
+    const recipients: NotificationRecipient[] = [];
+    let skipped = 0;
+    for (const row of list) {
+      const phone = debtPhone(row);
+      if (!phone) continue;
+      const info = row.student
+        ? { firstName: row.student.firstName, lastName: row.student.lastName, className: row.student.class?.name ?? null }
+        : { firstName: row.customerName, lastName: "", className: null };
+      const msg = buildObligationMessage(info, rowToObligation(row));
+      if (!msg) { skipped++; continue; }
+      recipients.push({ phone, name: `${info.firstName} ${info.lastName}`.trim() + " (prindi)", studentId: row.student?.id, message: msg });
+    }
+    if (!recipients.length) {
+      window.alert(skipped > 0
+        ? "Rreshtat e zgjedhur s'kanë borxh të papaguar."
+        : "Asnjë nga rreshtat e zgjedhur s'ka numër telefoni të regjistruar.");
+      return;
+    }
+    setNotifyRecipients(recipients);
+  }
 
   const q = search.trim().toLowerCase();
   const filteredRows = q
@@ -112,15 +156,35 @@ export default function UniformaBorxhetPage() {
           </div>
         </div>
 
-        <div className="relative max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Kërko nxënësin/klientin..."
-            className="form-input pl-9"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative max-w-xs flex-1 min-w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Kërko nxënësin/klientin..."
+              className="form-input pl-9"
+            />
+          </div>
+          <button onClick={() => generateNotificationsFor(filteredRows)} className="btn-secondary text-sm shrink-0" disabled={filteredRows.length === 0}>
+            <Bot className="w-4 h-4" /> Gjenero automatikisht
+          </button>
         </div>
+
+        {selected.size > 0 && (
+          <div className="card p-3 flex items-center gap-3 bg-primary-50 dark:bg-primary-900/10 border-primary-200 dark:border-primary-800">
+            <span className="text-sm text-primary-700 dark:text-primary-300 font-medium">{selected.size} rreshta të zgjedhur</span>
+            <button
+              onClick={() => generateNotificationsFor(filteredRows.filter(r => selected.has(r.id)))}
+              className="btn-secondary text-sm ml-auto"
+            >
+              <Send className="w-4 h-4" /> Gjenero njoftime për të zgjedhurit ({selected.size})
+            </button>
+            <button onClick={() => setSelected(new Set())} className="text-slate-400 hover:text-slate-600">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         <div className="card overflow-hidden">
           {loading ? (
@@ -134,6 +198,7 @@ export default function UniformaBorxhetPage() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-800/50">
                   <tr>
+                    <th className="table-header w-8"></th>
                     <th className="table-header">Nxënësi / Klienti</th>
                     <th className="table-header">Artikujt / Shënim</th>
                     <th className="table-header text-right">Shuma</th>
@@ -146,6 +211,9 @@ export default function UniformaBorxhetPage() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                   {filteredRows.map(row => (
                     <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                      <td className="table-cell">
+                        <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} className="rounded accent-primary-600" />
+                      </td>
                       <td className="table-cell">
                         {row.student ? (
                           <Link href={`/students/${row.student.id}`} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
@@ -192,6 +260,13 @@ export default function UniformaBorxhetPage() {
                             </Link>
                           )}
                           <button
+                            onClick={() => generateNotificationsFor([row])}
+                            title="Gjenero njoftim"
+                            className="p-1.5 rounded-lg text-slate-300 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:text-slate-500 dark:hover:text-blue-400 transition-colors"
+                          >
+                            <Send className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => setEditRow(row)}
                             title="Modifiko"
                             className="p-1.5 rounded-lg text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 dark:text-slate-500 dark:hover:text-primary-400 transition-colors"
@@ -224,6 +299,13 @@ export default function UniformaBorxhetPage() {
       )}
       {editRow && (
         <EditDebtModal row={editRow} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); fetchDebts(); }} />
+      )}
+      {notifyRecipients && (
+        <NotificationPreviewModal
+          recipients={notifyRecipients}
+          onClose={() => setNotifyRecipients(null)}
+          onSent={() => setSelected(new Set())}
+        />
       )}
       {deleteRow && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDeleteRow(null)}>

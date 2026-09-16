@@ -12,12 +12,14 @@ import * as XLSX from "xlsx";
 import {
   Search, CheckCircle, AlertCircle, Plus, X, Save,
   Users, Loader2, Printer, Calculator, ChevronDown, ChevronUp, Info,
-  TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard, Trash2, Receipt,
+  TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard, Trash2, Receipt, Send, Bot,
 } from "lucide-react";
 import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
 import PaymentReceiptModal from "@/components/finance/PaymentReceiptModal";
 import StudentBadgeModal from "@/components/students/StudentBadgeModal";
+import NotificationPreviewModal, { type NotificationRecipient } from "@/components/notifications/NotificationPreviewModal";
+import { buildObligationMessage, deriveObligationStatus, type Obligation } from "@/lib/notificationTemplates";
 import FamilyPaymentModal from "@/components/finance/FamilyPaymentModal";
 import FamilyReceiptPrintModal from "@/components/finance/FamilyReceiptPrintModal";
 
@@ -293,6 +295,16 @@ export default function UshqimiPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [notifyRecipients, setNotifyRecipients] = useState<NotificationRecipient[] | null>(null);
+
+  function toggleSelect(id: number) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     fetch("/api/classes").then(r => r.json()).then((data: Class[]) => {
@@ -518,6 +530,61 @@ export default function UshqimiPage() {
 
   const byEnrollment = showOnlyEnrolled ? sorted.filter(s => s.installments.length > 0) : sorted;
   const displayed = cycleFilter ? byEnrollment.filter(s => getCycle(s.class?.name) === cycleFilter) : byEnrollment;
+
+  // Njoftimet për Ushqimin mblidhen për TËRË vitin (5 periudhat), jo për një
+  // periudhë të vetme — njësoj si vetë tabela e shfaq "Paguar"/"Borxhi" si
+  // kolona të mbledhura, jo periudhë-për-periudhë (shih computeRealPaymentInfo
+  // më lart, të cilit i shtohen këtu dueDate/paidDate/receiptNumber që s'i kthen).
+  function computeFoodObligation(installments: Payment[], schoolYearLabel: string | null): Obligation {
+    let finalAmount = 0, paidAmount = 0;
+    let dueDate: string | null = null;
+    let paidDateOut: string | null = null;
+    let receiptNumber: string | null = null;
+    for (const period of PERIOD_BUCKETS) {
+      const p = findPeriodPayment(installments, period.months);
+      if (!p || p.description === SKIPPED_MARKER || p.description === FREE_MARKER) continue;
+      finalAmount += p.finalAmount;
+      paidAmount += p.paidAmount;
+      if (p.balance > 0 && (!dueDate || new Date(p.dueDate) < new Date(dueDate))) dueDate = p.dueDate;
+      if (p.paidDate) paidDateOut = p.paidDate;
+      if (p.receiptNumber) receiptNumber = p.receiptNumber;
+    }
+    return {
+      category: "Ushqimi", frequency: "ANNUAL", periodLabel: null, schoolYearLabel,
+      totalAmount: finalAmount, paidAmount, balance: Math.max(0, finalAmount - paidAmount),
+      dueDate, paidDate: paidDateOut, receiptNumber,
+    };
+  }
+
+  function generateNotificationsFor(rows: StudentRow[]) {
+    const schoolYearLabel = yearType === "academic" ? `${effectiveYear}–${effectiveYear + 1}` : null;
+    const recipients: NotificationRecipient[] = [];
+    let skipped = 0;
+    for (const s of rows) {
+      if (!s.parentPhone) continue;
+      const obligation = computeFoodObligation(s.installments, schoolYearLabel);
+      if (obligation.totalAmount <= 0) { skipped++; continue; }
+      const msg = buildObligationMessage({ firstName: s.firstName, lastName: s.lastName, className: s.class?.name ?? null }, obligation);
+      if (!msg) { skipped++; continue; }
+      recipients.push({ phone: s.parentPhone, name: `${s.firstName} ${s.lastName} (prindi)`, studentId: s.id, message: msg });
+    }
+    if (!recipients.length) {
+      window.alert(skipped > 0
+        ? "Nxënësit e zgjedhur s'kanë detyrim të papaguar në ushqim (ose s'janë ende të regjistruar)."
+        : "Asnjë nga nxënësit e zgjedhur s'ka numër telefoni të regjistruar.");
+      return;
+    }
+    setNotifyRecipients(recipients);
+  }
+
+  function generateAutoNotifications() {
+    const schoolYearLabel = yearType === "academic" ? `${effectiveYear}–${effectiveYear + 1}` : null;
+    const candidates = displayed.filter(s =>
+      s.status === "ACTIVE" && s.installments.length > 0 &&
+      deriveObligationStatus(computeFoodObligation(s.installments, schoolYearLabel)) !== "PAID"
+    );
+    generateNotificationsFor(candidates);
+  }
 
   return (
     <>
@@ -1004,6 +1071,9 @@ export default function UshqimiPage() {
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Kërko nxënësin..." className="form-input pl-9" />
           </div>
+          <button onClick={generateAutoNotifications} className="btn-secondary text-sm shrink-0">
+            <Bot className="w-4 h-4" /> Gjenero automatikisht
+          </button>
           {enrolled > 0 && (
             <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden flex min-w-24 max-w-48">
               <div className="bg-green-500 h-full" style={{ width: `${(paid    / enrolled) * 100}%` }} />
@@ -1013,12 +1083,28 @@ export default function UshqimiPage() {
           )}
         </div>
 
+        {selected.size > 0 && (
+          <div className="card p-3 flex items-center gap-3 bg-primary-50 dark:bg-primary-900/10 border-primary-200 dark:border-primary-800">
+            <span className="text-sm text-primary-700 dark:text-primary-300 font-medium">{selected.size} nxënës të zgjedhur</span>
+            <button
+              onClick={() => generateNotificationsFor(displayed.filter(s => selected.has(s.id)))}
+              className="btn-secondary text-sm ml-auto"
+            >
+              <Send className="w-4 h-4" /> Gjenero njoftime për të zgjedhurit ({selected.size})
+            </button>
+            <button onClick={() => setSelected(new Set())} className="text-slate-400 hover:text-slate-600">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* ── Student Table — 5 periudha, si Excel-i i zyrës ── */}
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 dark:bg-slate-800/50">
                 <tr>
+                  <th className="table-header w-8"></th>
                   <th className="table-header w-8">#</th>
                   <th className="table-header">Nxënësi</th>
                   <th className="table-header">Klasa</th>
@@ -1033,9 +1119,9 @@ export default function UshqimiPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                 {yearLoading ? (
-                  <tr><td colSpan={9} className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" /></td></tr>
+                  <tr><td colSpan={10} className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" /></td></tr>
                 ) : sorted.length === 0 ? (
-                  <tr><td colSpan={9} className="py-16 text-center text-slate-400 text-sm">Asnjë nxënës nuk u gjet</td></tr>
+                  <tr><td colSpan={10} className="py-16 text-center text-slate-400 text-sm">Asnjë nxënës nuk u gjet</td></tr>
                 ) : displayed.map((s, i) => {
                   const rowPeriods = PERIOD_BUCKETS.map(period => ({
                     period,
@@ -1048,6 +1134,9 @@ export default function UshqimiPage() {
                   const anyOverdue = rowPeriods.some(rp => rp.payment?.status === "OVERDUE");
                   return (
                     <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${anyOverdue ? "bg-red-50/40 dark:bg-red-900/10" : ""}`}>
+                      <td className="table-cell">
+                        <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} className="rounded accent-primary-600" />
+                      </td>
                       <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                       <td className="table-cell">
                         <Link href={`/students/${s.id}`} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
@@ -1128,6 +1217,13 @@ export default function UshqimiPage() {
                             className="p-1.5 rounded-lg text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500 dark:hover:text-violet-400 transition-colors"
                           >
                             <IdCard className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => generateNotificationsFor([s])}
+                            title="Gjenero njoftim"
+                            className="p-1.5 rounded-lg text-slate-300 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:text-slate-500 dark:hover:text-blue-400 transition-colors"
+                          >
+                            <Send className="w-4 h-4" />
                           </button>
                           {hasMissingPeriods && (
                             <button
@@ -1228,6 +1324,13 @@ export default function UshqimiPage() {
         <StudentBadgeModal
           student={badgeModal}
           onClose={() => setBadgeModal(null)}
+        />
+      )}
+      {notifyRecipients && (
+        <NotificationPreviewModal
+          recipients={notifyRecipients}
+          onClose={() => setNotifyRecipients(null)}
+          onSent={() => setSelected(new Set())}
         />
       )}
       {familyModalOpen && categoryId && (

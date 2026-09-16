@@ -6,8 +6,10 @@ import { formatDateTime } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
 import {
   MessageSquare, Search, Users, GraduationCap, X, Send, Loader2,
-  CheckCircle, XCircle, History, Wallet, Sparkles,
+  CheckCircle, XCircle, History, Wallet, Sparkles, Bot,
 } from "lucide-react";
+import NotificationPreviewModal, { type NotificationRecipient } from "@/components/notifications/NotificationPreviewModal";
+import { buildObligationMessage, type Obligation, type Frequency } from "@/lib/notificationTemplates";
 
 interface ClassOpt { id: number; name: string; level: string }
 interface StudentRow {
@@ -32,7 +34,7 @@ interface DebtStudentRow extends StudentRow {
   // "formatin" real të pagesës — fusha `Student.paymentPlan` në bazë s'përdoret
   // faktikisht nga shkolla (mbetet gjithmonë bosh); formati real shihet nga
   // numri/lloji i këstëve, saktësisht si te faqja e Shkollimit/Ushqimit.
-  installments: { month: number; finalAmount: number; paidAmount: number; status: string; description: string | null }[];
+  installments: { month: number; finalAmount: number; paidAmount: number; status: string; description: string | null; dueDate: string; paidDate: string | null; receiptNumber: string | null }[];
 }
 
 const PAYMENT_FORMAT_LABELS: Record<string, string> = {
@@ -123,6 +125,7 @@ export default function SmsPage() {
   const [debtSearching, setDebtSearching] = useState(false);
   const [debtSearched, setDebtSearched] = useState(false);
   const [debtResults, setDebtResults] = useState<(DebtStudentRow & { debtBalance: number; format: string })[]>([]);
+  const [notifyRecipients, setNotifyRecipients] = useState<NotificationRecipient[] | null>(null);
 
   const [familyQuery, setFamilyQuery] = useState("");
   const [familySearching, setFamilySearching] = useState(false);
@@ -224,6 +227,63 @@ export default function SmsPage() {
         return true;
       });
     setDebtResults(filtered);
+  }
+
+  // "Smart Notification" — ndërton detyrimin e njësuar direkt nga rezultatet
+  // që `searchDebt()` TASHMË i ka gjetur/llogaritur (asnjë fetch i ri), duke
+  // përdorur të njëjtin filtrim muajsh/periudhash si periodInfo() më lart.
+  function debtRowToObligation(s: DebtStudentRow & { debtBalance: number; format: string }): Obligation {
+    const isFood = debtCategory === "Ushqimi";
+    const targetMonths = isFood
+      ? PERIOD_BUCKETS.find(p => p.canonicalMonth === Number(debtMonth))?.months ?? null
+      : (Number(debtMonth) > 0 ? [Number(debtMonth)] : null);
+    const matches = targetMonths ? s.installments.filter(p => targetMonths.includes(p.month)) : s.installments;
+    const finalAmount = matches.reduce((sum, p) => sum + p.finalAmount, 0);
+    const paidAmount = matches.reduce((sum, p) => sum + p.paidAmount, 0);
+    const dueDate = matches.reduce((min: string | null, p) => (!min || new Date(p.dueDate) < new Date(min)) ? p.dueDate : min, null);
+    const paidDate = matches.find(p => p.paidDate)?.paidDate ?? null;
+    const receiptNumber = matches.find(p => p.receiptNumber)?.receiptNumber ?? null;
+    const periodLabel = isFood
+      ? PERIOD_BUCKETS.find(p => p.canonicalMonth === Number(debtMonth))?.label ?? null
+      : (Number(debtMonth) > 0 ? `${MONTHS_SQ[Number(debtMonth) - 1]} ${debtYear}` : null);
+    const year = parseInt(debtYear);
+    return {
+      category: debtCategory,
+      frequency: Number(debtMonth) > 0 ? "MONTHLY" : "ANNUAL",
+      periodLabel,
+      schoolYearLabel: year > 0 ? `${year}–${year + 1}` : null,
+      // "Borxh i plotë" (0 këste fare) — totalAmount/balance vijnë nga
+      // debtBalance (tashmë llogaritur si tarifë standarde - zbritje, shih
+      // searchDebt), jo nga shuma e kësteve (0).
+      totalAmount: matches.length ? finalAmount : s.debtBalance,
+      paidAmount: matches.length ? paidAmount : 0,
+      balance: s.debtBalance,
+      dueDate, paidDate, receiptNumber,
+    };
+  }
+
+  function generateAutoDebtNotifications() {
+    const forceConfirmation = debtStatus === "PAID";
+    const recipients: NotificationRecipient[] = [];
+    let skipped = 0;
+    for (const s of debtResults) {
+      const phone = studentPhone(s);
+      if (!phone) continue;
+      const msg = buildObligationMessage(
+        { firstName: s.firstName, lastName: s.lastName, className: s.class?.name ?? null },
+        debtRowToObligation(s),
+        { forceConfirmation }
+      );
+      if (!msg) { skipped++; continue; }
+      recipients.push({ phone, name: `${s.firstName} ${s.lastName} (prindi)`, studentId: s.id, message: msg });
+    }
+    if (!recipients.length) {
+      window.alert(skipped > 0
+        ? "Asnjë nga rezultatet s'ka nevojë për njoftim (të gjithë të paguar plotësisht)."
+        : "Asnjë nga rezultatet s'ka numër telefoni të regjistruar.");
+      return;
+    }
+    setNotifyRecipients(recipients);
   }
 
   function addAllDebtResults() {
@@ -564,9 +624,14 @@ export default function SmsPage() {
               )}
               {debtResults.length > 0 && (
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <p className="text-sm text-slate-600 dark:text-slate-300">{debtResults.length} nxënës të gjetur</p>
-                    <button onClick={addAllDebtResults} className="text-xs text-primary-600 hover:text-primary-700 font-medium">+ Shto të gjithë</button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={generateAutoDebtNotifications} className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
+                        <Bot className="w-3.5 h-3.5" /> Gjenero automatikisht
+                      </button>
+                      <button onClick={addAllDebtResults} className="text-xs text-primary-600 hover:text-primary-700 font-medium">+ Shto të gjithë</button>
+                    </div>
                   </div>
                   <div className="space-y-1">
                     {debtResults.map(s => (
@@ -726,6 +791,14 @@ export default function SmsPage() {
           )}
         </div>
       </div>
+
+      {notifyRecipients && (
+        <NotificationPreviewModal
+          recipients={notifyRecipients}
+          onClose={() => setNotifyRecipients(null)}
+          onSent={loadHistory}
+        />
+      )}
     </>
   );
 }

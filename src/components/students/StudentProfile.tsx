@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote, MessageSquare, Send, Wand2, Camera } from "lucide-react";
+import { buildObligationMessage, buildSummaryMessage, type Obligation } from "@/lib/notificationTemplates";
 
 interface Payment {
   id: number;
@@ -37,6 +38,7 @@ interface CategoryPaymentGroup {
   paidAmount: number;
   balance: number;
   lastPaidDate: string | null;
+  dueDate: string | null;
   noData?: boolean;
 }
 
@@ -47,7 +49,7 @@ function withMissingCategories(groups: CategoryPaymentGroup[], allNames: string[
   const present = new Set(groups.map(g => g.categoryName));
   const placeholders: CategoryPaymentGroup[] = allNames
     .filter(name => !present.has(name))
-    .map(name => ({ categoryName: name, baseAmount: 0, finalAmount: 0, paidAmount: 0, balance: 0, lastPaidDate: null, noData: true }));
+    .map(name => ({ categoryName: name, baseAmount: 0, finalAmount: 0, paidAmount: 0, balance: 0, lastPaidDate: null, dueDate: null, noData: true }));
   return [...groups, ...placeholders].sort((a, b) => a.categoryName.localeCompare(b.categoryName, "sq"));
 }
 
@@ -70,10 +72,11 @@ function groupPaymentsByCategory(payments: Payment[]): CategoryPaymentGroup[] {
     const finalAmount  = header ? header.finalAmount : group.reduce((s, p) => s + p.finalAmount, 0);
     const paidAmount   = group.reduce((s, p) => s + p.paidAmount, 0);
     const lastPaidDate = group.reduce<string | null>((max, p) => (p.paidDate && (!max || p.paidDate > max)) ? p.paidDate : max, null);
+    const dueDate = group.reduce<string | null>((min, p) => (p.balance > 0 && (!min || p.dueDate < min)) ? p.dueDate : min, null);
     groups.push({
       categoryName, baseAmount, finalAmount, paidAmount,
       balance: Math.max(0, finalAmount - paidAmount),
-      lastPaidDate,
+      lastPaidDate, dueDate,
     });
   }
   return groups.sort((a, b) => a.categoryName.localeCompare(b.categoryName, "sq"));
@@ -111,6 +114,7 @@ function salesToGroup(categoryName: string, sales: { totalAmount: number; paidAm
     paidAmount,
     balance: Math.max(0, baseAmount - paidAmount),
     lastPaidDate,
+    dueDate: null,
   };
 }
 
@@ -319,11 +323,27 @@ export default function StudentProfile({ student }: { student: Student }) {
   function fillDebtReminder(only?: CategoryPaymentGroup) {
     const groups = only ? [only] : debtGroups;
     if (groups.length === 0) return;
-    const amount = groups.reduce((s, g) => s + g.balance, 0);
-    const categoryText = groups.map(g => g.categoryName).join(", ");
-    setSmsMessage(
-      `Përshëndetje, ju informojmë se ${student.firstName} ${student.lastName} ka borxh të pashlyer prej ${formatCurrency(amount)} (${categoryText}). Ju lutem rregulloni pagesën në administratën e shkollës. Akademia Ora`
-    );
+    const info = { firstName: student.firstName, lastName: student.lastName, className: student.class?.name ?? null };
+    // "Përmbledhje e detyrimeve" (kur s'ka `only`) mbledh TË GJITHA kategoritë
+    // me borxh — kjo pasqyrë është gjithmonë "e tërë kohës" (jo e një viti
+    // specifik, `payments` përfshin krejt historikun), ndaj s'ka kuptim vit
+    // shkollor këtu (schoolYearLabel: null).
+    if (only) {
+      const obligation: Obligation = {
+        category: only.categoryName, frequency: "ANNUAL", periodLabel: null, schoolYearLabel: null,
+        totalAmount: only.finalAmount, paidAmount: only.paidAmount, balance: only.balance,
+        dueDate: only.dueDate, paidDate: only.lastPaidDate, receiptNumber: null,
+      };
+      const msg = buildObligationMessage(info, obligation);
+      if (msg) setSmsMessage(msg);
+      return;
+    }
+    const obligations: Obligation[] = groups.map(g => ({
+      category: g.categoryName, frequency: "ANNUAL", periodLabel: null, schoolYearLabel: null,
+      totalAmount: g.finalAmount, paidAmount: g.paidAmount, balance: g.balance,
+      dueDate: g.dueDate, paidDate: g.lastPaidDate, receiptNumber: null,
+    }));
+    setSmsMessage(buildSummaryMessage(info, obligations));
   }
 
   async function sendSmsToParent() {
