@@ -31,13 +31,21 @@ export async function POST(req: NextRequest) {
   if (!message && !everyRecipientHasOwnMessage) return NextResponse.json({ error: "Mesazhi mungon" }, { status: 400 });
   if (!rawRecipients.length) return NextResponse.json({ error: "Zgjidh të paktën një marrës" }, { status: 400 });
 
-  // Deduplikim sipas telefonit — dërgimi "në grup" (klasë/familje) mund të
-  // përfshijë të njëjtin numër dy herë (p.sh. dy fëmijë të një prindi).
+  // Deduplikim sipas telefonit + mesazhit — dërgimi "në grup" (klasë/familje)
+  // mund të përfshijë të njëjtin numër dy herë (p.sh. dy fëmijë të një
+  // prindi) me TË NJËJTIN tekst (rastet e vjetra, s'ka pse të dërgohet dy
+  // herë). POR kur dy fëmijë ndajnë telefonin e prindit e kanë secili
+  // mesazhin e VET (shuma të ndryshme borxhi — shih notificationTemplates.ts),
+  // ndaj deduplikimi vetëm sipas telefonit do të fshihte njërin prej tyre
+  // heshtazi; përfshihet edhe mesazhi në çelës, që të dyja mesazhet e
+  // ndryshme të dërgohen te i njëjti numër.
   const seen = new Set<string>();
   const recipients = rawRecipients.filter(r => {
     const phone = String(r.phone ?? "").trim();
-    if (!phone || seen.has(phone)) return false;
-    seen.add(phone);
+    if (!phone) return false;
+    const key = `${phone}__${String(r.message ?? "").trim()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 

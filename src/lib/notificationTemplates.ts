@@ -100,9 +100,11 @@ export function buildObligationMessage(
     return `Përshëndetje, I nderuar prind, Ju informojmë se ${catPhrase} për ${who}${period} është regjistruar pjesërisht. Nga ${formatCurrency(o.totalAmount)} janë paguar ${formatCurrency(o.paidAmount)}, dhe mbetet pa u paguar ${formatCurrency(o.balance)}. ${SIGNATURE}`;
   }
 
-  // A/B/C/D. Pagesë mujore/semestrale/vjetore/uniformë — ende në afat.
+  // A/B/C/D. Pagesë mujore/semestrale/vjetore/uniformë — ende në afat, POR
+  // ende PA U PAGUAR — duhet thënë shprehimisht, jo vetëm "është regjistruar"
+  // (frazë e mëparshme që lexohej sikur pagesa ishte tashmë kryer).
   const dueStr = o.dueDate ? ` Afati i pagesës është ${formatDate(o.dueDate)}.` : "";
-  return `Përshëndetje, I nderuar prind, Ju informojmë se ${catPhrase} për ${who}${period} është regjistruar, në vlerë ${formatCurrency(o.totalAmount)}.${dueStr} ${SIGNATURE}`;
+  return `Përshëndetje, I nderuar prind, Ju informojmë se ${catPhrase} për ${who}${period}, në vlerë ${formatCurrency(o.totalAmount)}, mbetet ende e papaguar.${dueStr} ${SIGNATURE}`;
 }
 
 // I. Gjenerim i faturës — vetëm nëse ekziston numër i regjistruar; asnjëherë
