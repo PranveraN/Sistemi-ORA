@@ -121,7 +121,7 @@ export default function SmsPage() {
   const [debtYear, setDebtYear] = useState(String(new Date().getFullYear()));
   const [debtClassId, setDebtClassId] = useState("");
   const [debtFormat, setDebtFormat] = useState("");
-  const [debtStatus, setDebtStatus] = useState<"DEBT" | "PARTIAL" | "PAID" | "ALL">("DEBT");
+  const [debtStatus, setDebtStatus] = useState<"DEBT" | "ZERO" | "PARTIAL" | "PAID" | "ALL">("DEBT");
   const [debtSearching, setDebtSearching] = useState(false);
   const [debtSearched, setDebtSearched] = useState(false);
   const [debtResults, setDebtResults] = useState<(DebtStudentRow & { debtBalance: number; format: string })[]>([]);
@@ -222,6 +222,12 @@ export default function SmsPage() {
       .filter(s => debtFormat ? s.format === debtFormat : s.format !== "TIMI_INVEST")
       .filter(s => {
         if (debtStatus === "DEBT") return s.__status !== "PAID";
+        // S'ka paguar asgjë — 0€ e paguar, PAVARËSISHT formatit të planit (NONE
+        // = s'ka asnjë kësht të krijuar fare, POR edhe MONTHLY/TWO/FLEX me kësht
+        // të krijuar e 0€ të paguar hyjnë këtu) — ndryshe nga dropdown-i i
+        // formatit (Borxh i plotë = vetëm NONE), kjo pyet "sa ka paguar", jo
+        // "si është strukturuar plani". TI përjashtohet gjithmonë më lart.
+        if (debtStatus === "ZERO") return s.__status !== "PAID" && s.__status !== "PARTIAL";
         if (debtStatus === "PARTIAL") return s.__status === "PARTIAL";
         if (debtStatus === "PAID") return s.__status === "PAID";
         return true;
@@ -594,7 +600,7 @@ export default function SmsPage() {
               </div>
               <div className="flex items-center flex-wrap gap-2">
                 <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg flex-wrap">
-                  {([["DEBT", "Të papaguar"], ["PARTIAL", "Pjesërisht"], ["PAID", "Paguar plotësisht"], ["ALL", "Të gjithë"]] as const).map(([key, label]) => (
+                  {([["DEBT", "Të papaguar"], ["ZERO", "S'ka paguar asgjë"], ["PARTIAL", "Pjesërisht"], ["PAID", "Paguar plotësisht"], ["ALL", "Të gjithë"]] as const).map(([key, label]) => (
                     <button
                       key={key}
                       onClick={() => setDebtStatus(key)}
