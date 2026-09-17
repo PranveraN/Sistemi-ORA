@@ -311,14 +311,17 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Nxënës të Rinj — regjistruar gjatë vitit shkollor REAL aktual (jo
-            selektori i faqes) — skadon vetvetiu me fillimin e vitit tjetër. */}
-        {data.newStudents.count > 0 && (
-          <div className="card p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <UserPlus className="w-4.5 h-4.5 text-primary-500" />
-              <h2 className="section-title">Nxënës të Rinj — {data.newStudents.count} këtë vit</h2>
-            </div>
+        {/* Nxënës të Rinj — regjistruar gjatë periudhës/vitit të zgjedhur në
+            faqe (e njëjta periudhë si badge-i "+X të rinj" te karta "Nxënës
+            Aktivë" sipër, që numrat të përputhen gjithmonë). */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <UserPlus className="w-4.5 h-4.5 text-primary-500" />
+            <h2 className="section-title">Nxënës të Rinj — {data.newStudents.count} — {data.period.label}</h2>
+          </div>
+          {data.newStudents.count === 0 ? (
+            <p className="text-sm text-slate-400 py-4 text-center">Asnjë nxënës i ri i regjistruar në këtë periudhë.</p>
+          ) : (
             <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
               {data.newStudents.students.map(s => (
                 <Link
@@ -331,9 +334,13 @@ export default function DashboardPage() {
                     {s.className && <span className="text-slate-400 font-normal"> · {s.className}</span>}
                   </span>
                   <span className="flex items-center gap-2 shrink-0">
-                    {s.originCountry && (
+                    {s.originCountry ? (
                       <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium">
                         {s.originCountry}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400">
+                        Kosovë
                       </span>
                     )}
                     <span className="text-xs text-slate-400">{formatDate(s.enrollDate)}</span>
@@ -341,8 +348,8 @@ export default function DashboardPage() {
                 </Link>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Tabs — Përmbledhje vs Financat e Detajuara */}
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">

@@ -51,15 +51,13 @@ export async function GET(req: NextRequest) {
   // numërojë afate që ende s'kanë ardhur).
   const overdueUpperBound = end < now ? end : now;
 
-  // ── Nxënës të Rinj (kartë Dashboard) — gjithmonë viti shkollor REAL aktual,
-  // PAVARËSISHT vitit të zgjedhur në faqe (ndryshe nga pjesa tjetër e faqes që
-  // ndjek selektorin) — "i ri" ka kuptim vetëm në lidhje me tani, jo me një vit
-  // të kaluar që admin mund ta shohë. Skadon vetvetiu në fillim të vitit
-  // tjetër shkollor (thjesht DEFAULT_ACADEMIC_YEAR përditësohet dorazi atëherë,
-  // shih koment te academicYear.ts), pa asnjë flag që duhet pastruar manualisht.
-  const currentSchoolYear = getDateRange(DEFAULT_ACADEMIC_YEAR, "academic");
+  // ── Nxënës të Rinj (kartë Dashboard) — E NJËJTA periudhë si `newInPeriod`
+  // më poshtë (start/end sipas vitit të zgjedhur në faqe), që numrat e të
+  // dyja vendeve të përputhen gjithmonë. Kur mbaron viti shkollor aktual dhe
+  // admin kalon te viti tjetër (ose default-i i faqes përditësohet, shih
+  // DEFAULT_ACADEMIC_YEAR), lista rinovohet vetvetiu.
   const newStudentsList = await prisma.student.findMany({
-    where: { organizationId: orgId, status: "ACTIVE", enrollDate: { gte: currentSchoolYear.start, lte: currentSchoolYear.end } },
+    where: { organizationId: orgId, status: "ACTIVE", enrollDate: { gte: start, lte: end } },
     select: { id: true, firstName: true, lastName: true, originCountry: true, enrollDate: true, class: { select: { name: true } } },
     orderBy: { enrollDate: "desc" },
   });
