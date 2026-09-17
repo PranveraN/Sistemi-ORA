@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -121,6 +122,14 @@ export async function POST(req: NextRequest) {
         },
       });
     }
+
+    // Profili i nxënësit (/students/[id]) është faqe serveri (Server Component)
+    // që lexon pagesat direkt me Prisma — pa këtë, "Router Cache" i Next.js e
+    // mban versionin e vjetër të shfaqur kur kthehesh atje nga një faqe tjetër
+    // (p.sh. Shkollimi) me navigim "të butë" (Link/back), edhe pse vetë baza e
+    // të dhënave është përditësuar saktë (shih rastin real: pagesa dilte e
+    // saktë te lista e Shkollimit, POR e vjetër te profili i nxënësit).
+    revalidatePath(`/students/${body.studentId}`);
 
     return NextResponse.json(payment, { status: 201 });
   } catch (err: unknown) {

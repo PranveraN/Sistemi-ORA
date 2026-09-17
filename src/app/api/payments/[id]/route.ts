@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
@@ -78,6 +79,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   await logAction(session, "UPDATE", "Payment", payment.id,
     `Ndryshoi pagesën e ${payment.student.firstName} ${payment.student.lastName} (${payment.category.name}) — ${finalAmount}€`);
 
+  // Shih komentin e njëjtë te POST /api/payments — pa këtë, profili i
+  // nxënësit mund të mbetet me shumën e vjetër kur kthehesh atje me navigim
+  // të butë, edhe pse pagesa u përditësua saktë në bazë.
+  revalidatePath(`/students/${payment.studentId}`);
+
   return NextResponse.json(payment);
 }
 
@@ -97,6 +103,7 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   if (existing) {
     await logAction(session, "DELETE", "Payment", paymentId,
       `Fshiu pagesën e ${existing.student.firstName} ${existing.student.lastName} (${existing.category.name}) — ${existing.finalAmount}€`);
+    revalidatePath(`/students/${existing.studentId}`);
   }
 
   return NextResponse.json({ success: true });
