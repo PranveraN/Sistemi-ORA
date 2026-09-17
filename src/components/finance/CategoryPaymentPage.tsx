@@ -1479,6 +1479,20 @@ interface ModalProps {
   singlePaymentOnly?: boolean;
 }
 
+// Nxjerr muajin/vitin nga një string date-only "YYYY-MM-DD" (siç e kthen
+// gjithmonë <input type="date"> ose .toISOString().split("T")[0]) — pa
+// kaluar FARE nëpër `new Date(str).getMonth()/getFullYear()`, sepse "YYYY-MM-DD"
+// pa orë analizohet gjithmonë si UTC mesnatë, kurse getMonth()/getFullYear()
+// e kthejnë në ORËN LOKALE të kompjuterit që e ekzekuton — për çdo timezone
+// mbrapa UTC-së (ose një orë sistemi jo saktë e vendosur), kjo mund ta zhvendosë
+// datën një ditë mbrapa (p.sh. 1 Shtator bëhet 31 Gusht), duke e bërë pagesën
+// "të padukshme" për query-t e vitit akademik aktual (shih rastin real: pagesë
+// "E plotë" e krijuar me Afat 01/09, e ruajtur me month=8 në vend të 9).
+function monthYearFromDateStr(dateStr: string): { month: number; year: number } {
+  const [y, m] = dateStr.split("-").map(Number);
+  return { month: m, year: y };
+}
+
 function PaymentModal({ student, category, month, year, onClose, onSave, overrideAmount, singlePaymentOnly = false }: ModalProps) {
   const today = new Date().toISOString().split("T")[0];
   const installments = student.installments;
@@ -1829,8 +1843,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         // Muaji/viti llogariten nga Afati i pagesës, jo nga filtri aktual i tabelës
         // (mund të jetë "Të gjitha" → pa muaj konkret, gjë që e bënte pagesën të
         // "padukshme" për query-t e ardhshme që kërkojnë muaj real).
-        month:        new Date(sForm.dueDate).getMonth() + 1,
-        year:         new Date(sForm.dueDate).getFullYear(),
+        ...monthYearFromDateStr(sForm.dueDate),
       };
       if (singleExisting) {
         const r = await fetch(`/api/payments/${singleExisting.id}`, {
@@ -1882,8 +1895,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
           description,
           note:         form.note || null,
           // Muaji/viti llogariten nga Afati i vetë këstit, jo nga filtri i tabelës.
-          month:        new Date(dueDate).getMonth() + 1,
-          year:         new Date(dueDate).getFullYear(),
+          ...monthYearFromDateStr(dueDate),
         };
         if (existing) {
           const r = await fetch(`/api/payments/${existing.id}`, {
@@ -1995,8 +2007,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         paidDate:     null,
         description:  "FLEX_HEADER",
         note:         form.note || null,
-        month:        new Date(headerDueDate).getMonth() + 1,
-        year:         new Date(headerDueDate).getFullYear(),
+        ...monthYearFromDateStr(headerDueDate),
       };
       if (flexHeaderExisting) {
         await fetch(`/api/payments/${flexHeaderExisting.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(headerPayload) });
@@ -2025,8 +2036,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
           dueDate:      fr.dueDate,
           paidDate:     fr.paidDate,
           description:  `FLEX_PAY_${i + 1}`,
-          month:        new Date(fr.dueDate).getMonth() + 1,
-          year:         new Date(fr.dueDate).getFullYear(),
+          ...monthYearFromDateStr(fr.dueDate),
         };
         let rid: number | undefined;
         if (fr.id) {
