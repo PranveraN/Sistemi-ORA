@@ -36,6 +36,10 @@ interface DashboardData {
   overdueAmount: number;
   overdueCount: number;
   newInPeriod: number;
+  newStudents: {
+    count: number;
+    students: Array<{ id: number; firstName: string; lastName: string; className: string | null; originCountry: string | null; enrollDate: string }>;
+  };
   recentPayments: Array<{
     id: number;
     paidAmount: number;
@@ -306,6 +310,39 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Nxënës të Rinj — regjistruar gjatë vitit shkollor REAL aktual (jo
+            selektori i faqes) — skadon vetvetiu me fillimin e vitit tjetër. */}
+        {data.newStudents.count > 0 && (
+          <div className="card p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <UserPlus className="w-4.5 h-4.5 text-primary-500" />
+              <h2 className="section-title">Nxënës të Rinj — {data.newStudents.count} këtë vit</h2>
+            </div>
+            <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+              {data.newStudents.students.map(s => (
+                <Link
+                  key={s.id}
+                  href={`/students/${s.id}`}
+                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                >
+                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                    {s.firstName} {s.lastName}
+                    {s.className && <span className="text-slate-400 font-normal"> · {s.className}</span>}
+                  </span>
+                  <span className="flex items-center gap-2 shrink-0">
+                    {s.originCountry && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium">
+                        {s.originCountry}
+                      </span>
+                    )}
+                    <span className="text-xs text-slate-400">{formatDate(s.enrollDate)}</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Tabs — Përmbledhje vs Financat e Detajuara */}
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">

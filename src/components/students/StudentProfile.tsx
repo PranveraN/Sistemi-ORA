@@ -153,6 +153,7 @@ interface Student {
   personalNumber: string | null;
   birthDate: string | null;
   address: string | null;
+  originCountry: string | null;
   guardian: string | null;
   motherNumber: string | null;
   diaryNumber: string | null;
@@ -677,6 +678,11 @@ export default function StudentProfile({ student }: { student: Student }) {
           {student.address && (
             <div className="border-t border-slate-100 dark:border-slate-700 pt-3">
               <InfoRow label="Adresa" value={student.address} icon={<MapPin className="w-3.5 h-3.5 text-slate-400" />} />
+            </div>
+          )}
+          {student.originCountry && (
+            <div className="border-t border-slate-100 dark:border-slate-700 pt-3">
+              <InfoRow label="Vendi i origjinës" value={student.originCountry} icon={<MapPin className="w-3.5 h-3.5 text-slate-400" />} />
             </div>
           )}
 

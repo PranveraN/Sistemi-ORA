@@ -15,6 +15,7 @@ interface StudentFormData {
   diaryNumber: string;
   address: string;
   guardian: string;
+  originCountry: string;
   // Mother
   motherName: string;
   motherBirth: string;
@@ -40,7 +41,7 @@ interface Props {
 
 const empty: StudentFormData = {
   firstName: "", lastName: "", birthDate: "", personalNumber: "",
-  motherNumber: "", diaryNumber: "", address: "", guardian: "",
+  motherNumber: "", diaryNumber: "", address: "", guardian: "", originCountry: "",
   motherName: "", motherBirth: "", motherProf: "", motherPhone: "", motherEmail: "",
   fatherName: "", fatherBirth: "", fatherProf: "", fatherPhone: "", fatherEmail: "",
   classId: "", status: "ACTIVE", notes: "",
@@ -286,6 +287,7 @@ export default function StudentForm({ initial, studentId }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Adresa e Shtëpisë" placeholder="Adresa e shtëpisë" value={form.address} onChange={v => set("address", v)} />
           <Field label="Kujdestari/ja" placeholder="Nëse ndryshe nga prindi" value={form.guardian} onChange={v => set("guardian", v)} />
+          <Field label="Vendi i Origjinës" placeholder='Vetëm nëse ka ardhur nga jashtë Kosovës (p.sh. "Norvegji")' value={form.originCountry} onChange={v => set("originCountry", v)} />
         </div>
       </div>
 

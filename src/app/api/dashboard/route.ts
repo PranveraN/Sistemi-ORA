@@ -51,6 +51,19 @@ export async function GET(req: NextRequest) {
   // numërojë afate që ende s'kanë ardhur).
   const overdueUpperBound = end < now ? end : now;
 
+  // ── Nxënës të Rinj (kartë Dashboard) — gjithmonë viti shkollor REAL aktual,
+  // PAVARËSISHT vitit të zgjedhur në faqe (ndryshe nga pjesa tjetër e faqes që
+  // ndjek selektorin) — "i ri" ka kuptim vetëm në lidhje me tani, jo me një vit
+  // të kaluar që admin mund ta shohë. Skadon vetvetiu në fillim të vitit
+  // tjetër shkollor (thjesht DEFAULT_ACADEMIC_YEAR përditësohet dorazi atëherë,
+  // shih koment te academicYear.ts), pa asnjë flag që duhet pastruar manualisht.
+  const currentSchoolYear = getDateRange(DEFAULT_ACADEMIC_YEAR, "academic");
+  const newStudentsList = await prisma.student.findMany({
+    where: { organizationId: orgId, status: "ACTIVE", enrollDate: { gte: currentSchoolYear.start, lte: currentSchoolYear.end } },
+    select: { id: true, firstName: true, lastName: true, originCountry: true, enrollDate: true, class: { select: { name: true } } },
+    orderBy: { enrollDate: "desc" },
+  });
+
   // ── Pasqyrë Shkollimi (për "Pasqyrë Shkollimi" te Dashboard) ──
   const shkollimiCategory = await prisma.paymentCategory.findFirst({ where: { name: "Shkollimi", organizationId: orgId } });
   const tuitionAccrualWhere = shkollimiCategory ? (
@@ -236,6 +249,13 @@ export async function GET(req: NextRequest) {
     overdueAmount: overdueAgg._sum.balance || 0,
     overdueCount: overdueAgg._count,
     newInPeriod,
+    newStudents: {
+      count: newStudentsList.length,
+      students: newStudentsList.map(s => ({
+        id: s.id, firstName: s.firstName, lastName: s.lastName,
+        className: s.class?.name ?? null, originCountry: s.originCountry, enrollDate: s.enrollDate,
+      })),
+    },
     recentPayments,
     monthlyChartData,
     tuitionOverview: {

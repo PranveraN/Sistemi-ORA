@@ -185,6 +185,7 @@ export async function POST(req: NextRequest) {
         diaryNumber: body.diaryNumber || null,
         parentPhone: normalizePhone(body.fatherPhone || body.motherPhone || body.parentPhone) ?? undefined,
         address: body.address || null,
+        originCountry: body.originCountry || null,
         status: body.status || "ACTIVE",
         notes: body.notes || null,
         motherName: body.motherName || null,

@@ -101,6 +101,7 @@ model Student {
   paymentPlan    String?   // FULL, TWO, MONTHLY, TIMI_INVEST — synimi/regjistrimi i menyres se pageses
   status         String    @default("ACTIVE") // ACTIVE, INACTIVE
   enrollDate     DateTime  @default(now())
+  originCountry  String?   // Vendi nga ka ardhur (kur eshte nxenes i ardhur nga jashte Kosoves)
   inactiveDate   DateTime?
   notes          String?
   organizationId Int          @default(1)

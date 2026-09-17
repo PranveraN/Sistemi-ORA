@@ -22,6 +22,7 @@ export default async function EditStudentPage({ params }: { params: Promise<{ id
     motherNumber: student.motherNumber || "",
     diaryNumber: student.diaryNumber || "",
     address: student.address || "",
+    originCountry: student.originCountry || "",
     status: student.status,
     notes: student.notes || "",
     motherName: student.motherName || "",

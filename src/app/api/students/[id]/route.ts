@@ -63,6 +63,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         diaryNumber: body.diaryNumber || null,
         parentPhone: normalizePhone(body.fatherPhone || body.motherPhone || body.parentPhone),
         address: body.address || null,
+        originCountry: body.originCountry || null,
         status: body.status,
         notes: body.notes || null,
         motherName: body.motherName || null,
