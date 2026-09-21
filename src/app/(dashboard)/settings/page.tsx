@@ -8,7 +8,7 @@ import {
   School, Users, BookOpen, ShoppingBag, Eye, EyeOff,
   Loader2, AlertTriangle, GraduationCap, KeyRound,
   DatabaseBackup, Download, RefreshCw, CalendarRange, Star,
-  Combine, Copy, Link2,
+  Combine, Copy, Link2, ClipboardList, ArrowUp, ArrowDown, ClipboardCheck,
 } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
@@ -70,6 +70,8 @@ const TABS = [
   { key: "kategorite", label: "Kategoritë",    icon: Euro },
   { key: "klasat",     label: "Klasat",        icon: GraduationCap },
   { key: "shpenzime",  label: "Shpenzime",     icon: ShoppingBag },
+  { key: "formulari",  label: "Formulari i Aplikimit", icon: ClipboardList },
+  { key: "evidenca",   label: "Evidenca e Regjistrimit", icon: ClipboardCheck },
   { key: "perdoruesit",label: "Përdoruesit",   icon: Users },
   { key: "backup",     label: "Backup",        icon: DatabaseBackup },
   { key: "vitet",      label: "Vitet Shkollore", icon: CalendarRange },
@@ -115,6 +117,8 @@ export default function SettingsPage() {
         {tab === "kategorite"  && <CategoriesSection />}
         {tab === "klasat"      && <ClassesSection />}
         {tab === "shpenzime"   && <ExpenseCatsSection />}
+        {tab === "formulari"   && <EnrollmentFormSection />}
+        {tab === "evidenca"    && <EvidencaConfigSection />}
         {tab === "perdoruesit" && isAdmin && <UsersSection />}
         {tab === "backup"     && isAdmin && <BackupSection />}
         {tab === "vitet"      && isAdmin && <SchoolYearsSection />}
@@ -287,6 +291,581 @@ function SchoolSection() {
         </button>
       </div>
     </form>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  1b. FORMULARI I APLIKIMIT ("/apliko")                       */
+/* ═══════════════════════════════════════════════════════════ */
+interface ExistingFieldDef { key: string; label: string; section: string; defaultRequired: boolean }
+interface FieldOverride { visible: boolean; required: boolean }
+interface CustomField {
+  id: number; label: string; type: string; options: string[] | null; required: boolean; order: number;
+}
+const CUSTOM_FIELD_TYPES = [
+  { value: "TEXT", label: "Tekst i shkurtër" },
+  { value: "TEXTAREA", label: "Tekst i gjatë" },
+  { value: "NUMBER", label: "Numër" },
+  { value: "SELECT", label: "Zgjedhje (dropdown)" },
+  { value: "CHECKBOX", label: "Po / Jo" },
+];
+
+function EnrollmentFormSection() {
+  const [fields, setFields] = useState<ExistingFieldDef[]>([]);
+  const [config, setConfig] = useState<Record<string, FieldOverride>>({});
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+  const [editingField, setEditingField] = useState<CustomField | "new" | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [a, b] = await Promise.all([
+      fetch("/api/settings/enrollment-fields").then(r => r.json()),
+      fetch("/api/enrollment-form-fields").then(r => r.json()),
+    ]);
+    setFields(a.fields); setConfig(a.config);
+    setCustomFields(b);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  function toggle(key: string, prop: "visible" | "required") {
+    setConfig(c => ({ ...c, [key]: { ...c[key], [prop]: !c[key]?.[prop] } }));
+  }
+
+  async function saveConfig() {
+    setSavingConfig(true);
+    await fetch("/api/settings/enrollment-fields", {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config }),
+    });
+    setSavingConfig(false); setConfigSaved(true);
+    setTimeout(() => setConfigSaved(false), 2000);
+  }
+
+  async function deleteCustomField(id: number) {
+    if (!confirm("T'a fshij këtë pyetje? Aplikimet e vjetra do ta ruajnë ende përgjigjen dhe etiketën.")) return;
+    await fetch(`/api/enrollment-form-fields/${id}`, { method: "DELETE" });
+    load();
+  }
+
+  async function moveCustomField(field: CustomField, direction: -1 | 1) {
+    const sorted = [...customFields].sort((a, b) => a.order - b.order);
+    const idx = sorted.findIndex(f => f.id === field.id);
+    const swapWith = sorted[idx + direction];
+    if (!swapWith) return;
+    await Promise.all([
+      fetch(`/api/enrollment-form-fields/${field.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: swapWith.order }) }),
+      fetch(`/api/enrollment-form-fields/${swapWith.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: field.order }) }),
+    ]);
+    load();
+  }
+
+  if (loading) return <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>;
+
+  const sections = Array.from(new Set(fields.map(f => f.section)));
+
+  return (
+    <div className="space-y-5">
+      <div className="card p-6 space-y-4">
+        <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-700">
+          <div className="w-9 h-9 bg-primary-50 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
+            <ClipboardList className="w-5 h-5 text-primary-500" />
+          </div>
+          <div>
+            <h2 className="font-bold text-slate-900 dark:text-white">Fushat Ekzistuese</h2>
+            <p className="text-xs text-slate-400">Fikni/ndizni fusha të formularit "/apliko", ose i shënoni të domosdoshme</p>
+          </div>
+        </div>
+
+        {sections.map(section => (
+          <div key={section} className="space-y-2">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{section}</h3>
+            {fields.filter(f => f.section === section).map(f => (
+              <div key={f.key} className="flex items-center justify-between gap-3 py-2 border-b border-slate-50 dark:border-slate-800 last:border-0">
+                <span className="text-sm text-slate-700 dark:text-slate-200">{f.label}</span>
+                <div className="flex items-center gap-4 shrink-0">
+                  <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer">
+                    <input type="checkbox" checked={config[f.key]?.visible ?? true} onChange={() => toggle(f.key, "visible")} />
+                    Shfaqe
+                  </label>
+                  <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${config[f.key]?.visible === false ? "text-slate-300 dark:text-slate-600" : "text-slate-500 dark:text-slate-400"}`}>
+                    <input type="checkbox" disabled={config[f.key]?.visible === false} checked={config[f.key]?.required ?? f.defaultRequired} onChange={() => toggle(f.key, "required")} />
+                    E domosdoshme
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+
+        <div className="flex items-center justify-end gap-3 pt-2">
+          {configSaved && <span className="text-sm text-green-600 flex items-center gap-1"><Check className="w-4 h-4" /> U ruajt</span>}
+          <button onClick={saveConfig} disabled={savingConfig} className="btn-primary">
+            {savingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {savingConfig ? "Duke ruajtur..." : "Ruaj Ndryshimet"}
+          </button>
+        </div>
+      </div>
+
+      <div className="card p-6 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
+          <div>
+            <h2 className="font-bold text-slate-900 dark:text-white">Pyetje Shtesë</h2>
+            <p className="text-xs text-slate-400">Shfaqen si hap i ri "Pyetje Shtesë" para përmbledhjes te "/apliko"</p>
+          </div>
+          <button onClick={() => setEditingField("new")} className="btn-primary text-sm">
+            <Plus className="w-4 h-4" /> Shto Pyetje
+          </button>
+        </div>
+
+        {customFields.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-6">Asnjë pyetje shtesë ende.</p>
+        ) : (
+          <div className="space-y-2">
+            {[...customFields].sort((a, b) => a.order - b.order).map((f, i, arr) => (
+              <div key={f.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                    {f.label} {f.required && <span className="text-red-500">*</span>}
+                  </p>
+                  <p className="text-xs text-slate-400">{CUSTOM_FIELD_TYPES.find(t => t.value === f.type)?.label ?? f.type}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => moveCustomField(f, -1)} disabled={i === 0} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30">
+                    <ArrowUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => moveCustomField(f, 1)} disabled={i === arr.length - 1} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30">
+                    <ArrowDown className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => setEditingField(f)} className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => deleteCustomField(f.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {editingField && (
+        <CustomFieldModal
+          field={editingField === "new" ? null : editingField}
+          onClose={() => setEditingField(null)}
+          onSaved={() => { setEditingField(null); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CustomFieldModal({ field, onClose, onSaved }: { field: CustomField | null; onClose: () => void; onSaved: () => void }) {
+  const [label, setLabel] = useState(field?.label ?? "");
+  const [type, setType] = useState(field?.type ?? "TEXT");
+  const [options, setOptions] = useState((field?.options ?? []).join("\n"));
+  const [required, setRequired] = useState(field?.required ?? false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!label.trim()) { setError("Etiketa është e domosdoshme."); return; }
+    setSaving(true); setError("");
+    const body = {
+      label: label.trim(), type, required,
+      options: type === "SELECT" ? options.split("\n").map(o => o.trim()).filter(Boolean) : undefined,
+    };
+    const r = field
+      ? await fetch(`/api/enrollment-form-fields/${field.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      : await fetch("/api/enrollment-form-fields", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    setSaving(false);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.message || "Dështoi."); return; }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+          <h3 className="font-bold text-slate-900 dark:text-white">{field ? "Redakto Pyetjen" : "Pyetje e Re"}</h3>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="form-label">Etiketa <span className="text-red-500">*</span></label>
+            <input className="form-input" value={label} onChange={e => setLabel(e.target.value)} placeholder='p.sh. "A ka nevoja të veçanta?"' />
+          </div>
+          <div>
+            <label className="form-label">Lloji</label>
+            <select className="form-input" value={type} onChange={e => setType(e.target.value)}>
+              {CUSTOM_FIELD_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          {type === "SELECT" && (
+            <div>
+              <label className="form-label">Opsionet (një për rresht)</label>
+              <textarea className="form-input" rows={4} value={options} onChange={e => setOptions(e.target.value)} placeholder={"Po\nJo"} />
+            </div>
+          )}
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">
+            <input type="checkbox" checked={required} onChange={e => setRequired(e.target.checked)} />
+            E domosdoshme
+          </label>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-2 p-5 pt-0">
+          <button onClick={onClose} className="btn-secondary"><X className="w-4 h-4" />Anulo</button>
+          <button onClick={handleSave} disabled={saving} className="btn-primary flex-1">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? "Duke ruajtur..." : "Ruaj"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  1c. EVIDENCA E REGJISTRIMIT (vlerësim pedagogjik + pyetësor) */
+/* ═══════════════════════════════════════════════════════════ */
+interface EvidCategory { id: number; label: string; order: number; active: boolean }
+interface EvidItem {
+  id: number; section: "SKILLS" | "GENERAL"; categoryId: number | null; label: string;
+  type: "RATING" | "YES_NO" | "CHOICE" | "TEXT" | "TEXTAREA"; options: string[] | null;
+  hasSpecify: boolean; order: number; active: boolean;
+}
+const GENERAL_ITEM_TYPES = [
+  { value: "YES_NO", label: "Po / Jo" },
+  { value: "CHOICE", label: "Zgjedhje (opsione)" },
+  { value: "TEXT", label: "Tekst i shkurtër" },
+  { value: "TEXTAREA", label: "Tekst i gjatë" },
+];
+
+function EvidencaConfigSection() {
+  const [categories, setCategories] = useState<EvidCategory[]>([]);
+  const [items, setItems] = useState<EvidItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [categoryModal, setCategoryModal] = useState<EvidCategory | "new" | null>(null);
+  const [skillItemModal, setSkillItemModal] = useState<{ categoryId: number; item: EvidItem | null } | null>(null);
+  const [generalItemModal, setGeneralItemModal] = useState<EvidItem | "new" | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [c, i] = await Promise.all([
+      fetch("/api/evidenca-categories?includeInactive=1").then(r => r.json()),
+      fetch("/api/evidenca-items?includeInactive=1").then(r => r.json()),
+    ]);
+    setCategories(c.filter((x: EvidCategory) => x.active));
+    setItems(i.filter((x: EvidItem) => x.active));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function deleteCategory(id: number) {
+    if (!confirm("T'a fshij këtë kategori? Pikat e saj s'do të shfaqen më te formulari i ri (evidencat e vjetra ruajnë etiketën).")) return;
+    await fetch(`/api/evidenca-categories/${id}`, { method: "DELETE" });
+    load();
+  }
+  async function deleteItem(id: number) {
+    if (!confirm("T'a fshij këtë pyetje? Evidencat e vjetra ruajnë ende përgjigjen dhe etiketën.")) return;
+    await fetch(`/api/evidenca-items/${id}`, { method: "DELETE" });
+    load();
+  }
+  async function moveCategory(cat: EvidCategory, direction: -1 | 1) {
+    const sorted = [...categories].sort((a, b) => a.order - b.order);
+    const idx = sorted.findIndex(c => c.id === cat.id);
+    const swap = sorted[idx + direction];
+    if (!swap) return;
+    await Promise.all([
+      fetch(`/api/evidenca-categories/${cat.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: swap.order }) }),
+      fetch(`/api/evidenca-categories/${swap.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: cat.order }) }),
+    ]);
+    load();
+  }
+  async function moveItem(item: EvidItem, siblings: EvidItem[], direction: -1 | 1) {
+    const sorted = [...siblings].sort((a, b) => a.order - b.order);
+    const idx = sorted.findIndex(i => i.id === item.id);
+    const swap = sorted[idx + direction];
+    if (!swap) return;
+    await Promise.all([
+      fetch(`/api/evidenca-items/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: swap.order }) }),
+      fetch(`/api/evidenca-items/${swap.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: item.order }) }),
+    ]);
+    load();
+  }
+
+  if (loading) return <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>;
+
+  const generalItems = items.filter(i => i.section === "GENERAL");
+
+  return (
+    <div className="space-y-5">
+      <div className="card p-6 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
+          <div>
+            <h2 className="font-bold text-slate-900 dark:text-white">Vlerësimi i Aftësive</h2>
+            <p className="text-xs text-slate-400">Tabelë me kategori dhe pika, secila e notuar 5% / 4% / 3% / 2%</p>
+          </div>
+          <button onClick={() => setCategoryModal("new")} className="btn-primary text-sm">
+            <Plus className="w-4 h-4" /> Shto Kategori
+          </button>
+        </div>
+
+        {categories.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-6">Asnjë kategori ende.</p>
+        ) : (
+          <div className="space-y-4">
+            {[...categories].sort((a, b) => a.order - b.order).map((cat, ci, catArr) => {
+              const catItems = items.filter(i => i.section === "SKILLS" && i.categoryId === cat.id);
+              return (
+                <div key={cat.id} className="border border-slate-100 dark:border-slate-700 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{cat.label}</p>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => moveCategory(cat, -1)} disabled={ci === 0} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30"><ArrowUp className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => moveCategory(cat, 1)} disabled={ci === catArr.length - 1} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30"><ArrowDown className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => setCategoryModal(cat)} className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20"><Pencil className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => deleteCategory(cat.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </div>
+                  {catItems.length > 0 && (
+                    <div className="space-y-1 pl-1">
+                      {[...catItems].sort((a, b) => a.order - b.order).map((item, ii, itemArr) => (
+                        <div key={item.id} className="flex items-center justify-between gap-2 py-1 border-b border-slate-50 dark:border-slate-800 last:border-0">
+                          <span className="text-sm text-slate-600 dark:text-slate-300">{item.label}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={() => moveItem(item, itemArr, -1)} disabled={ii === 0} className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30"><ArrowUp className="w-3 h-3" /></button>
+                            <button onClick={() => moveItem(item, itemArr, 1)} disabled={ii === itemArr.length - 1} className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30"><ArrowDown className="w-3 h-3" /></button>
+                            <button onClick={() => setSkillItemModal({ categoryId: cat.id, item })} className="p-1 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20"><Pencil className="w-3 h-3" /></button>
+                            <button onClick={() => deleteItem(item.id)} className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 className="w-3 h-3" /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={() => setSkillItemModal({ categoryId: cat.id, item: null })} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+                    <Plus className="w-3 h-3" /> Shto Pikë
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="card p-6 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
+          <div>
+            <h2 className="font-bold text-slate-900 dark:text-white">Pyetësori Shëndetësor & Logjistik</h2>
+            <p className="text-xs text-slate-400">Pyetje Po/Jo, zgjedhje ose tekst i lirë</p>
+          </div>
+          <button onClick={() => setGeneralItemModal("new")} className="btn-primary text-sm">
+            <Plus className="w-4 h-4" /> Shto Pyetje
+          </button>
+        </div>
+
+        {generalItems.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-6">Asnjë pyetje ende.</p>
+        ) : (
+          <div className="space-y-2">
+            {[...generalItems].sort((a, b) => a.order - b.order).map((item, i, arr) => (
+              <div key={item.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{item.label}</p>
+                  <p className="text-xs text-slate-400">{GENERAL_ITEM_TYPES.find(t => t.value === item.type)?.label ?? item.type}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => moveItem(item, arr, -1)} disabled={i === 0} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30"><ArrowUp className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => moveItem(item, arr, 1)} disabled={i === arr.length - 1} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30"><ArrowDown className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => setGeneralItemModal(item)} className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20"><Pencil className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => deleteItem(item.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {categoryModal && (
+        <EvidCategoryModal
+          category={categoryModal === "new" ? null : categoryModal}
+          onClose={() => setCategoryModal(null)}
+          onSaved={() => { setCategoryModal(null); load(); }}
+        />
+      )}
+      {skillItemModal && (
+        <EvidSkillItemModal
+          categoryId={skillItemModal.categoryId}
+          item={skillItemModal.item}
+          onClose={() => setSkillItemModal(null)}
+          onSaved={() => { setSkillItemModal(null); load(); }}
+        />
+      )}
+      {generalItemModal && (
+        <EvidGeneralItemModal
+          item={generalItemModal === "new" ? null : generalItemModal}
+          onClose={() => setGeneralItemModal(null)}
+          onSaved={() => { setGeneralItemModal(null); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function EvidCategoryModal({ category, onClose, onSaved }: { category: EvidCategory | null; onClose: () => void; onSaved: () => void }) {
+  const [label, setLabel] = useState(category?.label ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!label.trim()) { setError("Etiketa është e domosdoshme."); return; }
+    setSaving(true); setError("");
+    const r = category
+      ? await fetch(`/api/evidenca-categories/${category.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }) })
+      : await fetch("/api/evidenca-categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }) });
+    setSaving(false);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.message || "Dështoi."); return; }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+          <h3 className="font-bold text-slate-900 dark:text-white">{category ? "Redakto Kategorinë" : "Kategori e Re"}</h3>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="form-label">Etiketa <span className="text-red-500">*</span></label>
+            <input className="form-input" value={label} onChange={e => setLabel(e.target.value)} placeholder='p.sh. "Njohuritë matematikore"' />
+          </div>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-2 p-5 pt-0">
+          <button onClick={onClose} className="btn-secondary"><X className="w-4 h-4" />Anulo</button>
+          <button onClick={handleSave} disabled={saving} className="btn-primary flex-1">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? "Duke ruajtur..." : "Ruaj"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EvidSkillItemModal({ categoryId, item, onClose, onSaved }: { categoryId: number; item: EvidItem | null; onClose: () => void; onSaved: () => void }) {
+  const [label, setLabel] = useState(item?.label ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!label.trim()) { setError("Etiketa është e domosdoshme."); return; }
+    setSaving(true); setError("");
+    const r = item
+      ? await fetch(`/api/evidenca-items/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }) })
+      : await fetch("/api/evidenca-items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label, type: "RATING", section: "SKILLS", categoryId }) });
+    setSaving(false);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.message || "Dështoi."); return; }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+          <h3 className="font-bold text-slate-900 dark:text-white">{item ? "Redakto Pikën" : "Pikë e Re"}</h3>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="form-label">Etiketa <span className="text-red-500">*</span></label>
+            <input className="form-input" value={label} onChange={e => setLabel(e.target.value)} placeholder='p.sh. "Njohja e shkronjave"' />
+          </div>
+          <p className="text-xs text-slate-400">Notohet gjithmonë 5% / 4% / 3% / 2%.</p>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-2 p-5 pt-0">
+          <button onClick={onClose} className="btn-secondary"><X className="w-4 h-4" />Anulo</button>
+          <button onClick={handleSave} disabled={saving} className="btn-primary flex-1">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? "Duke ruajtur..." : "Ruaj"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EvidGeneralItemModal({ item, onClose, onSaved }: { item: EvidItem | null; onClose: () => void; onSaved: () => void }) {
+  const [label, setLabel] = useState(item?.label ?? "");
+  const [type, setType] = useState(item?.type ?? "YES_NO");
+  const [options, setOptions] = useState((item?.options ?? []).join("\n"));
+  const [hasSpecify, setHasSpecify] = useState(item?.hasSpecify ?? false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!label.trim()) { setError("Etiketa është e domosdoshme."); return; }
+    setSaving(true); setError("");
+    const body = {
+      label: label.trim(), type, hasSpecify: type === "YES_NO" ? hasSpecify : false,
+      options: type === "CHOICE" ? options.split("\n").map(o => o.trim()).filter(Boolean) : undefined,
+    };
+    const r = item
+      ? await fetch(`/api/evidenca-items/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      : await fetch("/api/evidenca-items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, section: "GENERAL" }) });
+    setSaving(false);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.message || "Dështoi."); return; }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+          <h3 className="font-bold text-slate-900 dark:text-white">{item ? "Redakto Pyetjen" : "Pyetje e Re"}</h3>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="form-label">Etiketa <span className="text-red-500">*</span></label>
+            <input className="form-input" value={label} onChange={e => setLabel(e.target.value)} placeholder='p.sh. "A ka fëmija juaj histori alergjike?"' />
+          </div>
+          <div>
+            <label className="form-label">Lloji</label>
+            <select className="form-input" value={type} onChange={e => setType(e.target.value as EvidItem["type"])}>
+              {GENERAL_ITEM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          {type === "CHOICE" && (
+            <div>
+              <label className="form-label">Opsionet (një për rresht)</label>
+              <textarea className="form-input" rows={3} value={options} onChange={e => setOptions(e.target.value)} placeholder={"Me shkollën\nIndividuale"} />
+            </div>
+          )}
+          {type === "YES_NO" && (
+            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" checked={hasSpecify} onChange={e => setHasSpecify(e.target.checked)} />
+              Shto fushë "Specifikoni" nëse përgjigjja është "Po"
+            </label>
+          )}
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-2 p-5 pt-0">
+          <button onClick={onClose} className="btn-secondary"><X className="w-4 h-4" />Anulo</button>
+          <button onClick={handleSave} disabled={saving} className="btn-primary flex-1">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? "Duke ruajtur..." : "Ruaj"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

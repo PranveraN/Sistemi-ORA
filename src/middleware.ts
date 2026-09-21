@@ -11,7 +11,9 @@ export default auth((req) => {
   const isTeacherArea = nextUrl.pathname.startsWith("/kerkesa-material");
   const isTeacherPublicPage = nextUrl.pathname === "/kerkesa-material/regjistrohu";
   const isEnrollmentPublicPage = nextUrl.pathname === "/apliko";
-  const isClassesArea = nextUrl.pathname.startsWith("/classes");
+  const isPedagogiaArea = nextUrl.pathname.startsWith("/classes")
+    || nextUrl.pathname.startsWith("/regjistrimet")
+    || nextUrl.pathname.startsWith("/levizjet");
 
   if (isLoginPage && isLoggedIn) {
     if (role === "SUPERADMIN") return NextResponse.redirect(new URL("/superadmin", nextUrl));
@@ -33,9 +35,11 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/kerkesa-material", nextUrl));
   }
 
-  // Pedagogia sheh VETËM "Klasat" (numri i nxënësve + klasat) — asgjë tjetër,
-  // sipas kërkesës eksplicite (rol i ngushtë, i ndarë nga SECRETARY normale).
-  if (isLoggedIn && role === "PEDAGOGIA" && !isClassesArea) {
+  // Pedagogia sheh "Klasat", "Regjistrimet" (përfshi skedën "Evidenca" —
+  // vlerësimi i takimit me nxënësin e sapopranuar) dhe "Lëvizjet e Nxënësve"
+  // — asgjë tjetër, sipas kërkesës eksplicite (rol i ngushtë, i ndarë nga
+  // SECRETARY normale).
+  if (isLoggedIn && role === "PEDAGOGIA" && !isPedagogiaArea) {
     return NextResponse.redirect(new URL("/classes", nextUrl));
   }
 

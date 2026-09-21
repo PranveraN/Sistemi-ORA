@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { formatDate } from "@/lib/utils";
-import { Search, Eye, Clock, CheckCircle, XCircle, ClipboardList, Download, Trash2 } from "lucide-react";
+import { Search, Eye, Clock, CheckCircle, XCircle, ClipboardList, Download, Trash2, FileCheck2 } from "lucide-react";
 import ApplicationDetailModal from "@/components/enrollment/admin/ApplicationDetailModal";
-import { exportEnrollmentApplicationsExcel, type ExportableApplication } from "@/lib/enrollmentApplicationExport";
+import EvidencaTab from "@/components/evidenca/EvidencaTab";
+import { exportEnrollmentApplicationsExcel, type ExportableApplication, type CustomFieldDef } from "@/lib/enrollmentApplicationExport";
 
 interface Row extends ExportableApplication {
   id: number;
@@ -14,6 +15,7 @@ interface Row extends ExportableApplication {
 
 const TABS = [
   { value: "PENDING", label: "Për Shqyrtim", icon: Clock },
+  { value: "EVIDENCA", label: "Evidenca", icon: FileCheck2 },
   { value: "APPROVED", label: "Pranuar", icon: CheckCircle },
   { value: "REJECTED", label: "Refuzuar", icon: XCircle },
   { value: "ALL", label: "Të Gjitha", icon: ClipboardList },
@@ -33,7 +35,7 @@ function contactOf(r: Row): { name: string; phone: string } {
 
 export default function RegjistrimetPage() {
   const searchParams = useSearchParams();
-  const [status, setStatus] = useState("PENDING");
+  const [status, setStatus] = useState(() => searchParams.get("tab")?.toUpperCase() ?? "PENDING");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -42,8 +44,10 @@ export default function RegjistrimetPage() {
   const [classFilter, setClassFilter] = useState(() => searchParams.get("grade") ?? "");
   const [yearFilter, setYearFilter] = useState("");
   const [openId, setOpenId] = useState<number | null>(null);
+  const [fieldDefs, setFieldDefs] = useState<CustomFieldDef[]>([]);
 
   const fetchRows = useCallback(async () => {
+    if (status === "EVIDENCA") return;
     setLoading(true);
     const r = await fetch(`/api/enrollment/applications?status=${status}`);
     setRows(await r.json());
@@ -51,6 +55,7 @@ export default function RegjistrimetPage() {
   }, [status]);
 
   useEffect(() => { fetchRows(); }, [fetchRows]);
+  useEffect(() => { fetch("/api/enrollment-form-fields?includeInactive=1").then(r => r.json()).then(setFieldDefs); }, []);
 
   async function handleDelete(r: Row) {
     if (!confirm(`T'a fshij aplikimin e ${r.firstName} ${r.lastName} (${r.referenceNumber ?? `#${r.id}`})? Ky veprim s'kthehet mbrapa. Dokumentet e bashkëngjitura fshihen gjithashtu.`)) return;
@@ -88,37 +93,42 @@ export default function RegjistrimetPage() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <select className="form-input text-sm py-2 w-auto" value={classFilter} onChange={e => setClassFilter(e.target.value)} disabled={!gradeOptions.length}>
-              <option value="">Klasa — të gjitha</option>
-              {gradeOptions.map(g => <option key={g} value={g}>Klasa {g}</option>)}
-            </select>
-            <select className="form-input text-sm py-2 w-auto" value={yearFilter} onChange={e => setYearFilter(e.target.value)} disabled={!yearOptions.length}>
-              <option value="">Viti — të gjithë</option>
-              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-            <div className="relative min-w-[220px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-              <input className="form-input pl-9 text-sm py-2" placeholder="Kërko sipas emrit..." value={search} onChange={e => setSearch(e.target.value)} />
-            </div>
-            {(classFilter || yearFilter || search) && (
+          {status !== "EVIDENCA" && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <select className="form-input text-sm py-2 w-auto" value={classFilter} onChange={e => setClassFilter(e.target.value)} disabled={!gradeOptions.length}>
+                <option value="">Klasa — të gjitha</option>
+                {gradeOptions.map(g => <option key={g} value={g}>Klasa {g}</option>)}
+              </select>
+              <select className="form-input text-sm py-2 w-auto" value={yearFilter} onChange={e => setYearFilter(e.target.value)} disabled={!yearOptions.length}>
+                <option value="">Viti — të gjithë</option>
+                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <div className="relative min-w-[220px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                <input className="form-input pl-9 text-sm py-2" placeholder="Kërko sipas emrit..." value={search} onChange={e => setSearch(e.target.value)} />
+              </div>
+              {(classFilter || yearFilter || search) && (
+                <button
+                  onClick={() => { setClassFilter(""); setYearFilter(""); setSearch(""); }}
+                  className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
+                >
+                  Pastro filtrat
+                </button>
+              )}
               <button
-                onClick={() => { setClassFilter(""); setYearFilter(""); setSearch(""); }}
-                className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
+                onClick={() => exportEnrollmentApplicationsExcel(filtered, `Regjistrimet-${TABS.find(t => t.value === status)?.label.replace(/\s+/g, "-") ?? status}`, fieldDefs)}
+                disabled={!filtered.length}
+                className="btn-secondary text-sm shrink-0"
               >
-                Pastro filtrat
+                <Download className="w-4 h-4" /> Eksporto Excel
               </button>
-            )}
-            <button
-              onClick={() => exportEnrollmentApplicationsExcel(filtered, `Regjistrimet-${TABS.find(t => t.value === status)?.label.replace(/\s+/g, "-") ?? status}`)}
-              disabled={!filtered.length}
-              className="btn-secondary text-sm shrink-0"
-            >
-              <Download className="w-4 h-4" /> Eksporto Excel
-            </button>
-          </div>
+            </div>
+          )}
         </div>
 
+        {status === "EVIDENCA" ? (
+          <EvidencaTab initialQuery={searchParams.get("q") ?? ""} />
+        ) : (
         <div className="card overflow-hidden">
           {loading ? (
             <p className="text-center text-slate-400 py-10 text-sm">Duke ngarkuar...</p>
@@ -177,6 +187,7 @@ export default function RegjistrimetPage() {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {openId && (

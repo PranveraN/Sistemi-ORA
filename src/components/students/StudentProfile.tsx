@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote, MessageSquare, Send, Wand2, Camera } from "lucide-react";
+import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote, MessageSquare, Send, Wand2, Camera, FileCheck2 } from "lucide-react";
 import { buildObligationMessage, buildSummaryMessage, type Obligation } from "@/lib/notificationTemplates";
 
 interface Payment {
@@ -910,8 +910,38 @@ export default function StudentProfile({ student }: { student: Student }) {
           {notesSaved && <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">✓ U ruajt</span>}
         </div>
       </div>
+
+      <EvidencaSummaryCard student={student} />
     </div>
     </>
+  );
+}
+
+function EvidencaSummaryCard({ student }: { student: { id: number; firstName: string; lastName: string } }) {
+  const [info, setInfo] = useState<{ count: number; lastDate: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/evidenca/counts?ids=${student.id}`)
+      .then(r => r.json())
+      .then(d => setInfo(d[student.id] ?? { count: 0, lastDate: "" }));
+  }, [student.id]);
+
+  return (
+    <div className="card p-5 space-y-2">
+      <h3 className="section-title flex items-center gap-2">
+        <FileCheck2 className="w-4 h-4 text-slate-400" />
+        Evidenca e Regjistrimit
+      </h3>
+      <p className="text-sm text-slate-500 dark:text-slate-400">
+        {info == null ? "Duke ngarkuar..." : info.count === 0 ? "S'ka evidencë ende." : `${info.count} evidenc${info.count > 1 ? "a" : "ë"} — e fundit ${formatDate(info.lastDate)}`}
+      </p>
+      <Link
+        href={`/regjistrimet?tab=evidenca&q=${encodeURIComponent(`${student.firstName} ${student.lastName}`)}`}
+        className="text-primary-600 hover:text-primary-700 text-xs font-medium"
+      >
+        Shiko / Shto Evidencë →
+      </Link>
+    </div>
   );
 }
 

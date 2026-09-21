@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, FileText,
   GraduationCap, BarChart3, Settings, BookOpen,
   ChevronLeft, ChevronRight, UtensilsCrossed,
-  Shirt, BookMarked, NotebookPen, ClipboardList, Wallet, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, Truck, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck,
+  Shirt, BookMarked, NotebookPen, ClipboardList, Wallet, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, Truck, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -18,12 +18,12 @@ type Role = "ADMIN" | "FINANCE" | "SECRETARY" | "PEDAGOGIA";
 const navSections = [
   {
     label: null,
-    roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[],
+    roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[],
     items: [
       { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard",  roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
       { href: "/students",  icon: Users,           label: "Nxënësit",   roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
-      { href: "/levizjet",  icon: Repeat,          label: "Lëvizjet e Nxënësve", roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
-      { href: "/regjistrimet", icon: ClipboardCheck, label: "Regjistrimet", roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
+      { href: "/levizjet",  icon: Repeat,          label: "Lëvizjet e Nxënësve", roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[] },
+      { href: "/regjistrimet", icon: ClipboardCheck, label: "Regjistrimet", roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[] },
       { href: "/families",  icon: Home,            label: "Familjet",   roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
     ],
   },
@@ -53,6 +53,7 @@ const navSections = [
     items: [
       { href: "/sekretaria", icon: ClipboardList, label: "Administrata", roles: ["ADMIN", "SECRETARY"] as Role[] },
       { href: "/sms", icon: MessageSquare, label: "Mesazhe SMS", roles: ["ADMIN", "SECRETARY"] as Role[] },
+      { href: "/dokumentet", icon: Paperclip, label: "Dokumentet", roles: ["ADMIN", "SECRETARY"] as Role[] },
     ],
   },
   {
