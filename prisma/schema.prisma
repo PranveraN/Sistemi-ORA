@@ -31,6 +31,8 @@ model Organization {
   materialInventoryTransactions MaterialInventoryTransaction[]
   smsMessages      SmsMessage[]
   paymentHandovers PaymentHandover[]
+  studentNotes     StudentNote[]
+  enrollmentApplications EnrollmentApplication[]
 }
 
 model User {
@@ -53,6 +55,7 @@ model User {
   createdMaterialOrders    MaterialOrder[]
   materialInventoryTransactions MaterialInventoryTransaction[]
   sentSmsMessages          SmsMessage[]
+  studentNotes             StudentNote[]
 }
 
 model Class {
@@ -60,10 +63,13 @@ model Class {
   name           String
   level          String
   teacher        String?
+  capacity       Int?         // Numri max i nxënësve — bosh = pa limit (përdoret te aplikimi publik i regjistrimit, shih EnrollmentApplication)
+  active         Boolean      @default(true) // A është kjo paralele e hapur/funksionale këtë vit — një paralele joaktive (p.sh. bosh, e pahapur) NUK numërohet si "vend i lirë" te kontrolli i kapacitetit
   organizationId Int          @default(1)
   organization   Organization @relation(fields: [organizationId], references: [id])
   students       Student[]
   materialRequests MaterialRequest[]
+  enrollmentApplications EnrollmentApplication[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }
@@ -75,6 +81,7 @@ model Student {
   parentName     String?
   birthDate      DateTime?
   personalNumber String?
+  gender         String?
   classId        Int?
   class          Class?    @relation(fields: [classId], references: [id])
   libriAme       LibriAme?
@@ -102,7 +109,13 @@ model Student {
   status         String    @default("ACTIVE") // ACTIVE, INACTIVE
   enrollDate     DateTime  @default(now())
   originCountry  String?   // Vendi nga ka ardhur (kur eshte nxenes i ardhur nga jashte Kosoves)
+  previousSchool String?   // Shkolla paraardhese (nga ka ardhur nxenesi)
+  transferResult String?   // Suksesi/rezultati i fletekalimit nga shkolla paraardhese
+  admissionScore Float?    // Piket ne testin pranues "Ora"
+  studentRating  String?   // Vleresim i mesuesve — etikete fikse (shih STUDENT_RATINGS)
   inactiveDate   DateTime?
+  leaveReason       String?   // Arsyeja e largimit (kur behet INACTIVE)
+  destinationSchool String?   // Shkolla ku kaloi nxenesi pas largimit
   notes          String?
   organizationId Int          @default(1)
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -111,6 +124,7 @@ model Student {
   invoiceItems   InvoiceItem[]
   yearHistory    StudentYearHistory[]
   smsMessages    SmsMessage[]
+  studentNotes   StudentNote[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -120,6 +134,114 @@ model Student {
   @@index([parentPhone])
   @@index([fatherPhone])
   @@index([motherPhone])
+}
+
+// ── Aplikimi Publik i Regjistrimit ("/apliko") ──────────────
+// Plotësohet nga prindi/kujdestari PA kyçje (shih src/app/apliko), jo nga
+// administrata. Krijohet fillimisht DRAFT (ndërsa prindi ende plotëson),
+// pastaj PENDING pas dorëzimit ("Për Shqyrtim"). Shqyrtohet te "Regjistrimet"
+// (src/app/(dashboard)/regjistrimet) — Prano krijon Student-in real (shih
+// createdStudentId), Refuzo thjesht e mbyll aplikimin. NEEDS_INFO mbetet i
+// rezervuar (jo ende i përdorur nga UI-ja e shqyrtimit).
+model EnrollmentApplication {
+  id              Int       @id @default(autoincrement())
+  organizationId  Int       @default(1)
+  organization    Organization @relation(fields: [organizationId], references: [id])
+
+  resumeToken     String    @unique // "bileta" sekrete e prindit — pa sesion/kyçje, kjo autorizon leximin/editimin/dorëzimin e vetë aplikimit të tij
+  status          String    @default("DRAFT") // DRAFT, PENDING (aktive tani) | APPROVED, REJECTED, NEEDS_INFO (rezervuar)
+  referenceNumber String?   @unique // p.sh. "APL-2026-0001" — plotësohet vetëm në dorëzim (submit), njësoj si numri i faturave
+
+  // Shkolla/klasa — prindi zgjedh vetëm KLASËN/NUMRIN (p.sh. "6", jo "6A"/"6B");
+  // ndarjen konkrete në një paralele (seksion) e bën administrata te "Prano"
+  // (shih classId më poshtë, i mbushur vetëm në atë moment).
+  schoolYear      String
+  desiredGrade    Int?
+  classId         Int?      // paralelja konkrete e caktuar nga administrata në pranim — bosh derisa të pranohet
+  class           Class?    @relation(fields: [classId], references: [id])
+  previousSchool  String?
+  lastCompletedGrade String?
+  desiredStartDate   DateTime?
+  applicationReason  String?
+  waitlisted      Boolean   @default(false) // prindi ka pranuar të vazhdojë aplikimin edhe pse klasa ishte plot
+
+  // Nxënësi
+  firstName       String
+  lastName        String
+  birthDate       DateTime?
+  gender          String?
+  personalNumber  String?
+  citizenship     String?
+  birthCountry    String?
+  originType      String?   // "KOSOVE" | "DIASPORA"
+  originCountry   String?   // plotësohet vetëm kur originType = DIASPORA
+
+  // Nëna
+  motherName      String?
+  motherBirth     DateTime?
+  motherProf      String?
+  motherPhone     String?
+  motherEmail     String?
+  motherAddress   String?
+
+  // Babai
+  fatherName      String?
+  fatherBirth     DateTime?
+  fatherProf      String?
+  fatherPhone     String?
+  fatherEmail     String?
+  fatherAddress   String?
+
+  // Kujdestari / kontakti kryesor
+  primaryContact       String? // "MOTHER" | "FATHER" | "OTHER"
+  guardianOtherName     String?
+  guardianOtherRelation String?
+  guardianOtherPhone    String?
+  guardianOtherEmail    String?
+
+  // Adresa
+  address         String?
+  city            String?
+  country         String?
+
+  // Kontakti emergjent
+  emergencyContactName     String?
+  emergencyContactRelation String?
+  emergencyContactPhone    String?
+
+  additionalInfo  String?
+
+  // Pëlqimi + dorëzimi
+  consentDataAccurate Boolean @default(false)
+  submitterIp     String?   // vetëm për kufizim të thjeshtë spam-i (numërim ditor për IP)
+  submittedAt     DateTime?
+
+  // Shqyrtimi nga administrata (Regjistrimet)
+  reviewedAt      DateTime?
+  reviewNote      String?   // p.sh. arsyeja e refuzimit
+  createdStudentId Int?     // Student i krijuar kur u pranua — pa relacion Prisma të detyruar, njësoj si BookSale/UniSale.studentId
+
+  documents       ApplicationDocument[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status])
+  @@index([submitterIp, createdAt])
+}
+
+model ApplicationDocument {
+  id            Int       @id @default(autoincrement())
+  applicationId Int
+  application   EnrollmentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  docType       String    // BIRTH_CERT | PARENT_ID | TRANSFER_DOC | VACCINATION_BOOK | MEDICAL_REPORT | OTHER
+  fileName      String    // emri i ruajtur në disk (hex + ekstension)
+  originalName  String
+  contentType   String
+  size          Int
+  createdAt     DateTime  @default(now())
+
+  @@index([applicationId])
 }
 
 model PaymentCategory {
@@ -215,6 +337,23 @@ model StudentYearHistory {
 
   @@unique([studentId, schoolYearId])
   @@index([schoolYearId])
+}
+
+// Ditar/shënime manuale për nxënësin — plotësuar nga stafi me kalimin e kohës
+// (progres, sjellje, komunikim me prindër). I PAVARUR nga AuditLog (i cili
+// regjistron veprime automatike të sistemit) — këtu shkruan njeriu vetë.
+model StudentNote {
+  id             Int          @id @default(autoincrement())
+  studentId      Int
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  content        String
+  authorId       Int
+  author         User         @relation(fields: [authorId], references: [id])
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([studentId])
 }
 
 model PromotionRun {
