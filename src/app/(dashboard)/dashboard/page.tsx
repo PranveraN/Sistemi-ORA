@@ -8,6 +8,7 @@ import {
   CheckCircle, Clock, FileText, History, Receipt,
   TrendingDown, UserPlus, CalendarClock, Wallet,
   GraduationCap, Landmark, Wallet as WalletIcon,
+  ArrowRightLeft, ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import OfertaModal from "@/components/OfertaModal";
@@ -38,7 +39,18 @@ interface DashboardData {
   newInPeriod: number;
   newStudents: {
     count: number;
-    students: Array<{ id: number; firstName: string; lastName: string; className: string | null; originCountry: string | null; enrollDate: string }>;
+    students: Array<{
+      id: number; firstName: string; lastName: string; className: string | null;
+      originCountry: string | null; enrollDate: string;
+      previousSchool: string | null; transferResult: string | null; admissionScore: number | null; studentRating: string | null;
+    }>;
+  };
+  departedStudents: {
+    count: number;
+    students: Array<{
+      id: number; firstName: string; lastName: string; className: string | null;
+      leaveReason: string | null; destinationSchool: string | null; inactiveDate: string;
+    }>;
   };
   recentPayments: Array<{
     id: number;
@@ -311,45 +323,69 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Nxënës të Rinj — regjistruar gjatë periudhës/vitit të zgjedhur në
-            faqe (e njëjta periudhë si badge-i "+X të rinj" te karta "Nxënës
-            Aktivë" sipër, që numrat të përputhen gjithmonë). */}
-        <div className="card p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <UserPlus className="w-4.5 h-4.5 text-primary-500" />
-            <h2 className="section-title">Nxënës të Rinj — {data.newStudents.count} — {data.period.label}</h2>
-          </div>
-          {data.newStudents.count === 0 ? (
-            <p className="text-sm text-slate-400 py-4 text-center">Asnjë nxënës i ri i regjistruar në këtë periudhë.</p>
-          ) : (
-            <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
-              {data.newStudents.students.map(s => (
-                <Link
-                  key={s.id}
-                  href={`/students/${s.id}`}
-                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
-                >
-                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                    {s.firstName} {s.lastName}
-                    {s.className && <span className="text-slate-400 font-normal"> · {s.className}</span>}
-                  </span>
-                  <span className="flex items-center gap-2 shrink-0">
-                    {s.originCountry ? (
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium">
-                        {s.originCountry}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400">
-                        Kosovë
-                      </span>
-                    )}
-                    <span className="text-xs text-slate-400">{formatDate(s.enrollDate)}</span>
-                  </span>
-                </Link>
-              ))}
+        {/* Lëvizjet e Nxënësve — përmbledhje kompakte, moduli i plotë (listat,
+            filtrimi, historia) jeton te faqja dedikuar /levizjet. */}
+        <Link href="/levizjet" className="card p-5 block hover:ring-2 hover:ring-primary-200 dark:hover:ring-primary-800 transition-all">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <ArrowRightLeft className="w-4.5 h-4.5 text-primary-500" />
+              <h2 className="section-title">Lëvizjet e Nxënësve — {data.period.label}</h2>
             </div>
-          )}
-        </div>
+            <span className="text-sm text-primary-600 dark:text-primary-400 font-medium flex items-center gap-1">
+              Shiko modulin <ChevronRight className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                <UserPlus className="w-4.5 h-4.5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-lg font-bold text-slate-900 dark:text-white leading-tight">{data.newStudents.count}</p>
+                <p className="text-xs text-slate-400 truncate">Regjistrime të Reja</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                <UserPlus className="w-4.5 h-4.5 text-red-500 dark:text-red-400 rotate-180" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-lg font-bold text-slate-900 dark:text-white leading-tight">{data.departedStudents.count}</p>
+                <p className="text-xs text-slate-400 truncate">Largime</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                data.newStudents.count - data.departedStudents.count >= 0
+                  ? "bg-green-50 dark:bg-green-900/30" : "bg-amber-50 dark:bg-amber-900/30"
+              }`}>
+                <ArrowRightLeft className={`w-4.5 h-4.5 ${
+                  data.newStudents.count - data.departedStudents.count >= 0
+                    ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"
+                }`} />
+              </div>
+              <div className="min-w-0">
+                <p className={`text-lg font-bold leading-tight ${
+                  data.newStudents.count - data.departedStudents.count >= 0
+                    ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"
+                }`}>
+                  {data.newStudents.count - data.departedStudents.count > 0 ? "+" : ""}
+                  {data.newStudents.count - data.departedStudents.count}
+                </p>
+                <p className="text-xs text-slate-400 truncate">Bilanci Neto</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
+                <Users className="w-4.5 h-4.5 text-slate-500 dark:text-slate-300" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-lg font-bold text-slate-900 dark:text-white leading-tight">{data.activeStudents}</p>
+                <p className="text-xs text-slate-400 truncate">Nxënës Aktivë</p>
+              </div>
+            </div>
+          </div>
+        </Link>
 
         {/* Tabs — Përmbledhje vs Financat e Detajuara */}
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">

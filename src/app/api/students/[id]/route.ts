@@ -125,6 +125,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ("discountPct" in body) data.discountPct = Number(body.discountPct) || 0;
   if ("paymentPlan" in body) data.paymentPlan = body.paymentPlan || null;
   if ("notes" in body) data.notes = body.notes || null;
+  // Fushat e "pasurimit" për kartat e Dashboard-it (Nxënës të Rinj / të Larguar) —
+  // shih StudentEnrichmentModal.tsx dhe DepartedStudentModal.tsx.
+  if ("originCountry" in body)     data.originCountry = body.originCountry || null;
+  if ("previousSchool" in body)    data.previousSchool = body.previousSchool || null;
+  if ("transferResult" in body)    data.transferResult = body.transferResult || null;
+  if ("admissionScore" in body)    data.admissionScore = body.admissionScore === "" || body.admissionScore == null ? null : Number(body.admissionScore);
+  if ("studentRating" in body)     data.studentRating = body.studentRating || null;
+  // Shto/Edito/Fshij te karta "Nxënës që kanë Shkuar" — ndryshimi i status-it
+  // këtu (jo vetëm te PUT-i i plotë) i mban dy rrjedhat në sinkron; inactiveDate
+  // përditësohet automatikisht, njësoj si te PUT-i i formës së plotë (poshtë).
+  if ("status" in body) {
+    data.status = body.status;
+    data.inactiveDate = body.status === "INACTIVE" ? new Date() : null;
+  }
+  if ("leaveReason" in body)       data.leaveReason = body.leaveReason || null;
+  if ("destinationSchool" in body) data.destinationSchool = body.destinationSchool || null;
 
   const student = await prisma.student.update({
     where: { id: parseInt(id) },

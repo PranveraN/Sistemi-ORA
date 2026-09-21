@@ -51,15 +51,41 @@ export async function GET(req: NextRequest) {
   // numërojë afate që ende s'kanë ardhur).
   const overdueUpperBound = end < now ? end : now;
 
+  // ── Periudha PËR REGJISTRIM NXËNËSISH (jo për pagesa/financa!) — fillon më
+  // 1 QERSHOR, jo 1 Shtator. Regjistrimet e verës (Qershor–Gusht) janë
+  // GJITHMONË për vitin PASARDHËS (askush s'regjistrohet "vonë" në vitin që
+  // sapo mbylli mësimin) — ndryshe nga pagesat, ku 1 Shtator mbetet kufiri i
+  // saktë (bazuar te Afati i vetë pagesës, shih CategoryPaymentPage/Bilanci) —
+  // atje zhvendosja do të krijonte numërim DYFISHTË (Qershor-Gusht do të
+  // binte njëkohësisht te viti që mbyllet DHE te ai që fillon). Për nxënës
+  // s'ka këtë rrezik: një regjistrim bie në një vit të vetëm, kurrë në dy.
+  const studentPeriodStart = yearType === "academic" ? new Date(year, 5, 1) : start;
+  const studentPeriodEnd   = yearType === "academic" ? new Date(year + 1, 4, 31, 23, 59, 59) : end;
+
   // ── Nxënës të Rinj (kartë Dashboard) — E NJËJTA periudhë si `newInPeriod`
-  // më poshtë (start/end sipas vitit të zgjedhur në faqe), që numrat e të
-  // dyja vendeve të përputhen gjithmonë. Kur mbaron viti shkollor aktual dhe
-  // admin kalon te viti tjetër (ose default-i i faqes përditësohet, shih
-  // DEFAULT_ACADEMIC_YEAR), lista rinovohet vetvetiu.
+  // më poshtë, që numrat e të dyja vendeve të përputhen gjithmonë. Kur mbaron
+  // viti shkollor aktual dhe admin kalon te viti tjetër (ose default-i i
+  // faqes përditësohet, shih DEFAULT_ACADEMIC_YEAR), lista rinovohet vetvetiu.
   const newStudentsList = await prisma.student.findMany({
-    where: { organizationId: orgId, status: "ACTIVE", enrollDate: { gte: start, lte: end } },
-    select: { id: true, firstName: true, lastName: true, originCountry: true, enrollDate: true, class: { select: { name: true } } },
+    where: { organizationId: orgId, status: "ACTIVE", enrollDate: { gte: studentPeriodStart, lte: studentPeriodEnd } },
+    select: {
+      id: true, firstName: true, lastName: true, originCountry: true, enrollDate: true,
+      previousSchool: true, transferResult: true, admissionScore: true, studentRating: true,
+      class: { select: { name: true } },
+    },
     orderBy: { enrollDate: "desc" },
+  });
+
+  // ── Nxënës të Larguar (kartë Dashboard, krah "Nxënës të Rinj") — e njëjta
+  // periudhë (inactiveDate brenda start/end), që të dyja kartat lëvizin
+  // bashkë me zgjedhësin e vitit sipër.
+  const departedStudentsList = await prisma.student.findMany({
+    where: { organizationId: orgId, status: "INACTIVE", inactiveDate: { gte: start, lte: end } },
+    select: {
+      id: true, firstName: true, lastName: true, leaveReason: true,
+      destinationSchool: true, inactiveDate: true, class: { select: { name: true } },
+    },
+    orderBy: { inactiveDate: "desc" },
   });
 
   // ── Pasqyrë Shkollimi (për "Pasqyrë Shkollimi" te Dashboard) ──
@@ -141,7 +167,7 @@ export async function GET(req: NextRequest) {
       _count: true,
     }),
 
-    prisma.student.count({ where: { organizationId: orgId, enrollDate: { gte: start, lte: end } } }),
+    prisma.student.count({ where: { organizationId: orgId, enrollDate: { gte: studentPeriodStart, lte: studentPeriodEnd } } }),
 
     prisma.payment.findMany({
       where: revenueWhere(orgId, yearType, months, start, end),
@@ -252,6 +278,15 @@ export async function GET(req: NextRequest) {
       students: newStudentsList.map(s => ({
         id: s.id, firstName: s.firstName, lastName: s.lastName,
         className: s.class?.name ?? null, originCountry: s.originCountry, enrollDate: s.enrollDate,
+        previousSchool: s.previousSchool, transferResult: s.transferResult, admissionScore: s.admissionScore, studentRating: s.studentRating,
+      })),
+    },
+    departedStudents: {
+      count: departedStudentsList.length,
+      students: departedStudentsList.map(s => ({
+        id: s.id, firstName: s.firstName, lastName: s.lastName,
+        className: s.class?.name ?? null, leaveReason: s.leaveReason,
+        destinationSchool: s.destinationSchool, inactiveDate: s.inactiveDate,
       })),
     },
     recentPayments,
