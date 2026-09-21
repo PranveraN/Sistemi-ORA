@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { UserMinus, ChevronUp, ChevronDown, Plus, Pencil, Eraser, Eye, MoreVertical } from "lucide-react";
+import { UserMinus, ChevronUp, ChevronDown, Plus, Pencil, Eraser, Eye, MoreVertical, Trash2, ListX } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import DepartedStudentModal from "./DepartedStudentModal";
 
@@ -34,6 +34,7 @@ export default function DepartedStudentsCard({ data, period, onChanged, emptyMes
   const [modal, setModal] = useState<"add" | DepartedStudentRow | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [openMenuFor, setOpenMenuFor] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,6 +54,46 @@ export default function DepartedStudentsCard({ data, period, onChanged, emptyMes
       body: JSON.stringify({ leaveReason: null, destinationSchool: null }),
     });
     onChanged();
+  }
+
+  // Heq nga kjo listë — VETËM raporti, statusi INACTIVE i nxënësit NUK ndryshon.
+  async function hideIds(ids: number[]) {
+    await fetch("/api/students/hide-from-departed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    setSelected(new Set());
+    onChanged();
+  }
+
+  function hideOne(s: DepartedStudentRow) {
+    if (!confirm(`T'a heq ${s.firstName} ${s.lastName} nga lista "Largime/Transfere"? Statusi Joaktiv i nxënësit NUK ndryshon.`)) return;
+    hideIds([s.id]);
+  }
+
+  function hideSelected() {
+    if (selected.size === 0) return;
+    if (!confirm(`T'i heq ${selected.size} nxënës të zgjedhur nga lista "Largime/Transfere"? Statusi Joaktiv NUK ndryshon.`)) return;
+    hideIds(Array.from(selected));
+  }
+
+  function hideAll() {
+    if (data.students.length === 0) return;
+    if (!confirm(`T'i heq TË GJITHË ${data.students.length} nxënësit nga lista "Largime/Transfere" për këtë periudhë? Statusi Joaktiv NUK ndryshon.`)) return;
+    hideIds(data.students.map(s => s.id));
+  }
+
+  function toggleOne(id: number) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelected(prev => prev.size === data.students.length ? new Set() : new Set(data.students.map(s => s.id)));
   }
 
   const visibleStudents = showAll ? data.students : data.students.slice(0, PREVIEW_LIMIT);
@@ -80,7 +121,24 @@ export default function DepartedStudentsCard({ data, period, onChanged, emptyMes
 
       {show && (
         <div className="border-t border-slate-100 dark:border-slate-700 p-4 pt-3">
-          <div className="flex items-center justify-end mb-2">
+          <div className="flex items-center justify-end mb-2 gap-2 flex-wrap">
+            {selected.size > 0 && (
+              <button
+                onClick={hideSelected}
+                className="text-xs font-medium text-red-600 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg px-2.5 py-1.5 flex items-center gap-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Fshi të Zgjedhurat ({selected.size})
+              </button>
+            )}
+            {data.students.length > 0 && (
+              <button
+                onClick={hideAll}
+                title="Hiqi të gjithë nga kjo listë (statusi Joaktiv NUK ndryshon)"
+                className="text-xs font-medium text-slate-500 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg px-2.5 py-1.5 flex items-center gap-1"
+              >
+                <ListX className="w-3.5 h-3.5" /> Fshi të Gjithë
+              </button>
+            )}
             <button
               onClick={() => setModal("add")}
               className="text-xs font-medium text-primary-600 border border-primary-200 dark:border-primary-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg px-2.5 py-1.5 flex items-center gap-1"
@@ -96,7 +154,14 @@ export default function DepartedStudentsCard({ data, period, onChanged, emptyMes
           ) : (
             <div className="overflow-x-auto">
               <div className="min-w-[520px]">
-                <div className="grid grid-cols-[minmax(150px,1.6fr)_80px_90px_1.2fr_64px] gap-2 px-2 pb-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                <div className="grid grid-cols-[24px_minmax(150px,1.6fr)_80px_90px_1.2fr_64px] gap-2 px-2 pb-1.5 items-center text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                  <input
+                    type="checkbox"
+                    checked={selected.size > 0 && selected.size === data.students.length}
+                    ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < data.students.length; }}
+                    onChange={toggleSelectAll}
+                    className="cursor-pointer"
+                  />
                   <span>Nxënësi</span>
                   <span>Klasa</span>
                   <span>Data</span>
@@ -105,7 +170,13 @@ export default function DepartedStudentsCard({ data, period, onChanged, emptyMes
                 </div>
                 <div className="space-y-0.5">
                   {visibleStudents.map(s => (
-                    <div key={s.id} className="grid grid-cols-[minmax(150px,1.6fr)_80px_90px_1.2fr_64px] gap-2 items-center px-2 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
+                    <div key={s.id} className="grid grid-cols-[24px_minmax(150px,1.6fr)_80px_90px_1.2fr_64px] gap-2 items-center px-2 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(s.id)}
+                        onChange={() => toggleOne(s.id)}
+                        className="cursor-pointer"
+                      />
                       <span className="min-w-0 flex items-center gap-2">
                         <span className="w-7 h-7 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300 text-[11px] font-bold flex items-center justify-center shrink-0">
                           {initials(s.firstName, s.lastName)}
@@ -157,6 +228,12 @@ export default function DepartedStudentsCard({ data, period, onChanged, emptyMes
                                 className="w-full text-left px-3 py-2.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700"
                               >
                                 <Eraser className="w-3.5 h-3.5" /> Pastro arsyen/shkollën
+                              </button>
+                              <button
+                                onClick={() => { setOpenMenuFor(null); hideOne(s); }}
+                                className="w-full text-left px-3 py-2.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Hiq nga Lista
                               </button>
                             </div>
                           )}

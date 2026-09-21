@@ -83,7 +83,10 @@ export async function GET(req: NextRequest) {
   // periudhë (inactiveDate brenda start/end), që të dyja kartat lëvizin
   // bashkë me zgjedhësin e vitit sipër.
   const departedStudentsList = await prisma.student.findMany({
-    where: { organizationId: orgId, status: "INACTIVE", inactiveDate: { gte: start, lte: end } },
+    where: {
+      organizationId: orgId, status: "INACTIVE", inactiveDate: { gte: start, lte: end },
+      hideFromDeparted: false, // hequr manualisht nga admin — shih DepartedStudentsCard.tsx
+    },
     select: {
       id: true, firstName: true, lastName: true, leaveReason: true,
       destinationSchool: true, inactiveDate: true, class: { select: { name: true } },

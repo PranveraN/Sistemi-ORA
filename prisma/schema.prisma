@@ -117,6 +117,7 @@ model Student {
   inactiveDate   DateTime?
   leaveReason       String?   // Arsyeja e largimit (kur behet INACTIVE)
   destinationSchool String?   // Shkolla ku kaloi nxenesi pas largimit
+  hideFromDeparted  Boolean   @default(false) // Hequr manualisht nga karta "Largime/Transfere" — statusi INACTIVE i nxenesit NUK ndryshon, thjesht s'numerohet me si "i larguar" per asnje periudhe
   notes          String?
   organizationId Int          @default(1)
   organization   Organization @relation(fields: [organizationId], references: [id])
