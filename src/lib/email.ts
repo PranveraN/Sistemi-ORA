@@ -9,7 +9,9 @@ function getClient(): Resend | null {
   return resendClient;
 }
 
-export async function sendEmail(to: string, subject: string, html: string): Promise<{ ok: boolean; error?: string }> {
+export interface EmailAttachment { filename: string; content: Buffer }
+
+export async function sendEmail(to: string, subject: string, html: string, attachments?: EmailAttachment[]): Promise<{ ok: boolean; error?: string }> {
   const client = getClient();
   if (!client) {
     console.warn(`[email] RESEND_API_KEY mungon — s'u dërgua email te ${to}: "${subject}"`);
@@ -21,7 +23,10 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
   // çelës i pavlefshëm; pa këtë, mesazhi real i Resend-it humbiste dhe API
   // route-i kthente vetëm "Dërgimi dështoi" gjenerik.
   try {
-    const { error } = await client.emails.send({ from: FROM, to, subject, html });
+    const { error } = await client.emails.send({
+      from: FROM, to, subject, html,
+      ...(attachments?.length ? { attachments: attachments.map(a => ({ filename: a.filename, content: a.content })) } : {}),
+    });
     if (error) return { ok: false, error: error.message };
     return { ok: true };
   } catch (err) {

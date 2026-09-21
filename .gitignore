@@ -26,6 +26,7 @@ prisma/student-photos/
 student-photos/
 prisma/material-attachments/
 prisma/enrollment-applications/
+prisma/documents/
 
 # Temp/debug files
 prisma/check-data.mjs
