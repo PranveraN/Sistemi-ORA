@@ -8,7 +8,7 @@ import {
   School, Users, BookOpen, ShoppingBag, Eye, EyeOff,
   Loader2, AlertTriangle, GraduationCap, KeyRound,
   DatabaseBackup, Download, RefreshCw, CalendarRange, Star,
-  Combine,
+  Combine, Copy, Link2,
 } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
@@ -19,6 +19,7 @@ interface SchoolInfo {
   schoolYear: string; schoolWebsite: string;
   timiInvestEnabled: string;
   furnitoriOraEmail: string;
+  enrollmentOpen: string;
 }
 
 interface Category {
@@ -131,9 +132,20 @@ function SchoolSection() {
     schoolEmail: "", schoolNipt: "", schoolUniqueNumber: "", schoolYear: "", schoolWebsite: "",
     timiInvestEnabled: "true",
     furnitoriOraEmail: "",
+    enrollmentOpen: "true",
   });
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const applyUrl = typeof window !== "undefined" ? `${window.location.origin}/apliko` : "/apliko";
+
+  async function copyApplyLink() {
+    try {
+      await navigator.clipboard.writeText(applyUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch { /* clipboard e paarritshme — injorohet */ }
+  }
 
   useEffect(() => {
     fetch("/api/settings").then(r => r.json()).then(setInfo);
@@ -226,6 +238,41 @@ function SchoolSection() {
         >
           <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${info.timiInvestEnabled === "true" ? "translate-x-5" : "translate-x-0"}`} />
         </button>
+      </div>
+
+      <div className="pt-4 border-t border-slate-100 dark:border-slate-700 space-y-3">
+        <div className="flex items-start gap-2">
+          <div className="w-9 h-9 bg-primary-50 dark:bg-primary-900/30 rounded-xl flex items-center justify-center shrink-0">
+            <Link2 className="w-4.5 h-4.5 text-primary-500" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Formulari Publik i Regjistrimit</p>
+            <p className="text-xs text-slate-400 max-w-md">Shpërndajeni këtë link te prindërit (Facebook, mesazhe, etj.) — hapet pa kërkuar kyçje.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 max-w-lg">
+          <input readOnly value={applyUrl} className="form-input text-xs" onFocus={e => e.target.select()} />
+          <button type="button" onClick={copyApplyLink} className="btn-secondary shrink-0 text-xs">
+            {linkCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+            {linkCopied ? "U kopjua" : "Kopjo"}
+          </button>
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <div>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Aplikimet janë të hapura</p>
+            <p className="text-xs text-slate-400 max-w-md">
+              Kur e mbyllni, formulari publik shfaq "Aplikimet janë të mbyllura" — përdoreni jashtë periudhës prill-maj.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setInfo(s => ({ ...s, enrollmentOpen: s.enrollmentOpen === "true" ? "false" : "true" }))}
+            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${info.enrollmentOpen === "true" ? "bg-primary-600" : "bg-slate-300 dark:bg-slate-600"}`}
+            aria-pressed={info.enrollmentOpen === "true"}
+          >
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${info.enrollmentOpen === "true" ? "translate-x-5" : "translate-x-0"}`} />
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center justify-end gap-3 pt-2">
