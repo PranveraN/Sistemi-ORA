@@ -67,7 +67,10 @@ export async function GET(req: NextRequest) {
   // viti shkollor aktual dhe admin kalon te viti tjetër (ose default-i i
   // faqes përditësohet, shih DEFAULT_ACADEMIC_YEAR), lista rinovohet vetvetiu.
   const newStudentsList = await prisma.student.findMany({
-    where: { organizationId: orgId, status: "ACTIVE", enrollDate: { gte: studentPeriodStart, lte: studentPeriodEnd } },
+    where: {
+      organizationId: orgId, status: "ACTIVE", enrollDate: { gte: studentPeriodStart, lte: studentPeriodEnd },
+      hideFromNewRegistrations: false, // hequr manualisht nga admin — shih NewStudentsCard.tsx
+    },
     select: {
       id: true, firstName: true, lastName: true, originCountry: true, enrollDate: true,
       previousSchool: true, transferResult: true, admissionScore: true, studentRating: true,
@@ -167,7 +170,7 @@ export async function GET(req: NextRequest) {
       _count: true,
     }),
 
-    prisma.student.count({ where: { organizationId: orgId, enrollDate: { gte: studentPeriodStart, lte: studentPeriodEnd } } }),
+    prisma.student.count({ where: { organizationId: orgId, enrollDate: { gte: studentPeriodStart, lte: studentPeriodEnd }, hideFromNewRegistrations: false } }),
 
     prisma.payment.findMany({
       where: revenueWhere(orgId, yearType, months, start, end),

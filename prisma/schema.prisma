@@ -113,6 +113,7 @@ model Student {
   transferResult String?   // Suksesi/rezultati i fletekalimit nga shkolla paraardhese
   admissionScore Float?    // Piket ne testin pranues "Ora"
   studentRating  String?   // Vleresim i mesuesve — etikete fikse (shih STUDENT_RATINGS)
+  hideFromNewRegistrations Boolean @default(false) // Hequr manualisht nga karta "Nxenes te Rinj" (p.sh. enrollDate gabim nga nje import i vjeter) — nxenesi mbetet AKTIV, thjesht s'numerohet me si "i ri" per asnje periudhe
   inactiveDate   DateTime?
   leaveReason       String?   // Arsyeja e largimit (kur behet INACTIVE)
   destinationSchool String?   // Shkolla ku kaloi nxenesi pas largimit
