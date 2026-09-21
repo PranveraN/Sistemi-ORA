@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { TextField, DateField, SelectField } from "../FormField";
 import { DIASPORA_COUNTRIES } from "../countries";
-import type { ApplicationFormState, FieldSetter } from "../types";
+import { fieldVisible, fieldRequired, type ApplicationFormState, type EnrollmentConfig, type FieldSetter } from "../types";
 
 const OTHER_VALUE = "__OTHER__";
 const KNOWN_COUNTRIES = new Set(DIASPORA_COUNTRIES.flatMap(g => g.countries));
 
-export default function StudentInfoStep({ form, set }: { form: ApplicationFormState; set: FieldSetter }) {
+export default function StudentInfoStep({ form, set, config }: { form: ApplicationFormState; set: FieldSetter; config: EnrollmentConfig | null }) {
   // Nëse originCountry tashmë ka një vlerë "e panjohur" (jo nga lista), do
   // të thotë se prindi ka shkruar vetë emrin e vendit më parë (p.sh. pas
   // rifreskimit të faqes) — ruaje modalitetin "shkruaj vetë" të hapur.
@@ -29,10 +29,16 @@ export default function StudentInfoStep({ form, set }: { form: ApplicationFormSt
         />
       </div>
       <TextField label="Numri Personal" required value={form.personalNumber} onChange={v => set("personalNumber", v)} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <TextField label="Shtetësia" value={form.citizenship} onChange={v => set("citizenship", v)} placeholder="p.sh. Kosovare" />
-        <TextField label="Vendi i Lindjes" value={form.birthCountry} onChange={v => set("birthCountry", v)} placeholder="p.sh. Prishtinë, Kosovë" />
-      </div>
+      {(fieldVisible(config, "citizenship") || fieldVisible(config, "birthCountry")) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {fieldVisible(config, "citizenship") && (
+            <TextField label="Shtetësia" required={fieldRequired(config, "citizenship")} value={form.citizenship} onChange={v => set("citizenship", v)} placeholder="p.sh. Kosovare" />
+          )}
+          {fieldVisible(config, "birthCountry") && (
+            <TextField label="Vendi i Lindjes" required={fieldRequired(config, "birthCountry")} value={form.birthCountry} onChange={v => set("birthCountry", v)} placeholder="p.sh. Prishtinë, Kosovë" />
+          )}
+        </div>
+      )}
 
       <div>
         <label className="form-label">Vendi i Origjinës</label>

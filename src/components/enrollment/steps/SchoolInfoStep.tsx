@@ -2,7 +2,7 @@
 
 import { AlertTriangle } from "lucide-react";
 import { TextField, DateField, SelectField, TextAreaField } from "../FormField";
-import type { ApplicationFormState, ConfigGrade, FieldSetter, EnrollmentConfig } from "../types";
+import { fieldVisible, fieldRequired, type ApplicationFormState, type ConfigGrade, type FieldSetter, type EnrollmentConfig } from "../types";
 
 export default function SchoolInfoStep({ form, set, config }: { form: ApplicationFormState; set: FieldSetter; config: EnrollmentConfig }) {
   const selectedGrade: ConfigGrade | undefined = config.grades.find(g => String(g.grade) === form.desiredGrade);
@@ -47,18 +47,23 @@ export default function SchoolInfoStep({ form, set, config }: { form: Applicatio
         </div>
       )}
 
-      <TextField
-        label={isFirstGrade ? "Shkolla / Çerdhja e Mëparshme" : "Shkolla e Mëparshme"}
-        value={form.previousSchool}
-        onChange={v => set("previousSchool", v)}
-        placeholder={isFirstGrade ? "p.sh. Çerdhja Diellza (nëse ka)" : undefined}
-      />
-      {!isFirstGrade && (
-        <TextField label="Klasa e Fundit e Përfunduar" value={form.lastCompletedGrade} onChange={v => set("lastCompletedGrade", v)} placeholder="nëse aplikohet" />
+      {fieldVisible(config, "previousSchool") && (
+        <TextField
+          label={isFirstGrade ? "Shkolla / Çerdhja e Mëparshme" : "Shkolla e Mëparshme"}
+          required={fieldRequired(config, "previousSchool")}
+          value={form.previousSchool}
+          onChange={v => set("previousSchool", v)}
+          placeholder={isFirstGrade ? "p.sh. Çerdhja Diellza (nëse ka)" : undefined}
+        />
       )}
-      <DateField label="Data e Dëshiruar e Fillimit" value={form.desiredStartDate} onChange={v => set("desiredStartDate", v)} />
-      {!isFirstGrade && (
-        <TextAreaField label="Arsyeja e Aplikimit / Transferimit" value={form.applicationReason} onChange={v => set("applicationReason", v)} placeholder="vetëm nëse aplikohet" />
+      {!isFirstGrade && fieldVisible(config, "lastCompletedGrade") && (
+        <TextField label="Klasa e Fundit e Përfunduar" required={fieldRequired(config, "lastCompletedGrade")} value={form.lastCompletedGrade} onChange={v => set("lastCompletedGrade", v)} placeholder="nëse aplikohet" />
+      )}
+      {fieldVisible(config, "desiredStartDate") && (
+        <DateField label="Data e Dëshiruar e Fillimit" required={fieldRequired(config, "desiredStartDate")} value={form.desiredStartDate} onChange={v => set("desiredStartDate", v)} />
+      )}
+      {!isFirstGrade && fieldVisible(config, "applicationReason") && (
+        <TextAreaField label="Arsyeja e Aplikimit / Transferimit" required={fieldRequired(config, "applicationReason")} value={form.applicationReason} onChange={v => set("applicationReason", v)} placeholder="vetëm nëse aplikohet" />
       )}
     </div>
   );

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { findApplicationByToken } from "@/lib/enrollmentApplication";
 import { isDocRequired, docTypeLabel, type DocType } from "@/lib/enrollmentDocs";
 import { sendEmail } from "@/lib/email";
+import { EXISTING_FIELDS, resolveFieldConfig } from "@/lib/enrollmentFieldConfig";
 
 // Rivalidon gjithçka SERVER-SIDE (asnjëherë s'i besohet vetëm klientit) —
 // fushat e domosdoshme, dokumentet e domosdoshme sipas klasës, dhe pëlqimi —
@@ -35,6 +36,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!app.guardianOtherPhone) missing.push("Telefoni i kujdestarit");
   }
   if (!app.consentDataAccurate) missing.push("Konfirmimi i saktësisë së të dhënave");
+
+  // Fushat "e thjeshta" të shënuara të domosdoshme nga admini (Cilësimet).
+  const fieldConfigSetting = await prisma.setting.findUnique({ where: { key: "enrollmentFieldConfig" } });
+  const fieldConfig = resolveFieldConfig(fieldConfigSetting?.value);
+  for (const f of EXISTING_FIELDS) {
+    if (fieldConfig[f.key]?.required && !(app as unknown as Record<string, unknown>)[f.key]) {
+      missing.push(f.label);
+    }
+  }
+
+  // Pyetjet shtesë të domosdoshme (shih EnrollmentFormField).
+  const customFields = await prisma.enrollmentFormField.findMany({ where: { organizationId: app.organizationId, active: true, required: true } });
+  const customAnswers: Record<string, unknown> = app.customAnswers ? JSON.parse(app.customAnswers) : {};
+  for (const cf of customFields) {
+    const answer = customAnswers[String(cf.id)];
+    if (answer === undefined || answer === null || answer === "") missing.push(cf.label);
+  }
 
   const documents = await prisma.applicationDocument.findMany({ where: { applicationId } });
   const uploadedTypes = new Set(documents.map(d => d.docType));

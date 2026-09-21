@@ -8,10 +8,11 @@ import SchoolInfoStep from "./steps/SchoolInfoStep";
 import ParentsStep from "./steps/ParentsStep";
 import ContactAddressStep from "./steps/ContactAddressStep";
 import DocumentsStep from "./steps/DocumentsStep";
+import CustomFieldsStep from "./steps/CustomFieldsStep";
 import ReviewSubmitStep from "./steps/ReviewSubmitStep";
 
 const STORAGE_KEY = "enrollment_draft_v1";
-const STEP_LABELS = ["Nxënësi", "Shkolla", "Prindërit", "Kontakti", "Dokumentet", "Përmbledhje"];
+const BASE_STEP_LABELS = ["Nxënësi", "Shkolla", "Prindërit", "Kontakti", "Dokumentet"];
 
 function loadDraftRef(): { id: number; resumeToken: string } | null {
   try {
@@ -25,6 +26,7 @@ function loadDraftRef(): { id: number; resumeToken: string } | null {
 export default function ApplicationWizard() {
   const [config, setConfig] = useState<EnrollmentConfig | null>(null);
   const [form, setForm] = useState<ApplicationFormState>(EMPTY_FORM);
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
   const [applicationId, setApplicationId] = useState<number | null>(null);
   const [resumeToken, setResumeToken] = useState<string | null>(null);
   const [documents, setDocuments] = useState<UploadedDoc[]>([]);
@@ -39,6 +41,14 @@ export default function ApplicationWizard() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftCreating = useRef(false);
+
+  // Hapi "Pyetje Shtesë" shtohet vetëm kur admini ka konfiguruar të paktën
+  // një pyetje aktive (shih Cilësimet → "Formulari i Aplikimit") — përndryshe
+  // hiqet tërësisht, që të mos ketë hap bosh.
+  const hasCustomStep = (config?.customFields.length ?? 0) > 0;
+  const STEP_LABELS = [...BASE_STEP_LABELS, ...(hasCustomStep ? ["Pyetje Shtesë"] : []), "Përmbledhje"];
+  const CUSTOM_STEP_INDEX = hasCustomStep ? BASE_STEP_LABELS.length : -1;
+  const REVIEW_STEP_INDEX = STEP_LABELS.length - 1;
 
   // Ngarko konfigurimin (klasat, vitet, a janë hapur aplikimet) + provo të
   // rikthesh një draft ekzistues nga localStorage.
@@ -57,6 +67,9 @@ export default function ApplicationWizard() {
         setApplicationId(saved.id);
         setResumeToken(saved.resumeToken);
         setDocuments(data.documents ?? []);
+        if (data.customAnswers) {
+          try { setCustomAnswers(JSON.parse(data.customAnswers)); } catch { /* injorohet */ }
+        }
         setForm(f => ({
           ...f,
           ...Object.fromEntries(Object.keys(EMPTY_FORM).map(k => [k, data[k] ?? ""])),
@@ -75,21 +88,26 @@ export default function ApplicationWizard() {
     setForm(f => ({ ...f, [field]: value }));
   }
 
-  const scheduleSave = useCallback((nextForm: ApplicationFormState, appId: number, token: string) => {
+  const scheduleSave = useCallback((nextForm: ApplicationFormState, nextCustomAnswers: Record<string, string>, appId: number, token: string) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       fetch(`/api/public/enrollment/applications/${appId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...nextForm, resumeToken: token }),
+        body: JSON.stringify({ ...nextForm, customAnswers: nextCustomAnswers, resumeToken: token }),
       }).catch(() => { /* autosave — dështimi i heshtur, s'ndërpret plotësimin */ });
     }, 1500);
   }, []);
 
-  // Autosave — sapo drafti ekziston, çdo ndryshim fushe ruhet (i vonuar).
+  // Autosave — sapo drafti ekziston, çdo ndryshim fushe (përfshi pyetjet
+  // shtesë) ruhet (i vonuar).
   useEffect(() => {
-    if (applicationId && resumeToken) scheduleSave(form, applicationId, resumeToken);
-  }, [form, applicationId, resumeToken, scheduleSave]);
+    if (applicationId && resumeToken) scheduleSave(form, customAnswers, applicationId, resumeToken);
+  }, [form, customAnswers, applicationId, resumeToken, scheduleSave]);
+
+  function setCustomAnswer(fieldId: number, value: string) {
+    setCustomAnswers(prev => ({ ...prev, [String(fieldId)]: value }));
+  }
 
   async function ensureDraft(): Promise<{ id: number; resumeToken: string } | null> {
     if (applicationId && resumeToken) return { id: applicationId, resumeToken };
@@ -179,6 +197,7 @@ export default function ApplicationWizard() {
     setResumeToken(null);
     setDocuments([]);
     setForm(f => ({ ...EMPTY_FORM, schoolYear: config?.defaultSchoolYear ?? f.schoolYear }));
+    setCustomAnswers({});
     setStep(0);
     setResumedBanner(false);
   }
@@ -252,10 +271,10 @@ export default function ApplicationWizard() {
       </div>
 
       <div className="card p-5">
-        {step === 0 && <StudentInfoStep form={form} set={set} />}
+        {step === 0 && <StudentInfoStep form={form} set={set} config={config} />}
         {step === 1 && <SchoolInfoStep form={form} set={set} config={config} />}
-        {step === 2 && <ParentsStep form={form} set={set} />}
-        {step === 3 && <ContactAddressStep form={form} set={set} />}
+        {step === 2 && <ParentsStep form={form} set={set} config={config} />}
+        {step === 3 && <ContactAddressStep form={form} set={set} config={config} />}
         {step === 4 && (
           <DocumentsStep
             applicationId={applicationId}
@@ -266,7 +285,10 @@ export default function ApplicationWizard() {
             onExpired={handleExpired}
           />
         )}
-        {step === 5 && (
+        {hasCustomStep && step === CUSTOM_STEP_INDEX && (
+          <CustomFieldsStep fields={config.customFields} answers={customAnswers} setAnswer={setCustomAnswer} />
+        )}
+        {step === REVIEW_STEP_INDEX && (
           <ReviewSubmitStep
             form={form}
             set={set}

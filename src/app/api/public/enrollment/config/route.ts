@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_ACADEMIC_YEAR } from "@/lib/academicYear";
 import { getGradeNumber } from "@/lib/school-cycles";
 import { classHasRoom } from "@/lib/classCapacity";
+import { resolveFieldConfig } from "@/lib/enrollmentFieldConfig";
 
 // Endpoint PUBLIK (pa auth) — ushqen formularin e aplikimit të regjistrimit
 // (src/app/apliko) me klasat ekzistuese + a janë "hapur" aplikimet. Vetëm
@@ -10,7 +11,7 @@ import { classHasRoom } from "@/lib/classCapacity";
 export async function GET() {
   const orgId = 1; // single-tenant për tani, njësoj si teacher-auth/register
 
-  const [classes, openSetting] = await Promise.all([
+  const [classes, openSetting, fieldConfigSetting, customFields] = await Promise.all([
     prisma.class.findMany({
       // Vetëm paralelet AKTIVE — një paralele e shënuar joaktive (bosh,
       // e pahapur këtë vit) s'duhet të bëjë grupin të duket "me vend" te
@@ -26,6 +27,8 @@ export async function GET() {
       orderBy: { name: "asc" },
     }),
     prisma.setting.findUnique({ where: { key: "enrollmentOpen" } }),
+    prisma.setting.findUnique({ where: { key: "enrollmentFieldConfig" } }),
+    prisma.enrollmentFormField.findMany({ where: { organizationId: orgId, active: true }, orderBy: { order: "asc" } }),
   ]);
 
   return NextResponse.json({
@@ -53,5 +56,10 @@ export async function GET() {
         .sort(([a], [b]) => a - b)
         .map(([grade, hasRoom]) => ({ grade, label: `Klasa ${grade}`, isFull: !hasRoom }));
     })(),
+    existingFieldConfig: resolveFieldConfig(fieldConfigSetting?.value),
+    customFields: customFields.map(f => ({
+      id: f.id, label: f.label, type: f.type, required: f.required,
+      options: f.options ? JSON.parse(f.options) : null,
+    })),
   });
 }

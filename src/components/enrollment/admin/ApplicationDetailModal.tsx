@@ -23,12 +23,16 @@ interface Detail {
   address: string | null; country: string | null;
   emergencyContactName: string | null; emergencyContactRelation: string | null; emergencyContactPhone: string | null;
   additionalInfo: string | null; submittedAt: string | null; createdAt: string;
+  customAnswers: string | null;
   documents: Doc[];
 }
+
+interface CustomFieldDef { id: number; label: string; type: string; active: boolean }
 
 export default function ApplicationDetailModal({ id, onClose, onChanged }: { id: number; onClose: () => void; onChanged: () => void }) {
   const [data, setData] = useState<Detail | null>(null);
   const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDef[]>([]);
   const [assignClassId, setAssignClassId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -38,7 +42,13 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
   useEffect(() => {
     fetch(`/api/enrollment/applications/${id}`).then(r => r.json()).then(setData);
     fetch("/api/classes").then(r => r.json()).then(setClasses);
+    fetch("/api/enrollment-form-fields?includeInactive=1").then(r => r.json()).then(setCustomFieldDefs);
   }, [id]);
+
+  const customAnswers: Record<string, string> = data?.customAnswers ? JSON.parse(data.customAnswers) : {};
+  const customAnswerRows = customFieldDefs
+    .filter(f => customAnswers[String(f.id)] !== undefined && customAnswers[String(f.id)] !== "")
+    .map(f => ({ label: f.label, value: f.type === "CHECKBOX" ? (customAnswers[String(f.id)] === "true" ? "Po" : "Jo") : customAnswers[String(f.id)] }));
 
   const matchingClasses = classes.filter(c => c.active && getGradeNumber(c.name) === data?.desiredGrade);
 
@@ -164,6 +174,12 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
               <Row label="Kontakti Emergjent" value={data.emergencyContactName ? `${data.emergencyContactName} (${data.emergencyContactRelation ?? "—"}) · ${data.emergencyContactPhone ?? "—"}` : "—"} />
               {data.additionalInfo && <Row label="Info Shtesë" value={data.additionalInfo} />}
             </Section>
+
+            {customAnswerRows.length > 0 && (
+              <Section title="Pyetje Shtesë">
+                {customAnswerRows.map(r => <Row key={r.label} label={r.label} value={r.value} />)}
+              </Section>
+            )}
 
             <div>
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Dokumentet</h4>

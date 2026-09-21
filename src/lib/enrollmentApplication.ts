@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 const DATE_FIELDS = new Set(["birthDate", "motherBirth", "fatherBirth", "desiredStartDate"]);
 const INT_FIELDS = new Set(["desiredGrade"]);
 const BOOL_FIELDS = new Set(["consentDataAccurate", "waitlisted"]);
+const JSON_FIELDS = new Set(["customAnswers"]); // objekt {[fieldId]: përgjigje} — ruhet si JSON string (shih EnrollmentFormField)
 
 // SHËNIM: "classId" NUK është pjesë e kësaj liste me qëllim — prindi zgjedh
 // vetëm klasën/numrin (desiredGrade); paralelja konkrete (classId) caktohet
@@ -18,7 +19,7 @@ export const APPLICATION_FIELDS = [
   "primaryContact", "guardianOtherName", "guardianOtherRelation", "guardianOtherPhone", "guardianOtherEmail",
   "address", "city", "country",
   "emergencyContactName", "emergencyContactRelation", "emergencyContactPhone",
-  "additionalInfo", "consentDataAccurate",
+  "additionalInfo", "consentDataAccurate", "customAnswers",
 ];
 
 function parseDate(val: unknown): Date | null {
@@ -40,6 +41,8 @@ export function buildApplicationData(body: Record<string, unknown>): Record<stri
       data[field] = val === "" || val == null ? null : Number(val);
     } else if (BOOL_FIELDS.has(field)) {
       data[field] = Boolean(val);
+    } else if (JSON_FIELDS.has(field)) {
+      data[field] = val && typeof val === "object" && Object.keys(val).length > 0 ? JSON.stringify(val) : null;
     } else {
       data[field] = val === "" ? null : val;
     }
