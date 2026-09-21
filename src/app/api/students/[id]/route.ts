@@ -76,19 +76,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         fatherProf: body.fatherProf || null,
         fatherPhone: normalizePhone(body.fatherPhone),
         fatherEmail: body.fatherEmail || null,
+        // inactiveDate përmes Prisma Client (jo raw SQL) — një `datetime('now')`
+        // i shkruar me SQL të papërpunuar ruhet si TEXT në SQLite dhe s'krahasohet
+        // saktë me filtra `gte`/`lte` sipas periudhës (shih PATCH më poshtë, që
+        // e ka bërë gjithmonë kështu dhe funksionon si duhet).
+        ...(body.status === "INACTIVE" ? { inactiveDate: new Date() } : {}),
+        ...(body.status === "ACTIVE" ? { inactiveDate: null } : {}),
       },
     });
-
-    // inactiveDate via raw SQL (Prisma client nuk e njeh fushën e re pa generate)
-    if (body.status === "INACTIVE") {
-      await prisma.$executeRawUnsafe(
-        `UPDATE Student SET inactiveDate = datetime('now') WHERE id = ${parseInt(id)}`
-      );
-    } else if (body.status === "ACTIVE") {
-      await prisma.$executeRawUnsafe(
-        `UPDATE Student SET inactiveDate = NULL WHERE id = ${parseInt(id)}`
-      );
-    }
 
     const userId = parseInt((session?.user as { id?: string } | undefined)?.id ?? "0");
     if (userId > 0) {
@@ -176,11 +171,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   } else {
     await prisma.student.update({
       where: { id: studentId },
-      data: { status: "INACTIVE" },
+      data: { status: "INACTIVE", inactiveDate: new Date() },
     });
-    await prisma.$executeRawUnsafe(
-      `UPDATE Student SET inactiveDate = datetime('now') WHERE id = ${studentId}`
-    );
     await logAction(session, "UPDATE", "Student", studentId, `Çaktivizoi nxënësin ${studentName}`);
   }
 
