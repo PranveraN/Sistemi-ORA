@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { UserPlus, ChevronUp, ChevronDown, Plus, Pencil, Eraser, Eye, MoreVertical, Trash2, ListX } from "lucide-react";
+import { UserPlus, ChevronUp, ChevronDown, Plus, Pencil, Eraser, Eye, MoreVertical, Trash2, ListX, ClipboardPaste } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { STUDENT_RATING_COLORS } from "@/lib/studentRatings";
 import StudentEnrichmentModal from "./StudentEnrichmentModal";
+import BulkAddNewStudentsModal from "./BulkAddNewStudentsModal";
 
 export interface NewStudentRow {
   id: number;
@@ -43,6 +44,7 @@ export default function NewStudentsCard({ data, activeStudents, period, onChange
   const [show, setShow] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [modal, setModal] = useState<"add" | NewStudentRow | null>(null);
+  const [showBulk, setShowBulk] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [openMenuFor, setOpenMenuFor] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -157,6 +159,12 @@ export default function NewStudentsCard({ data, activeStudents, period, onChange
                   <ListX className="w-3.5 h-3.5" /> Fshi të Gjithë
                 </button>
               )}
+              <button
+                onClick={() => setShowBulk(true)}
+                className="text-xs font-medium text-primary-600 border border-primary-200 dark:border-primary-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg px-2.5 py-1.5 flex items-center gap-1"
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" /> Ngjit Listë
+              </button>
               <button
                 onClick={() => setModal("add")}
                 className="text-xs font-medium text-primary-600 border border-primary-200 dark:border-primary-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg px-2.5 py-1.5 flex items-center gap-1"
@@ -298,6 +306,13 @@ export default function NewStudentsCard({ data, activeStudents, period, onChange
           preselected={modal === "add" ? null : modal}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); onChanged(); }}
+        />
+      )}
+
+      {showBulk && (
+        <BulkAddNewStudentsModal
+          onClose={() => setShowBulk(false)}
+          onSaved={() => { setShowBulk(false); onChanged(); }}
         />
       )}
     </div>

@@ -49,6 +49,9 @@ export default function StudentEnrichmentModal({ preselected, onClose, onSaved }
   const [suggestions, setSuggestions] = useState<StudentSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  // Vetëm në modalitetin "Shto" (jo Edito) — data që e bën këtë nxënës EKZISTUES
+  // të shfaqet te "Nxënës të Rinj" për periudhën aktuale. Parazgjedhje: sot.
+  const [enrollDate, setEnrollDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [originCountry, setOriginCountry] = useState(preselected?.originCountry ?? "");
   const [previousSchool, setPreviousSchool] = useState(preselected?.previousSchool ?? "");
   const [transferResult, setTransferResult] = useState(preselected?.transferResult ?? "");
@@ -117,6 +120,10 @@ export default function StudentEnrichmentModal({ preselected, onClose, onSaved }
         transferResult: transferResult || null,
         admissionScore: admissionScore === "" ? null : Number(admissionScore),
         studentRating: studentRating || null,
+        // Vetëm në "Shto" (jo Edito) — kjo është vetë veprimi që e bën nxënësin
+        // EKZISTUES të shfaqet te "Nxënës të Rinj" për periudhën e zgjedhur.
+        // Asnjë nxënës i ri s'krijohet — vetëm data e atij ekzistues përditësohet.
+        ...(preselected ? {} : { enrollDate }),
       }),
     });
     setSaving(false);

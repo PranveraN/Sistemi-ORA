@@ -127,6 +127,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ("transferResult" in body)    data.transferResult = body.transferResult || null;
   if ("admissionScore" in body)    data.admissionScore = body.admissionScore === "" || body.admissionScore == null ? null : Number(body.admissionScore);
   if ("studentRating" in body)     data.studentRating = body.studentRating || null;
+  // "+ Shto Regjistrim" (modaliteti kërkim, jo Edito) te karta "Nxënës të Rinj" —
+  // vendos datën që e bën këtë nxënës EKZISTUES të shfaqet si i ri për periudhën
+  // e zgjedhur. Asnjë nxënës i ri s'krijohet këtu, thjesht përditësohet data e
+  // atij ekzistues (shih StudentEnrichmentModal.tsx).
+  if ("enrollDate" in body) {
+    const d = new Date(body.enrollDate);
+    if (!isNaN(d.getTime())) data.enrollDate = d;
+  }
   // Shto/Edito/Fshij te karta "Nxënës që kanë Shkuar" — ndryshimi i status-it
   // këtu (jo vetëm te PUT-i i plotë) i mban dy rrjedhat në sinkron; inactiveDate
   // përditësohet automatikisht, njësoj si te PUT-i i formës së plotë (poshtë).
