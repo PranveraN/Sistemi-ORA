@@ -1,15 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
-
-// I njëjti volum/direktori si baza SQLite (shih photo-storage.ts) — mbijeton
-// rindërtimeve/rideploy-eve pikërisht si baza e të dhënave.
-function getDbDir(): string {
-  const url = process.env.DATABASE_URL || "file:./akademia-ora.db";
-  const filePath = url.replace(/^file:/, "");
-  if (path.isAbsolute(filePath)) return path.dirname(filePath);
-  return path.dirname(path.resolve(process.cwd(), "prisma", filePath));
-}
+import { getDbDir } from "./storage-dir";
 
 export function getMaterialAttachmentsDir(): string {
   return path.join(getDbDir(), "material-attachments");

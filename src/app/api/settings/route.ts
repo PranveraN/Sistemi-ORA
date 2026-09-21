@@ -12,6 +12,7 @@ const DEFAULTS: Record<string, string> = {
   schoolYear:    "2025/2026",
   schoolWebsite: "",
   timiInvestEnabled: "true",
+  enrollmentOpen: "true", // A pranohen aplikime të reja te /apliko (formulari publik i regjistrimit)
   furnitoriOraEmail: "",
   ushqimiPrice2Meals: "4",
   ushqimiPrice2MealsGrade1: "4",

@@ -22,3 +22,11 @@ export function isGrade1(className: string | null | undefined): boolean {
   if (!className) return false;
   return parseInt(className, 10) === 1;
 }
+
+// Numri i klasës si numër i thjeshtë (p.sh. "6B" -> 6) — përdoret te aplikimi
+// i regjistrimit për të vendosur cilat dokumente janë të domosdoshme.
+export function getGradeNumber(className: string | null | undefined): number | null {
+  if (!className) return null;
+  const num = parseInt(className, 10);
+  return isNaN(num) ? null : num;
+}

@@ -1,18 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
-
-// Reuses the same directory as the SQLite database (DATABASE_URL="file:...")
-// so student photos live on the same persistent Docker volume as the DB —
-// no separate volume mount needed, and photos survive rebuilds/redeploys
-// exactly like the database file does.
-function getDbDir(): string {
-  const url = process.env.DATABASE_URL || "file:./akademia-ora.db";
-  const filePath = url.replace(/^file:/, "");
-  if (path.isAbsolute(filePath)) return path.dirname(filePath);
-  // Prisma resolves relative SQLite URLs relative to prisma/schema.prisma,
-  // not process.cwd() — match that so photos land next to the actual DB file.
-  return path.dirname(path.resolve(process.cwd(), "prisma", filePath));
-}
+import { getDbDir } from "./storage-dir";
 
 export function getPhotosDir(): string {
   return path.join(getDbDir(), "student-photos");

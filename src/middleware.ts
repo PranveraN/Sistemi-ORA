@@ -10,6 +10,7 @@ export default auth((req) => {
   const isSuperAdminPage = nextUrl.pathname.startsWith("/superadmin");
   const isTeacherArea = nextUrl.pathname.startsWith("/kerkesa-material");
   const isTeacherPublicPage = nextUrl.pathname === "/kerkesa-material/regjistrohu";
+  const isEnrollmentPublicPage = nextUrl.pathname === "/apliko";
   const isClassesArea = nextUrl.pathname.startsWith("/classes");
 
   if (isLoginPage && isLoggedIn) {
@@ -19,7 +20,7 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/dashboard", nextUrl));
   }
 
-  if (!isLoginPage && !isTeacherPublicPage && !isLoggedIn) {
+  if (!isLoginPage && !isTeacherPublicPage && !isEnrollmentPublicPage && !isLoggedIn) {
     return NextResponse.redirect(new URL("/login", nextUrl));
   }
 
