@@ -16,6 +16,7 @@ interface EvidencaRecord {
 }
 interface EvidencaItemDef { id: number; label: string; type: string; options: string[] | null; hasSpecify: boolean; categoryId: number | null; order: number }
 interface EvidCategoryLite { id: number; label: string; order: number }
+interface RecentRow { student: StudentRow; count: number; lastDate: string }
 
 // Skeda "Evidenca" brenda faqes Regjistrimet — vlerësimi pedagogjik (tabelë
 // aftësish me notë) + pyetësori shëndetësor/logjistik i takimit me nxënësin
@@ -28,10 +29,22 @@ export default function EvidencaTab({ initialQuery = "" }: { initialQuery?: stri
   const [config, setConfig] = useState<EvidencaConfig | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [recent, setRecent] = useState<RecentRow[] | null>(null);
+  const [loadingRecent, setLoadingRecent] = useState(true);
+
   const [formStudent, setFormStudent] = useState<StudentRow | null>(null);
   const [historyStudent, setHistoryStudent] = useState<StudentRow | null>(null);
 
   useEffect(() => { fetch("/api/evidenca/config").then(r => r.json()).then(setConfig); }, []);
+
+  const loadRecent = useCallback(async () => {
+    setLoadingRecent(true);
+    const r = await fetch("/api/evidenca/recent");
+    setRecent(await r.json());
+    setLoadingRecent(false);
+  }, []);
+
+  useEffect(() => { loadRecent(); }, [loadRecent]);
 
   const runSearch = useCallback(async (q: string) => {
     setLoading(true);
@@ -53,6 +66,7 @@ export default function EvidencaTab({ initialQuery = "" }: { initialQuery?: stri
 
   function refreshCounts(studentId: number) {
     fetch(`/api/evidenca/counts?ids=${studentId}`).then(r => r.json()).then(c => setCounts(prev => ({ ...prev, ...c })));
+    loadRecent();
   }
 
   return (
@@ -64,42 +78,76 @@ export default function EvidencaTab({ initialQuery = "" }: { initialQuery?: stri
         <input className="form-input pl-9" placeholder="Kërko nxënësin sipas emrit..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      <div className="card overflow-hidden">
-        {!search.trim() ? (
-          <p className="text-center text-slate-400 py-10 text-sm">Kërkoni një nxënës për të parë ose plotësuar Evidencën.</p>
-        ) : loading ? (
-          <p className="text-center text-slate-400 py-10 text-sm">Duke kërkuar...</p>
-        ) : students.length === 0 ? (
-          <p className="text-center text-slate-400 py-10 text-sm">Asnjë nxënës i gjetur.</p>
-        ) : (
-          <div className="divide-y divide-slate-100 dark:divide-slate-700">
-            {students.map(s => {
-              const c = counts[s.id];
-              return (
-                <div key={s.id} className="flex items-center justify-between gap-3 p-4">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{s.firstName} {s.lastName}</p>
-                    <p className="text-xs text-slate-400">
-                      {s.class ? `${s.class.name} (${s.class.level})` : "Pa klasë"} ·{" "}
-                      {c ? `${c.count} evidenc${c.count > 1 ? "a" : "ë"} — e fundit ${formatDate(c.lastDate)}` : "S'ka evidencë ende"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {c && (
+      {!search.trim() && (
+        <div>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Nxënës me Evidencë të Krijuar</p>
+          <div className="card overflow-hidden">
+            {loadingRecent ? (
+              <p className="text-center text-slate-400 py-10 text-sm">Duke ngarkuar...</p>
+            ) : !recent || recent.length === 0 ? (
+              <p className="text-center text-slate-400 py-10 text-sm">Ende s&apos;ka asnjë evidencë të krijuar — kërkoni një nxënës më sipër për ta plotësuar për herë të parë.</p>
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                {recent.map(({ student: s, count, lastDate }) => (
+                  <div key={s.id} className="flex items-center justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{s.firstName} {s.lastName}</p>
+                      <p className="text-xs text-slate-400">
+                        {s.class ? `${s.class.name} (${s.class.level})` : "Pa klasë"} · {count} evidenc{count > 1 ? "a" : "ë"} — e fundit {formatDate(lastDate)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
                       <button onClick={() => setHistoryStudent(s)} className="btn-secondary text-sm">
                         <HistoryIcon className="w-4 h-4" /> Historia
                       </button>
-                    )}
-                    <button onClick={() => setFormStudent(s)} className="btn-primary text-sm">
-                      <Plus className="w-4 h-4" /> Shto Evidencë
-                    </button>
+                      <button onClick={() => setFormStudent(s)} className="btn-primary text-sm">
+                        <Plus className="w-4 h-4" /> Shto Evidencë
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {search.trim() && (
+        <div className="card overflow-hidden">
+          {loading ? (
+            <p className="text-center text-slate-400 py-10 text-sm">Duke kërkuar...</p>
+          ) : students.length === 0 ? (
+            <p className="text-center text-slate-400 py-10 text-sm">Asnjë nxënës i gjetur.</p>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-700">
+              {students.map(s => {
+                const c = counts[s.id];
+                return (
+                  <div key={s.id} className="flex items-center justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{s.firstName} {s.lastName}</p>
+                      <p className="text-xs text-slate-400">
+                        {s.class ? `${s.class.name} (${s.class.level})` : "Pa klasë"} ·{" "}
+                        {c ? `${c.count} evidenc${c.count > 1 ? "a" : "ë"} — e fundit ${formatDate(c.lastDate)}` : "S'ka evidencë ende"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {c && (
+                        <button onClick={() => setHistoryStudent(s)} className="btn-secondary text-sm">
+                          <HistoryIcon className="w-4 h-4" /> Historia
+                        </button>
+                      )}
+                      <button onClick={() => setFormStudent(s)} className="btn-primary text-sm">
+                        <Plus className="w-4 h-4" /> Shto Evidencë
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {formStudent && config && (
         <EvidencaFillModal
