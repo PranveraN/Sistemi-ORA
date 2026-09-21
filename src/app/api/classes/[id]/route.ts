@@ -18,9 +18,11 @@ export async function PATCH(
   const cls = await prisma.class.update({
     where: { id: parseInt(id) },
     data: {
-      ...(body.name    !== undefined && { name:    body.name }),
-      ...(body.level   !== undefined && { level:   body.level }),
-      ...(body.teacher !== undefined && { teacher: body.teacher || null }),
+      ...(body.name     !== undefined && { name:     body.name }),
+      ...(body.level    !== undefined && { level:    body.level }),
+      ...(body.teacher  !== undefined && { teacher:  body.teacher || null }),
+      ...(body.capacity !== undefined && { capacity: body.capacity === "" || body.capacity == null ? null : Number(body.capacity) }),
+      ...(body.active   !== undefined && { active:   Boolean(body.active) }),
     },
   });
 

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/utils";
+import { getGradeNumber } from "@/lib/school-cycles";
+import { classHasRoom } from "@/lib/classCapacity";
 
 export async function GET() {
   const session = await auth();
@@ -34,6 +36,34 @@ export async function GET() {
       ])
     : [[], 0, []];
   const lowStockMaterials = materials.filter(m => m.currentStock <= m.minStock).slice(0, 10);
+
+  // Vende të liruara për aplikimet në listë pritjeje (/apliko -> Regjistrimet)
+  // — vetëm rolet me qasje te "Regjistrimet" (shih Sidebar.tsx); TEACHER/
+  // PEDAGOGIA s'e shohin fare këtë faqe, ndaj njoftimi do të çonte në gjëkundi.
+  const canSeeRegjistrimet = role === "ADMIN" || role === "FINANCE" || role === "SECRETARY";
+  const waitlistOpenings = canSeeRegjistrimet ? await (async () => {
+    const [activeClasses, waitlistGroups] = await Promise.all([
+      prisma.class.findMany({
+        where: { organizationId: orgId, active: true },
+        select: { name: true, capacity: true, _count: { select: { students: { where: { status: "ACTIVE" } } } } },
+      }),
+      prisma.enrollmentApplication.groupBy({
+        by: ["desiredGrade"],
+        where: { organizationId: orgId, status: "PENDING", waitlisted: true, desiredGrade: { not: null } },
+        _count: true,
+      }),
+    ]);
+    const gradeHasRoom = new Map<number, boolean>();
+    for (const c of activeClasses) {
+      const grade = getGradeNumber(c.name);
+      if (grade == null) continue;
+      const hasRoom = classHasRoom(c.capacity, c._count.students);
+      gradeHasRoom.set(grade, (gradeHasRoom.get(grade) ?? false) || hasRoom);
+    }
+    return waitlistGroups
+      .filter(g => g.desiredGrade != null && gradeHasRoom.get(g.desiredGrade))
+      .map(g => ({ grade: g.desiredGrade as number, count: g._count }));
+  })() : [];
 
   const [reminders, overdue, urgentTasks, recentPayments] = await Promise.all([
     // Reminders due within 7 days (not done)
@@ -124,6 +154,16 @@ export async function GET() {
       category: "STOCK",
       link: "/materiale",
     })),
+    ...waitlistOpenings.map((w) => ({
+      id: `waitlist-${w.grade}`,
+      type: "waitlist-opening" as const,
+      title: `U lirua vend — Klasa ${w.grade}`,
+      body: `${w.count} aplikim${w.count > 1 ? "e" : ""} në listë pritjeje për këtë klasë`,
+      dueDate: null,
+      urgent: false,
+      category: "ENROLLMENT",
+      link: `/regjistrimet?grade=${w.grade}`,
+    })),
   ];
 
   return NextResponse.json({
@@ -136,7 +176,8 @@ export async function GET() {
       urgentRequests: urgentRequests.length,
       lowStock: lowStockMaterials.length,
       recentPayments: recentPayments.length,
-      total: reminders.length + urgentTasks.length + overdue.length + urgentRequests.length + lowStockMaterials.length,
+      waitlistOpenings: waitlistOpenings.length,
+      total: reminders.length + urgentTasks.length + overdue.length + urgentRequests.length + lowStockMaterials.length + waitlistOpenings.length,
     },
   });
 }

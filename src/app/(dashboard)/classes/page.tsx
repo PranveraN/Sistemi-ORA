@@ -6,14 +6,17 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   GraduationCap, Plus, Users, X, Save,
-  Settings2, CheckCircle, Loader2, Pencil,
+  Settings2, CheckCircle, Loader2, Pencil, PowerOff,
 } from "lucide-react";
+import { DEFAULT_CLASS_CAPACITY } from "@/lib/classCapacity";
 
 interface Class {
   id: number;
   name: string;
   level: string;
   teacher: string | null;
+  capacity: number | null;
+  active: boolean;
   _count: { students: number };
 }
 
@@ -40,6 +43,10 @@ export default function ClassesPage() {
   // Edit teacher inline
   const [editId,      setEditId]      = useState<number | null>(null);
   const [editTeacher, setEditTeacher] = useState("");
+
+  // Edit capacity inline
+  const [editCapId,  setEditCapId]  = useState<number | null>(null);
+  const [editCap,    setEditCap]    = useState("");
 
   async function fetchClasses() {
     setLoading(true);
@@ -79,6 +86,26 @@ export default function ClassesPage() {
       body: JSON.stringify({ teacher: editTeacher }),
     });
     setEditId(null);
+    fetchClasses();
+  }
+
+  async function saveCapacity(id: number) {
+    await fetch(`/api/classes/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ capacity: editCap }),
+    });
+    setEditCapId(null);
+    fetchClasses();
+  }
+
+  async function toggleActive(cls: Class) {
+    if (cls.active && !confirm(`T'a shënoj paralelen ${cls.name} si joaktive? Nuk do të numërohet më te kontrolli i vendeve/lista e pritjes te aplikimi publik.`)) return;
+    await fetch(`/api/classes/${cls.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: !cls.active }),
+    });
     fetchClasses();
   }
 
@@ -274,12 +301,17 @@ export default function ClassesPage() {
                   {/* A and B cards */}
                   <div className="grid grid-cols-2 gap-4">
                     {lvlClasses.map(cls => (
-                      <div key={cls.id} className="card p-5 hover:shadow-md transition-shadow">
+                      <div key={cls.id} className={`card p-5 hover:shadow-md transition-shadow ${!cls.active ? "opacity-60" : ""}`}>
                         <div className="flex items-start justify-between mb-3">
                           <div className="w-11 h-11 bg-primary-50 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
                             <GraduationCap className="w-5 h-5 text-primary-600" />
                           </div>
-                          <span className="text-3xl font-black text-primary-600 dark:text-primary-400">{cls.name}</span>
+                          <div className="flex items-center gap-2">
+                            {!cls.active && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-semibold">Joaktive</span>
+                            )}
+                            <span className="text-3xl font-black text-primary-600 dark:text-primary-400">{cls.name}</span>
+                          </div>
                         </div>
 
                         {/* Teacher */}
@@ -320,6 +352,44 @@ export default function ClassesPage() {
                           </button>
                         )}
 
+                        {/* Kapaciteti — përdoret VETËM te kontrolli i vendeve/lista e pritjes
+                            e aplikimit publik (/apliko); s'ndikon në regjistrimin manual të
+                            nxënësve nga administrata. Pa vlerë të caktuar = parazgjedhja e
+                            shkollës (shih DEFAULT_CLASS_CAPACITY te lib/classCapacity.ts). */}
+                        {readOnly ? (
+                          <p className="text-xs text-slate-400 mt-1">Kapaciteti: {cls.capacity ?? `${DEFAULT_CLASS_CAPACITY} (parazgjedhje)`}</p>
+                        ) : editCapId === cls.id ? (
+                          <div className="flex items-center gap-2 mt-1">
+                            <input
+                              type="number" min="0"
+                              value={editCap}
+                              onChange={e => setEditCap(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") saveCapacity(cls.id); if (e.key === "Escape") setEditCapId(null); }}
+                              className="form-input text-xs py-1 flex-1"
+                              placeholder={`${DEFAULT_CLASS_CAPACITY} (parazgjedhje)`}
+                              autoFocus
+                            />
+                            <button onClick={() => saveCapacity(cls.id)} className="p-1.5 bg-green-500 text-white rounded-lg">
+                              <Save className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setEditCapId(null)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setEditCapId(cls.id); setEditCap(cls.capacity != null ? String(cls.capacity) : ""); }}
+                            className="flex items-center gap-1.5 w-full text-left group/cap mt-1"
+                          >
+                            <p className="text-xs flex-1">
+                              {cls.capacity != null
+                                ? <span className="text-slate-600 dark:text-slate-300">Kapaciteti: {cls.capacity}</span>
+                                : <span className="italic text-slate-400">Kapaciteti: {DEFAULT_CLASS_CAPACITY} (parazgjedhje) — kliko për ta ndryshuar</span>}
+                            </p>
+                            <Pencil className="w-3 h-3 text-slate-300 group-hover/cap:text-primary-500 transition-colors flex-shrink-0" />
+                          </button>
+                        )}
+
                         <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
                           <div className="flex items-center gap-1.5">
                             <Users className="w-3.5 h-3.5 text-slate-400" />
@@ -327,6 +397,15 @@ export default function ClassesPage() {
                               {cls._count.students} nxënës
                             </span>
                           </div>
+                          {!readOnly && (
+                            <button
+                              onClick={() => toggleActive(cls)}
+                              title={cls.active ? "Shëno si joaktive" : "Shëno si aktive"}
+                              className={`text-xs flex items-center gap-1 ${cls.active ? "text-slate-400 hover:text-slate-600" : "text-primary-600 hover:text-primary-700"}`}
+                            >
+                              <PowerOff className="w-3.5 h-3.5" /> {cls.active ? "Joaktive" : "Aktive"}
+                            </button>
+                          )}
                           {!readOnly && (
                             <Link
                               href={`/students?classId=${cls.id}`}

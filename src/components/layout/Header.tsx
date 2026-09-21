@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import {
   Moon, Sun, LogOut, Bell, ChevronLeft, Settings, User,
   AlertTriangle, Clock, CheckCircle, CreditCard, X, ChevronRight, Menu,
-  Package, Gauge,
+  Package, Gauge, UserPlus,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -74,7 +74,7 @@ function dueDateLabel(iso: string | null) {
 /* ── types ───────────────────────────────────────────────── */
 type Notif = {
   id: string;
-  type: "reminder" | "task" | "overdue" | "paid" | "material-request" | "low-stock";
+  type: "reminder" | "task" | "overdue" | "paid" | "material-request" | "low-stock" | "waitlist-opening";
   title: string;
   body: string;
   dueDate: string | null;
@@ -87,7 +87,7 @@ type NotifData = {
   notifications: Notif[];
   counts: {
     reminders: number; overdue: number; urgentTasks: number; recentPayments: number;
-    newRequests?: number; urgentRequests?: number; lowStock?: number; total: number;
+    newRequests?: number; urgentRequests?: number; lowStock?: number; waitlistOpenings?: number; total: number;
   };
 };
 
@@ -98,6 +98,7 @@ const TYPE_CONFIG = {
   paid:              { icon: CheckCircle,    color: "text-emerald-500",bg: "bg-emerald-50 dark:bg-emerald-900/20"},
   "material-request": { icon: Package,       color: "text-orange-500", bg: "bg-orange-50 dark:bg-orange-900/20" },
   "low-stock":        { icon: Gauge,         color: "text-rose-500",   bg: "bg-rose-50 dark:bg-rose-900/20"     },
+  "waitlist-opening": { icon: UserPlus,      color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-900/20" },
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -191,6 +192,11 @@ function NotifPanel({ onClose }: { onClose: () => void }) {
           {!!data.counts.lowStock && data.counts.lowStock > 0 && (
             <span className="flex items-center gap-1 text-xs px-2 py-1 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-full font-medium">
               <Gauge className="w-3 h-3" /> {data.counts.lowStock} stok i ulët
+            </span>
+          )}
+          {!!data.counts.waitlistOpenings && data.counts.waitlistOpenings > 0 && (
+            <span className="flex items-center gap-1 text-xs px-2 py-1 bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 rounded-full font-medium">
+              <UserPlus className="w-3 h-3" /> {data.counts.waitlistOpenings} vende të liruara
             </span>
           )}
           {data.counts.total === 0 && data.counts.recentPayments === 0 && (
