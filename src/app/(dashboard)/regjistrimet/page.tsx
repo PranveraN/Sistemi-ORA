@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { formatDate } from "@/lib/utils";
-import { Search, Eye, Clock, CheckCircle, XCircle, ClipboardList, Download } from "lucide-react";
+import { Search, Eye, Clock, CheckCircle, XCircle, ClipboardList, Download, Trash2 } from "lucide-react";
 import ApplicationDetailModal from "@/components/enrollment/admin/ApplicationDetailModal";
 import { exportEnrollmentApplicationsExcel, type ExportableApplication } from "@/lib/enrollmentApplicationExport";
 
@@ -51,6 +51,12 @@ export default function RegjistrimetPage() {
   }, [status]);
 
   useEffect(() => { fetchRows(); }, [fetchRows]);
+
+  async function handleDelete(r: Row) {
+    if (!confirm(`T'a fshij aplikimin e ${r.firstName} ${r.lastName} (${r.referenceNumber ?? `#${r.id}`})? Ky veprim s'kthehet mbrapa. Dokumentet e bashkëngjitura fshihen gjithashtu.`)) return;
+    await fetch(`/api/enrollment/applications/${r.id}`, { method: "DELETE" });
+    fetchRows();
+  }
 
   // Opsionet e filtrit — nga vetë të dhënat e ngarkuara, jo listë fikse.
   const gradeOptions = Array.from(new Set(rows.map(r => r.desiredGrade).filter((g): g is number => g != null))).sort((a, b) => a - b);
@@ -156,8 +162,11 @@ export default function RegjistrimetPage() {
                         <td className="table-cell text-slate-500 dark:text-slate-400">{formatDate(r.submittedAt ?? r.createdAt)}</td>
                         <td className="table-cell text-slate-400 text-xs">{r.referenceNumber ?? "—"}</td>
                         <td className="table-cell text-right">
-                          <button onClick={e => { e.stopPropagation(); setOpenId(r.id); }} className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                          <button onClick={e => { e.stopPropagation(); setOpenId(r.id); }} title="Shiko" className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20">
                             <Eye className="w-4 h-4" />
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); handleDelete(r); }} title="Fshi" className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
                       </tr>

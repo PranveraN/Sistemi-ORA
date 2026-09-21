@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X, FileText, Image as ImageIcon, Check, Ban, ExternalLink, AlertTriangle } from "lucide-react";
+import { X, FileText, Image as ImageIcon, Check, Ban, ExternalLink, AlertTriangle, Trash2 } from "lucide-react";
 import { formatDate, formatDateTime, formatFileSize } from "@/lib/utils";
 import { docTypeLabel } from "@/lib/enrollmentDocs";
 import { getGradeNumber } from "@/lib/school-cycles";
@@ -68,6 +68,17 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
     const d = await r.json();
     setBusy(false);
     if (!r.ok) { setError(d.message || "Dështoi."); return; }
+    onChanged();
+    onClose();
+  }
+
+  async function handleDelete() {
+    if (!data) return;
+    if (!confirm(`T'a fshij aplikimin e ${data.firstName} ${data.lastName}? Ky veprim s'kthehet mbrapa. Dokumentet e bashkëngjitura fshihen gjithashtu. Nxënësi (nëse është krijuar) NUK preket.`)) return;
+    setBusy(true); setError("");
+    const r = await fetch(`/api/enrollment/applications/${id}`, { method: "DELETE" });
+    setBusy(false);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.message || "Dështoi."); return; }
     onChanged();
     onClose();
   }
@@ -180,7 +191,12 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
               )}
             </div>
 
-            <p className="text-xs text-slate-300">Dorëzuar: {data.submittedAt ? formatDateTime(data.submittedAt) : formatDateTime(data.createdAt)}</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-slate-300">Dorëzuar: {data.submittedAt ? formatDateTime(data.submittedAt) : formatDateTime(data.createdAt)}</p>
+              <button onClick={handleDelete} disabled={busy} title="Fshi aplikimin" className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-600">
+                <Trash2 className="w-3.5 h-3.5" /> Fshi Aplikimin
+              </button>
+            </div>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
