@@ -103,6 +103,17 @@
   .section-title {
     @apply text-lg font-semibold text-slate-800 dark:text-slate-100;
   }
+
+  /* Fushat e kërkimit — identifikuara nga ikona Search e lucide-react
+     (klasa "lucide-search" e shtuar automatikisht nga vetë libraria), jo nga
+     ndonjë klasë e re e shtuar manualisht — kështu çdo fushë kërkimi në
+     sistem përfshihet automatikisht, pa u dashur të ndryshohet çdo faqe. */
+  .relative:has(> svg.lucide-search) input {
+    @apply border-2 border-primary-300 dark:border-primary-600 bg-primary-50/40 dark:bg-primary-900/10;
+  }
+  .relative:has(> svg.lucide-search) input:focus {
+    @apply border-primary-500 dark:border-primary-400;
+  }
 }
 
 @layer utilities {
