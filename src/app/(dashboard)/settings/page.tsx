@@ -142,13 +142,23 @@ function SchoolSection() {
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [materialLinkCopied, setMaterialLinkCopied] = useState(false);
   const applyUrl = typeof window !== "undefined" ? `${window.location.origin}/apliko` : "/apliko";
+  const materialUrl = typeof window !== "undefined" ? `${window.location.origin}/kerkesa-material/regjistrohu` : "/kerkesa-material/regjistrohu";
 
   async function copyApplyLink() {
     try {
       await navigator.clipboard.writeText(applyUrl);
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2000);
+    } catch { /* clipboard e paarritshme — injorohet */ }
+  }
+
+  async function copyMaterialLink() {
+    try {
+      await navigator.clipboard.writeText(materialUrl);
+      setMaterialLinkCopied(true);
+      setTimeout(() => setMaterialLinkCopied(false), 2000);
     } catch { /* clipboard e paarritshme — injorohet */ }
   }
 
@@ -276,6 +286,25 @@ function SchoolSection() {
             aria-pressed={info.enrollmentOpen === "true"}
           >
             <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${info.enrollmentOpen === "true" ? "translate-x-5" : "translate-x-0"}`} />
+          </button>
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-slate-100 dark:border-slate-700 space-y-3">
+        <div className="flex items-start gap-2">
+          <div className="w-9 h-9 bg-primary-50 dark:bg-primary-900/30 rounded-xl flex items-center justify-center shrink-0">
+            <Link2 className="w-4.5 h-4.5 text-primary-500" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Formulari i Regjistrimit për Mësimdhënës (Kërkesa Materiale)</p>
+            <p className="text-xs text-slate-400 max-w-md">Shpërndajeni këtë link te mësimdhënësit — regjistrohen vetë, llogaria mbetet joaktive derisa ta aprovoni te "Përdoruesit".</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 max-w-lg">
+          <input readOnly value={materialUrl} className="form-input text-xs" onFocus={e => e.target.select()} />
+          <button type="button" onClick={copyMaterialLink} className="btn-secondary shrink-0 text-xs">
+            {materialLinkCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+            {materialLinkCopied ? "U kopjua" : "Kopjo"}
           </button>
         </div>
       </div>
