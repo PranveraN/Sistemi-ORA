@@ -181,7 +181,7 @@ export async function GET(req: NextRequest) {
     }),
 
     prisma.timiInvestStudent.findMany({
-      where: { active: true, studentId: { not: null } },
+      where: { active: true, stage: "KRYER", studentId: { not: null } },
       select: { studentId: true, regularPrice: true, discountPct: true, manualDiscAmt: true },
     }),
 

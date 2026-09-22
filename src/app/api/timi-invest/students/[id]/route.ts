@@ -19,6 +19,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.manualDiscAmt !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET manualDiscAmt=?, updatedAt=? WHERE id=?`, parseFloat(body.manualDiscAmt), now, sid);
   if (body.notes        !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET notes=?, updatedAt=? WHERE id=?`,        body.notes, now, sid);
   if (body.active       !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET active=?, updatedAt=? WHERE id=?`,       body.active ? 1 : 0, now, sid);
+  if (body.stage        !== undefined && ["PROFATURE", "NE_PROCES", "KRYER"].includes(body.stage))
+                                        await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET stage=?, updatedAt=? WHERE id=?`,        body.stage, now, sid);
   if ("studentId"       in body)       await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET studentId=?, updatedAt=? WHERE id=?`,    body.studentId ? parseInt(body.studentId) : null, now, sid);
 
   const [student] = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(`SELECT * FROM TimiInvestStudent WHERE id=?`, sid);

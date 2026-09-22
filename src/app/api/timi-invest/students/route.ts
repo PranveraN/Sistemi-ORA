@@ -19,12 +19,13 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const now = new Date().toISOString();
   const studentId = body.studentId ? parseInt(body.studentId) : null;
+  const stage = ["PROFATURE", "NE_PROCES", "KRYER"].includes(body.stage) ? body.stage : "PROFATURE";
   await prisma.$executeRawUnsafe(
-    `INSERT INTO TimiInvestStudent (firstName, lastName, parentName, parentPhone, regularPrice, discountPct, manualDiscAmt, studentId, active, notes, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+    `INSERT INTO TimiInvestStudent (firstName, lastName, parentName, parentPhone, regularPrice, discountPct, manualDiscAmt, studentId, active, stage, notes, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
     body.firstName || "", body.lastName || "", body.parentName || "", body.parentPhone || "",
     parseFloat(body.regularPrice) || 0, parseFloat(body.discountPct) || 0,
-    parseFloat(body.manualDiscAmt) || 0, studentId, body.notes || null, now, now
+    parseFloat(body.manualDiscAmt) || 0, studentId, stage, body.notes || null, now, now
   );
   const [student] = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
     `SELECT * FROM TimiInvestStudent ORDER BY id DESC LIMIT 1`

@@ -1140,6 +1140,7 @@ model TimiInvestStudent {
   manualDiscAmt   Float    @default(0)
   studentId    Int?     // lidhje me Student.id kryesor (opsionale)
   active       Boolean  @default(true)
+  stage        String   @default("PROFATURE") // PROFATURE | NE_PROCES | KRYER — pipeline i klientit, i ndarë nga `active` (arkivim)
   notes        String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

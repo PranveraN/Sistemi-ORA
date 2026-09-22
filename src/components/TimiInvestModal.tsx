@@ -20,9 +20,16 @@ interface TimiStudent {
   discountPct: number;
   manualDiscAmt: number;
   active: boolean;
+  stage: "PROFATURE" | "NE_PROCES" | "KRYER";
   notes: string | null;
   studentId: number | null;
 }
+
+const STAGE_META: Record<TimiStudent["stage"], { label: string; dot: string; badge: string }> = {
+  PROFATURE: { label: "Profaturë", dot: "🔵", badge: "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" },
+  NE_PROCES: { label: "Në Proces", dot: "🟡", badge: "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" },
+  KRYER:     { label: "E Kryer",   dot: "🟢", badge: "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" },
+};
 
 interface ProfatureItem {
   name: string;
@@ -232,6 +239,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   /* Kerkim ne listat (Nxenesit / Faturat) */
   const [studentListQuery, setStudentListQuery] = useState("");
   const [invoiceListQuery, setInvoiceListQuery] = useState("");
+  const [stageFilter, setStageFilter] = useState<"ALL" | TimiStudent["stage"]>("ALL");
 
   /* Student form state */
   const [showStudentForm, setShowStudentForm] = useState(false);
@@ -239,7 +247,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   const [studentForm, setStudentForm] = useState({
     firstName: "", lastName: "", parentName: "", parentPhone: "",
     regularPrice: "2000", discountPct: "0", manualDiscAmt: "0", notes: "",
-    linkedStudentId: "",
+    linkedStudentId: "", stage: "PROFATURE" as TimiStudent["stage"],
   });
 
   /* Student picker (search from existing students) */
@@ -331,15 +339,20 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   function openStudentForm(s?: TimiStudent) {
     if (s) {
       setEditStudent(s);
-      setStudentForm({ firstName: s.firstName, lastName: s.lastName, parentName: s.parentName, parentPhone: s.parentPhone, regularPrice: String(s.regularPrice), discountPct: String(s.discountPct), manualDiscAmt: String(s.manualDiscAmt ?? 0), notes: s.notes || "", linkedStudentId: s.studentId ? String(s.studentId) : "" });
+      setStudentForm({ firstName: s.firstName, lastName: s.lastName, parentName: s.parentName, parentPhone: s.parentPhone, regularPrice: String(s.regularPrice), discountPct: String(s.discountPct), manualDiscAmt: String(s.manualDiscAmt ?? 0), notes: s.notes || "", linkedStudentId: s.studentId ? String(s.studentId) : "", stage: s.stage ?? "PROFATURE" });
       setStudentSearch(`${s.firstName} ${s.lastName}`);
     } else {
       setEditStudent(null);
-      setStudentForm({ firstName: "", lastName: "", parentName: "", parentPhone: "", regularPrice: "2000", discountPct: "0", manualDiscAmt: "0", notes: "", linkedStudentId: "" });
+      setStudentForm({ firstName: "", lastName: "", parentName: "", parentPhone: "", regularPrice: "2000", discountPct: "0", manualDiscAmt: "0", notes: "", linkedStudentId: "", stage: "PROFATURE" });
       setStudentSearch("");
     }
     setShowSuggestions(false);
     setShowStudentForm(true);
+  }
+
+  async function changeStage(s: TimiStudent, stage: TimiStudent["stage"]) {
+    setStudents(prev => prev.map(x => x.id === s.id ? { ...x, stage } : x));
+    await fetch(`/api/timi-invest/students/${s.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) });
   }
 
   async function saveStudent() {
@@ -394,6 +407,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
           "Emri":               `${s.firstName} ${s.lastName}`,
           "Prindi":             s.parentName,
           "Telefoni":           s.parentPhone,
+          "Statusi":            STAGE_META[s.stage].label,
           "Çmimi i rregullt":   s.regularPrice,
           "Zbritje shkollore %": s.discountPct,
           "Zbritje manuale €":  s.manualDiscAmt || 0,
@@ -404,7 +418,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
         };
       });
       const ws = XLSX.utils.json_to_sheet(rows);
-      ws["!cols"] = [20,22,16,18,18,16,18,14,24].map(w => ({ wch: w }));
+      ws["!cols"] = [20,22,16,14,18,18,16,18,14,24,24].map(w => ({ wch: w }));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "TIMI INVEST");
       XLSX.writeFile(wb, `TIMI-INVEST-Nxenesit-${new Date().toISOString().slice(0,10)}.xlsx`);
@@ -545,14 +559,21 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const filteredStudents = studentListQuery.trim()
-    ? students.filter(s => {
-        const q = studentListQuery.trim().toLowerCase();
-        return `${s.firstName} ${s.lastName}`.toLowerCase().includes(q)
-          || s.parentName.toLowerCase().includes(q)
-          || (s.parentPhone || "").toLowerCase().includes(q);
-      })
-    : students;
+  const filteredStudents = students
+    .filter(s => stageFilter === "ALL" || s.stage === stageFilter)
+    .filter(s => {
+      if (!studentListQuery.trim()) return true;
+      const q = studentListQuery.trim().toLowerCase();
+      return `${s.firstName} ${s.lastName}`.toLowerCase().includes(q)
+        || s.parentName.toLowerCase().includes(q)
+        || (s.parentPhone || "").toLowerCase().includes(q);
+    });
+
+  const stageCounts = {
+    PROFATURE: students.filter(s => s.stage === "PROFATURE").length,
+    NE_PROCES: students.filter(s => s.stage === "NE_PROCES").length,
+    KRYER:     students.filter(s => s.stage === "KRYER").length,
+  };
 
   const filteredInvoices = invoiceListQuery.trim()
     ? invoices.filter(inv => {
@@ -609,6 +630,27 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
           {/* ════ VIEW: STUDENT LIST ════ */}
           {view === "list" && (
             <div className="space-y-4">
+              {/* Përmbledhje statusesh — klikueshme, filtrojnë tabelën poshtë */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setStageFilter("ALL")}
+                  className={`flex-1 min-w-[100px] p-3 rounded-xl border text-left transition-colors ${stageFilter === "ALL" ? "border-slate-400 bg-slate-100 dark:bg-slate-700" : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
+                >
+                  <p className="text-xs text-slate-400">Të Gjithë</p>
+                  <p className="text-lg font-bold text-slate-700 dark:text-slate-200">{students.length}</p>
+                </button>
+                {(Object.keys(STAGE_META) as TimiStudent["stage"][]).map(stage => (
+                  <button
+                    key={stage}
+                    onClick={() => setStageFilter(stage)}
+                    className={`flex-1 min-w-[100px] p-3 rounded-xl border text-left transition-colors ${stageFilter === stage ? STAGE_META[stage].badge + " border-current" : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
+                  >
+                    <p className="text-xs text-slate-400">{STAGE_META[stage].dot} {STAGE_META[stage].label}</p>
+                    <p className="text-lg font-bold">{stageCounts[stage]}</p>
+                  </button>
+                ))}
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="relative flex-1 min-w-48 max-w-xs">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -705,6 +747,14 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                       </label>
                       <input type="number" className="form-input" min="0" value={studentForm.manualDiscAmt} onChange={e => setStudentForm({ ...studentForm, manualDiscAmt: e.target.value })} />
                     </div>
+                    <div>
+                      <label className="form-label">Statusi</label>
+                      <select className="form-input" value={studentForm.stage} onChange={e => setStudentForm({ ...studentForm, stage: e.target.value as TimiStudent["stage"] })}>
+                        {(Object.keys(STAGE_META) as TimiStudent["stage"][]).map(stage => (
+                          <option key={stage} value={stage}>{STAGE_META[stage].dot} {STAGE_META[stage].label}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div>
                     <label className="form-label">Shënim</label>
@@ -744,6 +794,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                         <th className="table-header text-right text-amber-700 dark:text-amber-400">Çmimi</th>
                         <th className="table-header text-center text-amber-700 dark:text-amber-400">Zbritje</th>
                         <th className="table-header text-right text-amber-700 dark:text-amber-400">Për pagesë</th>
+                        <th className="table-header text-center text-amber-700 dark:text-amber-400">Statusi</th>
                         <th className="table-header w-[116px]"></th>
                       </tr>
                     </thead>
@@ -765,6 +816,17 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                               }
                             </td>
                             <td className="table-cell text-right font-bold text-slate-800 dark:text-slate-100">{formatCurrency(final)}</td>
+                            <td className="table-cell text-center">
+                              <select
+                                value={s.stage}
+                                onChange={e => changeStage(s, e.target.value as TimiStudent["stage"])}
+                                className={`text-xs font-semibold rounded-full px-2 py-1 border-0 cursor-pointer ${STAGE_META[s.stage].badge}`}
+                              >
+                                {(Object.keys(STAGE_META) as TimiStudent["stage"][]).map(stage => (
+                                  <option key={stage} value={stage}>{STAGE_META[stage].dot} {STAGE_META[stage].label}</option>
+                                ))}
+                              </select>
+                            </td>
                             <td className="table-cell w-[116px]">
                               <div className="flex gap-0.5 justify-end">
                                 <button onClick={() => setDetailStudent(s)} title="Shiko detajet"
@@ -790,11 +852,12 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
                     <tfoot className="bg-slate-50 dark:bg-slate-800/50">
                       <tr>
                         <td colSpan={5} className="table-cell font-semibold text-slate-600 dark:text-slate-300">
-                          Gjithsej {students.length} nxënës
+                          Gjithsej {filteredStudents.length} nxënës
                         </td>
                         <td className="table-cell text-right font-black text-amber-600 dark:text-amber-400">
-                          {formatCurrency(students.reduce((s, x) => s + Math.max(0, x.regularPrice * (1 - x.discountPct / 100) - (x.manualDiscAmt || 0)), 0))}
+                          {formatCurrency(filteredStudents.reduce((s, x) => s + Math.max(0, x.regularPrice * (1 - x.discountPct / 100) - (x.manualDiscAmt || 0)), 0))}
                         </td>
+                        <td />
                         <td />
                       </tr>
                     </tfoot>
@@ -1077,6 +1140,12 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
           <div className="space-y-2 text-sm">
+            <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
+              <span className="text-slate-500">Statusi</span>
+              <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${STAGE_META[detailStudent.stage].badge}`}>
+                {STAGE_META[detailStudent.stage].dot} {STAGE_META[detailStudent.stage].label}
+              </span>
+            </div>
             <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
               <span className="text-slate-500">Prindi</span>
               <span className="font-medium text-slate-800 dark:text-slate-100">{detailStudent.parentName}</span>
