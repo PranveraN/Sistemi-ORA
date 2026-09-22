@@ -10,7 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
+import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 
 interface MuajData {
   muaj: number; viti: number; label: string;
@@ -30,9 +30,11 @@ interface BilanciData {
 }
 
 export default function BilanciPage() {
-  const now = new Date();
-  const [yearType, setYearType] = useState<YearType>("calendar");
-  const [vit,      setVit]      = useState(now.getFullYear());
+  // Parazgjedhje viti shkollor (Shtator-Gusht), njësoj si Dashboard-i dhe
+  // faqet e tjera — manuali kalendarik mbetet gjithsesi i ndryshueshëm më
+  // poshtë, thjesht s'është më parazgjedhja që hap konfuzion mes faqeve.
+  const [yearType, setYearType] = useState<YearType>("academic");
+  const [vit,      setVit]      = useState(DEFAULT_ACADEMIC_YEAR);
   const [data,     setData]     = useState<BilanciData | null>(null);
   const [loading,  setLoading]  = useState(true);
 
