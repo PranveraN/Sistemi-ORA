@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { sendEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -37,6 +38,16 @@ export async function POST(req: NextRequest) {
       organizationId: 1,
     },
   });
+
+  await sendEmail(
+    email,
+    "Regjistrimi u krye me sukses",
+    `<div style="font-family: system-ui, sans-serif; max-width: 480px;">
+      <h2 style="margin-bottom: 4px;">Regjistrimi u krye me sukses</h2>
+      <p style="color: #64748b; margin-top: 0;">Akademia Ora</p>
+      <p>Regjistrimi juaj u krye me sukses, ju lutem pritni për aprovimin nga personi përgjegjës.</p>
+    </div>`
+  );
 
   return NextResponse.json({ success: true, pending: true });
 }
