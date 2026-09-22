@@ -1946,6 +1946,15 @@ function SchoolYearsSection() {
     fetchYears();
   }
 
+  async function handleActivate(id: number, label: string) {
+    if (!confirm(`Ta bëj "${label}" vitin aktiv? Kjo ndryshon VETËM etiketën e vitit aktiv — s'prek çmimet, klasat apo nxënësit.`)) return;
+    const r = await fetch(`/api/school-years/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: true }),
+    });
+    if (!r.ok) { const d = await r.json(); alert(d.error); return; }
+    fetchYears();
+  }
+
   return (
     <div className="card overflow-hidden">
       <div className="flex items-center gap-3 p-5 border-b border-slate-100 dark:border-slate-700">
@@ -1993,6 +2002,11 @@ function SchoolYearsSection() {
                   <button onClick={() => openPrices(y.id)} className="btn-secondary text-xs px-3 py-1.5">
                     Çmimet {pricesForYear === y.id ? "▴" : "▾"}
                   </button>
+                  {!y.active && (
+                    <button onClick={() => handleActivate(y.id, y.label)} className="btn-secondary text-xs px-3 py-1.5 text-green-700 dark:text-green-400">
+                      <Star className="w-3.5 h-3.5" /> Bëje Aktiv
+                    </button>
+                  )}
                   {!y.active && (
                     <button onClick={() => handleDelete(y.id, y.label)}
                       className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-500 transition-colors"

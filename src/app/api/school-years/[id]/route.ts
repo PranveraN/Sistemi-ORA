@@ -27,6 +27,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.endDate !== undefined) data.endDate = body.endDate ? new Date(body.endDate) : null;
 
   try {
+    // Aktivizim i thjeshtë i vitit — VETËM ndryshon flamurin "active" (asnjë
+    // kalim klase, asnjë prekje çmimesh apo nxënësish). Për rikthimin vjetor
+    // të vërtetë (promovimi i nxënësve) përdoret "Sekretaria → Mbyllja e
+    // Vitit"; kjo këtu shërben për raste si databaza e sapokrijuar, ku
+    // s'ka fare vit paraardhës real për t'u mbyllur.
+    if (body.active === true) {
+      const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
+      await prisma.$transaction([
+        prisma.schoolYear.updateMany({ where: { organizationId: orgId, active: true }, data: { active: false } }),
+        prisma.schoolYear.update({ where: { id: parseInt(id) }, data: { ...data, active: true } }),
+      ]);
+      const year = await prisma.schoolYear.findUnique({ where: { id: parseInt(id) } });
+      return NextResponse.json(year);
+    }
+
     const year = await prisma.schoolYear.update({ where: { id: parseInt(id) }, data });
     return NextResponse.json(year);
   } catch (e: unknown) {
