@@ -133,8 +133,25 @@ export async function GET(req: NextRequest) {
       address:     first.address,
     };
 
+    // Email-et e prindërve — mblidhen nga TË GJITHË fëmijët (jo vetëm i pari),
+    // sepse motherEmail/fatherEmail mund të jenë futur vetëm te njëri vëlla/
+    // motër; deduplikuar sipas email-it, për t'i para-mbushur te "Dërgo Email".
+    const parentContacts: { email: string; name: string }[] = [];
+    const seenEmails = new Set<string>();
+    for (const m of members) {
+      if (m.fatherEmail && !seenEmails.has(m.fatherEmail.toLowerCase())) {
+        seenEmails.add(m.fatherEmail.toLowerCase());
+        parentContacts.push({ email: m.fatherEmail, name: m.fatherName ? `Babai — ${m.fatherName}` : "Babai" });
+      }
+      if (m.motherEmail && !seenEmails.has(m.motherEmail.toLowerCase())) {
+        seenEmails.add(m.motherEmail.toLowerCase());
+        parentContacts.push({ email: m.motherEmail, name: m.motherName ? `Nëna — ${m.motherName}` : "Nëna" });
+      }
+    }
+
     return {
       parent,
+      parentContacts,
       children,
       summary: {
         totalFinal: children.reduce((s, c) => s + c.finalPrice, 0),

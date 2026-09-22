@@ -8,7 +8,8 @@ import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/li
 import {
   Users, Phone, MapPin, Eye, FileSignature,
   CheckCircle, AlertCircle, Clock, ChevronDown, ChevronUp,
-  Receipt, X, Plus, Trash2, Loader2,
+  Receipt, X, Plus, Trash2, Loader2, Printer, MessageSquare, Mail,
+  FileCheck2, Send, Check,
 } from "lucide-react";
 
 interface InvoiceItem {
@@ -59,6 +60,7 @@ interface Parent {
 
 interface FamilyData {
   parent: Parent;
+  parentContacts: { email: string; name: string }[];
   children: Child[];
   summary: { totalFinal: number; totalPaid: number; totalDebt: number };
 }
@@ -75,6 +77,8 @@ export default function FamiliesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [evidencaCounts, setEvidencaCounts] = useState<Record<number, { count: number; lastDate: string }>>({});
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
 
   const fetchFamily = useCallback(async (q: string) => {
     if (!q.trim()) return;
@@ -100,6 +104,12 @@ export default function FamiliesPage() {
     }
     setLoading(false);
   }, []);
+
+  useEffect(() => {
+    if (!data?.children.length) { setEvidencaCounts({}); return; }
+    const ids = data.children.map(c => c.id).join(",");
+    fetch(`/api/evidenca/counts?ids=${ids}`).then(r => r.json()).then(setEvidencaCounts);
+  }, [data]);
 
   useEffect(() => {
     if (phoneParam) fetchFamily(phoneParam);
@@ -195,6 +205,74 @@ export default function FamiliesPage() {
   const invVat   = invTotal * (parseFloat(inv.vatRate) || 0) / 100;
 
   const p = data?.parent;
+
+  /* ── Historiku i përmbledhur i familjes (printim) ── */
+  function printFamilyHistory() {
+    if (!data) return;
+    const parentName = p?.fatherName || p?.motherName || p?.name || "—";
+
+    const childrenHTML = data.children.map(ch => {
+      const cats = Object.entries(ch.byCategory);
+      const ev = evidencaCounts[ch.id];
+      const rows = cats.map(([catName, catData]) => `
+        <tr><td>${catName}</td><td class="num">${formatCurrency(catData.final)}</td><td class="num">${formatCurrency(catData.paid)}</td><td class="num">${formatCurrency(Math.max(0, catData.final - catData.paid))}</td></tr>
+      `).join("");
+      return `
+        <div class="child-block">
+          <div class="child-title">${ch.firstName} ${ch.lastName}${ch.class ? ` — ${ch.class.name}` : ""} <span class="muted">(${getStatusLabel(ch.status)})</span></div>
+          <table>
+            <thead><tr><th>Kategoria</th><th class="num">Final</th><th class="num">Paguar</th><th class="num">Borxh</th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="4" class="muted">Asnjë pagesë e regjistruar.</td></tr>`}</tbody>
+          </table>
+          <p class="muted small">Evidenca: ${ev ? `${ev.count} — e fundit ${formatDate(ev.lastDate)}` : "asnjë"}</p>
+        </div>`;
+    }).join("");
+
+    const win = window.open("", "_blank", "width=820,height=1200");
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html lang="sq"><head>
+<meta charset="UTF-8"/>
+<title>Historiku i Familjes — ${parentName}</title>
+<style>
+@page { size: A4 portrait; margin: 14mm; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: Arial, Helvetica, sans-serif; color:#0f172a; }
+.header { border-bottom:2px solid #e2e8f0; padding-bottom:10px; margin-bottom:16px; }
+.title { font-size:16px; font-weight:800; color:#1e293b; }
+.meta { font-size:10px; color:#64748b; margin-top:4px; }
+.child-block { margin-bottom:16px; }
+.child-title { font-size:12px; font-weight:800; color:#334155; background:#f1f5f9; padding:5px 8px; border-radius:4px 4px 0 0; }
+table { width:100%; border-collapse:collapse; font-size:10.5px; border:1px solid #e2e8f0; border-top:none; }
+th, td { padding:5px 8px; border-bottom:1px solid #e2e8f0; text-align:left; }
+th { background:#fafafa; font-size:9px; text-transform:uppercase; color:#64748b; }
+.num { text-align:right; }
+.muted { color:#94a3b8; }
+.small { font-size:9.5px; padding:4px 2px 0; }
+.total-box { display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding:10px 14px; background:#f5f3ff; border:1px solid #ddd6fe; border-radius:6px; font-size:12px; font-weight:700; color:#5b21b6; }
+</style></head><body>
+<div class="header">
+  <div class="title">Historiku i Familjes — ${parentName}</div>
+  <div class="meta">
+    ${p?.fatherName ? `Babai: ${p.fatherName}${p.fatherPhone ? ` · ${p.fatherPhone}` : ""}<br/>` : ""}
+    ${p?.motherName ? `Nëna: ${p.motherName}${p.motherPhone ? ` · ${p.motherPhone}` : ""}<br/>` : ""}
+    ${p?.address ? `Adresa: ${p.address}` : ""}
+  </div>
+</div>
+${childrenHTML}
+<div class="total-box">
+  <span>Totali i Familjes</span>
+  <span>Final ${formatCurrency(data.summary.totalFinal)} &middot; Paguar ${formatCurrency(data.summary.totalPaid)} &middot; Borxh ${formatCurrency(data.summary.totalDebt)}</span>
+</div>
+<script>window.onload=()=>{window.print();}</script>
+</body></html>`);
+    win.document.close();
+  }
+
+  function goToSms() {
+    const phone = p?.fatherPhone || p?.motherPhone || p?.parentPhone;
+    if (!phone) return;
+    router.push(`/sms?familyPhone=${encodeURIComponent(phone)}`);
+  }
 
   return (
     <>
@@ -327,9 +405,20 @@ export default function FamiliesPage() {
                     </div>
                   </div>
                   <p className="text-xs text-slate-400">Totali familjes: {formatCurrency(data.summary.totalFinal)}</p>
-                  <button onClick={openInvoiceModal} className="btn-primary text-xs mt-1">
-                    <Receipt className="w-3.5 h-3.5" /> Gjenero Faturë
-                  </button>
+                  <div className="flex flex-wrap gap-1.5 justify-end mt-1">
+                    <button onClick={openInvoiceModal} className="btn-primary text-xs">
+                      <Receipt className="w-3.5 h-3.5" /> Gjenero Faturë
+                    </button>
+                    <button onClick={printFamilyHistory} className="btn-secondary text-xs" title="Historik i Familjes">
+                      <Printer className="w-3.5 h-3.5" /> Historiku
+                    </button>
+                    <button onClick={goToSms} disabled={!(p?.fatherPhone || p?.motherPhone || p?.parentPhone)} className="btn-secondary text-xs" title="Dërgo SMS">
+                      <MessageSquare className="w-3.5 h-3.5" /> SMS
+                    </button>
+                    <button onClick={() => setEmailModalOpen(true)} className="btn-secondary text-xs" title="Dërgo Email">
+                      <Mail className="w-3.5 h-3.5" /> Email
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -368,6 +457,13 @@ export default function FamiliesPage() {
                           {child.diaryNumber && <span>Ditar #{child.diaryNumber}</span>}
                           {child.personalNumber && <span>NP: {child.personalNumber}</span>}
                           <span>Regjistruar: {formatDate(child.enrollDate)}</span>
+                          <Link
+                            href={`/regjistrimet?tab=evidenca&q=${encodeURIComponent(`${child.firstName} ${child.lastName}`)}`}
+                            className="flex items-center gap-1 text-primary-600 hover:underline"
+                          >
+                            <FileCheck2 className="w-3 h-3" />
+                            {evidencaCounts[child.id] ? `${evidencaCounts[child.id].count} evidencë` : "pa evidencë"}
+                          </Link>
                         </div>
                       </div>
 
@@ -630,6 +726,102 @@ export default function FamiliesPage() {
           </div>
         </div>
       )}
+
+      {emailModalOpen && data && (
+        <FamilyEmailModal data={data} onClose={() => setEmailModalOpen(false)} />
+      )}
     </>
+  );
+}
+
+function FamilyEmailModal({ data, onClose }: { data: FamilyData; onClose: () => void }) {
+  const [recipients, setRecipients] = useState(data.parentContacts);
+  const [manualEmail, setManualEmail] = useState("");
+  const [manualName, setManualName] = useState("");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ sent: number; failed: number; total: number; errors: string[] } | null>(null);
+
+  function addManual() {
+    const email = manualEmail.trim();
+    if (!email) return;
+    setRecipients(prev => prev.some(r => r.email.toLowerCase() === email.toLowerCase()) ? prev : [...prev, { email, name: manualName.trim() || email }]);
+    setManualEmail(""); setManualName("");
+  }
+  function removeRecipient(email: string) {
+    setRecipients(prev => prev.filter(r => r.email !== email));
+  }
+
+  async function handleSend() {
+    setSending(true);
+    const r = await fetch("/api/families/email", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipients, subject, message }),
+    });
+    const d = await r.json();
+    setSending(false);
+    if (r.ok) setResult(d);
+    else alert(d.error || "Dështoi.");
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-800">
+          <h3 className="font-bold text-slate-900 dark:text-white">Dërgo Email — Familja</h3>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        {result ? (
+          <div className="p-5 space-y-3">
+            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+              <Check className="w-5 h-5" />
+              <p className="text-sm font-medium">U dërgua te {result.sent} nga {result.total} marrës.</p>
+            </div>
+            {result.failed > 0 && (
+              <p className="text-sm text-red-500">{result.failed} dështuan{result.errors.length > 0 ? `: ${result.errors.join("; ")}` : ""}</p>
+            )}
+            <button onClick={onClose} className="btn-primary w-full">Mbyll</button>
+          </div>
+        ) : (
+          <div className="p-5 space-y-4">
+            <div>
+              <label className="form-label">Shto email marrësi</label>
+              <div className="flex gap-2">
+                <input className="form-input flex-1" placeholder="email@shembull.com" value={manualEmail} onChange={e => setManualEmail(e.target.value)} />
+                <input className="form-input flex-1" placeholder="Emri (opsional)" value={manualName} onChange={e => setManualName(e.target.value)} />
+                <button onClick={addManual} disabled={!manualEmail.trim()} className="btn-secondary text-sm shrink-0"><Plus className="w-4 h-4" /></button>
+              </div>
+            </div>
+
+            {recipients.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {recipients.map(r => (
+                  <span key={r.email} className="text-xs pl-2.5 pr-1 py-1 rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 flex items-center gap-1.5">
+                    {r.name} <span className="text-primary-400">({r.email})</span>
+                    <button onClick={() => removeRecipient(r.email)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div>
+              <label className="form-label">Subjekti</label>
+              <input className="form-input" value={subject} onChange={e => setSubject(e.target.value)} />
+            </div>
+            <div>
+              <label className="form-label">Mesazhi</label>
+              <textarea className="form-input" rows={4} value={message} onChange={e => setMessage(e.target.value)} />
+            </div>
+
+            <button onClick={handleSend} disabled={sending || recipients.length === 0 || !subject.trim() || !message.trim()} className="btn-primary w-full">
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {sending ? "Duke dërguar..." : `Dërgo te ${recipients.length} marrës`}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

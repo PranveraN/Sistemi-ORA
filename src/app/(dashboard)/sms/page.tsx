@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { formatDateTime } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
@@ -110,7 +111,9 @@ function studentPhone(s: StudentRow): string | null {
 }
 
 export default function SmsPage() {
-  const [mode, setMode] = useState<"class" | "family" | "individual" | "debt">("class");
+  const searchParams = useSearchParams();
+  const familyPhoneParam = searchParams.get("familyPhone") || "";
+  const [mode, setMode] = useState<"class" | "family" | "individual" | "debt">(familyPhoneParam ? "family" : "class");
 
   const [classes, setClasses] = useState<ClassOpt[]>([]);
   const [classId, setClassId] = useState("");
@@ -127,7 +130,7 @@ export default function SmsPage() {
   const [debtResults, setDebtResults] = useState<(DebtStudentRow & { debtBalance: number; format: string })[]>([]);
   const [notifyRecipients, setNotifyRecipients] = useState<NotificationRecipient[] | null>(null);
 
-  const [familyQuery, setFamilyQuery] = useState("");
+  const [familyQuery, setFamilyQuery] = useState(familyPhoneParam);
   const [familySearching, setFamilySearching] = useState(false);
   const [familySearched, setFamilySearched] = useState(false);
   const [familyGroups, setFamilyGroups] = useState<FamilyGroup[]>([]);
@@ -172,6 +175,13 @@ export default function SmsPage() {
     });
     loadHistory();
   }, [loadHistory]);
+
+  // Nga karta e Familjes ("Buton SMS") — çon direkt te modaliteti "Familje"
+  // me kërkimin e kryer automatikisht, pa u dashur ta rikërkojë stafi.
+  useEffect(() => {
+    if (familyPhoneParam) searchFamily(familyPhoneParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyPhoneParam]);
 
   async function searchDebt() {
     if (!debtCategory) return;
@@ -314,14 +324,15 @@ export default function SmsPage() {
     }
   }
 
-  async function searchFamily() {
-    if (!familyQuery.trim()) return;
+  async function searchFamily(queryOverride?: string) {
+    const q = (queryOverride ?? familyQuery).trim();
+    if (!q) return;
     setFamilySearching(true);
     setFamilySearched(false);
     setFamilyGroups([]);
     setSelectedFamily(null);
-    const isPhone = /\d/.test(familyQuery);
-    const param = isPhone ? `phone=${encodeURIComponent(familyQuery)}` : `name=${encodeURIComponent(familyQuery)}`;
+    const isPhone = /\d/.test(q);
+    const param = isPhone ? `phone=${encodeURIComponent(q)}` : `name=${encodeURIComponent(q)}`;
     const res = await fetch(`/api/families?${param}`);
     const d = await res.json();
     setFamilySearching(false);
@@ -468,7 +479,7 @@ export default function SmsPage() {
                     placeholder="Kërko me telefon ose emrin e prindit..."
                   />
                 </div>
-                <button onClick={searchFamily} disabled={familySearching || !familyQuery.trim()} className="btn-secondary text-sm">
+                <button onClick={() => searchFamily()} disabled={familySearching || !familyQuery.trim()} className="btn-secondary text-sm">
                   {familySearching ? "Duke kërkuar..." : "Kërko"}
                 </button>
               </div>
