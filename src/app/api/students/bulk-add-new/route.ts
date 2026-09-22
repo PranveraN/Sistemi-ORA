@@ -24,7 +24,13 @@ export async function POST(req: NextRequest) {
   const results = await prisma.$transaction(
     entries.map(e => {
       const d = new Date(e.enrollDate);
-      const data: Record<string, unknown> = { enrollDate: isNaN(d.getTime()) ? new Date() : d };
+      // hideFromNewRegistrations rikthehet në false — nëse ky nxënës ishte
+      // fshirë më parë nga "Nxënës të Rinj" (shih hide-from-new/route.ts),
+      // "Ngjit Listë" duhet ta rishfaqë, jo ta lërë të fshehur heshtazi.
+      const data: Record<string, unknown> = {
+        enrollDate: isNaN(d.getTime()) ? new Date() : d,
+        hideFromNewRegistrations: false,
+      };
       if (e.admissionScore != null) data.admissionScore = e.admissionScore;
       if (e.originCountry) data.originCountry = e.originCountry;
       return prisma.student.update({ where: { id: e.id }, data });
