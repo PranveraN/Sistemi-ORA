@@ -11,6 +11,7 @@ import {
   Combine, Copy, Link2, ClipboardList, ArrowUp, ArrowDown, ClipboardCheck,
 } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { DEFAULT_EVIDENCA_TEMPLATE } from "@/lib/evidencaConfig";
 
 /* ─── Types ───────────────────────────────────────────────── */
 interface SchoolInfo {
@@ -552,6 +553,7 @@ function EvidencaConfigSection() {
   const [categoryModal, setCategoryModal] = useState<EvidCategory | "new" | null>(null);
   const [skillItemModal, setSkillItemModal] = useState<{ categoryId: number; item: EvidItem | null } | null>(null);
   const [generalItemModal, setGeneralItemModal] = useState<EvidItem | "new" | null>(null);
+  const [seeding, setSeeding] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -599,12 +601,45 @@ function EvidencaConfigSection() {
     load();
   }
 
+  async function seedDefaults() {
+    if (!confirm("Të ngarkoj kategoritë dhe pyetjet standarde (Vlerësimi i Aftësive + Pyetësori Shëndetësor/Logjistik)?")) return;
+    setSeeding(true);
+    for (const cat of DEFAULT_EVIDENCA_TEMPLATE.skills) {
+      const catRes = await fetch("/api/evidenca-categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label: cat.label }) });
+      const category = await catRes.json();
+      for (const label of cat.items) {
+        await fetch("/api/evidenca-items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label, type: "RATING", section: "SKILLS", categoryId: category.id }) });
+      }
+    }
+    for (const item of DEFAULT_EVIDENCA_TEMPLATE.general) {
+      await fetch("/api/evidenca-items", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: item.label, type: item.type, section: "GENERAL", hasSpecify: item.hasSpecify ?? false, options: item.options }),
+      });
+    }
+    setSeeding(false);
+    load();
+  }
+
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>;
 
   const generalItems = items.filter(i => i.section === "GENERAL");
 
   return (
     <div className="space-y-5">
+      {categories.length === 0 && items.length === 0 && (
+        <div className="card p-5 flex items-center justify-between gap-3 bg-primary-50/50 dark:bg-primary-900/10 border-primary-100 dark:border-primary-900/40">
+          <div>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Ende s&apos;ka asnjë kategori/pyetje të konfiguruar</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Ngarkoni shabllonin standard (5 kategori + 24 pyetje, sipas formularëve të pedagogisë) me një klikim, në vend që t&apos;i shtoni një nga një.</p>
+          </div>
+          <button onClick={seedDefaults} disabled={seeding} className="btn-primary text-sm shrink-0">
+            {seeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            {seeding ? "Duke ngarkuar..." : "Ngarko Shabllonin Fillestar"}
+          </button>
+        </div>
+      )}
+
       <div className="card p-6 space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
           <div>
