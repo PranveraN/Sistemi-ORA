@@ -168,6 +168,11 @@ export async function GET(req: NextRequest) {
   const totalDebt = activeStudents.reduce((sum, s) => {
     const agg = aggregatePayment(s.payments as PrismaPayment[]);
     if (agg) return sum + (agg.balance || 0);
+    // Nxënësit e Timi Invest financohen përmes një plani të jashtëm — s'i
+    // detyrohen shkollës çmimin e plotë të kategorisë kur s'kanë ende pagesë
+    // të krijuar këtu, njësoj si i përjashton edhe Dashboard-i (timiInvestIds).
+    const isTI = tiByStudentId.has(s.id) || tiByName.has(`${s.firstName.trim().toLowerCase()}|${s.lastName.trim().toLowerCase()}`);
+    if (isTI) return sum;
     const expectedPrice = Math.round(category.defaultAmount * (1 - (s.discountPct ?? 0) / 100));
     return sum + expectedPrice;
   }, 0);

@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   const [shkollimi, ushqimi, eshkollori, uniformAgg, hyraAgg] = await Promise.all([
     getCategoryStats("Shkollimi", true),
     getCategoryStats("Ushqimi", true),
-    getCategoryStats("Platforma Digjitale", false),
+    getCategoryStats("Platforma Digjitale", true),
     prisma.uniSale.aggregate({
       where: uniformWhere,
       _sum:   { paidAmount: true, totalAmount: true, balance: true },
