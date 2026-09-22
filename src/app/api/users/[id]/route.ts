@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 export async function PATCH(
@@ -56,6 +57,19 @@ export async function DELETE(
     return NextResponse.json({ error: "Nuk mund të fshish administratorin e fundit" }, { status: 400 });
   }
 
-  await prisma.user.delete({ where: { id: parseInt(id) } });
+  try {
+    await prisma.user.delete({ where: { id: parseInt(id) } });
+  } catch (err) {
+    // P2003 = shkelje e kufizimit të çelësit të huaj — p.sh. mësimdhënësi ka
+    // kërkesa materiale (MaterialRequest) të lidhura, që s'kanë onDelete
+    // cascade/setNull të qëllimshëm (historiku i kërkesave duhet ruajtur).
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+      return NextResponse.json(
+        { error: "Ky përdorues ka të dhëna të lidhura (p.sh. kërkesa materiale) — nuk mund të fshihet. Çaktivizojeni (Statusi) në vend të fshirjes." },
+        { status: 400 }
+      );
+    }
+    throw err;
+  }
   return NextResponse.json({ success: true });
 }

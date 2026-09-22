@@ -1556,7 +1556,11 @@ function UsersSection() {
     if (u.id === currentUserId) { alert("Nuk mund të fshish llogarinë tënde aktive."); return; }
     if (!confirm(`Fshi përdoruesin "${u.name}"?`)) return;
     const r = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
-    if (!r.ok) { const d = await r.json(); alert(d.error); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi — provoni sërish.");
+      return;
+    }
     fetchUsers();
   }
 
