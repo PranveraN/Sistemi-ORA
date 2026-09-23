@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { UserMinus, ChevronUp, ChevronDown, Plus, Pencil, Eraser, Eye, MoreVertical, Trash2, ListX } from "lucide-react";
+import { UserMinus, ChevronUp, ChevronDown, Plus, Pencil, Eraser, Eye, MoreVertical, Trash2, ListX, ClipboardPaste } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import DepartedStudentModal from "./DepartedStudentModal";
+import BulkMarkDepartedModal from "./BulkMarkDepartedModal";
 
 export interface DepartedStudentRow {
   id: number;
@@ -31,7 +32,7 @@ function initials(first: string, last: string) {
 
 export default function DepartedStudentsCard({ data, period, onChanged, emptyMessage }: Props) {
   const [show, setShow] = useState(true);
-  const [modal, setModal] = useState<"add" | DepartedStudentRow | null>(null);
+  const [modal, setModal] = useState<"add" | "bulk" | DepartedStudentRow | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [openMenuFor, setOpenMenuFor] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -139,6 +140,12 @@ export default function DepartedStudentsCard({ data, period, onChanged, emptyMes
                 <ListX className="w-3.5 h-3.5" /> Fshi të Gjithë
               </button>
             )}
+            <button
+              onClick={() => setModal("bulk")}
+              className="text-xs font-medium text-slate-500 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg px-2.5 py-1.5 flex items-center gap-1"
+            >
+              <ClipboardPaste className="w-3.5 h-3.5" /> Ngjit Listë
+            </button>
             <button
               onClick={() => setModal("add")}
               className="text-xs font-medium text-primary-600 border border-primary-200 dark:border-primary-800 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg px-2.5 py-1.5 flex items-center gap-1"
@@ -257,7 +264,14 @@ export default function DepartedStudentsCard({ data, period, onChanged, emptyMes
         </div>
       )}
 
-      {modal && (
+      {modal === "bulk" && (
+        <BulkMarkDepartedModal
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); onChanged(); }}
+        />
+      )}
+
+      {modal && modal !== "bulk" && (
         <DepartedStudentModal
           preselected={modal === "add" ? null : modal}
           onClose={() => setModal(null)}
