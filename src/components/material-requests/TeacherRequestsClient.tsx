@@ -67,6 +67,7 @@ const PENDING_STATUSES = new Set(["SUBMITTED", "UNDER_REVIEW"]);
 interface FormItem {
   key: string;
   isCustom: boolean;
+  catalogCategoryId: string;
   materialId: number | null;
   materialName: string;
   needsColor: boolean;
@@ -90,7 +91,7 @@ function emptyItem(): FormItem {
   keySeq++;
   return {
     key: `item-${keySeq}`,
-    isCustom: false, materialId: null, materialName: "", needsColor: false,
+    isCustom: false, catalogCategoryId: "", materialId: null, materialName: "", needsColor: false,
     searchQuery: "", showSuggestions: false,
     customItemName: "", customDescription: "", customCategoryId: "", productLink: "",
     attachmentPath: null, attachmentName: null, uploading: false,
@@ -660,11 +661,22 @@ function ItemRowEditor({
   onRemoveAttachment: () => void;
   onRemove: () => void;
 }) {
+  // Vetëm materialet e kategorisë së zgjedhur — mësimdhënësi zgjedh kategorinë
+  // fillimisht, pastaj produktin, në vend që të kërkojë nëpër tërë katalogun.
+  const categoryMaterials = useMemo(() => {
+    if (row.isCustom || !row.catalogCategoryId) return [];
+    return materials.filter(m => m.category.id === Number(row.catalogCategoryId));
+  }, [row.isCustom, row.catalogCategoryId, materials]);
+
   const suggestions = useMemo(() => {
-    if (row.isCustom || !row.searchQuery || row.searchQuery.length < 2) return [];
+    if (categoryMaterials.length === 0) return [];
+    // Pa shkruar ende (ose më pak se 3 shkronja) — shfaq listën e plotë të
+    // kategorisë (për shfletim); nga 3 shkronja e tutje — filtro sipas tekstit,
+    // jo domosdo fjalën e plotë ("nese shkruhen tri shkronja te sakta").
+    if (row.searchQuery.trim().length < 3) return categoryMaterials.slice(0, 30);
     const q = row.searchQuery.toLowerCase();
-    return materials.filter(m => m.name.toLowerCase().includes(q)).slice(0, 8);
-  }, [row.isCustom, row.searchQuery, materials]);
+    return categoryMaterials.filter(m => m.name.toLowerCase().includes(q)).slice(0, 30);
+  }, [categoryMaterials, row.searchQuery]);
 
   return (
     <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2.5">
@@ -672,34 +684,50 @@ function ItemRowEditor({
         <span className="text-xs font-semibold text-slate-400 pt-2">#{index + 1}</span>
         <div className="flex-1 space-y-2.5">
           {!row.isCustom ? (
-            <div className="relative">
+            <div className="space-y-2">
+              <select
+                value={row.catalogCategoryId}
+                onChange={e => onUpdate({ catalogCategoryId: e.target.value, materialId: null, materialName: "", searchQuery: "" })}
+                className="form-input"
+              >
+                <option value="">1. Zgjidh kategorinë...</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  value={row.searchQuery}
-                  onChange={e => onUpdate({ searchQuery: e.target.value, showSuggestions: true, materialId: null, materialName: "" })}
-                  onFocus={() => row.searchQuery.length >= 2 && onUpdate({ showSuggestions: true })}
-                  onBlur={() => setTimeout(() => onUpdate({ showSuggestions: false }), 150)}
-                  className="form-input pl-9"
-                  placeholder="Kërko material nga katalogu..."
-                />
-              </div>
-              {row.showSuggestions && suggestions.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                  {suggestions.map(m => (
-                    <button key={m.id} type="button" onClick={() => onSelectMaterial(m)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between gap-2">
-                      <span>{m.name}</span>
-                      <span className="text-xs text-slate-400">{m.category.name}</span>
-                    </button>
-                  ))}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    value={row.searchQuery}
+                    onChange={e => onUpdate({ searchQuery: e.target.value, showSuggestions: true, materialId: null, materialName: "" })}
+                    onFocus={() => row.catalogCategoryId && onUpdate({ showSuggestions: true })}
+                    onBlur={() => setTimeout(() => onUpdate({ showSuggestions: false }), 150)}
+                    className="form-input pl-9"
+                    placeholder={row.catalogCategoryId ? "2. Zgjidh ose kërko produktin..." : "Zgjidh kategorinë më parë..."}
+                    disabled={!row.catalogCategoryId}
+                  />
                 </div>
-              )}
-              {row.materialId && (
-                <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
-                  <CheckCircle className="w-3 h-3" /> Zgjedhur nga katalogu
-                </p>
-              )}
+                {row.showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {suggestions.map(m => (
+                      <button key={m.id} type="button" onClick={() => onSelectMaterial(m)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between gap-2">
+                        <span>{m.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {row.catalogCategoryId && row.showSuggestions && suggestions.length === 0 && row.searchQuery.trim().length >= 3 && (
+                  <div className="absolute z-10 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg px-3 py-2 text-xs text-slate-400">
+                    Asnjë produkt s&apos;u gjet në këtë kategori.
+                  </div>
+                )}
+                {row.materialId && (
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" /> Zgjedhur nga katalogu
+                  </p>
+                )}
+              </div>
             </div>
           ) : (
             <div className="space-y-2 p-2.5 bg-amber-50/50 dark:bg-amber-900/10 rounded-lg">

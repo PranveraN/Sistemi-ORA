@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import {
   Plus, Pencil, Check, X, Trash2, Loader2, Package, Tags,
-  BookMarked, Boxes, EyeOff, Eye, Search, Gauge, ChevronDown, History,
+  BookMarked, Boxes, EyeOff, Eye, Search, Gauge, ChevronDown, History, RefreshCw,
 } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { getStockStatus, STOCK_STATUS_STYLE } from "@/lib/materialConstants";
@@ -488,6 +488,24 @@ function MaterialsSection() {
     fetchAll();
   }
 
+  const [refreshing, setRefreshing] = useState(false);
+  async function handleRefreshCatalog() {
+    if (!confirm(
+      `Ta rifreskoj TËRË katalogun? Kjo çaktivizon të gjitha kategoritë/materialet ekzistuese ` +
+      `(${materials.length} materiale, ${categories.length} kategori) — ato NUK fshihen, kërkesat/porositë e vjetra ` +
+      `vazhdojnë t'i shfaqin saktë — dhe ngarkon 500 materialet e reja, të ndara në 22 kategori.`
+    )) return;
+    setRefreshing(true);
+    const res = await fetch("/api/materials/refresh-catalog", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setRefreshing(false);
+    if (!res.ok) { alert(d.error || "Gabim"); return; }
+    alert(`U rifreskua: ${d.categoriesCreated} kategori, ${d.materialsCreated} materiale.`);
+    fetchAll();
+  }
+
   return (
     <div className="card overflow-hidden">
       <div className="flex items-center justify-between gap-3 p-5 border-b border-slate-100 dark:border-slate-700">
@@ -500,10 +518,16 @@ function MaterialsSection() {
             <p className="text-xs text-slate-400">Katalogu i plotë, i disponueshëm te kërkesat</p>
           </div>
         </div>
-        <button onClick={openAdd} disabled={!categories.length} className="btn-primary text-sm">
-          <Plus className="w-4 h-4" />
-          Shto Material
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleRefreshCatalog} disabled={refreshing} className="btn-secondary text-sm">
+            {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Rifresko Katalogun
+          </button>
+          <button onClick={openAdd} disabled={!categories.length} className="btn-primary text-sm">
+            <Plus className="w-4 h-4" />
+            Shto Material
+          </button>
+        </div>
       </div>
 
       {!loading && categories.length === 0 && (
