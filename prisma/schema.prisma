@@ -557,6 +557,8 @@ model MaterialRequest {
   reviewedAt     DateTime?
   sentAt         DateTime?    // kur i-u dërgua email personit të blerjeve (FurnitoriOra)
   sentToEmail    String?
+  sentSmsAt      DateTime?    // kur i-u dërgua SMS personit të blerjeve (FurnitoriOra) — vepron pavarësisht nga email-i
+  sentToPhone    String?
   organizationId Int          @default(1)
   organization   Organization @relation(fields: [organizationId], references: [id])
   createdAt      DateTime     @default(now())

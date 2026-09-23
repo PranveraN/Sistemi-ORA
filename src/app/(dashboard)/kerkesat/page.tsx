@@ -9,7 +9,7 @@ import { PRIORITY_MAP, REQUEST_STATUSES, REQUEST_STATUS_MAP } from "@/lib/materi
 import {
   CheckCircle, XCircle, Clock, Package, Loader2, Send, Users, Download, X, Mail,
   ClipboardCheck, AlertTriangle, ListFilter, Search, ChevronDown, Truck, History, BarChart3,
-  Trash2, Paperclip, Link as LinkIcon,
+  Trash2, Paperclip, Link as LinkIcon, MessageSquare,
 } from "lucide-react";
 
 interface RequestItemRow {
@@ -34,6 +34,8 @@ interface MaterialRequestRow extends Omit<ExportableRequest, "items"> {
   id: number;
   priority: string | null;
   items: RequestItemRow[];
+  sentSmsAt: string | null;
+  sentToPhone: string | null;
 }
 
 interface SubjectOpt { id: number; name: string }
@@ -63,9 +65,13 @@ export default function KerkesatPage() {
   const [saving, setSaving] = useState(false);
 
   const [furnitoriOraEmail, setFurnitoriOraEmail] = useState("");
+  const [furnitoriOraPhone, setFurnitoriOraPhone] = useState("");
   const [sendError, setSendError] = useState<{ id: number; message: string } | null>(null);
   const [sendModal, setSendModal] = useState<{ id: number; email: string } | null>(null);
   const [sending, setSending] = useState(false);
+  const [smsError, setSmsError] = useState<{ id: number; message: string } | null>(null);
+  const [smsModal, setSmsModal] = useState<{ id: number; phone: string } | null>(null);
+  const [sendingSms, setSendingSms] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
@@ -84,7 +90,10 @@ export default function KerkesatPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    fetch("/api/settings").then(r => r.json()).then(d => setFurnitoriOraEmail(d.furnitoriOraEmail || ""));
+    fetch("/api/settings").then(r => r.json()).then(d => {
+      setFurnitoriOraEmail(d.furnitoriOraEmail || "");
+      setFurnitoriOraPhone(d.furnitoriOraPhone || "");
+    });
   }, []);
 
   /* ─── Statistika (llogaritur nga lista tashmë e ngarkuar) ──── */
@@ -121,6 +130,43 @@ export default function KerkesatPage() {
   function openSendModal(id: number) {
     setSendError(null);
     setSendModal({ id, email: furnitoriOraEmail || "" });
+  }
+
+  function openSendSmsModal(id: number) {
+    setSmsError(null);
+    setSmsModal({ id, phone: furnitoriOraPhone || "" });
+  }
+
+  async function confirmSendSms() {
+    if (!smsModal) return;
+    const { id, phone } = smsModal;
+    const trimmed = phone.trim();
+    if (!trimmed) {
+      setSmsError({ id, message: "Shkruaj një numër telefoni para se të dërgosh." });
+      return;
+    }
+
+    setSendingSms(true);
+    setSmsError(null);
+    try {
+      const res = await fetch(`/api/material-requests/${id}/send-sms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: trimmed }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSmsError({ id, message: d.error || `Dërgimi dështoi (gabim ${res.status})` });
+        setSendingSms(false);
+        return;
+      }
+      setSendingSms(false);
+      setSmsModal(null);
+      load();
+    } catch {
+      setSendingSms(false);
+      setSmsError({ id, message: "Gabim rrjeti — provo përsëri." });
+    }
   }
 
   async function confirmSend() {
@@ -525,9 +571,19 @@ export default function KerkesatPage() {
                             Dërguar te {r.sentToEmail}
                           </span>
                         )}
+                        {r.sentSmsAt && (
+                          <span className="inline-flex items-center gap-1.5 text-sm text-green-600 font-medium">
+                            <CheckCircle className="w-4 h-4" />
+                            SMS te {r.sentToPhone}
+                          </span>
+                        )}
                         <button onClick={() => openSendModal(r.id)} className="btn-secondary text-sm">
                           <Send className="w-4 h-4" />
                           {r.sentAt ? "Ridërgo te FurnitoriOra" : "Dërgo te FurnitoriOra"}
+                        </button>
+                        <button onClick={() => openSendSmsModal(r.id)} className="btn-secondary text-sm">
+                          <MessageSquare className="w-4 h-4" />
+                          {r.sentSmsAt ? "Ridërgo me SMS" : "Dërgo me SMS"}
                         </button>
                       </>
                     )}
@@ -542,6 +598,9 @@ export default function KerkesatPage() {
                   </div>
                   {sendError?.id === r.id && !sendModal && (
                     <p className="text-xs text-red-500 mt-2">{sendError.message}</p>
+                  )}
+                  {smsError?.id === r.id && !smsModal && (
+                    <p className="text-xs text-red-500 mt-2">{smsError.message}</p>
                   )}
                 </div>
               );
@@ -586,6 +645,49 @@ export default function KerkesatPage() {
               <button onClick={() => setSendModal(null)} disabled={sending} className="btn-secondary disabled:opacity-50">Anulo</button>
               <button onClick={confirmSend} disabled={sending} className="btn-primary disabled:opacity-50">
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                Dërgo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {smsModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !sendingSms && setSmsModal(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-primary-500" />
+                Dërgo me SMS te FurnitoriOra
+              </h3>
+              <button onClick={() => !sendingSms && setSmsModal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="form-label">Numri i telefonit i marrësit</label>
+                <div className="relative">
+                  <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="tel"
+                    autoFocus
+                    value={smsModal.phone}
+                    onChange={e => setSmsModal(m => m && { ...m, phone: e.target.value })}
+                    onKeyDown={e => e.key === "Enter" && confirmSendSms()}
+                    className="form-input pl-9"
+                    placeholder="044 XXX XXX"
+                  />
+                </div>
+              </div>
+              {smsError?.id === smsModal.id && (
+                <p className="text-sm text-red-500">{smsError.message}</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 p-5 pt-0">
+              <button onClick={() => setSmsModal(null)} disabled={sendingSms} className="btn-secondary disabled:opacity-50">Anulo</button>
+              <button onClick={confirmSendSms} disabled={sendingSms} className="btn-primary disabled:opacity-50">
+                {sendingSms ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 Dërgo
               </button>
             </div>

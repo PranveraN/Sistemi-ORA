@@ -20,6 +20,7 @@ interface SchoolInfo {
   schoolYear: string; schoolWebsite: string;
   timiInvestEnabled: string;
   furnitoriOraEmail: string;
+  furnitoriOraPhone: string;
   enrollmentOpen: string;
 }
 
@@ -138,6 +139,7 @@ function SchoolSection() {
     schoolEmail: "", schoolNipt: "", schoolUniqueNumber: "", schoolYear: "", schoolWebsite: "",
     timiInvestEnabled: "true",
     furnitoriOraEmail: "",
+    furnitoriOraPhone: "",
     enrollmentOpen: "true",
   });
   const [saving, setSaving] = useState(false);
@@ -225,18 +227,33 @@ function SchoolSection() {
         </div>
       </div>
 
-      <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
-        <label className="form-label">Email i FurnitoriOra (personi i blerjeve)</label>
-        <input
-          type="email"
-          value={info.furnitoriOraEmail}
-          onChange={e => setInfo(s => ({ ...s, furnitoriOraEmail: e.target.value }))}
-          className="form-input max-w-sm"
-          placeholder="furnitoriora@akademiaora.com"
-        />
-        <p className="text-xs text-slate-400 mt-1">
-          Përdoret si adresa e parazgjedhur kur dërgohet një kërkesë e aprovuar për material — mund të ndryshohet për çdo dërgim.
-        </p>
+      <div className="pt-4 border-t border-slate-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="form-label">Email i FurnitoriOra (personi i blerjeve)</label>
+          <input
+            type="email"
+            value={info.furnitoriOraEmail}
+            onChange={e => setInfo(s => ({ ...s, furnitoriOraEmail: e.target.value }))}
+            className="form-input"
+            placeholder="furnitoriora@akademiaora.com"
+          />
+          <p className="text-xs text-slate-400 mt-1">
+            Adresa e parazgjedhur kur dërgohet një kërkesë e aprovuar për material me email — mund të ndryshohet për çdo dërgim.
+          </p>
+        </div>
+        <div>
+          <label className="form-label">Telefoni i FurnitoriOra (për SMS)</label>
+          <input
+            type="tel"
+            value={info.furnitoriOraPhone}
+            onChange={e => setInfo(s => ({ ...s, furnitoriOraPhone: e.target.value }))}
+            className="form-input"
+            placeholder="044 XXX XXX"
+          />
+          <p className="text-xs text-slate-400 mt-1">
+            Numri i parazgjedhur kur dërgohet një kërkesë e aprovuar për material me SMS.
+          </p>
+        </div>
       </div>
 
       <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-700">

@@ -14,6 +14,7 @@ const DEFAULTS: Record<string, string> = {
   timiInvestEnabled: "true",
   enrollmentOpen: "true", // A pranohen aplikime të reja te /apliko (formulari publik i regjistrimit)
   furnitoriOraEmail: "",
+  furnitoriOraPhone: "",
   ushqimiPrice2Meals: "4",
   ushqimiPrice2MealsGrade1: "4",
   transportLocations: JSON.stringify([
