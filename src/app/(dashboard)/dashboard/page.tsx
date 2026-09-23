@@ -190,17 +190,17 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {/* KPI Cards — kompakte, lartësi e njëjtë (items-stretch nga grid-i) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
 
           {/* Të Hyra + trend */}
-          <div className="card p-5">
-            <div className="flex items-start justify-between mb-3">
-              <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-900/30 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-green-600 dark:text-green-400" />
+          <div className="card p-3.5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 rounded-lg bg-green-50 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                <TrendingUp className="w-4 h-4 text-green-600 dark:text-green-400" />
               </div>
               {revPct !== null && (
-                <span className={`inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full ${
+                <span className={`inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
                   revUp
                     ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
                     : "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
@@ -210,97 +210,88 @@ export default function DashboardPage() {
                 </span>
               )}
             </div>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{formatCurrency(data.periodRevenue)}</p>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Të Hyra Shkollimi — {data.period.label}</p>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xl font-bold text-slate-900 dark:text-white leading-tight">{formatCurrency(data.periodRevenue)}</p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5 truncate">Të Hyra Shkollimi — {data.period.label}</p>
+            <p className="text-[11px] text-slate-400 mt-1 truncate">
               {revPct !== null
-                ? `${revUp ? "+" : ""}${revPct}% vs periudha e kaluar (${formatCurrency(data.prevPeriodRevenue)})`
+                ? `${revUp ? "+" : ""}${revPct}% vs periudha e kaluar`
                 : "Vit i ri — pa krahasim ende"}
             </p>
           </div>
 
           {/* Nxënës Aktivë + Gjithsej */}
-          <div className="card p-5">
-            <div className="flex items-start justify-between mb-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
-                <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+          <div className="card p-3.5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               </div>
               {data.newInPeriod > 0 && (
-                <span className="inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400">
+                <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400">
                   <UserPlus className="w-3 h-3" />
-                  +{data.newInPeriod} të rinj
+                  +{data.newInPeriod}
                 </span>
               )}
             </div>
-            <div className="flex items-end gap-3">
-              <div>
-                <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.activeStudents}</p>
-                <p className="text-xs text-slate-400">Aktivë</p>
-              </div>
-              <div className="pb-0.5">
-                <p className="text-lg font-bold text-slate-400 dark:text-slate-500">{data.totalStudents}</p>
-                <p className="text-xs text-slate-400">Gjithsej</p>
-              </div>
+            <div className="flex items-baseline gap-2">
+              <p className="text-xl font-bold text-slate-900 dark:text-white leading-tight">{data.activeStudents}</p>
+              <p className="text-xs text-slate-400">Aktivë</p>
+              <p className="text-sm font-semibold text-slate-400 dark:text-slate-500 ml-1">{data.totalStudents}</p>
+              <p className="text-xs text-slate-400">gjithsej</p>
             </div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1.5">Nxënës</p>
-            <div className="flex items-center gap-3 mt-1 text-xs">
-              <span className="text-slate-500 dark:text-slate-400">
-                <span className="font-bold text-slate-700 dark:text-slate-200">{data.cycleCounts.ulet}</span> Cikli Ulët
-              </span>
-              <span className="text-slate-500 dark:text-slate-400">
-                <span className="font-bold text-slate-700 dark:text-slate-200">{data.cycleCounts.larte}</span> Cikli Lartë
-              </span>
+            <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <span><span className="font-bold text-slate-700 dark:text-slate-200">{data.cycleCounts.ulet}</span> Cikli Ulët</span>
+              <span><span className="font-bold text-slate-700 dark:text-slate-200">{data.cycleCounts.larte}</span> Cikli Lartë</span>
             </div>
           </div>
 
           {/* Pagesa të vonuara — nga nxënësit, ndarë sipas llojit */}
-          <div className="card p-5">
-            <div className="flex items-start justify-between mb-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+          <div className="card p-3.5">
+            <div className="flex items-center justify-between mb-2">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                 data.overdueStudentsPartial + data.overdueStudentsFull > 0
                   ? "bg-amber-50 dark:bg-amber-900/30"
                   : "bg-slate-100 dark:bg-slate-700"
               }`}>
-                <CalendarClock className={`w-5 h-5 ${
+                <CalendarClock className={`w-4 h-4 ${
                   data.overdueStudentsPartial + data.overdueStudentsFull > 0
                     ? "text-amber-600 dark:text-amber-400"
                     : "text-slate-400"
                 }`} />
               </div>
               {data.overdueStudentsPartial + data.overdueStudentsFull > 0 && (
-                <span className="inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
+                <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
                   ⚠ vonuar
                 </span>
               )}
             </div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1.5">Pagesa të Vonuara</p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 truncate">Pagesa të Vonuara</p>
             {data.overdueStudentsPartial + data.overdueStudentsFull === 0 ? (
-              <p className="text-sm text-slate-400">Asnjë pagesë e vonuar</p>
+              <p className="text-sm text-slate-400 leading-tight">Asnjë pagesë e vonuar</p>
             ) : (
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 <div>
-                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{data.overdueStudentsFull}</p>
-                  <p className="text-xs text-slate-400">Pagesa e plotë</p>
+                  <p className="text-xl font-bold text-amber-600 dark:text-amber-400 leading-tight">{data.overdueStudentsFull}</p>
+                  <p className="text-[11px] text-slate-400">Pagesa e plotë</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-slate-700 dark:text-slate-200">{data.overdueStudentsPartial}</p>
-                  <p className="text-xs text-slate-400">Pjesa e dytë</p>
+                  <p className="text-xl font-bold text-slate-700 dark:text-slate-200 leading-tight">{data.overdueStudentsPartial}</p>
+                  <p className="text-[11px] text-slate-400">Pjesa e dytë</p>
                 </div>
               </div>
             )}
           </div>
 
           {/* Borxhe — vetëm Shkollimi */}
-          <div className="card p-5">
-            <div className="flex items-start justify-between mb-3">
-              <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
-                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+          <div className="card p-3.5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
               </div>
               <CreditCard className="w-4 h-4 text-slate-300" />
             </div>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.tuitionOverview.debtStudentCount}</p>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Borxhe Shkollimi — {data.period.label}</p>
-            <p className="text-xs text-slate-400 mt-1">{formatCurrency(data.tuitionOverview.debt)} total</p>
+            <p className="text-xl font-bold text-slate-900 dark:text-white leading-tight">{data.tuitionOverview.debtStudentCount}</p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5 truncate">Borxhe Shkollimi — {data.period.label}</p>
+            <p className="text-[11px] text-slate-400 mt-1 truncate">{formatCurrency(data.tuitionOverview.debt)} total</p>
           </div>
 
         </div>
