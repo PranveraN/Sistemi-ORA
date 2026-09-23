@@ -36,6 +36,8 @@ interface DashboardData {
   totalDebtAmount: number;
   overdueAmount: number;
   overdueCount: number;
+  overdueStudentsPartial: number;
+  overdueStudentsFull: number;
   newInPeriod: number;
   newStudents: {
     count: number;
@@ -66,6 +68,7 @@ interface DashboardData {
     expected: number;
     paid: number;
     debt: number;
+    debtStudentCount: number;
     timiInvestCount: number;
     timiInvestExpected: number;
     expenses: number;
@@ -208,7 +211,7 @@ export default function DashboardPage() {
               )}
             </div>
             <p className="text-2xl font-bold text-slate-900 dark:text-white">{formatCurrency(data.periodRevenue)}</p>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Të Hyra — {data.period.label}</p>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Të Hyra Shkollimi — {data.period.label}</p>
             <p className="text-xs text-slate-400 mt-1">
               {revPct !== null
                 ? `${revUp ? "+" : ""}${revPct}% vs periudha e kaluar (${formatCurrency(data.prevPeriodRevenue)})`
@@ -216,7 +219,7 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          {/* Nxënës Aktivë + të rinj */}
+          {/* Nxënës Aktivë + Gjithsej */}
           <div className="card p-5">
             <div className="flex items-start justify-between mb-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
@@ -229,9 +232,18 @@ export default function DashboardPage() {
                 </span>
               )}
             </div>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.activeStudents}</p>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Nxënës Aktivë</p>
-            <div className="flex items-center gap-3 mt-1.5 text-xs">
+            <div className="flex items-end gap-3">
+              <div>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.activeStudents}</p>
+                <p className="text-xs text-slate-400">Aktivë</p>
+              </div>
+              <div className="pb-0.5">
+                <p className="text-lg font-bold text-slate-400 dark:text-slate-500">{data.totalStudents}</p>
+                <p className="text-xs text-slate-400">Gjithsej</p>
+              </div>
+            </div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1.5">Nxënës</p>
+            <div className="flex items-center gap-3 mt-1 text-xs">
               <span className="text-slate-500 dark:text-slate-400">
                 <span className="font-bold text-slate-700 dark:text-slate-200">{data.cycleCounts.ulet}</span> Cikli Ulët
               </span>
@@ -239,41 +251,46 @@ export default function DashboardPage() {
                 <span className="font-bold text-slate-700 dark:text-slate-200">{data.cycleCounts.larte}</span> Cikli Lartë
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              {data.newInPeriod > 0
-                ? `${data.newInPeriod} të regjistruar gjatë kësaj periudhe`
-                : `${data.totalStudents} gjithsej`}
-            </p>
           </div>
 
-          {/* Pagesa të vonuara */}
+          {/* Pagesa të vonuara — nga nxënësit, ndarë sipas llojit */}
           <div className="card p-5">
             <div className="flex items-start justify-between mb-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                data.overdueCount > 0
+                data.overdueStudentsPartial + data.overdueStudentsFull > 0
                   ? "bg-amber-50 dark:bg-amber-900/30"
                   : "bg-slate-100 dark:bg-slate-700"
               }`}>
                 <CalendarClock className={`w-5 h-5 ${
-                  data.overdueCount > 0
+                  data.overdueStudentsPartial + data.overdueStudentsFull > 0
                     ? "text-amber-600 dark:text-amber-400"
                     : "text-slate-400"
                 }`} />
               </div>
-              {data.overdueCount > 0 && (
+              {data.overdueStudentsPartial + data.overdueStudentsFull > 0 && (
                 <span className="inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
                   ⚠ vonuar
                 </span>
               )}
             </div>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.overdueCount}</p>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Pagesa të Vonuara</p>
-            <p className="text-xs text-slate-400 mt-1">
-              {data.overdueCount > 0 ? `${formatCurrency(data.overdueAmount)} gjithsej` : "Asnjë pagesë e vonuar"}
-            </p>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1.5">Pagesa të Vonuara</p>
+            {data.overdueStudentsPartial + data.overdueStudentsFull === 0 ? (
+              <p className="text-sm text-slate-400">Asnjë pagesë e vonuar</p>
+            ) : (
+              <div className="flex items-center gap-4">
+                <div>
+                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{data.overdueStudentsFull}</p>
+                  <p className="text-xs text-slate-400">Pagesa e plotë</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-slate-700 dark:text-slate-200">{data.overdueStudentsPartial}</p>
+                  <p className="text-xs text-slate-400">Pjesa e dytë</p>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Borxhe */}
+          {/* Borxhe — vetëm Shkollimi */}
           <div className="card p-5">
             <div className="flex items-start justify-between mb-3">
               <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
@@ -281,9 +298,9 @@ export default function DashboardPage() {
               </div>
               <CreditCard className="w-4 h-4 text-slate-300" />
             </div>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.studentsWithDebt}</p>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Borxhe — {data.period.label}</p>
-            <p className="text-xs text-slate-400 mt-1">{formatCurrency(data.totalDebtAmount)} total</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.tuitionOverview.debtStudentCount}</p>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">Borxhe Shkollimi — {data.period.label}</p>
+            <p className="text-xs text-slate-400 mt-1">{formatCurrency(data.tuitionOverview.debt)} total</p>
           </div>
 
         </div>

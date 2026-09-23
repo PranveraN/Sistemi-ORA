@@ -94,28 +94,34 @@ export async function GET(req: NextRequest) {
     orderBy: { inactiveDate: "desc" },
   });
 
-  // ── Pasqyrë Shkollimi (për "Pasqyrë Shkollimi" te Dashboard) ──
+  // ── Pasqyrë Shkollimi (për "Pasqyrë Shkollimi" te Dashboard, dhe tani edhe
+  // për kartat KPI "Të Hyra"/"Borxhe", të cilat u kufizuan VETËM te Shkollimi) ──
   const shkollimiCategory = await prisma.paymentCategory.findFirst({ where: { name: "Shkollimi", organizationId: orgId } });
   const tuitionAccrualWhere = shkollimiCategory ? (
     yearType === "academic"
       ? { organizationId: orgId, categoryId: shkollimiCategory.id, OR: months.map(m => ({ month: m.calMonth, year: m.calYear })) }
       : { organizationId: orgId, categoryId: shkollimiCategory.id, dueDate: { gte: start, lte: end } }
   ) : null;
+  const prevTuitionAccrualWhere = shkollimiCategory ? (
+    yearType === "academic"
+      ? { organizationId: orgId, categoryId: shkollimiCategory.id, OR: prevMonths.map(m => ({ month: m.calMonth, year: m.calYear })) }
+      : { organizationId: orgId, categoryId: shkollimiCategory.id, dueDate: { gte: prevStart, lte: prevEnd } }
+  ) : null;
 
   const [
     totalStudents,
     activeInPeriod,
     debtGroups,
-    periodRevenueAgg,
-    prevPeriodRevenueAgg,
     totalRevenueAgg,
     recentPayments,
     debtAgg,
     overdueAgg,
+    overdueRows,
     newInPeriod,
     monthlyRevenueRows,
     timiInvestLinks,
     tuitionRows,
+    prevTuitionRows,
     expenseGroups,
   ] = await Promise.all([
     prisma.student.count({ where: { organizationId: orgId } }),
@@ -143,9 +149,8 @@ export async function GET(req: NextRequest) {
       _count: true,
     }),
 
-    prisma.payment.aggregate({ where: revenueWhere(orgId, yearType, months, start, end), _sum: { paidAmount: true } }),
-    prisma.payment.aggregate({ where: revenueWhere(orgId, yearType, prevMonths, prevStart, prevEnd), _sum: { paidAmount: true } }),
-    // Për kartën "Statusi i Pagesave → Të Paguara" — e njëjta shumë si "Të Hyra".
+    // Për kartën "Statusi i Pagesave → Të Paguara" (TË GJITHA kategoritë,
+    // ndryshe nga karta KPI "Të Hyra" më sipër, e kufizuar tani te Shkollimi).
     prisma.payment.aggregate({ where: revenueWhere(orgId, yearType, months, start, end), _sum: { paidAmount: true } }),
 
     prisma.payment.findMany({
@@ -173,6 +178,15 @@ export async function GET(req: NextRequest) {
       _count: true,
     }),
 
+    // Rreshtat e pagesave të vonuara — për t'i ndarë sipas NXËNËSIT (jo
+    // rresht-pagese) në kartën KPI: "vonuar pjesa e dytë" (ka paguar diçka
+    // për atë këst, mbetet pjesa) kundrejt "vonuar pagesa e plotë" (s'ka
+    // paguar asgjë fare për atë këst).
+    prisma.payment.findMany({
+      where: { organizationId: orgId, balance: { gt: 0 }, dueDate: { gte: start, lte: overdueUpperBound } },
+      select: { studentId: true, paidAmount: true },
+    }),
+
     prisma.student.count({ where: { organizationId: orgId, enrollDate: { gte: studentPeriodStart, lte: studentPeriodEnd }, hideFromNewRegistrations: false } }),
 
     prisma.payment.findMany({
@@ -189,6 +203,15 @@ export async function GET(req: NextRequest) {
       ? prisma.payment.findMany({
           where: tuitionAccrualWhere,
           select: { studentId: true, finalAmount: true, paidAmount: true, description: true, confirmed: true },
+        })
+      : Promise.resolve([]),
+
+    // Për krahasimin e trendit (%) të kartës "Të Hyra" — e njëjta bazë
+    // (Shkollimi, i konfirmuar, pa TI-KRYER), por për periudhën PARAARDHËSE.
+    prevTuitionAccrualWhere
+      ? prisma.payment.findMany({
+          where: prevTuitionAccrualWhere,
+          select: { studentId: true, paidAmount: true, confirmed: true },
         })
       : Promise.resolve([]),
 
@@ -228,17 +251,7 @@ export async function GET(req: NextRequest) {
     isFuture: new Date(m.calYear, m.calMonth - 1, 1) > now,
   }));
 
-  const periodRev     = periodRevenueAgg._sum.paidAmount || 0;
-  const prevPeriodRev  = prevPeriodRevenueAgg._sum.paidAmount || 0;
-  // Krahasimi % kundrejt periudhës paraardhëse s'ka kuptim praktik kur periudha
-  // e zgjedhur sapo ka filluar (p.sh. 1 muaj i vitit akademik kundrejt gjithë
-  // vitit paraardhës del si "+3000%") — shfaqet vetëm pas ~45 ditësh.
-  const daysSincePeriodStart = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-  const revenueChangePct = prevPeriodRev > 0 && daysSincePeriodStart >= 45
-    ? Math.round(((periodRev - prevPeriodRev) / prevPeriodRev) * 100)
-    : null;
-
-  // ── Pasqyrë Shkollimi ──
+  // ── Pasqyrë Shkollimi (+ kartat KPI "Të Hyra"/"Borxhe", kufizuar këtu) ──
   const timiInvestIds = new Set(timiInvestLinks.map(t => t.studentId as number));
   const timiInvestCount = timiInvestLinks.length;
   const timiInvestExpected = timiInvestLinks.reduce((sum, t) => {
@@ -252,7 +265,7 @@ export async function GET(req: NextRequest) {
     arr.push(p);
     tuitionByStudent.set(p.studentId, arr);
   }
-  let tuitionExpected = 0, tuitionPaid = 0, tuitionDebt = 0;
+  let tuitionExpected = 0, tuitionPaid = 0, tuitionDebt = 0, tuitionDebtStudentCount = 0;
   for (const [studentId, rows] of tuitionByStudent) {
     if (timiInvestIds.has(studentId)) continue; // numërohen veç sipër, jo dyfish këtu
     const { finalAmount, balance } = aggregatePaymentTotals(rows);
@@ -262,6 +275,41 @@ export async function GET(req: NextRequest) {
     tuitionExpected += finalAmount;
     tuitionPaid += confirmedPaid;
     tuitionDebt += balance;
+    if (balance > 0) tuitionDebtStudentCount++;
+  }
+
+  // Karta KPI "Të Hyra" — vetëm Shkollimi, vetëm i konfirmuar (jo TI/import pa
+  // konfirmim), pa dyfishim me TI-KRYER — e njëjta bazë si tuitionPaid sipër.
+  const periodRev = tuitionPaid;
+  let prevTuitionPaid = 0;
+  for (const p of prevTuitionRows) {
+    if (timiInvestIds.has(p.studentId) || !p.confirmed) continue;
+    prevTuitionPaid += p.paidAmount;
+  }
+  const prevPeriodRev = prevTuitionPaid;
+  // Krahasimi % kundrejt periudhës paraardhëse s'ka kuptim praktik kur periudha
+  // e zgjedhur sapo ka filluar (p.sh. 1 muaj i vitit akademik kundrejt gjithë
+  // vitit paraardhës del si "+3000%") — shfaqet vetëm pas ~45 ditësh.
+  const daysSincePeriodStart = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+  const revenueChangePct = prevPeriodRev > 0 && daysSincePeriodStart >= 45
+    ? Math.round(((periodRev - prevPeriodRev) / prevPeriodRev) * 100)
+    : null;
+
+  // Karta KPI "Pagesa të Vonuara" — numër NXËNËSISH (jo rreshtash-pagese), të
+  // ndarë sipas: a ka paguar diçka për këstin e vonuar ("pjesa e dytë") apo
+  // s'ka paguar fare asgjë për të ("pagesa e plotë"). Nëse një nxënës ka të
+  // dyja llojet e kësteve të vonuara, numërohet te "pjesa e dytë" (ka paguar
+  // diçka, i mbetet pjesë) — kategoria më "e favorshme" për të, meqë "s'ka
+  // paguar fare" është shenja më e rëndë e vonesës.
+  const overdueByStudent = new Map<number, boolean>(); // true = ka paguar diçka
+  for (const p of overdueRows) {
+    const hasPaid = p.paidAmount > 0;
+    const prev = overdueByStudent.get(p.studentId);
+    overdueByStudent.set(p.studentId, prev === true || hasPaid);
+  }
+  let overdueStudentsPartial = 0, overdueStudentsFull = 0;
+  for (const hasPaid of overdueByStudent.values()) {
+    if (hasPaid) overdueStudentsPartial++; else overdueStudentsFull++;
   }
 
   const expensesByType: Record<string, number> = { ZYRE: 0, BANKE: 0 };
@@ -281,6 +329,8 @@ export async function GET(req: NextRequest) {
     totalDebtAmount: debtAgg._sum.balance || 0,
     overdueAmount: overdueAgg._sum.balance || 0,
     overdueCount: overdueAgg._count,
+    overdueStudentsPartial,
+    overdueStudentsFull,
     newInPeriod,
     newStudents: {
       count: newStudentsList.length,
@@ -304,6 +354,7 @@ export async function GET(req: NextRequest) {
       expected: Math.round(tuitionExpected * 100) / 100,
       paid: Math.round(tuitionPaid * 100) / 100,
       debt: Math.round(tuitionDebt * 100) / 100,
+      debtStudentCount: tuitionDebtStudentCount,
       timiInvestCount,
       timiInvestExpected: Math.round(timiInvestExpected * 100) / 100,
       expenses: Math.round(tuitionExpenses * 100) / 100,
