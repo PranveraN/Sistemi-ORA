@@ -5,6 +5,7 @@ import Header from "@/components/layout/Header";
 import {
   BookOpen, Plus, Search, X, Printer, Trash2, Loader2, Package, TrendingUp, ShoppingCart, AlertCircle,
   TrendingDown, ArrowRightLeft, BarChart3, Download, Wallet, Medal, Users, CheckCircle,
+  MessageSquare,
 } from "lucide-react";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, getDateRange, type YearType } from "@/lib/academicYear";
@@ -26,6 +27,7 @@ interface Sale {
   totalAmount: number; paidAmount: number; balance: number; profit: number;
   status: string; receiptNumber: string | null; saleDate: string; notes: string | null;
   itemCount?: number; items?: SaleItem[]; payments?: Payment[];
+  sentSmsAt?: string | null; sentToPhone?: string | null;
 }
 interface Student { id: number; firstName: string; lastName: string; class: { name: string } | null; }
 interface ClassRow { id: number; name: string; level: string; }
@@ -387,6 +389,9 @@ export default function LibratPage() {
   const [newSaleStudent, setNewSaleStudent] = useState<Student | null>(null);
   const [detailSale, setDetailSale] = useState<Sale | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [smsModal, setSmsModal] = useState<{ id: number; phone: string; loadingPhone: boolean } | null>(null);
+  const [smsError, setSmsError] = useState("");
+  const [sendingSms, setSendingSms] = useState(false);
 
   /* ── Pagesë e përbashkët (familje) ── */
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -569,6 +574,52 @@ export default function LibratPage() {
     fetchSales();
     fetchMissing();
     fetchStats();
+  }
+
+  // Kujtesë SMS borxhi — telefoni parashenjohet nga prindi i nxënësit të
+  // lidhur (nëse shitja ka studentId real), por mbetet gjithmonë i editueshëm
+  // (disa shitje librash janë krijuar pa lidhje me një nxënës real).
+  async function openSmsModal(sale: Sale) {
+    setSmsError("");
+    setSmsModal({ id: sale.id, phone: "", loadingPhone: !!sale.studentId });
+    if (!sale.studentId) return;
+    const r = await fetch(`/api/students/${sale.studentId}`);
+    if (r.ok) {
+      const s = await r.json();
+      const phone = s.parentPhone || s.fatherPhone || s.motherPhone || "";
+      setSmsModal(m => m && m.id === sale.id ? { ...m, phone, loadingPhone: false } : m);
+    } else {
+      setSmsModal(m => m && m.id === sale.id ? { ...m, loadingPhone: false } : m);
+    }
+  }
+
+  async function confirmSendSms() {
+    if (!smsModal) return;
+    const { id, phone } = smsModal;
+    const trimmed = phone.trim();
+    if (!trimmed) { setSmsError("Shkruaj një numër telefoni para se të dërgosh."); return; }
+
+    setSendingSms(true);
+    setSmsError("");
+    try {
+      const res = await fetch(`/api/librat/sales/${id}/send-sms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: trimmed }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSmsError(d.error || `Dërgimi dështoi (gabim ${res.status})`);
+        setSendingSms(false);
+        return;
+      }
+      setSendingSms(false);
+      setSmsModal(null);
+      fetchSales();
+    } catch {
+      setSendingSms(false);
+      setSmsError("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   function toggleSelect(id: number) {
@@ -811,6 +862,15 @@ export default function LibratPage() {
                             <button onClick={() => openDetail(sale)} title="Shiko detajet" className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors">
                               <Printer className="w-4 h-4" />
                             </button>
+                            {sale.balance > 0 && (
+                              <button
+                                onClick={() => openSmsModal(sale)}
+                                title={sale.sentSmsAt ? `Ridërgo SMS (dërguar te ${sale.sentToPhone})` : "Dërgo SMS kujtesë borxhi"}
+                                className={`p-1.5 rounded-lg transition-colors ${sale.sentSmsAt ? "text-green-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20" : "text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20"}`}
+                              >
+                                <MessageSquare className="w-4 h-4" />
+                              </button>
+                            )}
                             <button onClick={() => deleteSale(sale.id)} title="Fshi" className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1277,6 +1337,52 @@ export default function LibratPage() {
             fetchStats();
           }}
         />
+      )}
+
+      {/* ── SMS Kujtese Borxhi ── */}
+      {smsModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !sendingSms && setSmsModal(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-primary-500" />
+                Dërgo SMS Kujtese Borxhi
+              </h3>
+              <button onClick={() => !sendingSms && setSmsModal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="form-label">Numri i telefonit i prindit</label>
+                <div className="relative">
+                  <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="tel"
+                    autoFocus
+                    disabled={smsModal.loadingPhone}
+                    value={smsModal.loadingPhone ? "Duke kërkuar numrin..." : smsModal.phone}
+                    onChange={e => setSmsModal(m => m && { ...m, phone: e.target.value })}
+                    onKeyDown={e => e.key === "Enter" && confirmSendSms()}
+                    className="form-input pl-9"
+                    placeholder="044 XXX XXX"
+                  />
+                </div>
+                {!smsModal.loadingPhone && !smsModal.phone && (
+                  <p className="text-[11px] text-amber-500 mt-1">S'u gjet automatikisht numër telefoni — shkruani manualisht.</p>
+                )}
+              </div>
+              {smsError && <p className="text-sm text-red-500">{smsError}</p>}
+            </div>
+            <div className="flex justify-end gap-2 p-5 pt-0">
+              <button onClick={() => setSmsModal(null)} disabled={sendingSms} className="btn-secondary disabled:opacity-50">Anulo</button>
+              <button onClick={confirmSendSms} disabled={sendingSms || smsModal.loadingPhone} className="btn-primary disabled:opacity-50">
+                {sendingSms ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                Dërgo
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Pagesë e Përbashkët (familje) ── */}

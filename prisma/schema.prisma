@@ -992,6 +992,8 @@ model BookSale {
   notes         String?
   familyReceiptId Int?   // bashkuar në një dëshmi pagese familjeje me shitje të tjera
   familyReceipt   FamilyReceipt? @relation(fields: [familyReceiptId], references: [id])
+  sentSmsAt     DateTime? // kur i-u dërgua SMS kujtese borxhi prindit (butoni te lista e shitjeve)
+  sentToPhone   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
