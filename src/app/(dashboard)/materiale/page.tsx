@@ -397,6 +397,11 @@ function MaterialsSection() {
   const [supplierSuggestions, setSupplierSuggestions] = useState<Sipartner[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  /* Filtrim i listës — katalogu mund të ketë qindra materiale */
+  const [listSearch, setListSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
+
   const fetchAll = useCallback(async () => {
     const [mRes, cRes] = await Promise.all([
       fetch("/api/materials"),
@@ -506,6 +511,11 @@ function MaterialsSection() {
     fetchAll();
   }
 
+  const filteredMaterials = materials
+    .filter(m => showInactive || m.active)
+    .filter(m => !categoryFilter || String(m.category.id) === categoryFilter)
+    .filter(m => !listSearch.trim() || m.name.toLowerCase().includes(listSearch.trim().toLowerCase()));
+
   return (
     <div className="card overflow-hidden">
       <div className="flex items-center justify-between gap-3 p-5 border-b border-slate-100 dark:border-slate-700">
@@ -536,6 +546,31 @@ function MaterialsSection() {
         </div>
       )}
 
+      {!loading && materials.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input value={listSearch} onChange={e => setListSearch(e.target.value)} placeholder="Kërko material..." className="form-input pl-9 text-sm py-2" />
+          </div>
+          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="form-input text-sm py-2 w-auto">
+            <option value="">Kategoria — të gjitha</option>
+            {[...categories].sort((a, b) => a.name.localeCompare(b.name)).map(c => (
+              <option key={c.id} value={c.id}>{c.name} ({c._count.materials})</option>
+            ))}
+          </select>
+          <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer whitespace-nowrap">
+            <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+            Shfaq joaktivet
+          </label>
+          {(listSearch || categoryFilter || showInactive) && (
+            <button onClick={() => { setListSearch(""); setCategoryFilter(""); setShowInactive(false); }} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              Pastro filtrat
+            </button>
+          )}
+          <span className="text-xs text-slate-400 ml-auto">{filteredMaterials.length} nga {materials.length}</span>
+        </div>
+      )}
+
       {loading ? (
         <div className="py-10 text-center text-slate-400 text-sm">Duke ngarkuar...</div>
       ) : materials.length === 0 ? (
@@ -543,9 +578,11 @@ function MaterialsSection() {
           <Package className="w-8 h-8 text-slate-300" />
           Nuk ka materiale në katalog
         </div>
+      ) : filteredMaterials.length === 0 ? (
+        <div className="py-10 text-center text-slate-400 text-sm">Asnjë material s&apos;përputhet me filtrat.</div>
       ) : (
         <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-          {materials.map(m => (
+          {filteredMaterials.map(m => (
             <div key={m.id} className={`flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${!m.active ? "opacity-50" : ""}`}>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
