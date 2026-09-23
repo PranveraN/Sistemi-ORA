@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/sms";
+import { buildBookDebtMessage } from "@/lib/bookDebtSms";
 
 const s = (v: unknown) =>
   v != null && v !== "" ? `'${String(v).replace(/'/g, "''")}'` : "NULL";
@@ -43,11 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       JOIN BookProduct bp ON bp.id = bsi.productId
       WHERE bsi.saleId=${sid}
     `);
-    const itemLine = items.length
-      ? items.map(it => `${it.productName} x${Number(it.quantity)}`).join(", ")
-      : "libra";
-
-    const message = `Kujtesë Akademia Ora: ${sale.studentName} ka borxh ${balance.toFixed(2)}€ për ${itemLine}. Ju lutem rregulloni pagesën. Faleminderit.`;
+    const message = buildBookDebtMessage(String(sale.studentName), balance, items);
 
     const result = await sendSms(phone, message);
     if (!result.ok) {

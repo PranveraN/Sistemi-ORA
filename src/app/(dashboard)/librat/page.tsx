@@ -31,6 +31,7 @@ interface Sale {
 }
 interface Student { id: number; firstName: string; lastName: string; class: { name: string } | null; }
 interface ClassRow { id: number; name: string; level: string; }
+interface BulkSmsRow { id: number; name: string; balance: number; phone: string; loadingPhone: boolean }
 
 interface Handover {
   id: number; amount: number; description: string | null; recipient: string | null;
@@ -392,6 +393,10 @@ export default function LibratPage() {
   const [smsModal, setSmsModal] = useState<{ id: number; phone: string; loadingPhone: boolean } | null>(null);
   const [smsError, setSmsError] = useState("");
   const [sendingSms, setSendingSms] = useState(false);
+  const [bulkSmsModal, setBulkSmsModal] = useState<BulkSmsRow[] | null>(null);
+  const [bulkAddQuery, setBulkAddQuery] = useState("");
+  const [bulkSmsSending, setBulkSmsSending] = useState(false);
+  const [bulkSmsResult, setBulkSmsResult] = useState<{ sent: number; failed: { name: string; error: string }[] } | null>(null);
 
   /* ── Pagesë e përbashkët (familje) ── */
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -622,6 +627,64 @@ export default function LibratPage() {
     }
   }
 
+  // Kërkon telefonin e prindit për një shitje (nëse ka nxënës real të lidhur)
+  // dhe e vendos te rreshti përkatës i modalit me shumicë, pa bllokuar rreshtat e tjerë.
+  async function fetchAndFillPhone(sale: Sale) {
+    if (!sale.studentId) return;
+    const r = await fetch(`/api/students/${sale.studentId}`);
+    if (!r.ok) { setBulkSmsModal(prev => prev && prev.map(row => row.id === sale.id ? { ...row, loadingPhone: false } : row)); return; }
+    const st = await r.json();
+    const phone = st.parentPhone || st.fatherPhone || st.motherPhone || "";
+    setBulkSmsModal(prev => prev && prev.map(row => row.id === sale.id ? { ...row, phone, loadingPhone: false } : row));
+  }
+
+  function selectAllDebt() {
+    setSelected(new Set(sales.filter(s => s.balance > 0).map(s => s.id)));
+  }
+
+  function selectAllOnPage() {
+    setSelected(new Set(sales.map(s => s.id)));
+  }
+
+  async function openBulkSmsModal() {
+    const source = selected.size > 0 ? selectedSales : sales.filter(s => s.balance > 0);
+    if (source.length === 0) return;
+    setBulkSmsResult(null);
+    setBulkAddQuery("");
+    setBulkSmsModal(source.map(s => ({ id: s.id, name: s.studentName, balance: s.balance, phone: "", loadingPhone: !!s.studentId })));
+    source.forEach(fetchAndFillPhone);
+  }
+
+  function addBulkRow(sale: Sale) {
+    setBulkSmsModal(prev => prev ? [...prev, { id: sale.id, name: sale.studentName, balance: sale.balance, phone: "", loadingPhone: !!sale.studentId }] : prev);
+    setBulkAddQuery("");
+    fetchAndFillPhone(sale);
+  }
+
+  function removeBulkRow(id: number) {
+    setBulkSmsModal(prev => prev && prev.filter(r => r.id !== id));
+  }
+
+  async function confirmBulkSend() {
+    if (!bulkSmsModal) return;
+    const entries = bulkSmsModal.filter(r => r.phone.trim()).map(r => ({ id: r.id, phone: r.phone.trim() }));
+    if (entries.length === 0) return;
+    setBulkSmsSending(true);
+    const res = await fetch("/api/librat/sales/bulk-send-sms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setBulkSmsSending(false);
+    if (res.ok) {
+      setBulkSmsResult({ sent: d.sent ?? 0, failed: d.failed ?? [] });
+      fetchSales();
+    } else {
+      setBulkSmsResult({ sent: 0, failed: [{ name: "Gabim", error: d.error || "Dërgimi dështoi" }] });
+    }
+  }
+
   function toggleSelect(id: number) {
     setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
@@ -794,9 +857,32 @@ export default function LibratPage() {
                 <Printer className="w-4 h-4" />
                 Printo Fletëpagesat {selected.size > 0 ? `(${selected.size})` : sales.length > 0 ? `(${sales.length})` : ""}
               </button>
+              <button
+                onClick={openBulkSmsModal}
+                disabled={sales.length === 0}
+                className="btn-secondary"
+                title="Dërgo SMS te shitjet e zgjedhura, ose te të gjithë ata me borxh (faqja aktuale) nëse s'ke zgjedhur asnjë"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Dërgo SMS {selected.size > 0 ? `(${selected.size})` : ""}
+              </button>
               <button onClick={() => setNewSaleModal(true)} className="btn-primary">
                 <Plus className="w-4 h-4" />Shitje e re
               </button>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <button onClick={selectAllDebt} className="text-primary-600 hover:underline flex items-center gap-1">
+                <Wallet className="w-3.5 h-3.5" /> Zgjidh të Gjithë me Borxh
+              </button>
+              <span className="text-slate-300">·</span>
+              <button onClick={selectAllOnPage} className="text-primary-600 hover:underline">Zgjidh të Gjithë (faqja)</button>
+              {selected.size > 0 && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <button onClick={() => setSelected(new Set())} className="text-slate-400 hover:underline">Pastro Zgjedhjen</button>
+                </>
+              )}
             </div>
 
             {selected.size >= 2 && (
@@ -1381,6 +1467,93 @@ export default function LibratPage() {
                 Dërgo
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SMS Kujtese Borxhi me Shumicë ── */}
+      {bulkSmsModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !bulkSmsSending && setBulkSmsModal(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700 shrink-0">
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-primary-500" />
+                Dërgo SMS Kujtese Borxhi ({bulkSmsModal.length})
+              </h3>
+              <button onClick={() => !bulkSmsSending && setBulkSmsModal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {bulkSmsResult ? (
+              <div className="p-5 space-y-3">
+                <p className="text-sm text-green-600 font-medium flex items-center gap-1.5"><CheckCircle className="w-4 h-4" /> {bulkSmsResult.sent} SMS u dërguan me sukses</p>
+                {bulkSmsResult.failed.length > 0 && (
+                  <div className="text-sm text-red-500 space-y-1">
+                    <p className="font-medium">{bulkSmsResult.failed.length} dështuan:</p>
+                    {bulkSmsResult.failed.map((f, i) => <p key={i} className="text-xs">{f.name} — {f.error}</p>)}
+                  </div>
+                )}
+                <button onClick={() => setBulkSmsModal(null)} className="btn-primary w-full justify-center mt-2">Mbyll</button>
+              </div>
+            ) : (
+              <>
+                <div className="p-5 pb-3 space-y-2 border-b border-slate-100 dark:border-slate-700 shrink-0">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      value={bulkAddQuery}
+                      onChange={e => setBulkAddQuery(e.target.value)}
+                      placeholder="Shto nxënës tjetër nga faqja aktuale..."
+                      className="form-input pl-9 text-sm"
+                    />
+                  </div>
+                  {bulkAddQuery.trim().length >= 2 && (
+                    <div className="max-h-32 overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-lg">
+                      {sales.filter(sl => !bulkSmsModal.some(r => r.id === sl.id) && sl.studentName.toLowerCase().includes(bulkAddQuery.trim().toLowerCase())).slice(0, 8).map(sl => (
+                        <button key={sl.id} onClick={() => addBulkRow(sl)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between">
+                          <span>{sl.studentName}</span>
+                          <span className="text-xs text-slate-400">{fmt(sl.balance)} €</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 space-y-2">
+                  {bulkSmsModal.map(row => (
+                    <div key={row.id} className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-800 dark:text-white truncate">{row.name}</p>
+                        <p className="text-xs text-red-500">{fmt(row.balance)} € borxh</p>
+                      </div>
+                      <input
+                        type="tel"
+                        disabled={row.loadingPhone}
+                        value={row.loadingPhone ? "Duke kërkuar..." : row.phone}
+                        onChange={e => setBulkSmsModal(prev => prev && prev.map(r => r.id === row.id ? { ...r, phone: e.target.value } : r))}
+                        placeholder="044 XXX XXX"
+                        className="form-input text-sm w-36 shrink-0"
+                      />
+                      <button onClick={() => removeBulkRow(row.id)} title="Hiq" className="p-1.5 text-slate-300 hover:text-red-500 shrink-0">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {bulkSmsModal.length === 0 && (
+                    <p className="text-sm text-slate-400 text-center py-6">Asnjë marrës — shtoni nga kërkimi sipër.</p>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-2 p-5 pt-3 border-t border-slate-100 dark:border-slate-700 shrink-0">
+                  <button onClick={() => setBulkSmsModal(null)} disabled={bulkSmsSending} className="btn-secondary disabled:opacity-50">Anulo</button>
+                  <button onClick={confirmBulkSend} disabled={bulkSmsSending || bulkSmsModal.filter(r => r.phone.trim()).length === 0} className="btn-primary disabled:opacity-50">
+                    {bulkSmsSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                    Dërgo te {bulkSmsModal.filter(r => r.phone.trim()).length}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
