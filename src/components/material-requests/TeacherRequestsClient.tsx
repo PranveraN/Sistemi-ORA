@@ -5,7 +5,7 @@ import {
   Send, Loader2, Clock, CheckCircle, XCircle, Package, Plus, X, Folder,
   ChevronDown, Search, Paperclip, Sparkles, RotateCcw, ArrowLeft, ArrowRight, History,
 } from "lucide-react";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime, normalizeSearch } from "@/lib/utils";
 import { UNITS, COLORS, PRIORITIES, REQUEST_STATUS_MAP } from "@/lib/materialConstants";
 
 /* ─── Types ───────────────────────────────────────────────── */
@@ -675,17 +675,17 @@ function ItemRowEditor({
 
   const suggestions = useMemo(() => {
     if (categoryMaterials.length === 0) return [];
-    const q = row.searchQuery.trim().toLowerCase();
+    const q = normalizeSearch(row.searchQuery);
     if (hasCategory) {
       // Brenda një kategorie — pa shkruar (ose më pak se 3 shkronja) shfaq
       // listën e plotë të kategorisë (shfletim); nga 3 shkronja e tutje, filtro.
       if (q.length < 3) return categoryMaterials.slice(0, 30);
-      return categoryMaterials.filter(m => m.name.toLowerCase().includes(q)).slice(0, 30);
+      return categoryMaterials.filter(m => normalizeSearch(m.name).includes(q)).slice(0, 30);
     }
     // Kërkim mbi tërë katalogun — kërkohen të paktën 3 shkronja (katalogu ka
     // qindra artikuj, s'ka kuptim të shfaqet gjithçka pa shkruar fare).
     if (q.length < 3) return [];
-    return materials.filter(m => m.name.toLowerCase().includes(q)).slice(0, 30);
+    return materials.filter(m => normalizeSearch(m.name).includes(q)).slice(0, 30);
   }, [categoryMaterials, hasCategory, materials, row.searchQuery]);
 
   return (

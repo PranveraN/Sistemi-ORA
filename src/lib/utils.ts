@@ -5,6 +5,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Heq theksat shqip (ë->e, ç->c) + rastin madh/vogël, që kërkimi në listë
+// (materiale, nxënës, etj.) të gjejë p.sh. "Letër A4" edhe kur dikush shkruan
+// "leter" pa shkronja të veçanta shqipe.
+export function normalizeSearch(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",

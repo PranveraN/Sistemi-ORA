@@ -6,7 +6,7 @@ import {
   Plus, Pencil, Check, X, Trash2, Loader2, Package, Tags,
   BookMarked, Boxes, EyeOff, Eye, Search, Gauge, ChevronDown, History, RefreshCw,
 } from "lucide-react";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDateTime, normalizeSearch } from "@/lib/utils";
 import { getStockStatus, STOCK_STATUS_STYLE } from "@/lib/materialConstants";
 
 /* ─── Types ───────────────────────────────────────────────── */
@@ -514,7 +514,7 @@ function MaterialsSection() {
   const filteredMaterials = materials
     .filter(m => showInactive || m.active)
     .filter(m => !categoryFilter || String(m.category.id) === categoryFilter)
-    .filter(m => !listSearch.trim() || m.name.toLowerCase().includes(listSearch.trim().toLowerCase()));
+    .filter(m => !listSearch.trim() || normalizeSearch(m.name).includes(normalizeSearch(listSearch)));
 
   return (
     <div className="card overflow-hidden">
