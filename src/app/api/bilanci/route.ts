@@ -39,11 +39,15 @@ export async function GET(req: NextRequest) {
     // sepse pikërisht kjo është arsyeja e ekzistencës së pamjes "Kalendarik".
     pagesimiKat
       ? prisma.payment.findMany({
+          // Rregull financiar: vetëm pagesat e KONFIRMUARA (jo import, jo TIMI
+          // Invest i pashqyrtuar — shih Payment.confirmed) llogariten si "Të
+          // Hyra" te Bilanci, për Shkollimin.
           where: yearType === "academic"
             ? {
                 categoryId: pagesimiKat.id,
                 paidAmount: { gt: 0 },
                 status:     { in: ["PAID", "PARTIAL"] },
+                confirmed:  true,
                 OR: months.map(m => ({ month: m.calMonth, year: m.calYear })),
               }
             : {
@@ -51,6 +55,7 @@ export async function GET(req: NextRequest) {
                 paidDate:   { gte: start, lte: end },
                 paidAmount: { gt: 0 },
                 status:     { in: ["PAID", "PARTIAL"] },
+                confirmed:  true,
               },
           select: { paidAmount: true, paidDate: true, month: true, year: true },
         })

@@ -782,6 +782,13 @@ model Payment {
   receiptNumber  String?          @unique
   familyReceiptId Int?            // grupon disa Payment (nga fëmijë të ndryshëm të së njëjtës familje)
   familyReceipt   FamilyReceipt?  @relation(fields: [familyReceiptId], references: [id])
+  // "Konfirmuar" = shuma e paguar konsiderohet e vërtetuar si e hyrë reale.
+  // @default(true) — pagesat ekzistuese (futur me dorë deri tani) mbeten të
+  // konfirmuara automatikisht. false vetëm kur krijohet nga import Excel (çdo
+  // kategori) ose kur është pagesë Shkollimi për nxënës të lidhur me TIMI
+  // Invest (shih POST /api/payments dhe /api/payments/import) — deri sa
+  // dikush ta shqyrtojë manualisht te "Shkollimi → Verifikim".
+  confirmed      Boolean          @default(true)
   organizationId Int              @default(1)
   organization   Organization     @relation(fields: [organizationId], references: [id])
   createdAt      DateTime         @default(now())

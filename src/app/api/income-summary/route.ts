@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const month = searchParams.get("month") ? parseInt(searchParams.get("month")!) : 0;
   const year  = searchParams.get("year")  ? parseInt(searchParams.get("year")!)  : 0;
 
-  async function getCategoryStats(categoryName: string, isMonthly = true) {
+  async function getCategoryStats(categoryName: string, isMonthly = true, requireConfirmed = false) {
     const category = await prisma.paymentCategory.findFirst({
       where: { name: { equals: categoryName } },
     });
@@ -26,10 +26,18 @@ export async function GET(req: NextRequest) {
       _count: { id: true },
     });
 
+    // Rregull financiar (vetëm Shkollimi): pagesat "pa konfirmuar" (import ose
+    // TIMI Invest — shih Payment.confirmed) s'llogariten si "Të Hyra" reale.
+    // Kërkohet agregim i VEÇANTË (jo thjesht where.confirmed=true më sipër),
+    // që "Borxhi" të mos ndryshojë — ai vjen ende nga TË GJITHA rreshtat.
+    const totalRevenue = requireConfirmed
+      ? (await prisma.payment.aggregate({ where: { ...where, confirmed: true }, _sum: { paidAmount: true } }))._sum.paidAmount ?? 0
+      : agg._sum.paidAmount ?? 0;
+
     return {
-      totalRevenue: agg._sum.paidAmount ?? 0,
-      totalDebt:    agg._sum.balance    ?? 0,
-      count:        agg._count.id,
+      totalRevenue,
+      totalDebt: agg._sum.balance ?? 0,
+      count:     agg._count.id,
     };
   }
 
@@ -53,7 +61,7 @@ export async function GET(req: NextRequest) {
   if (year  > 0) hyraWhere.vit  = year;
 
   const [shkollimi, ushqimi, eshkollori, uniformAgg, hyraAgg] = await Promise.all([
-    getCategoryStats("Shkollimi", true),
+    getCategoryStats("Shkollimi", true, true),
     getCategoryStats("Ushqimi", true),
     getCategoryStats("Platforma Digjitale", true),
     prisma.uniSale.aggregate({

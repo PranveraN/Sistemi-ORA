@@ -194,6 +194,15 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [calcModal,        setCalcModal]        = useState<StudentRow | null>(null);
   const [calcAmount,       setCalcAmount]       = useState<number | undefined>();
   const [tab,          setTab]          = useState<Tab>("income");
+  const [pendingConfirmCount, setPendingConfirmCount] = useState(0);
+
+  useEffect(() => {
+    if (categoryName !== "Shkollimi") return;
+    fetch("/api/payments?categoryName=Shkollimi&confirmed=false&limit=1")
+      .then(r => r.json())
+      .then(d => setPendingConfirmCount(d.total ?? 0))
+      .catch(() => {});
+  }, [categoryName]);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [sortCol,  setSortCol]  = useState<string | null>(null);
   const [sortDir,  setSortDir]  = useState<"asc" | "desc">("asc");
@@ -437,6 +446,18 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
     <>
       <Header title={title} />
       <div className="p-4 sm:p-6 space-y-5 animate-fade-in">
+
+        {pendingConfirmCount > 0 && (
+          <Link
+            href="/shkollimi/verifikim"
+            className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+          >
+            <span className="text-amber-700 dark:text-amber-400 font-medium">
+              ⚠ {pendingConfirmCount} pagesë{pendingConfirmCount > 1 ? "" : ""} Shkollimi ende s&apos;janë konfirmuar si Të Hyra reale (import ose TIMI Invest)
+            </span>
+            <span className="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap">Shqyrto →</span>
+          </Link>
+        )}
 
         {/* Tab bar + shared filters */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">

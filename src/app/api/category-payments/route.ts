@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
             balance: true, status: true, method: true, dueDate: true,
             paidDate: true, discount: true, discountType: true,
             scholarship: true, description: true, note: true, receiptNumber: true,
-            month: true, year: true,
+            month: true, year: true, confirmed: true,
           },
         },
       },
@@ -170,8 +170,11 @@ export async function GET(req: NextRequest) {
 
   const statuses = activeStudents.map(s => aggregateStatus(s.payments as PrismaPayment[]));
 
+  // Rregull financiar (vetëm Shkollimi): shumat "pa konfirmuar" (import ose
+  // TIMI Invest — shih Payment.confirmed) s'llogariten si "Të Hyra" reale.
+  // Kategoritë e tjera vazhdojnë të mbledhin çdo paidAmount, siç ishte gjithmonë.
   const totalRevenue = activeStudents.reduce(
-    (sum, s) => sum + s.payments.reduce((ps, p) => ps + p.paidAmount, 0), 0
+    (sum, s) => sum + s.payments.reduce((ps, p) => ps + (categoryName === "Shkollimi" && !p.confirmed ? 0 : p.paidAmount), 0), 0
   );
   const totalDebt = activeStudents.reduce((sum, s) => {
     const agg = aggregatePayment(s.payments as PrismaPayment[]);

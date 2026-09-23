@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
   const studentId = searchParams.get("studentId") || "";
   const month = searchParams.get("month") || "";
   const year = searchParams.get("year") || "";
+  const categoryName = searchParams.get("categoryName") || "";
+  const confirmedParam = searchParams.get("confirmed");
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "20");
 
@@ -32,6 +34,8 @@ export async function GET(req: NextRequest) {
   if (studentId) where.studentId = parseInt(studentId);
   if (month) where.month = parseInt(month);
   if (year) where.year = parseInt(year);
+  if (categoryName) where.category = { name: categoryName };
+  if (confirmedParam !== null) where.confirmed = confirmedParam === "true";
   if (search) {
     where.student = {
       OR: [
@@ -86,11 +90,26 @@ export async function POST(req: NextRequest) {
   try {
     const receiptNumber = paidAmount > 0 ? await generateReceiptNumber(orgId) : undefined;
 
+    // Rregulli financiar: pagesat e Shkollimit për nxënës të lidhur me TIMI
+    // Invest s'konsiderohen "e hyrë" e konfirmuar automatikisht — shuma vjen
+    // përmes një marrëveshjeje financimi, jo domosdo cash i marrë direkt nga
+    // shkolla — mbeten "pa konfirmuar" derisa dikush t'i shqyrtojë manualisht
+    // te Shkollimi → Verifikim.
+    const studentIdNum = parseInt(body.studentId);
+    const categoryIdNum = parseInt(body.categoryId);
+    const category = await prisma.paymentCategory.findUnique({ where: { id: categoryIdNum }, select: { name: true } });
+    let confirmed = true;
+    if (category?.name === "Shkollimi") {
+      const tiLink = await prisma.timiInvestStudent.findFirst({ where: { studentId: studentIdNum } });
+      if (tiLink) confirmed = false;
+    }
+
     const payment = await prisma.payment.create({
       data: {
-        studentId: parseInt(body.studentId),
-        categoryId: parseInt(body.categoryId),
+        studentId: studentIdNum,
+        categoryId: categoryIdNum,
         organizationId: orgId,
+        confirmed,
         amount,
         discount,
         discountType: body.discountType || null,

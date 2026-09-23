@@ -188,7 +188,7 @@ export async function GET(req: NextRequest) {
     tuitionAccrualWhere
       ? prisma.payment.findMany({
           where: tuitionAccrualWhere,
-          select: { studentId: true, finalAmount: true, paidAmount: true, description: true },
+          select: { studentId: true, finalAmount: true, paidAmount: true, description: true, confirmed: true },
         })
       : Promise.resolve([]),
 
@@ -246,7 +246,7 @@ export async function GET(req: NextRequest) {
     return sum + Math.max(0, t.regularPrice - discAmt - (t.manualDiscAmt || 0));
   }, 0);
 
-  const tuitionByStudent = new Map<number, { finalAmount: number; paidAmount: number; description: string | null }[]>();
+  const tuitionByStudent = new Map<number, { finalAmount: number; paidAmount: number; description: string | null; confirmed: boolean }[]>();
   for (const p of tuitionRows) {
     const arr = tuitionByStudent.get(p.studentId) ?? [];
     arr.push(p);
@@ -255,9 +255,12 @@ export async function GET(req: NextRequest) {
   let tuitionExpected = 0, tuitionPaid = 0, tuitionDebt = 0;
   for (const [studentId, rows] of tuitionByStudent) {
     if (timiInvestIds.has(studentId)) continue; // numërohen veç sipër, jo dyfish këtu
-    const { finalAmount, paidAmount, balance } = aggregatePaymentTotals(rows);
+    const { finalAmount, balance } = aggregatePaymentTotals(rows);
+    // Rregull financiar: vetëm shumat e KONFIRMUARA llogariten si "Të Hyra"
+    // reale (shih Payment.confirmed) — "Pritur"/"Borxh" mbeten të pandryshuara.
+    const confirmedPaid = rows.filter(r => r.confirmed).reduce((s, r) => s + r.paidAmount, 0);
     tuitionExpected += finalAmount;
-    tuitionPaid += paidAmount;
+    tuitionPaid += confirmedPaid;
     tuitionDebt += balance;
   }
 

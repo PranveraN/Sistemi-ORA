@@ -39,6 +39,12 @@ export async function POST(req: NextRequest) {
     select: { id: true, firstName: true, lastName: true, personalNumber: true },
   });
 
+  // Çdo pagesë Shkollimi e importuar (jo e futur me dorë, një-nga-një) mbetet
+  // "pa konfirmuar" derisa dikush ta shqyrtojë manualisht te Shkollimi →
+  // Verifikim — rregull financiar, jo vetëm rasti i TIMI Invest.
+  const category = await prisma.paymentCategory.findUnique({ where: { id: categoryId }, select: { name: true } });
+  const needsConfirmation = category?.name === "Shkollimi";
+
   const results = { created: 0, updated: 0, skipped: 0, errors: [] as string[] };
 
   for (const row of rows) {
@@ -116,6 +122,7 @@ export async function POST(req: NextRequest) {
         month:        month ?? null,
         year,
         description:  row.description || null,
+        ...(needsConfirmation ? { confirmed: false } : {}),
       };
 
       if (existing) {
