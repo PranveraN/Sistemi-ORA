@@ -930,7 +930,15 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                           </td>
                           <td className="table-cell">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Link href={`/students/${s.id}`} className={`font-semibold hover:text-primary-600 dark:hover:text-primary-400 ${isInactive ? "text-slate-400 dark:text-slate-500 line-through" : "text-slate-900 dark:text-white"}`}>
+                              <Link
+                                href={`/students/${s.id}`}
+                                title={s.timiInvest && (p?.paidAmount ?? 0) > 0 ? "Kujdes: ky nxënës është i lidhur me TIMI Invest dhe ka shumë të regjistruar si 'paguar' — verifikoni nëse është pagesë reale e pranuar nga shkolla, apo vetëm marrëveshja e financimit." : undefined}
+                                className={`font-semibold hover:text-primary-600 dark:hover:text-primary-400 ${
+                                  isInactive ? "text-slate-400 dark:text-slate-500 line-through"
+                                  : s.timiInvest && (p?.paidAmount ?? 0) > 0 ? "text-orange-600 dark:text-orange-400"
+                                  : "text-slate-900 dark:text-white"
+                                }`}
+                              >
                                 {s.firstName} {s.lastName}
                               </Link>
                               {s.parentName && (
