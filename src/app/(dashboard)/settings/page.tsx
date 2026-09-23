@@ -26,6 +26,7 @@ interface SchoolInfo {
 interface Category {
   id: number; name: string; type: string;
   description: string | null; defaultAmount: number;
+  paymentCount: number; paymentTotal: number;
 }
 
 interface ClassRow {
@@ -987,8 +988,12 @@ function CategoriesSection() {
   }
 
   async function handleDelete(id: number, name: string) {
-    if (!confirm(`Fshi kategorinë "${name}"?\n\nFSHIHEN edhe të gjitha pagesat e lidhura.`)) return;
-    await fetch(`/api/categories/${id}`, { method: "DELETE" });
+    if (!confirm(`Fshi kategorinë "${name}"?\n\nMund të fshihet VETËM nëse s'ka asnjë pagesë të lidhur me të (shih numrin te lista).`)) return;
+    const r = await fetch(`/api/categories/${id}`, { method: "DELETE" });
+    if (!r.ok) {
+      alert(`S'mund të fshihet "${name}" — ka ende pagesa të lidhura me këtë kategori. Fshini/transferoni ato pagesa së pari.`);
+      return;
+    }
     fetchCats();
   }
 
@@ -1094,6 +1099,13 @@ function CategoriesSection() {
                       <p className="text-xs text-slate-400">
                         {typeLabels[cat.type] || cat.type}
                         {cat.description && <span className="ml-2 text-slate-300">· {cat.description}</span>}
+                      </p>
+                      {/* Vetëm lexim — ndihmon të dallohen kategoritë "reale" (me
+                          histori pagesash) nga ato bosh/të vjetruara/dublikatë. */}
+                      <p className={`text-[11px] mt-0.5 ${cat.paymentCount > 0 ? "text-slate-400" : "text-amber-500"}`}>
+                        {cat.paymentCount > 0
+                          ? `${cat.paymentCount} pagesa · ${formatCurrency(cat.paymentTotal)} paguar gjithsej`
+                          : "Bosh — asnjë pagesë e regjistruar"}
                       </p>
                     </div>
                   </div>

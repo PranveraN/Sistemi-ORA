@@ -33,6 +33,17 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  await prisma.paymentCategory.delete({ where: { id: parseInt(id) } });
-  return NextResponse.json({ success: true });
+  try {
+    await prisma.paymentCategory.delete({ where: { id: parseInt(id) } });
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    // P2003 = kufizim çelësi të huaj (ka ende pagesa/të dhëna të lidhura) —
+    // kategoria s'fshihet KURRË vetvetiu bashkë me pagesat, edhe pse dialogu
+    // i vjetër i konfirmimit e sugjeronte gabimisht atë.
+    const code = (e as { code?: string }).code;
+    if (code === "P2003") {
+      return NextResponse.json({ error: "Ka ende të dhëna (pagesa/çmime) të lidhura me këtë kategori — s'mund të fshihet." }, { status: 409 });
+    }
+    throw e;
+  }
 }

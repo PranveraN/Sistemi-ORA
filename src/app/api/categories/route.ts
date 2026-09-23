@@ -12,7 +12,23 @@ export async function GET() {
     orderBy: { name: "asc" },
   });
 
-  return NextResponse.json(categories);
+  // Numri i pagesave për kategori — vetëm lexim, ndihmon admin-in të dallojë
+  // kategoritë "reale" (me histori) nga ato bosh/të vjetruara/dublikatë, pa
+  // pasur nevojë të hapë çdo faqe kategorie veç e veç (shih dyshja Eshkollori/
+  // Platforma Digjitale — të njëjtin emërtim, kategori TË NDARA në bazë).
+  const counts = await prisma.payment.groupBy({
+    by: ["categoryId"],
+    where: { organizationId: orgId },
+    _count: { id: true },
+    _sum: { paidAmount: true },
+  });
+  const countMap = new Map(counts.map(c => [c.categoryId, { count: c._count.id, paidTotal: c._sum.paidAmount ?? 0 }]));
+
+  return NextResponse.json(categories.map(c => ({
+    ...c,
+    paymentCount: countMap.get(c.id)?.count ?? 0,
+    paymentTotal: countMap.get(c.id)?.paidTotal ?? 0,
+  })));
 }
 
 export async function POST(req: NextRequest) {
