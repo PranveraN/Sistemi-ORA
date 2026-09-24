@@ -213,14 +213,14 @@ tr:nth-child(even) td { background: #f8fafc; }
 <hr class="divider"/>
 <div class="info-grid">
   <div class="info-section">
-    <div class="section-label">${isFamilyInvoice ? "PRINDI" : "NXËNËSI"}</div>
+    <div class="section-label">PRINDI</div>
     ${isFamilyInvoice ? `
     <div class="student-name">${invoice.student.parentName}</div>
     <div class="info-line">Tel: ${invoice.student.parentPhone}</div>
     ${childrenLine}
     ` : `
-    <div class="student-name">${invoice.student.firstName} ${invoice.student.lastName}</div>
-    <div class="info-line">Prindi: ${invoice.student.parentName}</div>
+    <div class="student-name">${invoice.student.parentName}</div>
+    <div class="info-line">Nxënësi: ${invoice.student.firstName} ${invoice.student.lastName}</div>
     <div class="info-line">Tel: ${invoice.student.parentPhone}</div>
     ${invoice.student.address ? `<div class="info-line">${invoice.student.address}</div>` : ""}
     ${invoice.student.class ? `<div class="info-line">Klasa: ${invoice.student.class.name}</div>` : ""}
@@ -328,10 +328,10 @@ ${notesBlock}
     const blockTop = dividerY + 10;
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
-    doc.text(isFamilyInvoice ? "PRINDI:" : "NXËNËSI:", 20, blockTop);
+    doc.text("PRINDI:", 20, blockTop);
     doc.setTextColor(15, 23, 42);
     doc.setFontSize(12);
-    doc.text(isFamilyInvoice ? invoice.student.parentName : `${invoice.student.firstName} ${invoice.student.lastName}`, 20, blockTop + 7);
+    doc.text(invoice.student.parentName, 20, blockTop + 7);
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
     let studentBottom = blockTop + 7;
@@ -340,7 +340,7 @@ ${notesBlock}
       doc.text(`Fëmijët: ${distinctChildren.map(c => `${c.firstName} ${c.lastName}`).join(", ")}`, 20, blockTop + 19);
       studentBottom = blockTop + 19;
     } else {
-      doc.text(`Prindi: ${invoice.student.parentName}`, 20, blockTop + 13);
+      doc.text(`Nxënësi: ${invoice.student.firstName} ${invoice.student.lastName}`, 20, blockTop + 13);
       doc.text(`Tel: ${invoice.student.parentPhone}`, 20, blockTop + 19);
       studentBottom = blockTop + 19;
       if (invoice.student.address) { doc.text(`Adresa: ${invoice.student.address}`, 20, blockTop + 25); studentBottom = blockTop + 25; }
@@ -520,7 +520,7 @@ ${notesBlock}
         {/* Student info */}
         <div className="grid grid-cols-2 gap-6 mb-8 p-5 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
           <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{isFamilyInvoice ? "PRINDI" : "NXËNËSI"}</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">PRINDI</p>
             {isFamilyInvoice ? (
               <>
                 <p className="font-bold text-slate-900 dark:text-white text-lg">{invoice.student.parentName}</p>
@@ -531,10 +531,8 @@ ${notesBlock}
               </>
             ) : (
               <>
-                <p className="font-bold text-slate-900 dark:text-white text-lg">
-                  {invoice.student.firstName} {invoice.student.lastName}
-                </p>
-                <p className="text-sm text-slate-500">Prindi: {invoice.student.parentName}</p>
+                <p className="font-bold text-slate-900 dark:text-white text-lg">{invoice.student.parentName}</p>
+                <p className="text-sm text-slate-500">Nxënësi: {invoice.student.firstName} {invoice.student.lastName}</p>
                 <p className="text-sm text-slate-500">Tel: {invoice.student.parentPhone}</p>
                 {invoice.student.address && (
                   <p className="text-sm text-slate-500">{invoice.student.address}</p>
