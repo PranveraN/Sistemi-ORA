@@ -10,7 +10,7 @@ interface ParsedLine {
   destinationSchool: string;
 }
 
-interface MatchOption { id: number; firstName: string; lastName: string; className: string | null }
+interface MatchOption { id: number; firstName: string; lastName: string; className: string | null; status: string }
 interface MatchResult { index: number; firstName: string; lastName: string; matches: MatchOption[] }
 
 interface RowState {
@@ -53,7 +53,10 @@ export default function BulkMarkDepartedModal({ onClose, onSaved }: { onClose: (
     const r = await fetch("/api/students/match-list", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entries: lines.map(l => ({ firstName: l.firstName, lastName: l.lastName })) }),
+      // includeInactive: kjo listë duhet të gjejë edhe nxënës TASHMË joaktivë
+      // (jo vetëm aktivë) — p.sh. dikush i shënuar joaktiv më herët, jashtë
+      // periudhës aktuale, që admini dëshiron ta "ripozicionojë" saktë këtu.
+      body: JSON.stringify({ entries: lines.map(l => ({ firstName: l.firstName, lastName: l.lastName })), includeInactive: true }),
     });
     const data = await r.json();
     setSearching(false);
@@ -105,7 +108,7 @@ export default function BulkMarkDepartedModal({ onClose, onSaved }: { onClose: (
         <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-800">
           <div>
             <h3 className="font-bold text-slate-900 dark:text-white">Ngjit Listë — Shëno të Larguar</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Kërkon mes nxënësve ekzistues (aktivë) — statusi i tyre kalon në Joaktiv/i Larguar.</p>
+            <p className="text-xs text-slate-400 mt-0.5">Kërkon mes të gjithë nxënësve ekzistues (edhe tashmë joaktivë) — statusi/data e largimit rifreskohet.</p>
           </div>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
@@ -156,6 +159,9 @@ export default function BulkMarkDepartedModal({ onClose, onSaved }: { onClose: (
                       {row.matches.length === 1 && (
                         <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 shrink-0">
                           <CheckCircle2 className="w-3.5 h-3.5" /> U gjet — {row.matches[0].className ?? "pa klasë"}
+                          {row.matches[0].status === "INACTIVE" && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-medium">tashmë joaktiv</span>
+                          )}
                         </span>
                       )}
                       {row.matches.length === 0 && (
@@ -178,7 +184,7 @@ export default function BulkMarkDepartedModal({ onClose, onSaved }: { onClose: (
                       >
                         <option value="">— Anashkalo —</option>
                         {row.matches.map(m => (
-                          <option key={m.id} value={m.id}>{m.firstName} {m.lastName} — {m.className ?? "pa klasë"}</option>
+                          <option key={m.id} value={m.id}>{m.firstName} {m.lastName} — {m.className ?? "pa klasë"}{m.status === "INACTIVE" ? " (tashmë joaktiv)" : ""}</option>
                         ))}
                       </select>
                     )}
