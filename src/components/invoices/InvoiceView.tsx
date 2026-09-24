@@ -168,11 +168,10 @@ html, body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: 
 .invoice-num { font-size: 11px; font-family: monospace; color: #1d4ed8; margin-top: 2px; }
 .invoice-date { font-size: 9px; color: #94a3b8; margin-top: 2px; }
 .divider { border: none; border-top: 2px solid #e2e8f0; margin: 10px 0; }
-.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+.info-grid { display: grid; grid-template-columns: 1fr; gap: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
 .info-section .section-label { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #94a3b8; margin-bottom: 5px; }
 .student-name { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 3px; }
 .info-line { font-size: 9.5px; color: #475569; margin-top: 1px; }
-.status-badge { display: inline-block; padding: 2px 9px; border-radius: 4px; font-size: 9px; font-weight: 700; background: #dbeafe; color: #1e40af; margin-bottom: 4px; }
 table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
 thead tr { background: #1d4ed8; color: #fff; }
 th { padding: 7px 10px; font-size: 10px; font-weight: 600; text-align: left; }
@@ -224,12 +223,8 @@ tr:nth-child(even) td { background: #f8fafc; }
     <div class="info-line">Tel: ${invoice.student.parentPhone}</div>
     ${invoice.student.address ? `<div class="info-line">${invoice.student.address}</div>` : ""}
     ${invoice.student.class ? `<div class="info-line">Klasa: ${invoice.student.class.name}</div>` : ""}
-    `}
-  </div>
-  <div class="info-section">
-    <div class="section-label">STATUSI</div>
-    <div class="status-badge">${getStatusLabel(invoice.status)}</div>
     <div class="info-line">Nr. Personal: ${invoice.student.personalNumber}</div>
+    `}
   </div>
 </div>
 <table>
@@ -349,14 +344,10 @@ ${notesBlock}
         doc.text(`Klasa: ${invoice.student.class.name}`, 20, classY);
         studentBottom = classY;
       }
+      const personalY = studentBottom + 6;
+      doc.text(`Nr. Personal: ${invoice.student.personalNumber}`, 20, personalY);
+      studentBottom = personalY;
     }
-
-    // Status
-    doc.setFontSize(10);
-    doc.setTextColor(100, 116, 139);
-    doc.text("STATUSI:", 140, blockTop);
-    doc.setTextColor(15, 23, 42);
-    doc.text(getStatusLabel(invoice.status), 140, blockTop + 7);
 
     // Table
     const tableHead = isFamilyInvoice ? ["Nxënësi", "Përshkrimi", "Sasia", "Çmimi (€)", "Totali (€)"] : ["Përshkrimi", "Sasia", "Çmimi (€)", "Totali (€)"];
@@ -517,39 +508,33 @@ ${notesBlock}
           </div>
         </div>
 
-        {/* Student info */}
-        <div className="grid grid-cols-2 gap-6 mb-8 p-5 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">PRINDI</p>
-            {isFamilyInvoice ? (
-              <>
-                <p className="font-bold text-slate-900 dark:text-white text-lg">{invoice.student.parentName}</p>
-                <p className="text-sm text-slate-500">Tel: {invoice.student.parentPhone}</p>
-                <p className="text-sm text-slate-500 mt-1">
-                  Fëmijët: {distinctChildren.map(c => `${c.firstName} ${c.lastName}`).join(", ")}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="font-bold text-slate-900 dark:text-white text-lg">{invoice.student.parentName}</p>
-                <p className="text-sm text-slate-500">Nxënësi: {invoice.student.firstName} {invoice.student.lastName}</p>
-                <p className="text-sm text-slate-500">Tel: {invoice.student.parentPhone}</p>
-                {invoice.student.address && (
-                  <p className="text-sm text-slate-500">{invoice.student.address}</p>
-                )}
-                {invoice.student.class && (
-                  <p className="text-sm text-slate-500">Klasa: {invoice.student.class.name}</p>
-                )}
-              </>
-            )}
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">STATUSI</p>
-            <span className={`badge text-sm ${getStatusColor(invoice.status)}`}>
-              {getStatusLabel(invoice.status)}
-            </span>
-            <p className="text-xs text-slate-400 mt-2">Nr. Personal: {invoice.student.personalNumber}</p>
-          </div>
+        {/* Student info — statusi (Draft/Dërguar/Paguar) s'shfaqet këtu; është
+            gjendje e brendshme administrative, jo diçka që i takon dokumentit
+            që merr prindi (mbetet vetëm te titulli lart, për administratën). */}
+        <div className="mb-8 p-5 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">PRINDI</p>
+          {isFamilyInvoice ? (
+            <>
+              <p className="font-bold text-slate-900 dark:text-white text-lg">{invoice.student.parentName}</p>
+              <p className="text-sm text-slate-500">Tel: {invoice.student.parentPhone}</p>
+              <p className="text-sm text-slate-500 mt-1">
+                Fëmijët: {distinctChildren.map(c => `${c.firstName} ${c.lastName}`).join(", ")}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-bold text-slate-900 dark:text-white text-lg">{invoice.student.parentName}</p>
+              <p className="text-sm text-slate-500">Nxënësi: {invoice.student.firstName} {invoice.student.lastName}</p>
+              <p className="text-sm text-slate-500">Tel: {invoice.student.parentPhone}</p>
+              {invoice.student.address && (
+                <p className="text-sm text-slate-500">{invoice.student.address}</p>
+              )}
+              {invoice.student.class && (
+                <p className="text-sm text-slate-500">Klasa: {invoice.student.class.name}</p>
+              )}
+              <p className="text-sm text-slate-500">Nr. Personal: {invoice.student.personalNumber}</p>
+            </>
+          )}
         </div>
 
         {/* Items table */}
