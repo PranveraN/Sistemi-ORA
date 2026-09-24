@@ -107,7 +107,7 @@ export default function InvoiceEditForm({ invoice }: { invoice: Invoice }) {
               <div className="flex items-end gap-2">
                 <div className="flex-1">
                   <label className="form-label text-xs">Zbritje (%)</label>
-                  <input type="number" min={0} max={100} step="1" value={it.discountPct} onChange={e => updateItem(it.id, { discountPct: parseFloat(e.target.value) || 0 })} className="form-input text-sm" />
+                  <input type="number" min={0} max={100} step="any" value={it.discountPct} onChange={e => updateItem(it.id, { discountPct: parseFloat(e.target.value) || 0 })} className="form-input text-sm" />
                 </div>
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 pb-2 whitespace-nowrap">{formatCurrency(it.total)}</span>
               </div>

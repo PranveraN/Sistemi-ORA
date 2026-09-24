@@ -322,7 +322,7 @@ function InvoiceForm() {
                     {/* Zbritja % */}
                     <div className="col-span-1">
                       <input
-                        type="number" min="0" max="100" step="0.5"
+                        type="number" min="0" max="100" step="any"
                         value={item.discountPct || ""}
                         onChange={e => updateItem(i, "discountPct", parseFloat(e.target.value) || 0)}
                         className="form-input text-right"
