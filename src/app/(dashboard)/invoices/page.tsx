@@ -5,9 +5,10 @@ import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
 import { CALENDAR_YEARS } from "@/lib/academicYear";
-import { Plus, Eye, CheckCircle, Loader2, Download, ArrowRightLeft, Mail } from "lucide-react";
+import { Plus, Eye, CheckCircle, Loader2, Download, ArrowRightLeft, Mail, Search } from "lucide-react";
 import * as XLSX from "xlsx";
 import EmailInvoiceModal from "@/components/invoices/EmailInvoiceModal";
+import { normalizeSearch } from "@/lib/utils";
 
 interface Invoice {
   id: number;
@@ -36,14 +37,23 @@ export default function InvoicesPage() {
   const [status, setStatus] = useState("");
   const [month, setMonth] = useState(0);
   const [year, setYear] = useState(0);
+  const [search, setSearch] = useState("");
   const [markingPaid, setMarkingPaid] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const [converting, setConverting] = useState<number | null>(null);
   const [emailInvoice, setEmailInvoice] = useState<Invoice | null>(null);
 
+  // Vetëm nëse kërkimi është aktiv/joaktiv (jo teksti konkret) — përndryshe
+  // çdo shkronjë e shkruar do të rifetchonte pa nevojë (filtrimi vetë bëhet
+  // më poshtë, në JS, mbi listën tashmë të ngarkuar).
+  const hasSearch = search.trim().length > 0;
+
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ type, status, limit: "50" });
+    // Me kërkim aktiv, merret një grup shumë më i gjerë (jo vetëm 50 rreshtat e
+    // parë), pasi filtrimi sipas emrit/numrit bëhet më poshtë, mbi listën e
+    // plotë — përndryshe do të humbisnin përputhje jashtë faqes së parë.
+    const params = new URLSearchParams({ type, status, limit: hasSearch ? "5000" : "50" });
     if (month > 0) params.set("month", String(month));
     if (year  > 0) params.set("year",  String(year));
     const res = await fetch(`/api/invoices?${params}`);
@@ -55,9 +65,15 @@ export default function InvoicesPage() {
     setInvoices(sorted);
     setTotal(data.total);
     setLoading(false);
-  }, [type, status, month, year]);
+  }, [type, status, month, year, hasSearch]);
 
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
+
+  const filteredInvoices = invoices.filter(inv => {
+    const q = normalizeSearch(search);
+    if (!q) return true;
+    return normalizeSearch(`${inv.student.firstName} ${inv.student.lastName}`).includes(q) || normalizeSearch(inv.number).includes(q);
+  });
 
   async function exportExcel() {
     setExporting(true);
@@ -122,6 +138,10 @@ export default function InvoicesPage() {
 
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex gap-3 flex-wrap">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Kërko nxënësin ose numrin..." className="form-input pl-9 w-52" />
+            </div>
             <select value={type} onChange={e => setType(e.target.value)} className="form-input w-40">
               <option value="">Të gjitha llojet</option>
               <option value="INVOICE">Faturë</option>
@@ -160,9 +180,9 @@ export default function InvoicesPage() {
         <div className="grid grid-cols-4 gap-3">
           {[
             { label: "Gjithsej", value: total, color: "text-slate-900 dark:text-white" },
-            { label: "Draft", value: invoices.filter(i => i.status === "DRAFT").length, color: "text-slate-500" },
-            { label: "Paguar", value: invoices.filter(i => i.status === "PAID").length, color: "text-green-600" },
-            { label: "Vlera totale", value: formatCurrency(invoices.reduce((s, i) => s + i.total, 0)), color: "text-primary-600" },
+            { label: "Draft", value: filteredInvoices.filter(i => i.status === "DRAFT").length, color: "text-slate-500" },
+            { label: "Paguar", value: filteredInvoices.filter(i => i.status === "PAID").length, color: "text-green-600" },
+            { label: "Vlera totale", value: formatCurrency(filteredInvoices.reduce((s, i) => s + i.total, 0)), color: "text-primary-600" },
           ].map(s => (
             <div key={s.label} className="card p-4">
               <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
@@ -197,13 +217,13 @@ export default function InvoicesPage() {
                       </svg>
                     </td>
                   </tr>
-                ) : invoices.length === 0 ? (
+                ) : filteredInvoices.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="table-cell text-center py-12 text-slate-400">
                       Asnjë faturë nuk u gjet
                     </td>
                   </tr>
-                ) : invoices.map(inv => (
+                ) : filteredInvoices.map(inv => (
                   <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                     <td className="table-cell font-mono text-sm font-medium text-slate-900 dark:text-white">
                       {inv.number}
