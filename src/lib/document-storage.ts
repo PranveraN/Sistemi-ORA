@@ -19,7 +19,7 @@ const ALLOWED_EXT: Record<string, string> = {
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
 };
 
-export const MAX_DOCUMENT_SIZE = 15 * 1024 * 1024; // 15MB
+export const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB
 
 export function extensionForMimeType(mimeType: string): string | null {
   return ALLOWED_EXT[mimeType] ?? null;

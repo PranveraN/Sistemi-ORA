@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   if (!file) return NextResponse.json({ message: "Skedari mungon" }, { status: 400 });
   if (!title) return NextResponse.json({ message: "Titulli është i domosdoshëm" }, { status: 400 });
-  if (file.size > MAX_DOCUMENT_SIZE) return NextResponse.json({ message: "Skedari s'duhet të kalojë 15MB" }, { status: 400 });
+  if (file.size > MAX_DOCUMENT_SIZE) return NextResponse.json({ message: "Skedari s'duhet të kalojë 50MB" }, { status: 400 });
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());

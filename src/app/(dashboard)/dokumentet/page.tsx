@@ -184,7 +184,7 @@ function UploadDocumentModal({ categories, onClose, onSaved }: { categories: str
           <div>
             <label className="form-label">Skedari <span className="text-red-500">*</span></label>
             <input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp" className="form-input" onChange={e => setFile(e.target.files?.[0] ?? null)} />
-            <p className="text-xs text-slate-400 mt-1">PDF, Word ose foto — deri 15MB.</p>
+            <p className="text-xs text-slate-400 mt-1">PDF, Word ose foto — deri 50MB.</p>
           </div>
           {error && <p className="text-sm text-red-500">{error}</p>}
         </div>
