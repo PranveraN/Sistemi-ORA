@@ -8,7 +8,7 @@ import {
   CheckCircle, Clock, FileText, History, Receipt,
   TrendingDown, UserPlus, CalendarClock, Wallet,
   GraduationCap, Landmark, Wallet as WalletIcon,
-  ArrowRightLeft, ChevronRight,
+  ArrowRightLeft, ChevronRight, MessageSquare, Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import OfertaModal from "@/components/OfertaModal";
@@ -17,6 +17,7 @@ import QuickActions from "@/components/dashboard/QuickActions";
 import SchoolCalendar from "@/components/dashboard/SchoolCalendar";
 import FinancialOverview from "@/components/dashboard/FinancialOverview";
 import YearPicker from "@/components/dashboard/YearPicker";
+import TuitionGroupModal, { type TuitionGroupRow } from "@/components/dashboard/TuitionGroupModal";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -85,6 +86,9 @@ export default function DashboardPage() {
   const [showTimiInvest, setShowTimiInvest] = useState(false);
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
   const [mainTab, setMainTab] = useState<"permbledhje" | "financat">("permbledhje");
+  const [openGroup, setOpenGroup] = useState<"expected" | "paid" | "debt" | "timiInvest" | null>(null);
+  const [groupsData, setGroupsData] = useState<Record<string, TuitionGroupRow[]> | null>(null);
+  const [groupsLoading, setGroupsLoading] = useState(false);
 
   const years = yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
 
@@ -103,6 +107,15 @@ export default function DashboardPage() {
   }, [year, yearType]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  async function openTuitionGroup(key: "expected" | "paid" | "debt" | "timiInvest") {
+    setOpenGroup(key);
+    setGroupsLoading(true);
+    const r = await fetch(`/api/dashboard/tuition-groups?year=${year}&yearType=${yearType}`);
+    const d = await r.json();
+    setGroupsData(d);
+    setGroupsLoading(false);
+  }
   useEffect(() => {
     fetch("/api/settings")
       .then(r => r.json())
@@ -303,25 +316,29 @@ export default function DashboardPage() {
             <h2 className="section-title">Pasqyrë Shkollimi — {data.period.label}</h2>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60">
+            <button onClick={() => openTuitionGroup("expected")} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-left relative hover:ring-2 hover:ring-slate-300 dark:hover:ring-slate-600 transition-all">
+              <MessageSquare className="w-3.5 h-3.5 text-slate-300 absolute top-2.5 right-2.5" />
               <p className="text-xs text-slate-400 mb-0.5">Pritet gjithsej</p>
               <p className="text-lg font-bold text-slate-800 dark:text-white">{formatCurrency(data.tuitionOverview.expected)}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-green-50 dark:bg-green-900/20">
+            </button>
+            <button onClick={() => openTuitionGroup("paid")} className="p-3 rounded-xl bg-green-50 dark:bg-green-900/20 text-left relative hover:ring-2 hover:ring-green-300 dark:hover:ring-green-800 transition-all">
+              <MessageSquare className="w-3.5 h-3.5 text-green-300 absolute top-2.5 right-2.5" />
               <p className="text-xs text-green-600 dark:text-green-400 mb-0.5">Paguar</p>
               <p className="text-lg font-bold text-green-700 dark:text-green-300">{formatCurrency(data.tuitionOverview.paid)}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20">
+            </button>
+            <button onClick={() => openTuitionGroup("debt")} className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-left relative hover:ring-2 hover:ring-red-300 dark:hover:ring-red-800 transition-all">
+              <MessageSquare className="w-3.5 h-3.5 text-red-300 absolute top-2.5 right-2.5" />
               <p className="text-xs text-red-600 dark:text-red-400 mb-0.5">Borxh</p>
               <p className="text-lg font-bold text-red-700 dark:text-red-300">{formatCurrency(data.tuitionOverview.debt)}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20">
+            </button>
+            <button onClick={() => openTuitionGroup("timiInvest")} className="p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 text-left relative hover:ring-2 hover:ring-violet-300 dark:hover:ring-violet-800 transition-all">
+              <MessageSquare className="w-3.5 h-3.5 text-violet-300 absolute top-2.5 right-2.5" />
               <p className="text-xs text-violet-600 dark:text-violet-400 mb-0.5 flex items-center gap-1">
                 <Landmark className="w-3 h-3" /> Përmes TIMI Invest
               </p>
               <p className="text-lg font-bold text-violet-700 dark:text-violet-300">{formatCurrency(data.tuitionOverview.timiInvestExpected)}</p>
               <p className="text-[11px] text-violet-500 dark:text-violet-400 mt-0.5">{data.tuitionOverview.timiInvestCount} nxënës</p>
-            </div>
+            </button>
             <div className="p-3 rounded-xl bg-orange-50 dark:bg-orange-900/20">
               <p className="text-xs text-orange-600 dark:text-orange-400 mb-0.5 flex items-center gap-1">
                 <WalletIcon className="w-3 h-3" /> Shpenzime (faturat)
@@ -545,6 +562,23 @@ export default function DashboardPage() {
 
       {showOferta && <OfertaModal initialView={ofertaView} onClose={() => setShowOferta(false)} />}
       {showTimiInvest && <TimiInvestModal onClose={() => setShowTimiInvest(false)} />}
+      {openGroup && (
+        groupsLoading || !groupsData ? (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-white animate-spin" />
+          </div>
+        ) : (
+          <TuitionGroupModal
+            title={
+              openGroup === "expected" ? "Pritet Gjithsej" :
+              openGroup === "paid" ? "Paguar" :
+              openGroup === "debt" ? "Borxh" : "Përmes TIMI Invest (E Kryer)"
+            }
+            rows={groupsData[openGroup] ?? []}
+            onClose={() => setOpenGroup(null)}
+          />
+        )
+      )}
     </>
   );
 }
