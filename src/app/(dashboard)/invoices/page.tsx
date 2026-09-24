@@ -5,7 +5,7 @@ import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
 import { CALENDAR_YEARS } from "@/lib/academicYear";
-import { Plus, Eye, CheckCircle, Loader2, Download, ArrowRightLeft, Mail, Search } from "lucide-react";
+import { Plus, Eye, CheckCircle, Loader2, Download, ArrowRightLeft, Mail, Search, Pencil } from "lucide-react";
 import * as XLSX from "xlsx";
 import EmailInvoiceModal from "@/components/invoices/EmailInvoiceModal";
 import { normalizeSearch } from "@/lib/utils";
@@ -289,8 +289,18 @@ export default function InvoicesPage() {
                             <Mail className="w-4 h-4" />
                           </button>
                         )}
+                        {inv.status !== "PAID" && inv.status !== "CANCELLED" && (
+                          <Link
+                            href={`/invoices/${inv.id}/edit`}
+                            title="Modifiko (çmimi, zbritja, emri i prindit)"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors inline-flex"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Link>
+                        )}
                         <Link
                           href={`/invoices/${inv.id}`}
+                          title="Shiko"
                           className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors inline-flex"
                         >
                           <Eye className="w-4 h-4" />

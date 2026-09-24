@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft, Printer, Download, Send, ArrowRightLeft, Mail } from "lucide-react";
+import { ChevronLeft, Printer, Download, Send, ArrowRightLeft, Mail, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
@@ -463,6 +463,12 @@ ${notesBlock}
             >
               Shëno si Paguar
             </button>
+          )}
+          {invoice.status !== "PAID" && invoice.status !== "CANCELLED" && (
+            <Link href={`/invoices/${invoice.id}/edit`} className="btn-secondary">
+              <Pencil className="w-4 h-4" />
+              Modifiko
+            </Link>
           )}
           {invoice.status !== "PAID" && invoice.status !== "CANCELLED" && (
             <button onClick={() => setShowEmailModal(true)} className="btn-secondary" title={parentEmail ? `Dërgo te ${parentEmail}` : "S'ka email të regjistruar për prindin"}>
