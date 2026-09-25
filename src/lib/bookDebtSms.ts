@@ -1,6 +1,6 @@
 // Ndërton tekstin e SMS-së së kujtesës së borxhit për një shitje librash —
-// përdoret nga rruga e vetme (send-sms) dhe ajo me shumicë (bulk-send-sms),
-// që mesazhi të mbetet identik në të dy rastet.
+// përdoret nga rruga e dërgimit individual (send-sms/route.ts). Dërgimi me
+// shumicë përdor /api/sms/send me mesazh të shkruar manualisht nga admini.
 export function buildBookDebtMessage(
   studentName: string,
   balance: number,
