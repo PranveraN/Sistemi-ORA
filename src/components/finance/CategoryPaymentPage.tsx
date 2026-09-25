@@ -66,7 +66,8 @@ interface StudentRow {
   payment: Payment | null;        // aggregated (for table stats)
   installments: Payment[];        // raw (0, 1, or 2 records)
   timiInvest: { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number } | null;
-  oldDebt: number;                // borxh i importuar nga një vit i mëparshëm, ende i pashlyer
+  // borxh i importuar nga një vit i mëparshëm, ende i pashlyer (null = s'ka)
+  oldDebt: { id: number; finalAmount: number; paidAmount: number; balance: number; note: string | null } | null;
 }
 
 interface Stats {
@@ -215,6 +216,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [colBorxhi, setColBorxhi] = useState("");
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
   const [oldDebtModalOpen, setOldDebtModalOpen] = useState(false);
+  const [oldDebtEditTarget, setOldDebtEditTarget] = useState<StudentRow | null>(null);
   const [familyModalOpen, setFamilyModalOpen] = useState(false);
   const [familyReceiptPrintId, setFamilyReceiptPrintId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -1024,10 +1026,15 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                                   </span>
                                 );
                               })()}
-                              {s.oldDebt > 0 && (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-semibold" title="Borxh i pashlyer nga një vit i mëparshëm">
-                                  ⚠ Borxh i vjetër: {formatCurrency(s.oldDebt)}
-                                </span>
+                              {s.oldDebt && (
+                                <button
+                                  type="button"
+                                  onClick={() => setOldDebtEditTarget(s)}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-semibold hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                                  title="Modifiko ose fshi borxhin e vjetër"
+                                >
+                                  ⚠ Borxh i vjetër: {formatCurrency(s.oldDebt.balance)}
+                                </button>
                               )}
                             </div>
                             {hasMonthly && (
@@ -1322,6 +1329,15 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
         />
       )}
 
+      {oldDebtEditTarget && oldDebtEditTarget.oldDebt && (
+        <OldDebtEditModal
+          student={oldDebtEditTarget}
+          oldDebt={oldDebtEditTarget.oldDebt}
+          onClose={() => setOldDebtEditTarget(null)}
+          onSaved={() => { setOldDebtEditTarget(null); fetchData(); }}
+        />
+      )}
+
       {familyModalOpen && category && (
         <FamilyPaymentModal
           categoryId={category.id}
@@ -1356,6 +1372,112 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
         />
       )}
     </>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/*  Old Debt Edit Modal                                         */
+/* ─────────────────────────────────────────────────────────── */
+function OldDebtEditModal({
+  student, oldDebt, onClose, onSaved,
+}: {
+  student: StudentRow;
+  oldDebt: { id: number; finalAmount: number; paidAmount: number; balance: number; note: string | null };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [amount, setAmount] = useState(String(oldDebt.finalAmount));
+  const [note, setNote] = useState(oldDebt.note ?? "");
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    const res = await fetch(`/api/category-payments/old-debt/${oldDebt.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: parseFloat(amount), note }),
+    });
+    setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setError(d.error || "Ruajtja dështoi.");
+      return;
+    }
+    onSaved();
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Fshi borxhin e vjetër të ${student.firstName} ${student.lastName}? Ky veprim s'kthehet mbrapsht.`)) return;
+    setDeleting(true);
+    setError("");
+    const res = await fetch(`/api/category-payments/old-debt/${oldDebt.id}`, { method: "DELETE" });
+    setDeleting(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setError(d.error || "Fshirja dështoi.");
+      return;
+    }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-white">Borxhi i Vjetër</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{student.firstName} {student.lastName}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {oldDebt.paidAmount > 0 && (
+            <p className="text-xs text-slate-400">
+              Tashmë ka paguar <span className="font-semibold text-slate-600 dark:text-slate-300">{formatCurrency(oldDebt.paidAmount)}</span> kundrejt këtij borxhi.
+            </p>
+          )}
+          <div>
+            <label className="form-label">Shuma e Borxhit (€)</label>
+            <input
+              type="number" value={amount} onChange={e => setAmount(e.target.value)}
+              className="form-input" min="0" step="any" autoFocus
+            />
+          </div>
+          <div>
+            <label className="form-label">Shënim</label>
+            <input
+              type="text" value={note} onChange={e => setNote(e.target.value)}
+              className="form-input" placeholder="Opsionale..."
+            />
+          </div>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+
+        <div className="flex gap-2 p-5 pt-0">
+          <button
+            onClick={handleDelete}
+            disabled={deleting || saving}
+            className="btn-secondary text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+            title="Fshi krejtësisht këtë borxh të vjetër"
+          >
+            {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            Fshi
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || deleting || !amount}
+            className="btn-primary flex-1 justify-center"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? "Duke ruajtur..." : "Ruaj"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

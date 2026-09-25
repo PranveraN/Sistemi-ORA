@@ -136,11 +136,11 @@ export async function GET(req: NextRequest) {
       `SELECT id, inactiveDate FROM Student WHERE status = 'INACTIVE'`
     ),
     // Borxhi i vjetër (i importuar) — pavarësisht filtrit të vitit të zgjedhur në faqe,
-    // që të mbetet dukshëm derisa të shlyhet plotësisht.
-    prisma.payment.groupBy({
-      by: ["studentId"],
+    // që të mbetet dukshëm derisa të shlyhet plotësisht. Ruhet `id`-ja e vetë pagesës
+    // (jo vetëm shuma) që të mund të modifikohet/fshihet direkt nga badge-i.
+    prisma.payment.findMany({
       where: { categoryId: category.id, description: "BORXH_VJETER", balance: { gt: 0 } },
-      _sum: { balance: true },
+      select: { id: true, studentId: true, finalAmount: true, paidAmount: true, balance: true, note: true },
     }),
     // Shuma e dorëzuar (Expense.type="HANDOVER") — përdor SAKTËSISHT të njëjtin filtër
     // muaj/vit (barazi e thjeshtë) si /api/expenses, që numri këtu të përputhet gjithmonë
@@ -155,7 +155,9 @@ export async function GET(req: NextRequest) {
       _sum: { amount: true },
     }),
   ]);
-  const oldDebtMap = new Map(oldDebtRows.map(r => [r.studentId, r._sum.balance ?? 0]));
+  const oldDebtMap = new Map(oldDebtRows.map(r => [r.studentId, {
+    id: r.id, finalAmount: r.finalAmount, paidAmount: r.paidAmount, balance: r.balance, note: r.note,
+  }]));
   const handedOver = handoverAgg._sum.amount ?? 0;
 
   // Harta e TIMI Invest (sipas studentId dhe emrit, si rezervë) — përdoret për
@@ -223,7 +225,7 @@ export async function GET(req: NextRequest) {
       payment:      aggregatePayment(s.payments as PrismaPayment[]),
       installments: s.payments,
       timiInvest:   tiDirect ?? tiName ?? null,
-      oldDebt:      oldDebtMap.get(s.id) ?? 0,
+      oldDebt:      oldDebtMap.get(s.id) ?? null,
     };
   };
 
