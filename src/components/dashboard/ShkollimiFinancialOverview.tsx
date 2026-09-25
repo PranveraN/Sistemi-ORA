@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/utils";
 import {
   Wallet, TrendingUp, TrendingDown, Landmark, AlertCircle,
-  AlertTriangle, Loader2, MessageSquare,
+  AlertTriangle, Loader2, MessageSquare, PieChart as PieChartIcon,
+  BarChart3, Receipt, ListChecks, Coins,
 } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import type { YearType } from "@/lib/academicYear";
@@ -23,6 +24,7 @@ interface Overview {
 }
 
 const DONUT_COLORS = { full: "#10b981", partial: "#f59e0b", tiPartial: "#3b82f6", tiUnpaid: "#8b5cf6", zero: "#a855f7" };
+const BAR_COLORS = { Pritur: "#64748b", Paguar: "#10b981", Shpenzime: "#f97316", Borxh: "#ef4444" };
 
 export default function ShkollimiFinancialOverview({ year, yearType }: { year: number; yearType: YearType }) {
   const [data, setData] = useState<Overview | null>(null);
@@ -70,8 +72,10 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Landmark className="w-4.5 h-4.5 text-primary-500" />
+      <div className="flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-violet-600 flex items-center justify-center shadow-sm shadow-primary-500/30">
+          <Landmark className="w-4 h-4 text-white" />
+        </div>
         <h2 className="section-title">Pasqyra Financiare e Shkollimit — {data.period.label}</h2>
       </div>
 
@@ -87,7 +91,7 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Donut */}
         <div className="card p-4">
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Statusi i Pagesave të Nxënësve</p>
+          <SectionTitle icon={PieChartIcon} color="#8b5cf6" label="Statusi i Pagesave të Nxënësve" />
           <div className="flex items-center gap-4">
             <div className="w-32 h-32 shrink-0 relative">
               <ResponsiveContainer width="100%" height="100%">
@@ -103,11 +107,13 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
                 <p className="text-[10px] text-slate-400">nxënës</p>
               </div>
             </div>
-            <div className="space-y-1.5 text-xs min-w-0">
+            <div className="space-y-2 text-xs min-w-0 flex-1">
               {donutData.map(d => (
                 <div key={d.key} className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
-                  <span className="text-slate-500 dark:text-slate-400 truncate">{d.label} ({d.value})</span>
+                  <span className="text-slate-500 dark:text-slate-400 truncate flex-1">{d.label}</span>
+                  <span className="font-semibold shrink-0" style={{ color: d.color }}>{d.value}</span>
+                  <span className="text-slate-300 dark:text-slate-600 shrink-0 w-9 text-right">{kpi.totalStudents > 0 ? Math.round((d.value / kpi.totalStudents) * 100) : 0}%</span>
                 </div>
               ))}
             </div>
@@ -116,27 +122,29 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
 
         {/* Bar chart */}
         <div className="card p-4">
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Krahasimi i Shumave</p>
+          <SectionTitle icon={BarChart3} color="#3b82f6" label="Krahasimi i Shumave" />
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={barData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ background: "#1e293b", border: "none", borderRadius: "8px", color: "#f8fafc", fontSize: "12px" }} />
-              <Bar dataKey="total" fill="#7c3aed" radius={[6, 6, 0, 0]} />
+              <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ background: "#1e293b", border: "none", borderRadius: "8px", color: "#f8fafc", fontSize: "12px" }} cursor={{ fill: "#f8fafc" }} />
+              <Bar dataKey="total" radius={[6, 6, 0, 0]}>
+                {barData.map(d => <Cell key={d.name} fill={BAR_COLORS[d.name as keyof typeof BAR_COLORS]} />)}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         {/* Debt details */}
         <div className="card p-4">
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Detajet e Borxheve</p>
-          <div className="space-y-1.5">
-            <DebtRow label="Borxh i Plotë" bucket={b.zero} tone="text-red-600" onOpen={() => setOpenBucket({ title: "Borxh i Plotë (Pa Pagesë)", rows: b.zero.students })} />
-            <DebtRow label="Pagesë e Pjesshme" bucket={b.partial} tone="text-amber-600" onOpen={() => setOpenBucket({ title: "Pagesë e Pjesshme", rows: b.partial.students })} />
-            <DebtRow label="TIMI Invest — Pa Paguar" bucket={b.tiUnpaid} tone="text-violet-600" onOpen={() => setOpenBucket({ title: "TIMI Invest — Pa Paguar", rows: b.tiUnpaid.students })} />
-            <DebtRow label="TIMI Invest — Pjesërisht" bucket={b.tiPartial} tone="text-blue-600" onOpen={() => setOpenBucket({ title: "TIMI Invest — Paguar Pjesërisht", rows: b.tiPartial.students })} />
-            <div className="flex items-center justify-between pt-2 mt-1 border-t border-slate-100 dark:border-slate-700">
+          <SectionTitle icon={AlertCircle} color="#ef4444" label="Detajet e Borxheve" />
+          <div className="space-y-1">
+            <DebtRow label="Borxh i Plotë" bucket={b.zero} color={DONUT_COLORS.zero} onOpen={() => setOpenBucket({ title: "Borxh i Plotë (Pa Pagesë)", rows: b.zero.students })} />
+            <DebtRow label="Pagesë e Pjesshme" bucket={b.partial} color={DONUT_COLORS.partial} onOpen={() => setOpenBucket({ title: "Pagesë e Pjesshme", rows: b.partial.students })} />
+            <DebtRow label="TIMI Invest — Pa Paguar" bucket={b.tiUnpaid} color={DONUT_COLORS.tiUnpaid} onOpen={() => setOpenBucket({ title: "TIMI Invest — Pa Paguar", rows: b.tiUnpaid.students })} />
+            <DebtRow label="TIMI Invest — Pjesërisht" bucket={b.tiPartial} color={DONUT_COLORS.tiPartial} onOpen={() => setOpenBucket({ title: "TIMI Invest — Paguar Pjesërisht", rows: b.tiPartial.students })} />
+            <div className="flex items-center justify-between pt-2.5 mt-1.5 border-t-2 border-red-100 dark:border-red-900/40">
               <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Total Borxh i Mbetur</span>
               <span className="text-sm font-bold text-red-600">{formatCurrency(kpi.debt)}</span>
             </div>
@@ -147,11 +155,11 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Price groups table */}
         <div className="card p-4 overflow-hidden">
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Të Ardhurat nga Shkollimi (sipas çmimit)</p>
+          <SectionTitle icon={Coins} color="#64748b" label="Të Ardhurat nga Shkollimi (sipas çmimit)" />
           <div className="max-h-64 overflow-y-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs text-slate-400 uppercase">
+                <tr className="text-left text-xs text-slate-400 uppercase bg-slate-50 dark:bg-slate-800/60">
                   <th className="pb-1.5 font-semibold">Çmimi</th>
                   <th className="pb-1.5 font-semibold text-right">Nr. Nxënësve</th>
                   <th className="pb-1.5 font-semibold text-right">Total</th>
@@ -179,7 +187,7 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
 
         {/* Income statement */}
         <div className="card p-4">
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Pasqyra e të Ardhurave dhe Shpenzimeve</p>
+          <SectionTitle icon={Receipt} color="#10b981" label="Pasqyra e të Ardhurave dhe Shpenzimeve" />
           <div className="text-sm space-y-1">
             <p className="text-xs font-bold text-green-600 uppercase tracking-wide mt-1">Të Ardhurat</p>
             <Line label="Të ardhura nga Shkollimi (të paguara)" value={incomeStatement.tuitionIncome} />
@@ -199,10 +207,10 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
 
         {/* Pagesat dhe Statusi */}
         <div className="card p-4 overflow-hidden">
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Pagesat dhe Statusi</p>
+          <SectionTitle icon={ListChecks} color="#f59e0b" label="Pagesat dhe Statusi" />
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-slate-400 uppercase">
+              <tr className="text-left text-xs text-slate-400 uppercase bg-slate-50 dark:bg-slate-800/60">
                 <th className="pb-1.5 font-semibold">Statusi</th>
                 <th className="pb-1.5 font-semibold text-right">Nr. Nxënësve</th>
                 <th className="pb-1.5 font-semibold text-right">Shuma</th>
@@ -247,19 +255,30 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
 
 function KpiCard({ icon: Icon, tone, label, value, sub }: { icon: React.ComponentType<{ className?: string }>; tone: "slate" | "green" | "orange" | "violet" | "red"; label: string; value: number; sub?: string }) {
   const toneMap = {
-    slate: { bg: "bg-slate-50 dark:bg-slate-800/60", icon: "text-slate-400", text: "text-slate-800 dark:text-white" },
-    green: { bg: "bg-green-50 dark:bg-green-900/20", icon: "text-green-500", text: "text-green-700 dark:text-green-300" },
-    orange: { bg: "bg-orange-50 dark:bg-orange-900/20", icon: "text-orange-500", text: "text-orange-700 dark:text-orange-300" },
-    violet: { bg: "bg-violet-50 dark:bg-violet-900/20", icon: "text-violet-500", text: "text-violet-700 dark:text-violet-300" },
-    red: { bg: "bg-red-50 dark:bg-red-900/20", icon: "text-red-500", text: "text-red-700 dark:text-red-300" },
+    slate: { bg: "bg-slate-50 dark:bg-slate-800/60", badge: "bg-slate-500", text: "text-slate-800 dark:text-white", ring: "ring-slate-200 dark:ring-slate-700" },
+    green: { bg: "bg-green-50 dark:bg-green-900/20", badge: "bg-green-500", text: "text-green-700 dark:text-green-300", ring: "ring-green-200 dark:ring-green-800" },
+    orange: { bg: "bg-orange-50 dark:bg-orange-900/20", badge: "bg-orange-500", text: "text-orange-700 dark:text-orange-300", ring: "ring-orange-200 dark:ring-orange-800" },
+    violet: { bg: "bg-violet-50 dark:bg-violet-900/20", badge: "bg-violet-500", text: "text-violet-700 dark:text-violet-300", ring: "ring-violet-200 dark:ring-violet-800" },
+    red: { bg: "bg-red-50 dark:bg-red-900/20", badge: "bg-red-500", text: "text-red-700 dark:text-red-300", ring: "ring-red-200 dark:ring-red-800" },
   }[tone];
   return (
-    <div className={`p-3.5 rounded-xl ${toneMap.bg}`}>
-      <Icon className={`w-4 h-4 ${toneMap.icon} mb-1.5`} />
+    <div className={`p-3.5 rounded-xl ${toneMap.bg} ring-1 ${toneMap.ring} transition-transform hover:-translate-y-0.5`}>
+      <div className={`w-8 h-8 rounded-full ${toneMap.badge} flex items-center justify-center shadow-sm mb-2`}>
+        <Icon className="w-4 h-4 text-white" />
+      </div>
       <p className="text-xs text-slate-400 mb-0.5">{label}</p>
       <p className={`text-lg font-bold ${toneMap.text}`}>{formatCurrency(value)}</p>
       {sub && <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>}
     </div>
+  );
+}
+
+function SectionTitle({ icon: Icon, color, label }: { icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string; label: string }) {
+  return (
+    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-1.5">
+      <Icon className="w-4 h-4 shrink-0" style={{ color }} />
+      {label}
+    </p>
   );
 }
 
@@ -277,15 +296,19 @@ function StatusRow({ color, label, bucket }: { color: string; label: string; buc
   );
 }
 
-function DebtRow({ label, bucket, tone, onOpen }: { label: string; bucket: Bucket; tone: string; onOpen: () => void }) {
+function DebtRow({ label, bucket, color, onOpen }: { label: string; bucket: Bucket; color: string; onOpen: () => void }) {
   if (bucket.count === 0) return null;
   return (
-    <button onClick={onOpen} className="w-full flex items-center justify-between gap-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg px-1.5 py-1 -mx-1.5 transition-colors">
-      <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-        <MessageSquare className="w-3 h-3 text-slate-300 shrink-0" />
-        {label} <span className="text-slate-400">({bucket.count})</span>
+    <button onClick={onOpen} className="w-full flex items-center justify-between gap-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg px-1.5 py-1.5 -mx-1.5 transition-colors group">
+      <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 min-w-0">
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+        <span className="truncate">{label}</span>
+        <span className="text-slate-400 shrink-0">({bucket.count})</span>
       </span>
-      <span className={`font-semibold ${tone}`}>{formatCurrency(bucket.amount)}</span>
+      <span className="flex items-center gap-1.5 shrink-0">
+        <span className="font-semibold" style={{ color }}>{formatCurrency(bucket.amount)}</span>
+        <MessageSquare className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </span>
     </button>
   );
 }
