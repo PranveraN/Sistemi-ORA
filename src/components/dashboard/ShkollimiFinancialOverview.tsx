@@ -64,11 +64,22 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
     { name: "Borxh", total: kpi.debt },
   ];
 
-  const anomalyLines: string[] = [];
-  if (anomalies.noPaymentNoTi.count > 0) anomalyLines.push(`${anomalies.noPaymentNoTi.count} nxënës nuk kanë asnjë pagesë dhe s'janë të regjistruar me TIMI Invest.`);
-  if (anomalies.missingPlan.count > 0) anomalyLines.push(`${anomalies.missingPlan.count} nxënës kanë pagesë(a) të regjistruar, por s'kanë "Mënyrë Pagese" të zgjedhur — rregulloni derisa të mos ketë mospërputhje.`);
-  if (anomalies.overpaid.count > 0) anomalyLines.push(`${anomalies.overpaid.count} nxënës kanë paguar më shumë se çmimi i caktuar.`);
-  if (anomalies.handoverGap > 0.5) anomalyLines.push(`Shuma e dorëzuar (${formatCurrency(kpi.handedOver)}) është më e vogël se totali i paguar (${formatCurrency(kpi.paid)}) — mungojnë ${formatCurrency(anomalies.handoverGap)}.`);
+  const anomalyItems: { text: string; onOpen?: () => void }[] = [];
+  if (anomalies.noPaymentNoTi.count > 0) anomalyItems.push({
+    text: `${anomalies.noPaymentNoTi.count} nxënës nuk kanë asnjë pagesë dhe s'janë të regjistruar me TIMI Invest.`,
+    onOpen: () => setOpenBucket({ title: "Pa Asnjë Pagesë dhe Pa TIMI Invest", rows: anomalies.noPaymentNoTi.students }),
+  });
+  if (anomalies.missingPlan.count > 0) anomalyItems.push({
+    text: `${anomalies.missingPlan.count} nxënës kanë pagesë(a) të regjistruar, por s'kanë "Mënyrë Pagese" të zgjedhur — rregulloni derisa të mos ketë mospërputhje.`,
+    onOpen: () => setOpenBucket({ title: "Pa Mënyrë Pagese të Zgjedhur", rows: anomalies.missingPlan.students }),
+  });
+  if (anomalies.overpaid.count > 0) anomalyItems.push({
+    text: `${anomalies.overpaid.count} nxënës kanë paguar më shumë se çmimi i caktuar.`,
+    onOpen: () => setOpenBucket({ title: "Kanë Paguar Më Shumë se Çmimi", rows: anomalies.overpaid.students }),
+  });
+  if (anomalies.handoverGap > 0.5) anomalyItems.push({
+    text: `Shuma e dorëzuar (${formatCurrency(kpi.handedOver)}) është më e vogël se totali i paguar (${formatCurrency(kpi.paid)}) — mungojnë ${formatCurrency(anomalies.handoverGap)}.`,
+  });
 
   return (
     <div className="space-y-4">
@@ -235,13 +246,25 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
       </div>
 
       {/* Anomalies */}
-      {anomalyLines.length > 0 && (
+      {anomalyItems.length > 0 && (
         <div className="card p-4 bg-amber-50/60 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800">
           <p className="text-sm font-bold text-amber-700 dark:text-amber-400 mb-2 flex items-center gap-1.5">
             <AlertTriangle className="w-4 h-4" /> Vërejtje dhe Kontrolle
           </p>
           <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-1 list-disc list-inside">
-            {anomalyLines.map((l, i) => <li key={i}>{l}</li>)}
+            {anomalyItems.map((item, i) => (
+              <li key={i}>
+                {item.onOpen ? (
+                  <button
+                    type="button"
+                    onClick={item.onOpen}
+                    className="text-left hover:underline underline-offset-2 decoration-amber-500"
+                  >
+                    {item.text}
+                  </button>
+                ) : item.text}
+              </li>
+            ))}
           </ul>
         </div>
       )}
