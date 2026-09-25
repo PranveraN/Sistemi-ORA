@@ -58,6 +58,7 @@ export default function StudentEnrichmentModal({ preselected, onClose, onSaved }
   const [admissionScore, setAdmissionScore] = useState(preselected?.admissionScore != null ? String(preselected.admissionScore) : "");
   const [studentRating, setStudentRating] = useState(preselected?.studentRating ?? "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   // Historik/shënime manuale (StudentNote) — ditar i thjeshtë, vetëm-shtim.
   const [notes, setNotes] = useState<StudentNoteRow[]>([]);
@@ -111,23 +112,31 @@ export default function StudentEnrichmentModal({ preselected, onClose, onSaved }
   async function handleSave() {
     if (!student) return;
     setSaving(true);
-    await fetch(`/api/students/${student.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        originCountry: originCountry || null,
-        previousSchool: previousSchool || null,
-        transferResult: transferResult || null,
-        admissionScore: admissionScore === "" ? null : Number(admissionScore),
-        studentRating: studentRating || null,
-        // Vetëm në "Shto" (jo Edito) — kjo është vetë veprimi që e bën nxënësin
-        // EKZISTUES të shfaqet te "Nxënës të Rinj" për periudhën e zgjedhur.
-        // Asnjë nxënës i ri s'krijohet — vetëm data e atij ekzistues përditësohet.
-        ...(preselected ? {} : { enrollDate }),
-      }),
-    });
-    setSaving(false);
-    onSaved();
+    setError("");
+    try {
+      const r = await fetch(`/api/students/${student.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          originCountry: originCountry || null,
+          previousSchool: previousSchool || null,
+          transferResult: transferResult || null,
+          admissionScore: admissionScore === "" ? null : Number(admissionScore),
+          studentRating: studentRating || null,
+          // Vetëm në "Shto" (jo Edito) — kjo është vetë veprimi që e bën nxënësin
+          // EKZISTUES të shfaqet te "Nxënës të Rinj" për periudhën e zgjedhur.
+          // Asnjë nxënës i ri s'krijohet — vetëm data e atij ekzistues përditësohet.
+          ...(preselected ? {} : { enrollDate }),
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      setSaving(false);
+      if (!r.ok) { setError(d.message || `Ruajtja dështoi (gabim ${r.status})`); return; }
+      onSaved();
+    } catch {
+      setSaving(false);
+      setError("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   return (
@@ -241,7 +250,8 @@ export default function StudentEnrichmentModal({ preselected, onClose, onSaved }
           )}
         </div>
 
-        <div className="flex gap-2 p-5 pt-0">
+        {error && <p className="text-sm text-red-500 px-5">{error}</p>}
+        <div className="flex gap-2 p-5 pt-2">
           <button onClick={onClose} className="btn-secondary"><X className="w-4 h-4" />Anulo</button>
           <button onClick={handleSave} disabled={!student || saving} className="btn-primary flex-1">
             <Save className="w-4 h-4" />

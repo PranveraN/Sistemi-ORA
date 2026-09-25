@@ -130,10 +130,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // "+ Shto Regjistrim" (modaliteti kërkim, jo Edito) te karta "Nxënës të Rinj" —
   // vendos datën që e bën këtë nxënës EKZISTUES të shfaqet si i ri për periudhën
   // e zgjedhur. Asnjë nxënës i ri s'krijohet këtu, thjesht përditësohet data e
-  // atij ekzistues (shih StudentEnrichmentModal.tsx).
+  // atij ekzistues (shih StudentEnrichmentModal.tsx). hideFromNewRegistrations
+  // rikthehet në false — përndryshe nxënësi mund të ishte fshehur më parë nga
+  // kjo listë (shih hide-from-new/route.ts) dhe ruajtja "duket sikur s'ka
+  // funksionuar" (kursesi, thjesht mbetet i padukshëm te lista).
   if ("enrollDate" in body) {
     const d = new Date(body.enrollDate);
-    if (!isNaN(d.getTime())) data.enrollDate = d;
+    if (!isNaN(d.getTime())) { data.enrollDate = d; data.hideFromNewRegistrations = false; }
   }
   // Shto/Edito/Fshij te karta "Nxënës që kanë Shkuar" — ndryshimi i status-it
   // këtu (jo vetëm te PUT-i i plotë) i mban dy rrjedhat në sinkron; inactiveDate
@@ -144,16 +147,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if ("leaveReason" in body)       data.leaveReason = body.leaveReason || null;
   if ("destinationSchool" in body) data.destinationSchool = body.destinationSchool || null;
+  // "+ Shto Largim" (modaliteti kërkim, jo Edito) te karta "Largime/Transfere" —
+  // rikthen dukshmërinë nëse nxënësi ishte fshehur më parë nga kjo listë (shih
+  // hide-from-departed/route.ts), njësoj si hideFromNewRegistrations më sipër.
+  if ("hideFromDeparted" in body) data.hideFromDeparted = Boolean(body.hideFromDeparted);
 
-  const student = await prisma.student.update({
-    where: { id: parseInt(id) },
-    data,
-  });
+  try {
+    const student = await prisma.student.update({
+      where: { id: parseInt(id) },
+      data,
+    });
 
-  await logAction(session, "UPDATE", "Student", student.id,
-    `Ndryshoi kontratën/zbritjen/mënyrën e pagesës/shënimet për ${student.firstName} ${student.lastName}`);
+    await logAction(session, "UPDATE", "Student", student.id,
+      `Ndryshoi kontratën/zbritjen/mënyrën e pagesës/shënimet për ${student.firstName} ${student.lastName}`);
 
-  return NextResponse.json(student);
+    return NextResponse.json(student);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Gabim i brendshëm";
+    console.error("[students/PATCH] gabim gjatë ruajtjes:", err);
+    return NextResponse.json({ message: msg }, { status: 500 });
+  }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

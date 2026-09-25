@@ -42,6 +42,7 @@ export default function DepartedStudentModal({ preselected, onClose, onSaved }: 
   const [leaveReason, setLeaveReason] = useState(preselected?.leaveReason ?? "");
   const [destinationSchool, setDestinationSchool] = useState(preselected?.destinationSchool ?? "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   // Kërkim vetëm mes nxënësve AKTIVË — s'ka kuptim të "largosh" dikë që tashmë
   // është joaktiv. I njëjti model debounce si StudentEnrichmentModal.tsx.
@@ -68,17 +69,25 @@ export default function DepartedStudentModal({ preselected, onClose, onSaved }: 
   async function handleSave() {
     if (!student) return;
     setSaving(true);
-    await fetch(`/api/students/${student.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...(isNewDeparture ? { status: "INACTIVE" } : {}),
-        leaveReason: leaveReason || null,
-        destinationSchool: destinationSchool || null,
-      }),
-    });
-    setSaving(false);
-    onSaved();
+    setError("");
+    try {
+      const r = await fetch(`/api/students/${student.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(isNewDeparture ? { status: "INACTIVE", hideFromDeparted: false } : {}),
+          leaveReason: leaveReason || null,
+          destinationSchool: destinationSchool || null,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      setSaving(false);
+      if (!r.ok) { setError(d.message || `Ruajtja dështoi (gabim ${r.status})`); return; }
+      onSaved();
+    } catch {
+      setSaving(false);
+      setError("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   return (
@@ -157,7 +166,8 @@ export default function DepartedStudentModal({ preselected, onClose, onSaved }: 
           )}
         </div>
 
-        <div className="flex gap-2 p-5 pt-0">
+        {error && <p className="text-sm text-red-500 px-5">{error}</p>}
+        <div className="flex gap-2 p-5 pt-2">
           <button onClick={onClose} className="btn-secondary"><X className="w-4 h-4" />Anulo</button>
           <button onClick={handleSave} disabled={!student || saving} className="btn-primary flex-1">
             <Save className="w-4 h-4" />
