@@ -34,6 +34,7 @@ model Organization {
   studentNotes     StudentNote[]
   enrollmentApplications EnrollmentApplication[]
   studentEvidenca  StudentEvidenca[]
+  applicationEvidenca ApplicationEvidenca[]
   schoolDocuments  SchoolDocument[]
   familyEmailLogs  FamilyEmailLog[]
 }
@@ -60,6 +61,7 @@ model User {
   sentSmsMessages          SmsMessage[]
   studentNotes             StudentNote[]
   evidencaRecords          StudentEvidenca[]
+  applicationEvidencaRecords ApplicationEvidenca[]
   uploadedDocuments        SchoolDocument[]
   documentsSent            DocumentEmailLog[]
   familyEmailsSent         FamilyEmailLog[]
@@ -235,12 +237,31 @@ model EnrollmentApplication {
   createdStudentId Int?     // Student i krijuar kur u pranua — pa relacion Prisma të detyruar, njësoj si BookSale/UniSale.studentId
 
   documents       ApplicationDocument[]
+  evidenca        ApplicationEvidenca[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([status])
   @@index([submitterIp, createdAt])
+}
+
+// Evidenca e plotësuar PARA se aplikuesi të bëhet nxënës real — kur aplikimi
+// pranohet (shih approve/route.ts), këto rreshta migrohen te StudentEvidenca
+// e Student-it të sapokrijuar dhe fshihen këtu, që historiku i nxënësit ta
+// ketë që nga fillimi (shih diskutimin me admin-in, 2026-09-25).
+model ApplicationEvidenca {
+  id             Int          @id @default(autoincrement())
+  applicationId  Int
+  application    EnrollmentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  answers        String       // JSON string, i njëjti format si StudentEvidenca.answers
+  authorId       Int
+  author         User         @relation(fields: [authorId], references: [id])
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([applicationId])
 }
 
 model ApplicationDocument {

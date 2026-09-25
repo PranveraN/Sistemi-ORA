@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X, FileText, Image as ImageIcon, Check, Ban, ExternalLink, AlertTriangle, Trash2 } from "lucide-react";
+import { X, FileText, Image as ImageIcon, Check, Ban, ExternalLink, AlertTriangle, Trash2, ClipboardList } from "lucide-react";
 import { formatDate, formatDateTime, formatFileSize } from "@/lib/utils";
 import { docTypeLabel } from "@/lib/enrollmentDocs";
 import { getGradeNumber } from "@/lib/school-cycles";
+import ApplicationEvidencaModal from "./ApplicationEvidencaModal";
 
 interface Doc { id: number; docType: string; originalName: string; contentType: string; size: number; }
 interface ClassOption { id: number; name: string; level: string; capacity: number | null; active: boolean; _count: { students: number } }
@@ -38,6 +39,7 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
   const [error, setError] = useState("");
   const [rejectNote, setRejectNote] = useState("");
   const [showRejectBox, setShowRejectBox] = useState(false);
+  const [showEvidenca, setShowEvidenca] = useState(false);
 
   useEffect(() => {
     fetch(`/api/enrollment/applications/${id}`).then(r => r.json()).then(setData);
@@ -218,6 +220,9 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
 
             {data.status === "PENDING" && (
               <div className="space-y-3 border-t border-slate-100 dark:border-slate-700 pt-4">
+                <button onClick={() => setShowEvidenca(true)} className="btn-secondary w-full justify-center">
+                  <ClipboardList className="w-4 h-4" /> Evidenca
+                </button>
                 <div>
                   <label className="form-label">Cakto Paralelen (Klasa {data.desiredGrade ?? "—"}) <span className="text-red-500">*</span></label>
                   {matchingClasses.length === 0 ? (
@@ -263,6 +268,14 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
           </div>
         )}
       </div>
+
+      {showEvidenca && data && (
+        <ApplicationEvidencaModal
+          applicationId={data.id}
+          applicantName={`${data.firstName} ${data.lastName}`}
+          onClose={() => setShowEvidenca(false)}
+        />
+      )}
     </div>
   );
 }

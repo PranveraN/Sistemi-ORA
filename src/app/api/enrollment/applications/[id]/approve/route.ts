@@ -81,6 +81,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     data: { status: "APPROVED", reviewedAt: new Date(), createdStudentId: student.id, classId: targetClass.id },
   });
 
+  // Evidenca e plotësuar gjatë aplikimit (para se të bëhej nxënës real) —
+  // migrohet te StudentEvidenca e nxënësit të sapokrijuar, që historiku i
+  // tij ta ketë që nga fillimi (shih ApplicationEvidencaModal.tsx).
+  const appEvidenca = await prisma.applicationEvidenca.findMany({ where: { applicationId: app.id } });
+  if (appEvidenca.length > 0) {
+    await prisma.$transaction([
+      ...appEvidenca.map(e => prisma.studentEvidenca.create({
+        data: {
+          studentId: student.id,
+          answers: e.answers,
+          authorId: e.authorId,
+          organizationId: e.organizationId,
+          createdAt: e.createdAt,
+        },
+      })),
+      prisma.applicationEvidenca.deleteMany({ where: { applicationId: app.id } }),
+    ]);
+  }
+
   await logAction(session, "CREATE", "Student", student.id, `Krijoi nxënësin ${student.firstName} ${student.lastName} nga aplikimi ${app.referenceNumber ?? `#${app.id}`}`);
 
   return NextResponse.json({ studentId: student.id });
