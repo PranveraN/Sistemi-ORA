@@ -449,7 +449,11 @@ export default function UshqimiPage() {
     const res = await fetch(`/api/category-payments?${params}`);
     if (res.ok) {
       const d = await res.json();
-      setYearStudents(d.students);
+      // /api/category-payments kthen edhe nxënësit JOAKTIVË (për t'i shfaqur në
+      // fund të CategoryPaymentPage) — këtu, në Ushqimi, "Të gjithë"/"Me ushqim"/
+      // "pa ushqim" duhet të numërojnë VETËM nxënësit aktivë, përndryshe numrat
+      // dalin të fryrë (përfshihen edhe ata që kanë lëshuar shkollën).
+      setYearStudents((d.students as StudentRow[]).filter(s => s.status === "ACTIVE"));
       if (d.category?.id) setCategoryId(d.category.id);
     }
     setYearLoading(false);
