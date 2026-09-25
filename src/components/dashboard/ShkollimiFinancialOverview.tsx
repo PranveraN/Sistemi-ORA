@@ -12,7 +12,7 @@ import type { YearType } from "@/lib/academicYear";
 import TuitionGroupModal, { type TuitionGroupRow } from "./TuitionGroupModal";
 
 interface Row extends TuitionGroupRow { className: string | null }
-interface Bucket { count: number; amount: number; students: Row[] }
+interface Bucket { count: number; amount: number; paidAmount: number; students: Row[] }
 interface PriceGroup { price: number; count: number; total: number }
 interface Overview {
   period: { year: number; yearType: YearType; label: string };
@@ -291,7 +291,7 @@ function StatusRow({ color, label, bucket }: { color: string; label: string; buc
         {label}
       </td>
       <td className="py-1.5 text-right text-slate-500 dark:text-slate-400">{bucket.count}</td>
-      <td className="py-1.5 text-right font-semibold text-slate-800 dark:text-white">{formatCurrency(bucket.amount)}</td>
+      <td className="py-1.5 text-right font-semibold text-slate-800 dark:text-white">{formatCurrency(bucket.paidAmount)}</td>
     </tr>
   );
 }

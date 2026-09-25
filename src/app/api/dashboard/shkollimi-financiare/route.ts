@@ -92,6 +92,11 @@ export async function GET(req: NextRequest) {
 
   let kpiExpected = 0, kpiPaid = 0, kpiDebt = 0;
   const full: Row[] = [], partial: Row[] = [], tiUnpaid: Row[] = [], tiPartial: Row[] = [], zero: Row[] = [];
+  // Shuma e KONFIRMUAR e paguar për secilin grup — e ndarë nga `amount` te
+  // vetë rreshtat (aty mban BORXHIN e mbetur, jo çka është paguar) — që
+  // "Pagesat dhe Statusi" (paguara) dhe "Detajet e Borxheve" (borxhi) të mos
+  // përzihen, siç ndodhte më parë (shih diskutimin: 7.130€ vs 7.030€).
+  let fullPaid = 0, partialPaid = 0, tiPartialPaid = 0;
   const priceGroupMap = new Map<number, { count: number; total: number }>();
   const missingPlan: Row[] = [], overpaid: Row[] = [], noPaymentNoTi: Row[] = [];
 
@@ -112,8 +117,8 @@ export async function GET(req: NextRequest) {
       paidForKpi = confirmedPaid;
       debt = Math.max(0, expected - confirmedPaid);
       isFull = confirmedPaid > 0 && debt <= 0;
-      if (isFull) full.push(toRow(s, confirmedPaid));
-      else if (confirmedPaid > 0) tiPartial.push(toRow(s, debt));
+      if (isFull) { full.push(toRow(s, debt)); fullPaid += confirmedPaid; }
+      else if (confirmedPaid > 0) { tiPartial.push(toRow(s, debt)); tiPartialPaid += confirmedPaid; }
       else tiUnpaid.push(toRow(s, debt));
     } else {
       const { finalAmount, balance } = hasAnyPayment ? aggregatePaymentTotals(rows) : { finalAmount: Math.round(shkollimiCategory.defaultAmount * (1 - (s.discountPct ?? 0) / 100)), balance: 0 };
@@ -122,8 +127,8 @@ export async function GET(req: NextRequest) {
       paidForKpi = confirmedPaid;
       isFull = hasAnyPayment && balance <= 0;
       if (!hasAnyPayment) { zero.push(toRow(s, debt)); noPaymentNoTi.push(toRow(s, debt)); }
-      else if (isFull) full.push(toRow(s, confirmedPaid));
-      else if (rawPaid > 0) partial.push(toRow(s, debt));
+      else if (isFull) { full.push(toRow(s, debt)); fullPaid += confirmedPaid; }
+      else if (rawPaid > 0) { partial.push(toRow(s, debt)); partialPaid += confirmedPaid; }
       else zero.push(toRow(s, debt));
     }
 
@@ -158,7 +163,16 @@ export async function GET(req: NextRequest) {
   const profit = Math.round((totalIncome - totalExpenses) * 100) / 100;
 
   const byAmountDesc = (a: Row, b: Row) => b.amount - a.amount;
-  const bucket = (rows: Row[]) => ({ count: rows.length, amount: Math.round(rows.reduce((s, r) => s + r.amount, 0) * 100) / 100, students: rows.sort(byAmountDesc) });
+  // `amount` (te rreshtat/students) mban BORXHIN e mbetur — përdoret nga
+  // "Detajet e Borxheve". `paidAmount` (parametër i veçantë këtu) mban shumën
+  // e KONFIRMUAR të paguar nga i gjithë grupi — përdoret nga "Pagesat dhe
+  // Statusi", që totali i asaj tabele të përputhet me kartën KPI "Total i Paguar".
+  const bucket = (rows: Row[], paidAmount = 0) => ({
+    count: rows.length,
+    amount: Math.round(rows.reduce((s, r) => s + r.amount, 0) * 100) / 100,
+    paidAmount: Math.round(paidAmount * 100) / 100,
+    students: rows.sort(byAmountDesc),
+  });
 
   const handoverGap = Math.round((kpiPaid - handedOver) * 100) / 100;
 
@@ -173,10 +187,10 @@ export async function GET(req: NextRequest) {
       totalStudents: activeStudents.length,
     },
     statusBuckets: {
-      full: bucket(full),
-      partial: bucket(partial),
+      full: bucket(full, fullPaid),
+      partial: bucket(partial, partialPaid),
       tiUnpaid: bucket(tiUnpaid),
-      tiPartial: bucket(tiPartial),
+      tiPartial: bucket(tiPartial, tiPartialPaid),
       zero: bucket(zero),
     },
     priceGroups: Array.from(priceGroupMap.entries())
