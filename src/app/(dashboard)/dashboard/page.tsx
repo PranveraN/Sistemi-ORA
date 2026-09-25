@@ -5,38 +5,27 @@ import Header from "@/components/layout/Header";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import {
   Users, CreditCard, TrendingUp, AlertCircle,
-  CheckCircle, Clock, FileText, History, Receipt,
+  Clock, FileText, History, Receipt,
   TrendingDown, UserPlus, CalendarClock, Wallet,
-  GraduationCap, Landmark, Wallet as WalletIcon,
-  ArrowRightLeft, ChevronRight, MessageSquare, Loader2,
+  ArrowRightLeft, ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import OfertaModal from "@/components/OfertaModal";
 import TimiInvestModal from "@/components/TimiInvestModal";
 import QuickActions from "@/components/dashboard/QuickActions";
-import SchoolCalendar from "@/components/dashboard/SchoolCalendar";
 import FinancialOverview from "@/components/dashboard/FinancialOverview";
 import YearPicker from "@/components/dashboard/YearPicker";
-import TuitionGroupModal, { type TuitionGroupRow } from "@/components/dashboard/TuitionGroupModal";
+import ShkollimiFinancialOverview from "@/components/dashboard/ShkollimiFinancialOverview";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer,
-} from "recharts";
 
 interface DashboardData {
   period: { year: number; yearType: YearType; label: string };
   totalStudents: number;
   activeStudents: number;
   cycleCounts: { ulet: number; larte: number; paCaktuar: number };
-  studentsWithDebt: number;
   periodRevenue: number;
   prevPeriodRevenue: number;
   revenueChangePct: number | null;
-  totalRevenue: number;
-  totalDebtAmount: number;
-  overdueAmount: number;
-  overdueCount: number;
   overdueStudentsPartial: number;
   overdueStudentsFull: number;
   newInPeriod: number;
@@ -64,15 +53,11 @@ interface DashboardData {
     student: { firstName: string; lastName: string };
     category: { name: string };
   }>;
-  monthlyChartData: Array<{ month: string; total: number; isFuture: boolean }>;
   tuitionOverview: {
     expected: number;
     paid: number;
     debt: number;
     debtStudentCount: number;
-    timiInvestCount: number;
-    timiInvestExpected: number;
-    expenses: number;
   };
 }
 
@@ -86,9 +71,6 @@ export default function DashboardPage() {
   const [showTimiInvest, setShowTimiInvest] = useState(false);
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
   const [mainTab, setMainTab] = useState<"permbledhje" | "financat">("permbledhje");
-  const [openGroup, setOpenGroup] = useState<"expected" | "paid" | "debt" | "timiInvest" | null>(null);
-  const [groupsData, setGroupsData] = useState<Record<string, TuitionGroupRow[]> | null>(null);
-  const [groupsLoading, setGroupsLoading] = useState(false);
 
   const years = yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
 
@@ -108,14 +90,6 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  async function openTuitionGroup(key: "expected" | "paid" | "debt" | "timiInvest") {
-    setOpenGroup(key);
-    setGroupsLoading(true);
-    const r = await fetch(`/api/dashboard/tuition-groups?year=${year}&yearType=${yearType}`);
-    const d = await r.json();
-    setGroupsData(d);
-    setGroupsLoading(false);
-  }
   useEffect(() => {
     fetch("/api/settings")
       .then(r => r.json())
@@ -141,19 +115,6 @@ export default function DashboardPage() {
 
   const revPct = data.revenueChangePct;
   const revUp  = revPct !== null && revPct >= 0;
-
-  // Grafiku — ndaj "deri tani" (vijë e plotë) nga muajt e ardhshëm (vijë e
-  // ndërprerë) — përndryshe një vit sapo-fillo duket sikur të hyrat "u shembën".
-  const firstFutureIdx = data.monthlyChartData.findIndex(m => m.isFuture);
-  const chartData = data.monthlyChartData.map((m, i) => ({
-    month: m.month,
-    total: firstFutureIdx === -1 || i < firstFutureIdx ? m.total : undefined,
-    totalFuture: firstFutureIdx === -1 ? undefined : (i >= firstFutureIdx - 1 ? m.total : undefined),
-  }));
-
-  const tuitionCoveredPct = data.totalRevenue + data.totalDebtAmount > 0
-    ? Math.round((data.totalRevenue / (data.totalRevenue + data.totalDebtAmount)) * 100)
-    : 0;
 
   return (
     <>
@@ -309,45 +270,6 @@ export default function DashboardPage() {
 
         </div>
 
-        {/* Pasqyrë Shkollimi — vetëm kategoria Shkollimi, për vitin e zgjedhur */}
-        <div className="card p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <GraduationCap className="w-4.5 h-4.5 text-primary-500" />
-            <h2 className="section-title">Pasqyrë Shkollimi — {data.period.label}</h2>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <button onClick={() => openTuitionGroup("expected")} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-left relative hover:ring-2 hover:ring-slate-300 dark:hover:ring-slate-600 transition-all">
-              <MessageSquare className="w-3.5 h-3.5 text-slate-300 absolute top-2.5 right-2.5" />
-              <p className="text-xs text-slate-400 mb-0.5">Pritet gjithsej</p>
-              <p className="text-lg font-bold text-slate-800 dark:text-white">{formatCurrency(data.tuitionOverview.expected)}</p>
-            </button>
-            <button onClick={() => openTuitionGroup("paid")} className="p-3 rounded-xl bg-green-50 dark:bg-green-900/20 text-left relative hover:ring-2 hover:ring-green-300 dark:hover:ring-green-800 transition-all">
-              <MessageSquare className="w-3.5 h-3.5 text-green-300 absolute top-2.5 right-2.5" />
-              <p className="text-xs text-green-600 dark:text-green-400 mb-0.5">Paguar</p>
-              <p className="text-lg font-bold text-green-700 dark:text-green-300">{formatCurrency(data.tuitionOverview.paid)}</p>
-            </button>
-            <button onClick={() => openTuitionGroup("debt")} className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-left relative hover:ring-2 hover:ring-red-300 dark:hover:ring-red-800 transition-all">
-              <MessageSquare className="w-3.5 h-3.5 text-red-300 absolute top-2.5 right-2.5" />
-              <p className="text-xs text-red-600 dark:text-red-400 mb-0.5">Borxh</p>
-              <p className="text-lg font-bold text-red-700 dark:text-red-300">{formatCurrency(data.tuitionOverview.debt)}</p>
-            </button>
-            <button onClick={() => openTuitionGroup("timiInvest")} className="p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 text-left relative hover:ring-2 hover:ring-violet-300 dark:hover:ring-violet-800 transition-all">
-              <MessageSquare className="w-3.5 h-3.5 text-violet-300 absolute top-2.5 right-2.5" />
-              <p className="text-xs text-violet-600 dark:text-violet-400 mb-0.5 flex items-center gap-1">
-                <Landmark className="w-3 h-3" /> Përmes TIMI Invest
-              </p>
-              <p className="text-lg font-bold text-violet-700 dark:text-violet-300">{formatCurrency(data.tuitionOverview.timiInvestExpected)}</p>
-              <p className="text-[11px] text-violet-500 dark:text-violet-400 mt-0.5">{data.tuitionOverview.timiInvestCount} nxënës</p>
-            </button>
-            <div className="p-3 rounded-xl bg-orange-50 dark:bg-orange-900/20">
-              <p className="text-xs text-orange-600 dark:text-orange-400 mb-0.5 flex items-center gap-1">
-                <WalletIcon className="w-3 h-3" /> Shpenzime (faturat)
-              </p>
-              <p className="text-lg font-bold text-orange-700 dark:text-orange-300">{formatCurrency(data.tuitionOverview.expenses)}</p>
-            </div>
-          </div>
-        </div>
-
         {/* Lëvizjet e Nxënësve — përmbledhje kompakte, moduli i plotë (listat,
             filtrimi, historia) jeton te faqja dedikuar /levizjet. */}
         <Link href="/levizjet" className="card p-5 block hover:ring-2 hover:ring-primary-200 dark:hover:ring-primary-800 transition-all">
@@ -423,78 +345,7 @@ export default function DashboardPage() {
         </div>
 
         {mainTab === "permbledhje" && (
-          <>
-            {/* Kalendarit + Grafiku + Statusi */}
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-
-              {/* Kalendari */}
-              <div className="xl:col-span-1">
-                <SchoolCalendar />
-              </div>
-
-              {/* Grafiku + Statusi */}
-              <div className="xl:col-span-3 flex flex-col gap-4">
-
-                {/* Revenue Chart */}
-                <div className="card p-5 flex-1">
-                  <h2 className="section-title mb-4">Të Hyrat — {data.period.label}</h2>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart data={chartData}>
-                      <defs>
-                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15} />
-                          <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="colorRevenueFuture" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.1} />
-                          <stop offset="95%" stopColor="#94a3b8" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false}
-                        tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
-                      <Tooltip formatter={(v: number, key: string) => [formatCurrency(v), key === "totalFuture" ? "Ende s'ka ardhur" : "Të hyra"]}
-                        contentStyle={{ background: "#1e293b", border: "none", borderRadius: "8px", color: "#f8fafc", fontSize: "12px" }} />
-                      <Area type="monotone" dataKey="total" stroke="#2563eb" strokeWidth={2} fill="url(#colorRevenue)" connectNulls={false} />
-                      <Area type="monotone" dataKey="totalFuture" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" fill="url(#colorRevenueFuture)" connectNulls={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Statusi i Pagesave — horizontal, thjeshtuar (Borxhe/Nxënës Aktivë tashmë lart) */}
-                <div className="card p-4">
-                  <h2 className="section-title mb-3">Statusi i Pagesave</h2>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div className="flex items-center gap-2.5 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
-                      <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-green-600 dark:text-green-400">Të Paguara</p>
-                        <p className="text-sm font-bold text-green-700 dark:text-green-300">{formatCurrency(data.totalRevenue)}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2.5 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
-                      <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-amber-600 dark:text-amber-400">Vonuar</p>
-                        <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{formatCurrency(data.overdueAmount)}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-                      <span>Mbuluar nga pagesat</span>
-                      <span className="font-semibold text-slate-600 dark:text-slate-300">{tuitionCoveredPct}%</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-red-100 dark:bg-red-900/30 overflow-hidden">
-                      <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${tuitionCoveredPct}%` }} />
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          </>
+          <ShkollimiFinancialOverview year={year} yearType={yearType} />
         )}
 
         {mainTab === "financat" && (
@@ -562,23 +413,6 @@ export default function DashboardPage() {
 
       {showOferta && <OfertaModal initialView={ofertaView} onClose={() => setShowOferta(false)} />}
       {showTimiInvest && <TimiInvestModal onClose={() => setShowTimiInvest(false)} />}
-      {openGroup && (
-        groupsLoading || !groupsData ? (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 text-white animate-spin" />
-          </div>
-        ) : (
-          <TuitionGroupModal
-            title={
-              openGroup === "expected" ? "Pritet Gjithsej" :
-              openGroup === "paid" ? "Paguar" :
-              openGroup === "debt" ? "Borxh" : "Përmes TIMI Invest (E Kryer)"
-            }
-            rows={groupsData[openGroup] ?? []}
-            onClose={() => setOpenGroup(null)}
-          />
-        )
-      )}
     </>
   );
 }

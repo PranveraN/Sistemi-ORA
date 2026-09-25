@@ -3,27 +3,10 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCycle } from "@/lib/school-cycles";
 import { getDateRange, getAcademicMonths, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
-import { MONTHS } from "@/lib/utils";
 import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
+import { computeTiExpectedPrice } from "@/lib/timiInvestPricing";
 
 type PeriodMonth = { calMonth: number; calYear: number };
-
-// "Të Hyra" — akruale (etiketa month/year, si Bilanci/Shkollimi) për vitin
-// akademik, që numrat të përputhen gjithmonë me Shkollimin edhe kur dikush
-// paguan më herët/më vonë se afati; sipas datës reale të arkëtimit (paidDate)
-// për vitin kalendarik — arsyeja pse ekziston pamja "Kalendarik" fare.
-// Mbulon TË GJITHA kategoritë (jo vetëm Shkollimin, ndryshe nga Bilanci).
-function revenueWhere(orgId: number, yearType: YearType, months: PeriodMonth[], start: Date, end: Date) {
-  return yearType === "academic"
-    ? {
-        organizationId: orgId, paidAmount: { gt: 0 }, status: { in: ["PAID", "PARTIAL"] },
-        OR: months.map(m => ({ month: m.calMonth, year: m.calYear })),
-      }
-    : {
-        organizationId: orgId, paidDate: { gte: start, lte: end },
-        paidAmount: { gt: 0 }, status: { in: ["PAID", "PARTIAL"] },
-      };
-}
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -111,18 +94,12 @@ export async function GET(req: NextRequest) {
   const [
     totalStudents,
     activeInPeriod,
-    debtGroups,
-    totalRevenueAgg,
     recentPayments,
-    debtAgg,
-    overdueAgg,
     overdueRows,
     newInPeriod,
-    monthlyRevenueRows,
     timiInvestLinks,
     tuitionRows,
     prevTuitionRows,
-    expenseGroups,
   ] = await Promise.all([
     prisma.student.count({ where: { organizationId: orgId } }),
 
@@ -141,18 +118,6 @@ export async function GET(req: NextRequest) {
       select: { id: true, class: { select: { name: true } } },
     }),
 
-    // Nxënësit me borxh — nga `balance` (jo fusha `status`, shpesh e ngrirë/e
-    // vjetruar), kufizuar te afatet BRENDA periudhës së zgjedhur.
-    prisma.payment.groupBy({
-      by: ["studentId"],
-      where: { organizationId: orgId, balance: { gt: 0 }, dueDate: { gte: start, lte: end } },
-      _count: true,
-    }),
-
-    // Për kartën "Statusi i Pagesave → Të Paguara" (TË GJITHA kategoritë,
-    // ndryshe nga karta KPI "Të Hyra" më sipër, e kufizuar tani te Shkollimi).
-    prisma.payment.aggregate({ where: revenueWhere(orgId, yearType, months, start, end), _sum: { paidAmount: true } }),
-
     prisma.payment.findMany({
       where: { organizationId: orgId, paidDate: { gte: start, lte: end } },
       orderBy: { paidDate: "desc" },
@@ -161,21 +126,6 @@ export async function GET(req: NextRequest) {
         student: { select: { firstName: true, lastName: true } },
         category: { select: { name: true } },
       },
-    }),
-
-    // Borxhi TOTAL i periudhës (afati brenda periudhës, pavarësisht kur u
-    // paguan pjesërisht) — mbulon TË GJITHA kategoritë, si te grupimi sipër.
-    prisma.payment.aggregate({
-      where: { organizationId: orgId, balance: { gt: 0 }, dueDate: { gte: start, lte: end } },
-      _sum: { balance: true },
-    }),
-
-    // "Vonuar" — afati ka kaluar (deri te "tani" ose fundi i periudhës, cilido
-    // vjen më parë) DHE ka ende borxh, e llogaritur dinamikisht nga `balance`.
-    prisma.payment.aggregate({
-      where: { organizationId: orgId, balance: { gt: 0 }, dueDate: { gte: start, lte: overdueUpperBound } },
-      _sum: { balance: true },
-      _count: true,
     }),
 
     // Rreshtat e pagesave të vonuara — për t'i ndarë sipas NXËNËSIT (jo
@@ -189,13 +139,12 @@ export async function GET(req: NextRequest) {
 
     prisma.student.count({ where: { organizationId: orgId, enrollDate: { gte: studentPeriodStart, lte: studentPeriodEnd }, hideFromNewRegistrations: false } }),
 
-    prisma.payment.findMany({
-      where: revenueWhere(orgId, yearType, months, start, end),
-      select: { paidAmount: true, paidDate: true, month: true, year: true },
-    }),
-
+    // TË GJITHË klientët aktivë të TIMI Invest, çfarëdo statusi (jo vetëm "E
+    // Kryer") — rregull financiar: asnjë status s'e përjashton më vetvetiu
+    // dikë nga borxhi, vetëm një pagesë REALE e konfirmuar e bën këtë (shih
+    // llogaritjen e tuitionDebt më poshtë).
     prisma.timiInvestStudent.findMany({
-      where: { active: true, stage: "KRYER", studentId: { not: null } },
+      where: { active: true, studentId: { not: null } },
       select: { studentId: true, regularPrice: true, discountPct: true, manualDiscAmt: true },
     }),
 
@@ -207,19 +156,13 @@ export async function GET(req: NextRequest) {
       : Promise.resolve([]),
 
     // Për krahasimin e trendit (%) të kartës "Të Hyra" — e njëjta bazë
-    // (Shkollimi, i konfirmuar, pa TI-KRYER), por për periudhën PARAARDHËSE.
+    // (Shkollimi, i konfirmuar), por për periudhën PARAARDHËSE.
     prevTuitionAccrualWhere
       ? prisma.payment.findMany({
           where: prevTuitionAccrualWhere,
           select: { studentId: true, paidAmount: true, confirmed: true },
         })
       : Promise.resolve([]),
-
-    prisma.shpenzim.groupBy({
-      by: ["lloji"],
-      where: { data: { gte: start, lte: end } },
-      _sum: { shuma: true },
-    }),
   ]);
 
   const cycleCounts = { ulet: 0, larte: 0, paCaktuar: 0 };
@@ -230,34 +173,8 @@ export async function GET(req: NextRequest) {
     else cycleCounts.paCaktuar++;
   }
 
-  // Grafiku — 12 muajt e periudhës së zgjedhur (jo më 6 muaj rrotullues nga sot).
-  const revByMonthKey = new Map<string, number>();
-  for (const p of monthlyRevenueRows) {
-    let key: string;
-    if (yearType === "academic") {
-      key = `${p.month}-${p.year}`;
-    } else {
-      if (!p.paidDate) continue;
-      const d = new Date(p.paidDate);
-      key = `${d.getMonth() + 1}-${d.getFullYear()}`;
-    }
-    revByMonthKey.set(key, (revByMonthKey.get(key) ?? 0) + p.paidAmount);
-  }
-  const monthlyChartData = months.map(m => ({
-    month: MONTHS[m.calMonth - 1],
-    total: Math.round((revByMonthKey.get(`${m.calMonth}-${m.calYear}`) ?? 0) * 100) / 100,
-    // Muaj që ende s'ka ardhur — grafiku e stilizon ndryshe, të mos duket si
-    // "rënie" e të hyrave (thjesht muaji ende s'ka kaluar).
-    isFuture: new Date(m.calYear, m.calMonth - 1, 1) > now,
-  }));
-
   // ── Pasqyrë Shkollimi (+ kartat KPI "Të Hyra"/"Borxhe", kufizuar këtu) ──
-  const timiInvestIds = new Set(timiInvestLinks.map(t => t.studentId as number));
-  const timiInvestCount = timiInvestLinks.length;
-  const timiInvestExpected = timiInvestLinks.reduce((sum, t) => {
-    const discAmt = t.regularPrice * (t.discountPct / 100);
-    return sum + Math.max(0, t.regularPrice - discAmt - (t.manualDiscAmt || 0));
-  }, 0);
+  const timiInvestById = new Map(timiInvestLinks.map(t => [t.studentId as number, t]));
 
   const tuitionByStudent = new Map<number, { finalAmount: number; paidAmount: number; description: string | null; confirmed: boolean }[]>();
   for (const p of tuitionRows) {
@@ -267,7 +184,6 @@ export async function GET(req: NextRequest) {
   }
   let tuitionExpected = 0, tuitionPaid = 0, tuitionDebt = 0, tuitionDebtStudentCount = 0;
   for (const [studentId, rows] of tuitionByStudent) {
-    if (timiInvestIds.has(studentId)) continue; // numërohen veç sipër, jo dyfish këtu
     const { finalAmount, balance } = aggregatePaymentTotals(rows);
     // Rregull financiar: vetëm shumat e KONFIRMUARA llogariten si "Të Hyra"
     // reale (shih Payment.confirmed) — "Pritur"/"Borxh" mbeten të pandryshuara.
@@ -277,13 +193,24 @@ export async function GET(req: NextRequest) {
     tuitionDebt += balance;
     if (balance > 0) tuitionDebtStudentCount++;
   }
+  // Klientë TIMI Invest pa ASNJË pagesë reale të regjistruar këtë periudhë —
+  // çmimi i TYRE specifik (jo standardi i kategorisë) imputohet plotësisht si
+  // borxh, çfarëdo statusi (Profaturë/Në Proces/E Kryer). Vetëm një pagesë
+  // reale e konfirmuar (rasti i mbuluar nga loop-i sipër) e heq dikë prej këtu.
+  for (const [studentId, ti] of timiInvestById) {
+    if (tuitionByStudent.has(studentId)) continue; // tashmë llogaritur sipër, nga pagesat reale
+    const tiPrice = Math.round(computeTiExpectedPrice(ti));
+    tuitionExpected += tiPrice;
+    tuitionDebt += tiPrice;
+    tuitionDebtStudentCount++;
+  }
 
   // Karta KPI "Të Hyra" — vetëm Shkollimi, vetëm i konfirmuar (jo TI/import pa
-  // konfirmim), pa dyfishim me TI-KRYER — e njëjta bazë si tuitionPaid sipër.
+  // konfirmim) — e njëjta bazë si tuitionPaid sipër.
   const periodRev = tuitionPaid;
   let prevTuitionPaid = 0;
   for (const p of prevTuitionRows) {
-    if (timiInvestIds.has(p.studentId) || !p.confirmed) continue;
+    if (!p.confirmed) continue;
     prevTuitionPaid += p.paidAmount;
   }
   const prevPeriodRev = prevTuitionPaid;
@@ -312,23 +239,14 @@ export async function GET(req: NextRequest) {
     if (hasPaid) overdueStudentsPartial++; else overdueStudentsFull++;
   }
 
-  const expensesByType: Record<string, number> = { ZYRE: 0, BANKE: 0 };
-  for (const g of expenseGroups) expensesByType[g.lloji] = g._sum.shuma ?? 0;
-  const tuitionExpenses = expensesByType.ZYRE + expensesByType.BANKE;
-
   return NextResponse.json({
     period: { year, yearType, label },
     totalStudents,
     activeStudents: activeInPeriod.length,
     cycleCounts,
-    studentsWithDebt: debtGroups.length,
     periodRevenue: periodRev,
     prevPeriodRevenue: prevPeriodRev,
     revenueChangePct,
-    totalRevenue: totalRevenueAgg._sum.paidAmount || 0,
-    totalDebtAmount: debtAgg._sum.balance || 0,
-    overdueAmount: overdueAgg._sum.balance || 0,
-    overdueCount: overdueAgg._count,
     overdueStudentsPartial,
     overdueStudentsFull,
     newInPeriod,
@@ -349,15 +267,11 @@ export async function GET(req: NextRequest) {
       })),
     },
     recentPayments,
-    monthlyChartData,
     tuitionOverview: {
       expected: Math.round(tuitionExpected * 100) / 100,
       paid: Math.round(tuitionPaid * 100) / 100,
       debt: Math.round(tuitionDebt * 100) / 100,
       debtStudentCount: tuitionDebtStudentCount,
-      timiInvestCount,
-      timiInvestExpected: Math.round(timiInvestExpected * 100) / 100,
-      expenses: Math.round(tuitionExpenses * 100) / 100,
     },
   });
 }

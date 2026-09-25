@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
+import { computeTiExpectedPrice } from "@/lib/timiInvestPricing";
 
 type PrismaPayment = {
   id: number;
@@ -144,24 +145,18 @@ export async function GET(req: NextRequest) {
   ]);
   const oldDebtMap = new Map(oldDebtRows.map(r => [r.studentId, r._sum.balance ?? 0]));
 
-  // Build TI lookup maps (by studentId and by name fallback) — të gjithë
-  // aktivët, përdoret vetëm për badge-in informativ "TI" te rreshti i nxënësit.
+  // Harta e TIMI Invest (sipas studentId dhe emrit, si rezervë) — përdoret për
+  // badge-in informativ "TI" te rreshti i nxënësit, DHE (poshtë) për të
+  // imputuar çmimin e TYRE specifik si borxh kur s'ka asnjë pagesë reale.
+  // Rregull financiar: asnjë status TIMI Invest (as "E Kryer") s'e përjashton
+  // më vetvetiu dikë nga borxhi — vetëm një pagesë REALE e konfirmuar e bën këtë.
   const tiByStudentId = new Map<number, { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number }>();
   const tiByName      = new Map<string, { id: number; regularPrice: number; discountPct: number; manualDiscAmt: number }>();
-  // Nën-grup filtruar vetëm "E KRYER" — vetëm këta e kanë përfunduar realisht
-  // kontratën me TIMI Invest, ndaj vetëm ata përjashtohen nga borxhi (shih totalDebt).
-  const tiKryerByStudentId = new Map<number, true>();
-  const tiKryerByName      = new Map<string, true>();
   for (const ti of allTiRows) {
     const val = { id: Number(ti.id), regularPrice: Number(ti.regularPrice), discountPct: Number(ti.discountPct), manualDiscAmt: Number(ti.manualDiscAmt) };
     const nameKey = `${String(ti.firstName).trim().toLowerCase()}|${String(ti.lastName).trim().toLowerCase()}`;
-    if (ti.studentId) {
-      tiByStudentId.set(Number(ti.studentId), val);
-      if (ti.stage === "KRYER") tiKryerByStudentId.set(Number(ti.studentId), true);
-    } else {
-      tiByName.set(nameKey, val);
-      if (ti.stage === "KRYER") tiKryerByName.set(nameKey, true);
-    }
+    if (ti.studentId) tiByStudentId.set(Number(ti.studentId), val);
+    else tiByName.set(nameKey, val);
   }
 
   // Ndaj ACTIVE nga INACTIVE
@@ -179,13 +174,13 @@ export async function GET(req: NextRequest) {
   const totalDebt = activeStudents.reduce((sum, s) => {
     const agg = aggregatePayment(s.payments as PrismaPayment[]);
     if (agg) return sum + (agg.balance || 0);
-    // Vetëm klientët TIMI Invest me statusin "E Kryer" (kontratë e përfunduar
-    // realisht) përjashtohen nga borxhi — "Në Proces"/"Profaturë" ende s'kanë
-    // marrëveshje formale, ndaj vazhdojnë të llogariten si borxh normal,
-    // njësoj si i përjashton edhe Dashboard-i (shih timiInvestIds).
-    const isTI = tiKryerByStudentId.has(s.id) || tiKryerByName.has(`${s.firstName.trim().toLowerCase()}|${s.lastName.trim().toLowerCase()}`);
-    if (isTI) return sum;
-    const expectedPrice = Math.round(category.defaultAmount * (1 - (s.discountPct ?? 0) / 100));
+    // Pa asnjë pagesë të regjistruar fare — borxhi imputohet plotësisht.
+    // Nxënës të TIMI Invest (çfarëdo statusi) marrin çmimin E TYRE specifik
+    // (rënë dakord me TI), të tjerët çmimin standard të kategorisë.
+    const ti = tiByStudentId.get(s.id) ?? tiByName.get(`${s.firstName.trim().toLowerCase()}|${s.lastName.trim().toLowerCase()}`);
+    const expectedPrice = ti
+      ? Math.round(computeTiExpectedPrice(ti))
+      : Math.round(category.defaultAmount * (1 - (s.discountPct ?? 0) / 100));
     return sum + expectedPrice;
   }, 0);
 
