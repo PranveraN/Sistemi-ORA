@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
         enrollDate: { lte: end },
         OR: [{ inactiveDate: null }, { inactiveDate: { gte: start } }],
       },
-      select: { id: true, class: { select: { name: true } } },
+      select: { id: true, discountPct: true, class: { select: { name: true } } },
     }),
 
     prisma.payment.findMany({
@@ -203,6 +203,19 @@ export async function GET(req: NextRequest) {
     tuitionExpected += tiPrice;
     tuitionDebt += tiPrice;
     tuitionDebtStudentCount++;
+  }
+  // Nxënës aktivë (jo TI) pa ASNJË pagesë Shkollimi të regjistruar këtë
+  // periudhë — çmimi standard i kategorisë imputohet plotësisht si borxh,
+  // njësoj si te /api/dashboard/shkollimi-financiare (që "Borxhe Shkollimi"
+  // të përputhet me pasqyrën e re, jo t'i injorojë këta nxënës në heshtje).
+  if (shkollimiCategory) {
+    for (const s of activeInPeriod) {
+      if (tuitionByStudent.has(s.id) || timiInvestById.has(s.id)) continue;
+      const price = Math.round(shkollimiCategory.defaultAmount * (1 - (s.discountPct ?? 0) / 100));
+      tuitionExpected += price;
+      tuitionDebt += price;
+      tuitionDebtStudentCount++;
+    }
   }
 
   // Karta KPI "Të Hyra" — vetëm Shkollimi, vetëm i konfirmuar (jo TI/import pa

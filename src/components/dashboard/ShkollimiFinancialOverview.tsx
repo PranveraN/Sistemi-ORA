@@ -144,7 +144,7 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Price groups table */}
         <div className="card p-4 overflow-hidden">
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Të Ardhurat nga Shkollimi (sipas çmimit)</p>
@@ -196,6 +196,34 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
             </div>
           </div>
         </div>
+
+        {/* Pagesat dhe Statusi */}
+        <div className="card p-4 overflow-hidden">
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Pagesat dhe Statusi</p>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-slate-400 uppercase">
+                <th className="pb-1.5 font-semibold">Statusi</th>
+                <th className="pb-1.5 font-semibold text-right">Nr. Nxënësve</th>
+                <th className="pb-1.5 font-semibold text-right">Shuma</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+              <StatusRow color={DONUT_COLORS.full} label="Plotësisht të Paguar" bucket={b.full} />
+              <StatusRow color={DONUT_COLORS.partial} label="Pagesë e Pjesshme" bucket={b.partial} />
+              <StatusRow color={DONUT_COLORS.tiPartial} label="Me TIMI Invest (pjesërisht)" bucket={b.tiPartial} />
+              <StatusRow color={DONUT_COLORS.tiUnpaid} label="Me TIMI Invest (pa paguar)" bucket={b.tiUnpaid} />
+              <StatusRow color={DONUT_COLORS.zero} label="Pa Pagesë (borxh i plotë)" bucket={b.zero} />
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-slate-200 dark:border-slate-700 font-bold">
+                <td className="pt-1.5">TOTALI</td>
+                <td className="pt-1.5 text-right">{kpi.totalStudents}</td>
+                <td className="pt-1.5 text-right">{formatCurrency(kpi.paid)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
 
       {/* Anomalies */}
@@ -232,6 +260,20 @@ function KpiCard({ icon: Icon, tone, label, value, sub }: { icon: React.Componen
       <p className={`text-lg font-bold ${toneMap.text}`}>{formatCurrency(value)}</p>
       {sub && <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>}
     </div>
+  );
+}
+
+function StatusRow({ color, label, bucket }: { color: string; label: string; bucket: Bucket }) {
+  if (bucket.count === 0) return null;
+  return (
+    <tr>
+      <td className="py-1.5 text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+        {label}
+      </td>
+      <td className="py-1.5 text-right text-slate-500 dark:text-slate-400">{bucket.count}</td>
+      <td className="py-1.5 text-right font-semibold text-slate-800 dark:text-white">{formatCurrency(bucket.amount)}</td>
+    </tr>
   );
 }
 
