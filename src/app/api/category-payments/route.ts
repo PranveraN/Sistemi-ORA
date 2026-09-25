@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
   const isNarrow = (month && month > 0) && (year && year > 0);
   const takeLimit = isNarrow ? 2 : 60;
 
-  const [students, allTiRows, inactiveDates, oldDebtRows] = await Promise.all([
+  const [students, allTiRows, inactiveDates, oldDebtRows, handoverAgg] = await Promise.all([
     prisma.student.findMany({
       where,
       include: {
@@ -142,8 +142,21 @@ export async function GET(req: NextRequest) {
       where: { categoryId: category.id, description: "BORXH_VJETER", balance: { gt: 0 } },
       _sum: { balance: true },
     }),
+    // Shuma e dorëzuar (Expense.type="HANDOVER") — përdor SAKTËSISHT të njëjtin filtër
+    // muaj/vit (barazi e thjeshtë) si /api/expenses, që numri këtu të përputhet gjithmonë
+    // me "Total Dorëzuar" të skedës "Dorezim Parash" të kësaj faqeje.
+    prisma.expense.aggregate({
+      where: {
+        categoryId: category.id,
+        type: "HANDOVER",
+        ...(month && month > 0 ? { month } : {}),
+        ...(year && year > 0 ? { year } : {}),
+      },
+      _sum: { amount: true },
+    }),
   ]);
   const oldDebtMap = new Map(oldDebtRows.map(r => [r.studentId, r._sum.balance ?? 0]));
+  const handedOver = handoverAgg._sum.amount ?? 0;
 
   // Harta e TIMI Invest (sipas studentId dhe emrit, si rezervë) — përdoret për
   // badge-in informativ "TI" te rreshti i nxënësit, DHE (poshtë) për të
@@ -228,6 +241,7 @@ export async function GET(req: NextRequest) {
       pending:  statuses.filter(st => st === "PENDING").length,
       totalRevenue,
       totalDebt,
+      handedOver,
     },
   });
 }
