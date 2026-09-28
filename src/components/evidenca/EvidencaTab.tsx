@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Search, Plus, History as HistoryIcon, Printer, X } from "lucide-react";
+import { Search, Plus, History as HistoryIcon, Printer, X, Pencil, Trash2, Loader2 } from "lucide-react";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import EvidencaForm, { type EvidencaConfig } from "@/components/evidenca/EvidencaForm";
 import { RATING_SCALE, specifyKey } from "@/lib/evidencaConfig";
@@ -158,17 +158,22 @@ export default function EvidencaTab({ initialQuery = "" }: { initialQuery?: stri
         />
       )}
 
-      {historyStudent && (
-        <EvidencaHistoryModal student={historyStudent} onClose={() => setHistoryStudent(null)} />
+      {historyStudent && config && (
+        <EvidencaHistoryModal
+          student={historyStudent}
+          config={config}
+          onClose={() => setHistoryStudent(null)}
+          onChanged={() => refreshCounts(historyStudent.id)}
+        />
       )}
     </div>
   );
 }
 
-function EvidencaFillModal({ student, config, onClose, onSaved }: {
-  student: StudentRow; config: EvidencaConfig; onClose: () => void; onSaved: () => void;
+function EvidencaFillModal({ student, config, existing, onClose, onSaved }: {
+  student: StudentRow; config: EvidencaConfig; existing?: EvidencaRecord; onClose: () => void; onSaved: () => void;
 }) {
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string>>(() => existing ? JSON.parse(existing.answers) : {});
   const [saving, setSaving] = useState(false);
 
   function setAnswer(key: string, value: string) {
@@ -177,9 +182,15 @@ function EvidencaFillModal({ student, config, onClose, onSaved }: {
 
   async function handleSave() {
     setSaving(true);
-    await fetch(`/api/students/${student.id}/evidenca`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
-    });
+    if (existing) {
+      await fetch(`/api/students/${student.id}/evidenca/${existing.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
+      });
+    } else {
+      await fetch(`/api/students/${student.id}/evidenca`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
+      });
+    }
     setSaving(false);
     onSaved();
   }
@@ -188,7 +199,7 @@ function EvidencaFillModal({ student, config, onClose, onSaved }: {
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-800">
-          <h3 className="font-bold text-slate-900 dark:text-white">Evidencë e Re — {student.firstName} {student.lastName}</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white">{existing ? "Modifiko Evidencën" : "Evidencë e Re"} — {student.firstName} {student.lastName}</h3>
         </div>
         <div className="p-5">
           <EvidencaForm config={config} answers={answers} setAnswer={setAnswer} />
@@ -196,7 +207,7 @@ function EvidencaFillModal({ student, config, onClose, onSaved }: {
         <div className="flex gap-2 p-5 pt-0">
           <button onClick={onClose} className="btn-secondary">Anulo</button>
           <button onClick={handleSave} disabled={saving} className="btn-primary flex-1">
-            {saving ? "Duke ruajtur..." : "Ruaj Evidencën"}
+            {saving ? "Duke ruajtur..." : existing ? "Ruaj Ndryshimet" : "Ruaj Evidencën"}
           </button>
         </div>
       </div>
@@ -239,16 +250,35 @@ function displayAnswer(item: EvidencaItemDef, value: string): string {
   return value;
 }
 
-function EvidencaHistoryModal({ student, onClose }: { student: StudentRow; onClose: () => void }) {
+function EvidencaHistoryModal({ student, config, onClose, onChanged }: {
+  student: StudentRow; config: EvidencaConfig; onClose: () => void; onChanged: () => void;
+}) {
   const [records, setRecords] = useState<EvidencaRecord[] | null>(null);
   const [items, setItems] = useState<EvidencaItemDef[]>([]);
   const [categories, setCategories] = useState<EvidCategoryLite[]>([]);
+  const [editRecord, setEditRecord] = useState<EvidencaRecord | null>(null);
+  const [deleteRecord, setDeleteRecord] = useState<EvidencaRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const loadRecords = useCallback(() => {
+    fetch(`/api/students/${student.id}/evidenca`).then(r => r.json()).then(setRecords);
+  }, [student.id]);
 
   useEffect(() => {
-    fetch(`/api/students/${student.id}/evidenca`).then(r => r.json()).then(setRecords);
+    loadRecords();
     fetch("/api/evidenca-items?includeInactive=1").then(r => r.json()).then(setItems);
     fetch("/api/evidenca-categories?includeInactive=1").then(r => r.json()).then(setCategories);
-  }, [student.id]);
+  }, [student.id, loadRecords]);
+
+  async function confirmDelete() {
+    if (!deleteRecord) return;
+    setDeleting(true);
+    await fetch(`/api/students/${student.id}/evidenca/${deleteRecord.id}`, { method: "DELETE" });
+    setDeleting(false);
+    setDeleteRecord(null);
+    loadRecords();
+    onChanged();
+  }
 
   function handlePrint(rec: EvidencaRecord) {
     const { skills, general, sum, max, percent } = computeDisplay(rec, items, categories);
@@ -332,9 +362,17 @@ ${generalHTML}
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {formatDateTime(rec.createdAt)} — <span className="font-medium text-slate-700 dark:text-slate-200">{rec.author.name}</span>
                     </p>
-                    <button onClick={() => handlePrint(rec)} title="Printo / Shkarko PDF" className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 shrink-0">
-                      <Printer className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => handlePrint(rec)} title="Printo / Shkarko PDF" className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                        <Printer className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setEditRecord(rec)} title="Modifiko" className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setDeleteRecord(rec)} title="Fshi" className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="p-4 space-y-3">
@@ -384,6 +422,36 @@ ${generalHTML}
           )}
         </div>
       </div>
+
+      {editRecord && (
+        <EvidencaFillModal
+          student={student}
+          config={config}
+          existing={editRecord}
+          onClose={() => setEditRecord(null)}
+          onSaved={() => { setEditRecord(null); loadRecords(); onChanged(); }}
+        />
+      )}
+
+      {deleteRecord && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setDeleteRecord(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6 text-red-500" />
+            </div>
+            <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Fshi këtë evidencë?</h3>
+            <p className="text-sm text-slate-400 mb-6">
+              {formatDateTime(deleteRecord.createdAt)} — {deleteRecord.author.name}. Ky veprim nuk mund të kthehet.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteRecord(null)} className="btn-secondary flex-1 justify-center">Anulo</button>
+              <button onClick={confirmDelete} disabled={deleting} className="btn-danger flex-1 justify-center">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Fshi"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
