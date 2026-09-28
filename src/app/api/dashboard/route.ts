@@ -94,6 +94,7 @@ export async function GET(req: NextRequest) {
   const [
     totalStudents,
     activeInPeriod,
+    currentlyActive,
     recentPayments,
     overdueRows,
     newInPeriod,
@@ -105,10 +106,14 @@ export async function GET(req: NextRequest) {
 
     // Nxënës "aktivë gjatë periudhës" — regjistruar para mbarimit të periudhës
     // dhe (s'është bërë ende joaktiv OSE u bë joaktiv brenda/pas fillimit të
-    // periudhës) — kështu për vitin AKTUAL përputhet me `status: "ACTIVE"" e
-    // sotme, por për një vit të kaluar pasqyron realisht kush ishte aktiv
-    // atëherë. E NJËJTA logjikë përdoret te faqja e Nxënësve ("Aktivë"), që
-    // numrat e dy faqeve të përputhen për të njëjtin vit.
+    // periudhës) — përdoret VETËM për llogaritjet financiare (Shkollimi,
+    // borxhe, etj) që kanë nevojë të përfshijnë edhe dikë që u largua GJATË
+    // periudhës (mund të ketë ende borxh nga muajt sa ishte i regjistruar).
+    // JO për numrin "Aktivë"/"Aktualë" të shfaqur si KPI (shih
+    // `currentlyActiveCount` poshtë) — ai duhet të pasqyrojë STATUSIN E
+    // VËRTETË TANI, jo këdo që dikur ishte aktiv gjatë periudhës (2026-09-28:
+    // konfirmuar numër i gabuar 350 kundrejt 320 real — shkaku ishte
+    // pikërisht ngatërrimi i këtyre dy koncepteve).
     prisma.student.findMany({
       where: {
         organizationId: orgId,
@@ -116,6 +121,15 @@ export async function GET(req: NextRequest) {
         OR: [{ inactiveDate: null }, { inactiveDate: { gte: start } }],
       },
       select: { id: true, discountPct: true, class: { select: { name: true } } },
+    }),
+
+    // Nxënësit VËRTETË, TANI aktivë (status="ACTIVE", pa asnjë rindërtim
+    // historik) — përdoret VETËM për KPI-të e headcount-it ("Aktivë X
+    // gjithsej Y", "Nxënës Aktivë", "Nxënës Aktualë" te Bilanci, dhe ndarjen
+    // Cikli Ulët/Lartë poshtë) — jo për llogaritjet financiare.
+    prisma.student.findMany({
+      where: { organizationId: orgId, status: "ACTIVE" },
+      select: { class: { select: { name: true } } },
     }),
 
     prisma.payment.findMany({
@@ -166,7 +180,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   const cycleCounts = { ulet: 0, larte: 0, paCaktuar: 0 };
-  for (const s of activeInPeriod) {
+  for (const s of currentlyActive) {
     const cycle = getCycle(s.class?.name);
     if (cycle === "ulet") cycleCounts.ulet++;
     else if (cycle === "larte") cycleCounts.larte++;
@@ -255,7 +269,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     period: { year, yearType, label },
     totalStudents,
-    activeStudents: activeInPeriod.length,
+    activeStudents: currentlyActive.length,
     cycleCounts,
     periodRevenue: periodRev,
     prevPeriodRevenue: prevPeriodRev,
