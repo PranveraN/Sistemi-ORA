@@ -302,7 +302,6 @@ export default function UshqimiPage() {
   const [cycleFilter, setCycleFilter] = useState("");
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
-  const [cashStats, setCashStats] = useState<CashStats | null>(null);
   const [yearCashStats, setYearCashStats] = useState<CashStats | null>(null);
   const [loading, setLoading]   = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -447,7 +446,6 @@ export default function UshqimiPage() {
     if (res.ok) {
       const d = await res.json();
       setStudents(d.students);
-      setCashStats(d.stats ? { totalRevenue: d.stats.totalRevenue, handedOver: d.stats.handedOver, totalExpenses: d.stats.totalExpenses } : null);
       if (d.category?.id) setCategoryId(d.category.id);
     }
     setLoading(false);
@@ -788,9 +786,11 @@ export default function UshqimiPage() {
         {tab === "income" && <>
 
         {/* Pasqyra e Arkës — sa u mor, sa u dorëzua, sa u shpenzua, sa mbeti në dorë
-            (për periudhën e zgjedhur lart: muaj/vit/vit-akademik) */}
-        {cashStats && (() => {
-          const cashOnHand = Math.round((cashStats.totalRevenue - cashStats.handedOver - cashStats.totalExpenses) * 100) / 100;
+            (i NJËJTI vit/vit-akademik si skeda "Raport" — jo muaji i fshehur i
+            "Të Hyra", që më parë e bënte "Sa kam marrë" të mos përputhej me
+            "Paguar gjithsej" të Raportit). */}
+        {yearCashStats && (() => {
+          const cashOnHand = Math.round((yearCashStats.totalRevenue - yearCashStats.handedOver - yearCashStats.totalExpenses) * 100) / 100;
           return (
             <div className="card p-4 border-2 border-primary-100 dark:border-primary-900/40">
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Pasqyra e Arkës</p>
@@ -801,7 +801,7 @@ export default function UshqimiPage() {
                   </div>
                   <div>
                     <p className="text-xs text-slate-400">Sa kam marrë</p>
-                    <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(cashStats.totalRevenue)}</p>
+                    <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(yearCashStats.totalRevenue)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -810,7 +810,7 @@ export default function UshqimiPage() {
                   </div>
                   <div>
                     <p className="text-xs text-slate-400">Sa kam dorëzuar</p>
-                    <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{formatCurrency(cashStats.handedOver)}</p>
+                    <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{formatCurrency(yearCashStats.handedOver)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -819,7 +819,7 @@ export default function UshqimiPage() {
                   </div>
                   <div>
                     <p className="text-xs text-slate-400">Sa kam shpenzuar</p>
-                    <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{formatCurrency(cashStats.totalExpenses)}</p>
+                    <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{formatCurrency(yearCashStats.totalExpenses)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
