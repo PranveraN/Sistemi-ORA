@@ -87,9 +87,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (targetEmail) {
     await sendEmail(
       targetEmail,
-      `Aplikimi juaj u prit — ${referenceNumber}`,
+      `Aplikimi juaj u pranua — ${referenceNumber}`,
       `<p>I/E nderuar,</p>
-       <p>Aplikimi për regjistrimin e <strong>${app.firstName} ${app.lastName}</strong> te Akademia Ora u prit me sukses.</p>
+       <p>Aplikimi për regjistrimin e <strong>${app.firstName} ${app.lastName}</strong> te Akademia Ora u pranua me sukses.</p>
        <p>Numri i referencës: <strong>${referenceNumber}</strong></p>
        <p>Klasa e aplikuar: ${app.desiredGrade ?? "—"} · Viti shkollor: ${app.schoolYear}</p>
        <p>Administrata do t'ju kontaktojë sapo aplikimi të shqyrtohet.</p>`
