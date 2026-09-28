@@ -68,10 +68,14 @@ export default function LevizjetPage() {
     return Array.from(set).sort();
   }, [data]);
 
+  // Klasa e Parë del VETËM te karta e vet ("Klasa e Parë — Ardhje") dhe si
+  // rresht i veçantë te "Bilanci i Detajuar" — këtu përjashtohet krejtësisht,
+  // që të mos numërohet dy herë.
   const filteredNew = useMemo(() => {
     if (!data) return { count: 0, students: [] };
     const q = search.trim().toLowerCase();
     const students = data.newStudents.students.filter(s =>
+      !isGrade1(s.className) &&
       (!q || `${s.firstName} ${s.lastName}`.toLowerCase().includes(q)) &&
       (!classFilter || s.className === classFilter)
     );
