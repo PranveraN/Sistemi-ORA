@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
   const isNarrow = (month && month > 0) && (year && year > 0);
   const takeLimit = isNarrow ? 2 : 60;
 
-  const [students, allTiRows, inactiveDates, oldDebtRows, handoverAgg] = await Promise.all([
+  const [students, allTiRows, inactiveDates, oldDebtRows, handoverAgg, expenseAgg] = await Promise.all([
     prisma.student.findMany({
       where,
       include: {
@@ -154,11 +154,23 @@ export async function GET(req: NextRequest) {
       },
       _sum: { amount: true },
     }),
+    // Shpenzimet (Expense.type="EXPENSE") — i njëjti filtër i thjeshtë, që të
+    // përputhet me "Total Shpenzuar" të skedës "Shpenzime" (p.sh. Ushqimi).
+    prisma.expense.aggregate({
+      where: {
+        categoryId: category.id,
+        type: "EXPENSE",
+        ...(month && month > 0 ? { month } : {}),
+        ...(year && year > 0 ? { year } : {}),
+      },
+      _sum: { amount: true },
+    }),
   ]);
   const oldDebtMap = new Map(oldDebtRows.map(r => [r.studentId, {
     id: r.id, finalAmount: r.finalAmount, paidAmount: r.paidAmount, balance: r.balance, note: r.note,
   }]));
   const handedOver = handoverAgg._sum.amount ?? 0;
+  const totalExpenses = expenseAgg._sum.amount ?? 0;
 
   // Harta e TIMI Invest (sipas studentId dhe emrit, si rezervë) — përdoret për
   // badge-in informativ "TI" te rreshti i nxënësit, DHE (poshtë) për të
@@ -244,6 +256,7 @@ export async function GET(req: NextRequest) {
       totalRevenue,
       totalDebt,
       handedOver,
+      totalExpenses,
     },
   });
 }

@@ -13,6 +13,7 @@ import {
   Search, CheckCircle, AlertCircle, Plus, X, Save,
   Users, Loader2, Printer, Calculator, ChevronDown, ChevronUp, Info,
   TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard, Trash2, Receipt, Send, Bot,
+  Wallet,
 } from "lucide-react";
 import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
@@ -111,6 +112,12 @@ interface StudentRow {
   installments: Payment[];
   status: string;
   inactiveDate: string | null;
+}
+
+interface CashStats {
+  totalRevenue: number;
+  handedOver: number;
+  totalExpenses: number;
 }
 
 function findPeriodPayment(installments: Payment[], months: number[]): Payment | null {
@@ -295,6 +302,7 @@ export default function UshqimiPage() {
   const [cycleFilter, setCycleFilter] = useState("");
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
+  const [cashStats, setCashStats] = useState<CashStats | null>(null);
   const [loading, setLoading]   = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [notifyRecipients, setNotifyRecipients] = useState<NotificationRecipient[] | null>(null);
@@ -432,6 +440,7 @@ export default function UshqimiPage() {
     if (res.ok) {
       const d = await res.json();
       setStudents(d.students);
+      setCashStats(d.stats ? { totalRevenue: d.stats.totalRevenue, handedOver: d.stats.handedOver, totalExpenses: d.stats.totalExpenses } : null);
       if (d.category?.id) setCategoryId(d.category.id);
     }
     setLoading(false);
@@ -759,6 +768,56 @@ export default function UshqimiPage() {
 
         {/* ── INCOME TAB content starts here ── */}
         {tab === "income" && <>
+
+        {/* Pasqyra e Arkës — sa u mor, sa u dorëzua, sa u shpenzua, sa mbeti në dorë
+            (për periudhën e zgjedhur lart: muaj/vit/vit-akademik) */}
+        {cashStats && (() => {
+          const cashOnHand = Math.round((cashStats.totalRevenue - cashStats.handedOver - cashStats.totalExpenses) * 100) / 100;
+          return (
+            <div className="card p-4 border-2 border-primary-100 dark:border-primary-900/40">
+              <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Pasqyra e Arkës</p>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-green-50 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                    <TrendingUp className="w-4.5 h-4.5 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Sa kam marrë</p>
+                    <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(cashStats.totalRevenue)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                    <ArrowLeftRight className="w-4.5 h-4.5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Sa kam dorëzuar</p>
+                    <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{formatCurrency(cashStats.handedOver)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
+                    <TrendingDown className="w-4.5 h-4.5 text-orange-600 dark:text-orange-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Sa kam shpenzuar</p>
+                    <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{formatCurrency(cashStats.totalExpenses)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${cashOnHand < 0 ? "bg-red-50 dark:bg-red-900/30" : "bg-amber-50 dark:bg-amber-900/30"}`}>
+                    <Wallet className={`w-4.5 h-4.5 ${cashOnHand < 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Sa kam në arkë</p>
+                    <p className={`text-lg font-bold ${cashOnHand < 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>{formatCurrency(cashOnHand)}</p>
+                    {cashOnHand < 0 && <p className="text-[11px] text-red-500 mt-0.5">⚠ Ka dalë më shumë se ç&apos;është marrë</p>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Pricing Calculator ── */}
         <div className="card overflow-hidden">

@@ -75,6 +75,41 @@ export default function UniformaDashboard() {
         <StatCard icon={<Archive />}       label="Mbetja"      value={formatCurrency(stats.remainingProfit)} sub={`Dorëzuar: ${formatCurrency(stats.totalHandedOver)}`} color="text-orange-600" bg="bg-orange-50 dark:bg-orange-900/30" />
       </div>
 
+      {/* Pasqyra e Arkës — sa u mor, sa u dorëzua, sa mbeti në dorë (gjithsej kohërat) */}
+      <div className="card p-4 border-2 border-primary-100 dark:border-primary-900/40">
+        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Pasqyra e Arkës</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-green-50 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+              <TrendingUp className="w-4.5 h-4.5 text-green-600 dark:text-green-400" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-400">Sa kam marrë</p>
+              <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(stats.totalCollected)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+              <ArrowRightLeft className="w-4.5 h-4.5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-400">Sa kam dorëzuar</p>
+              <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{formatCurrency(stats.totalHandedOver)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${stats.remainingProfit < 0 ? "bg-red-50 dark:bg-red-900/30" : "bg-amber-50 dark:bg-amber-900/30"}`}>
+              <Wallet className={`w-4.5 h-4.5 ${stats.remainingProfit < 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`} />
+            </div>
+            <div>
+              <p className="text-xs text-slate-400">Sa kam në arkë</p>
+              <p className={`text-lg font-bold ${stats.remainingProfit < 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>{formatCurrency(stats.remainingProfit)}</p>
+              {stats.remainingProfit < 0 && <p className="text-[11px] text-red-500 mt-0.5">⚠ Keni dorëzuar më shumë se ç&apos;keni marrë</p>}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Sales status */}
         <div className="card p-5">
