@@ -36,6 +36,10 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
 
   const isHandover = type === "HANDOVER";
   const label      = isHandover ? "Dorezim Parash" : "Shpenzim";
+  // MONTHS[month-1] jep `undefined` kur month=0 ("Të gjitha") — brenda JSX kjo
+  // thjesht s'shfaqet (React e injoron), por brenda template-string-it {} bëhet
+  // fjala "undefined" fjalë për fjalë (shih raportimin: "...për undefined 2026").
+  const periodLabel = month > 0 ? `${MONTHS[month - 1]} ${year}` : `Të gjitha muajt, ${year}`;
 
   const fetchItems = useCallback(async () => {
     if (!categoryId) return;
@@ -207,7 +211,7 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
         <div className="card p-4 hidden sm:block">
           <p className="text-xs text-slate-400 mb-1">Periudha</p>
           <p className="text-base font-semibold text-slate-600 dark:text-slate-300">
-            {MONTHS[month - 1]} {year}
+            {periodLabel}
           </p>
         </div>
       </div>
@@ -216,7 +220,7 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {items.length === 0
-            ? `Nuk ka ${label.toLowerCase()} për ${MONTHS[month - 1]} ${year}`
+            ? `Nuk ka ${label.toLowerCase()} për ${periodLabel}`
             : `${items.length} regjistrime`}
         </p>
         <div className="flex items-center gap-2">
