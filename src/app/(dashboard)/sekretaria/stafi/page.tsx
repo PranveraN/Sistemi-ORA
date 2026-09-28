@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Search, Plus, Pencil, Trash2, X, Check,
-  Users, BadgeCheck, CreditCard,
+  Users, BadgeCheck, CreditCard, Download, Upload, Loader2,
 } from "lucide-react";
 import Header from "@/components/layout/Header";
+import * as XLSX from "xlsx";
 
 interface StaffMember {
   id: number;
@@ -25,6 +26,16 @@ interface StaffMember {
   kodi: string | null;
   tipi: string | null;
   status: string;
+  dataLindjes: string | null;
+  vendlindja: string | null;
+  gjinia: string | null;
+  shtetesia: string | null;
+  email: string | null;
+  dataFillimit: string | null;
+  orari: string | null;
+  niveliShkollimit: string | null;
+  profesioni: string | null;
+  pozita: string | null;
 }
 
 const EMPTY: Omit<StaffMember, "id"> = {
@@ -32,9 +43,22 @@ const EMPTY: Omit<StaffMember, "id"> = {
   nrLlogarise: null, banka: null, totalBruto: null,
   kontrata: null, llojiKontrates: null, cmimOres: null, oreMuaj: null,
   adresa: null, kodi: null, tipi: "Primar", status: "ACTIVE",
+  dataLindjes: null, vendlindja: null, gjinia: null, shtetesia: null,
+  email: null, dataFillimit: null, orari: null, niveliShkollimit: null,
+  profesioni: null, pozita: null,
 };
 
 const TIPI_OPTIONS = ["", "Primar", "Sekondar", "Menaxhment"];
+
+// Kolonat e template-it Excel të stafit — të njëjtat për shkarkimin e
+// template-it bosh, eksportin e stafit ekzistues, dhe importin (kërkimi i
+// kolonave është fleksibël sipas emrit të header-it, jo pozicionit).
+const TEMPLATE_HEADERS = [
+  "Nr", "Emri Mbiemri", "Nr.Personal", "Datlindja", "Vendlindja", "Gjinia",
+  "Shtetesia", "Telefoni", "Emaili", "Data e fillimit të punës",
+  "Përzgjedhja e punëdhënësit Primar/Sekondar", "Orari", "Niveli i shkollimit",
+  "Profesioni", "Pozita",
+];
 
 function tipiBadge(tipi: string | null) {
   if (tipi === "Menaxhment") return "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300";
@@ -54,6 +78,9 @@ export default function StafiPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = () => {
     setLoading(true);
@@ -80,6 +107,12 @@ export default function StafiPage() {
       kontrata: m.kontrata, llojiKontrates: m.llojiKontrates,
       cmimOres: m.cmimOres, oreMuaj: m.oreMuaj,
       adresa: m.adresa, kodi: m.kodi, tipi: m.tipi, status: m.status,
+      dataLindjes: m.dataLindjes ? m.dataLindjes.slice(0, 10) : null,
+      vendlindja: m.vendlindja, gjinia: m.gjinia, shtetesia: m.shtetesia,
+      email: m.email,
+      dataFillimit: m.dataFillimit ? m.dataFillimit.slice(0, 10) : null,
+      orari: m.orari, niveliShkollimit: m.niveliShkollimit,
+      profesioni: m.profesioni, pozita: m.pozita,
     });
     setEditId(m.id);
     setModal("edit");
@@ -118,6 +151,113 @@ export default function StafiPage() {
   const menaxhment = staff.filter(s => s.tipi === "Menaxhment");
   const mesimdhenes = staff.filter(s => s.tipi !== "Menaxhment");
 
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS]);
+    ws["!cols"] = TEMPLATE_HEADERS.map(() => ({ wch: 16 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Stafi");
+    XLSX.writeFile(wb, "Template-Stafi.xlsx");
+  };
+
+  const exportExcel = () => {
+    const rows = [...staff].sort((a, b) => a.emri.localeCompare(b.emri, "sq", { sensitivity: "base" }));
+    const aoa = [
+      TEMPLATE_HEADERS,
+      ...rows.map((s, i) => [
+        i + 1, s.emri, s.nrPersonal ?? "", s.dataLindjes?.slice(0, 10) ?? "", s.vendlindja ?? "",
+        s.gjinia ?? "", s.shtetesia ?? "", s.telefoni ?? "", s.email ?? "",
+        s.dataFillimit?.slice(0, 10) ?? "", s.tipi ?? "", s.orari ?? "",
+        s.niveliShkollimit ?? "", s.profesioni ?? "", s.pozita ?? "",
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = TEMPLATE_HEADERS.map(() => ({ wch: 16 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Stafi");
+    XLSX.writeFile(wb, `Stafi-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  function getCol(row: Record<string, unknown>, ...keys: string[]): string {
+    const lower = Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toLowerCase().trim(), v]));
+    for (const key of keys) {
+      const v = lower[key.toLowerCase().trim()];
+      if (v !== undefined && v !== null && v !== "") return String(v).trim();
+    }
+    return "";
+  }
+
+  function excelDateToIso(raw: string): string | null {
+    if (!raw) return null;
+    const asNum = parseFloat(raw);
+    if (!isNaN(asNum) && asNum > 1000 && !raw.includes("-") && !raw.includes("/")) {
+      const d = new Date(Math.round((asNum - 25569) * 86400 * 1000));
+      return d.toISOString().slice(0, 10);
+    }
+    const dmy = raw.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);
+    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
+
+      const rows = rawRows
+        .map(row => {
+          const emri = getCol(row, "Emri Mbiemri", "Emri", "emri");
+          if (!emri) return null;
+          return {
+            emri,
+            nrPersonal: getCol(row, "Nr.Personal", "Nr Personal") || null,
+            dataLindjes: excelDateToIso(getCol(row, "Datlindja", "Datëlindja")),
+            vendlindja: getCol(row, "Vendlindja") || null,
+            gjinia: getCol(row, "Gjinia") || null,
+            shtetesia: getCol(row, "Shtetesia", "Shtetësia") || null,
+            telefoni: getCol(row, "Telefoni") || null,
+            email: getCol(row, "Emaili", "Email") || null,
+            dataFillimit: excelDateToIso(getCol(row, "Data e fillimit të punës", "Data e fillimit te punes")),
+            tipi: getCol(row, "Përzgjedhja e punëdhënësit Primar/Sekondar", "Perzgjedhja e punedhenesit Primar/Sekondar", "Tipi") || null,
+            orari: getCol(row, "Orari") || null,
+            niveliShkollimit: getCol(row, "Niveli i shkollimit") || null,
+            profesioni: getCol(row, "Profesioni") || null,
+            pozita: getCol(row, "Pozita") || null,
+          };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
+
+      if (rows.length === 0) {
+        setImportMsg("Asnjë rresht i vlefshëm (mungon 'Emri Mbiemri').");
+        return;
+      }
+
+      const res = await fetch("/api/staff/merge-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setImportMsg(`U plotësuan të dhënat për ${data.updated} anëtarë ekzistues, u shtuan ${data.created} të rinj.`);
+        load();
+      } else {
+        setImportMsg(data.error || "Importimi dështoi.");
+      }
+    } catch {
+      setImportMsg("Gabim gjatë leximit të skedarit Excel.");
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
   return (
     <>
       <Header title="Stafi" backHref="/sekretaria" />
@@ -141,13 +281,31 @@ export default function StafiPage() {
               <option value="">Të gjithë tipet</option>
               {TIPI_OPTIONS.filter(Boolean).map(t => <option key={t} value={t}>{t}</option>)}
             </select>
-            <div className="flex gap-2 ml-auto">
+            <div className="flex gap-2 ml-auto flex-wrap">
+              <button onClick={downloadTemplate} className="btn-secondary text-sm">
+                <Download className="w-4 h-4" /> Template Excel
+              </button>
+              <label className={`btn-secondary text-sm cursor-pointer ${importing ? "opacity-60 pointer-events-none" : ""}`}>
+                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {importing ? "Duke importuar..." : "Importo Excel"}
+                <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
+              </label>
+              <button onClick={exportExcel} className="btn-secondary text-sm">
+                <Download className="w-4 h-4" /> Eksporto Excel
+              </button>
               <button onClick={openAdd} className="btn-primary">
                 <Plus className="w-4 h-4" /> Shto anëtar
               </button>
             </div>
           </div>
         </div>
+
+        {importMsg && (
+          <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-sm text-blue-700 dark:text-blue-300 flex items-center justify-between">
+            {importMsg}
+            <button onClick={() => setImportMsg(null)} className="text-blue-400 hover:text-blue-600"><X className="w-4 h-4" /></button>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -234,6 +392,55 @@ export default function StafiPage() {
               <div>
                 <label className="label">Banka</label>
                 <input className="input w-full" value={form.banka ?? ""} onChange={e => setForm(f => ({ ...f, banka: e.target.value || null }))} />
+              </div>
+
+              {/* Të dhëna shtesë (template Excel) */}
+              <div className="col-span-2 border-t border-slate-100 dark:border-slate-800 pt-3 mt-1">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Të Dhëna Shtesë</p>
+              </div>
+              <div>
+                <label className="label">Datëlindja</label>
+                <input type="date" className="input w-full" value={form.dataLindjes ?? ""} onChange={e => setForm(f => ({ ...f, dataLindjes: e.target.value || null }))} />
+              </div>
+              <div>
+                <label className="label">Vendlindja</label>
+                <input className="input w-full" value={form.vendlindja ?? ""} onChange={e => setForm(f => ({ ...f, vendlindja: e.target.value || null }))} />
+              </div>
+              <div>
+                <label className="label">Gjinia</label>
+                <select className="input w-full" value={form.gjinia ?? ""} onChange={e => setForm(f => ({ ...f, gjinia: e.target.value || null }))}>
+                  <option value="">—</option>
+                  <option>Mashkull</option>
+                  <option>Femër</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Shtetësia</label>
+                <input className="input w-full" value={form.shtetesia ?? ""} onChange={e => setForm(f => ({ ...f, shtetesia: e.target.value || null }))} />
+              </div>
+              <div>
+                <label className="label">Emaili</label>
+                <input type="email" className="input w-full" value={form.email ?? ""} onChange={e => setForm(f => ({ ...f, email: e.target.value || null }))} />
+              </div>
+              <div>
+                <label className="label">Data e Fillimit të Punës</label>
+                <input type="date" className="input w-full" value={form.dataFillimit ?? ""} onChange={e => setForm(f => ({ ...f, dataFillimit: e.target.value || null }))} />
+              </div>
+              <div>
+                <label className="label">Orari</label>
+                <input className="input w-full" placeholder="p.sh. 08:00–13:00" value={form.orari ?? ""} onChange={e => setForm(f => ({ ...f, orari: e.target.value || null }))} />
+              </div>
+              <div>
+                <label className="label">Niveli i Shkollimit</label>
+                <input className="input w-full" value={form.niveliShkollimit ?? ""} onChange={e => setForm(f => ({ ...f, niveliShkollimit: e.target.value || null }))} />
+              </div>
+              <div>
+                <label className="label">Profesioni</label>
+                <input className="input w-full" value={form.profesioni ?? ""} onChange={e => setForm(f => ({ ...f, profesioni: e.target.value || null }))} />
+              </div>
+              <div>
+                <label className="label">Pozita</label>
+                <input className="input w-full" value={form.pozita ?? ""} onChange={e => setForm(f => ({ ...f, pozita: e.target.value || null }))} />
               </div>
 
               {/* Lloji i Kontratës */}
@@ -387,7 +594,18 @@ function StaffTable({ title, rows, onEdit, onDelete, onAdresaChange }: {
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
                 <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Emri</th>
-                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Lënda / Roli</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Nr. Personal</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Datëlindja</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Vendlindja</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Gjinia</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Shtetësia</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Email</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Data e Fillimit</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Orari</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Niveli i Shkollimit</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Profesioni</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Pozita</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Lënda / Roli</th>
                 <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Telefoni</th>
                 <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Kodi</th>
                 <th className="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Total Bruto</th>
@@ -400,7 +618,18 @@ function StaffTable({ title, rows, onEdit, onDelete, onAdresaChange }: {
               {rows.map(m => (
                 <tr key={m.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${m.status === "INACTIVE" ? "opacity-50" : ""}`}>
                   <td className="px-4 py-3 font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">{m.emri}</td>
-                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{m.lenda || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{m.nrPersonal || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{m.dataLindjes ? m.dataLindjes.slice(0, 10) : "—"}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{m.vendlindja || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500">{m.gjinia || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{m.shtetesia || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500">{m.email || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{m.dataFillimit ? m.dataFillimit.slice(0, 10) : "—"}</td>
+                  <td className="px-4 py-3 text-slate-500">{m.orari || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{m.niveliShkollimit || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500">{m.profesioni || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500">{m.pozita || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{m.lenda || "—"}</td>
                   <td className="px-4 py-3 text-slate-500">{m.telefoni || "—"}</td>
                   <td className="px-4 py-3">
                     {m.kodi ? <span className="font-mono text-xs text-slate-600 dark:text-slate-400">{m.kodi}</span> : "—"}

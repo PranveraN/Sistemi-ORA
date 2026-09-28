@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { buildStaffData } from "@/lib/staffFields";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -35,24 +36,6 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const member = await prisma.staff.create({
-    data: {
-      emri:        body.emri        || "",
-      telefoni:    body.telefoni    || null,
-      lenda:       body.lenda       || null,
-      nrPersonal:  body.nrPersonal  || null,
-      nrLlogarise: body.nrLlogarise || null,
-      banka:       body.banka       || null,
-      totalBruto:  body.totalBruto  != null ? parseFloat(body.totalBruto) : null,
-      kontrata:        body.kontrata        || null,
-      llojiKontrates:  body.llojiKontrates  || null,
-      cmimOres:        body.cmimOres  != null && body.cmimOres !== "" ? parseFloat(body.cmimOres) : null,
-      oreMuaj:         body.oreMuaj   != null && body.oreMuaj  !== "" ? parseInt(body.oreMuaj)   : null,
-      adresa:          body.adresa          ?? null,
-      kodi:            body.kodi            || null,
-      tipi:        body.tipi        || null,
-      status:      body.status      || "ACTIVE",
-    },
-  });
+  const member = await prisma.staff.create({ data: buildStaffData(body) });
   return NextResponse.json(member, { status: 201 });
 }

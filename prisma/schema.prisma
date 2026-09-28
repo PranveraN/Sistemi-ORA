@@ -1306,6 +1306,18 @@ model Staff {
   kodi            String?
   tipi            String?
   status          String   @default("ACTIVE")
+  // Fushat e mëposhtme u shtuan për t'u përputhur me template-in Excel të
+  // stafit (Nr.Personal, Datëlindja, ... Pozita) — shih /sekretaria/stafi.
+  dataLindjes     DateTime?
+  vendlindja      String?
+  gjinia          String?
+  shtetesia       String?
+  email           String?
+  dataFillimit    DateTime?
+  orari           String?
+  niveliShkollimit String?
+  profesioni      String?
+  pozita          String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

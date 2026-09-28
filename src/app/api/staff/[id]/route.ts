@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { buildStaffData } from "@/lib/staffFields";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -20,23 +21,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const body = await req.json();
   const member = await prisma.staff.update({
     where: { id: Number(id) },
-    data: {
-      emri:        body.emri        || "",
-      telefoni:    body.telefoni    || null,
-      lenda:       body.lenda       || null,
-      nrPersonal:  body.nrPersonal  || null,
-      nrLlogarise: body.nrLlogarise || null,
-      banka:       body.banka       || null,
-      totalBruto:  body.totalBruto  != null ? parseFloat(body.totalBruto) : null,
-      kontrata:        body.kontrata        || null,
-      llojiKontrates:  body.llojiKontrates  || null,
-      cmimOres:        body.cmimOres  != null && body.cmimOres !== "" ? parseFloat(body.cmimOres) : null,
-      oreMuaj:         body.oreMuaj   != null && body.oreMuaj  !== "" ? parseInt(body.oreMuaj)   : null,
-      adresa:          body.adresa          ?? null,
-      kodi:            body.kodi            || null,
-      tipi:        body.tipi        || null,
-      status:      body.status      || "ACTIVE",
-    },
+    data: buildStaffData(body),
   });
   return NextResponse.json(member);
 }
