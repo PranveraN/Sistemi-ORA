@@ -41,14 +41,15 @@ export async function GET(req: NextRequest) {
   else { hyraWhere.vit = year; }
 
   const [activeStudents, tuitionRows, timiInvestLinks, handoverAgg, expenseRows, hyraAgg] = await Promise.all([
-    // E NJËJTA "aktivë gjatë periudhës" si /api/dashboard (jo thjesht
-    // status="ACTIVE" sot) — që "Nxënës Aktivë" atje dhe "nxënës" këtu të
-    // përputhen gjithmonë, edhe kur shikohet një vit i kaluar.
+    // Vetëm nxënësit REALISHT aktivë TANI (status="ACTIVE") — jo "aktivë
+    // gjatë periudhës" (që përfshinte edhe dikë të larguar tashmë këtë vit).
+    // I njëjti rregull si "Nxënës Aktivë"/"Nxënës Aktualë" te /api/dashboard
+    // (2026-09-28: kërkuar shprehimisht — "Total i Pritur" s'duhet të presë
+    // pagesë nga dikush që tashmë e ka lëshuar shkollën).
     prisma.student.findMany({
       where: {
         organizationId: orgId,
-        enrollDate: { lte: end },
-        OR: [{ inactiveDate: null }, { inactiveDate: { gte: start } }],
+        status: "ACTIVE",
       },
       select: {
         id: true, firstName: true, lastName: true, discountPct: true, paymentPlan: true,
