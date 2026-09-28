@@ -303,6 +303,7 @@ export default function UshqimiPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [cashStats, setCashStats] = useState<CashStats | null>(null);
+  const [yearCashStats, setYearCashStats] = useState<CashStats | null>(null);
   const [loading, setLoading]   = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [notifyRecipients, setNotifyRecipients] = useState<NotificationRecipient[] | null>(null);
@@ -469,6 +470,7 @@ export default function UshqimiPage() {
       // "pa ushqim" duhet të numërojnë VETËM nxënësit aktivë, përndryshe numrat
       // dalin të fryrë (përfshihen edhe ata që kanë lëshuar shkollën).
       setYearStudents((d.students as StudentRow[]).filter(s => s.status === "ACTIVE"));
+      setYearCashStats(d.stats ? { totalRevenue: d.stats.totalRevenue, handedOver: d.stats.handedOver, totalExpenses: d.stats.totalExpenses } : null);
       if (d.category?.id) setCategoryId(d.category.id);
     }
     setYearLoading(false);
@@ -714,7 +716,7 @@ export default function UshqimiPage() {
               </div>
 
               {/* KPI cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="card p-4">
                   <p className="text-xs text-slate-400 mb-1">Nxënës me ushqim</p>
                   <p className="text-xl font-bold text-slate-800 dark:text-white">{enrolled}</p>
@@ -734,6 +736,16 @@ export default function UshqimiPage() {
                   <p className="text-xs text-slate-400 mb-1">Marrin falas</p>
                   <p className="text-xl font-bold text-blue-500">{freeIds.size}</p>
                   <p className="text-xs text-slate-400 mt-1">nxënës, s'ndikojnë te të hyrat</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-slate-400 mb-1">Shpenzimet</p>
+                  <p className="text-xl font-bold text-orange-600">{formatCurrency(yearCashStats?.totalExpenses ?? 0)}</p>
+                  <p className="text-xs text-slate-400 mt-1">gjatë {yearType === "academic" ? `${effectiveYear}–${effectiveYear + 1}` : effectiveYear}</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-slate-400 mb-1">Dorëzimet</p>
+                  <p className="text-xl font-bold text-blue-600">{formatCurrency(yearCashStats?.handedOver ?? 0)}</p>
+                  <p className="text-xs text-slate-400 mt-1">gjatë {yearType === "academic" ? `${effectiveYear}–${effectiveYear + 1}` : effectiveYear}</p>
                 </div>
               </div>
 
