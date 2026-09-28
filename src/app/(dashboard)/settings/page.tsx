@@ -85,7 +85,8 @@ type TabKey = (typeof TABS)[number]["key"];
 /* ═══════════════════════════════════════════════════════════ */
 export default function SettingsPage() {
   const { data: session } = useSession();
-  const isAdmin = (session?.user as { role?: string })?.role === "ADMIN";
+  const role = (session?.user as { role?: string })?.role;
+  const isAdmin = role === "ADMIN" || role === "SUPERADMIN";
 
   const [tab, setTab] = useState<TabKey>("shkolla");
 

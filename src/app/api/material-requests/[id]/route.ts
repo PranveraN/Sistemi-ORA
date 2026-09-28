@@ -37,7 +37,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const role = (session.user as { role?: string }).role;
   const userId = Number((session.user as { id?: string }).id);
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
-  const isManagement = role === "ADMIN" || role === "FINANCE";
+  const isManagement = role === "ADMIN" || role === "SUPERADMIN" || role === "FINANCE";
 
   const { id } = await params;
   const requestId = parseInt(id);

@@ -46,7 +46,8 @@ const OUTCOME_LABEL: Record<Outcome, string> = {
 
 export default function VitiShkollorPage() {
   const { data: session } = useSession();
-  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "ADMIN";
+  const _role = (session?.user as { role?: string } | undefined)?.role;
+  const isAdmin = _role === "ADMIN" || _role === "SUPERADMIN";
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [years, setYears] = useState<SchoolYearRow[]>([]);

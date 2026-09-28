@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   const userId = Number((session.user as { id?: string }).id);
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
-  const isManagement = role === "ADMIN" || role === "FINANCE";
+  const isManagement = role === "ADMIN" || role === "SUPERADMIN" || role === "FINANCE";
 
   const teacherIdParam = req.nextUrl.searchParams.get("teacherId");
   const filterTeacherId = isManagement && teacherIdParam ? parseInt(teacherIdParam) : null;

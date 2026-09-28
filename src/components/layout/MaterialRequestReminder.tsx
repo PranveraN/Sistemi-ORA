@@ -15,7 +15,7 @@ const UNSENT_INTERVAL_MS  = 10 * 60 * 1000;  // aprovuara, por ende s'janë dër
 export default function MaterialRequestReminder() {
   const { data: session } = useSession();
   const role = (session?.user as { role?: string } | undefined)?.role;
-  const isManagement = role === "ADMIN" || role === "FINANCE";
+  const isManagement = role === "ADMIN" || role === "SUPERADMIN" || role === "FINANCE";
 
   const [pending, setPending] = useState(0);
   const [approvedUnsent, setApprovedUnsent] = useState(0);

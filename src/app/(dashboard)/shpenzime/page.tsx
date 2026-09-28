@@ -65,7 +65,8 @@ const NGJYRAT = ["#ef4444","#f97316","#eab308","#22c55e","#3b82f6","#8b5cf6","#e
 
 export default function ShpenzimePage() {
   const { data: session } = useSession();
-  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "ADMIN";
+  const _role = (session?.user as { role?: string } | undefined)?.role;
+  const isAdmin = _role === "ADMIN" || _role === "SUPERADMIN";
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1); // 0 = të gjitha muajt
   const [year, setYear] = useState(now.getFullYear());

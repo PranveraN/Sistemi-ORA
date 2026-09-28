@@ -8,7 +8,7 @@ export async function GET() {
 
   const role = (session.user as { role?: string }).role;
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
-  const isManagement = role === "ADMIN" || role === "FINANCE";
+  const isManagement = role === "ADMIN" || role === "SUPERADMIN" || role === "FINANCE";
 
   const subjects = await prisma.subject.findMany({
     where: { organizationId: orgId, ...(isManagement ? {} : { active: true }) },

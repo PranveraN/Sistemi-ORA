@@ -11,7 +11,7 @@ export async function GET() {
 
   const role = (session.user as { role?: string }).role;
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
-  const isManagement = role === "ADMIN" || role === "FINANCE";
+  const isManagement = role === "ADMIN" || role === "SUPERADMIN" || role === "FINANCE";
 
   const now = new Date();
   const in7days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -40,7 +40,7 @@ export async function GET() {
   // Vende të liruara për aplikimet në listë pritjeje (/apliko -> Regjistrimet)
   // — vetëm rolet me qasje te "Regjistrimet" (shih Sidebar.tsx); TEACHER/
   // PEDAGOGIA s'e shohin fare këtë faqe, ndaj njoftimi do të çonte në gjëkundi.
-  const canSeeRegjistrimet = role === "ADMIN" || role === "FINANCE" || role === "SECRETARY";
+  const canSeeRegjistrimet = role === "ADMIN" || role === "SUPERADMIN" || role === "FINANCE" || role === "SECRETARY";
   const waitlistOpenings = canSeeRegjistrimet ? await (async () => {
     const [activeClasses, waitlistGroups] = await Promise.all([
       prisma.class.findMany({
