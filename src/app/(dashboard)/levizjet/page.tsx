@@ -9,6 +9,9 @@ import {
 import YearPicker from "@/components/dashboard/YearPicker";
 import NewStudentsCard, { type NewStudentRow } from "@/components/dashboard/NewStudentsCard";
 import DepartedStudentsCard, { type DepartedStudentRow } from "@/components/dashboard/DepartedStudentsCard";
+import GradeOneCard from "@/components/dashboard/GradeOneCard";
+import GradeNineLeaversCard, { type GradeNineLeaverRow } from "@/components/dashboard/GradeNineLeaversCard";
+import { isGrade1 } from "@/lib/school-cycles";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 
 // Vetëm nxjerrim fushat që na duhen këtu nga /api/dashboard — e njëjta API si
@@ -25,6 +28,7 @@ export default function LevizjetPage() {
   const [year, setYear] = useState(DEFAULT_ACADEMIC_YEAR);
   const [data, setData] = useState<MovementsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [grade9, setGrade9] = useState<{ count: number; entries: GradeNineLeaverRow[] }>({ count: 0, entries: [] });
 
   // Filtrim i thjeshtë — vetëm në pamje (client-side), periudha/viti vazhdon
   // ta kontrollojë selektori sipër (njësoj si Dashboard-i).
@@ -48,7 +52,13 @@ export default function LevizjetPage() {
     setLoading(false);
   }, [year, yearType]);
 
+  const fetchGrade9 = useCallback(async () => {
+    const r = await fetch(`/api/movements/grade9-leavers?year=${year}&yearType=${yearType}`);
+    if (r.ok) setGrade9(await r.json());
+  }, [year, yearType]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchGrade9(); }, [fetchGrade9]);
 
   const classes = useMemo(() => {
     if (!data) return [];
@@ -67,6 +77,14 @@ export default function LevizjetPage() {
     );
     return { count: students.length, students };
   }, [data, search, classFilter]);
+
+  // E pavarur nga filtrat e sipërm (kërkim/klasë) — gjithmonë "sa nga Nxënës
+  // të Rinj janë Klasa e Parë", për tërë periudhën e zgjedhur.
+  const gradeOne = useMemo(() => {
+    if (!data) return { count: 0, students: [] };
+    const students = data.newStudents.students.filter(s => isGrade1(s.className));
+    return { count: students.length, students };
+  }, [data]);
 
   const filteredDeparted = useMemo(() => {
     if (!data) return { count: 0, students: [] };
@@ -214,6 +232,49 @@ export default function LevizjetPage() {
           )}
         </div>
 
+        {/* Detaje shtesë — Klasa e Parë (ardhje) dhe Klasa e 9 (shkuarje, listë manuale) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <GradeOneCard data={gradeOne} period={data.period.label} onChanged={fetchData} />
+          <GradeNineLeaversCard data={grade9} period={data.period.label} year={year} yearType={yearType} onChanged={fetchGrade9} />
+        </div>
+
+        {/* Bilanci i detajuar — ndan ardhjet/largimet sipas kategorisë */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart3 className="w-4 h-4 text-primary-500" />
+            <h2 className="section-title">Bilanci i Detajuar — {data.period.label}</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <p className="text-xs font-bold text-green-600 dark:text-green-400 uppercase tracking-wide mb-2">Ardhje</p>
+              <div className="space-y-1.5">
+                <BilanciRow label="Klasa e Parë" value={gradeOne.count} />
+                <BilanciRow label="Nxënës të rinj nga klasat tjera" value={data.newStudents.count - gradeOne.count} />
+                <BilanciRow label="Totali i Ardhjeve" value={data.newStudents.count} bold />
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-2">Largime</p>
+              <div className="space-y-1.5">
+                <BilanciRow label="Klasa e 9 (të diplomuar)" value={grade9.count} />
+                <BilanciRow label="Nxënës që kanë shkuar nga klasat tjera" value={data.departedStudents.count} />
+                <BilanciRow label="Totali i Largimeve" value={grade9.count + data.departedStudents.count} bold />
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Bilanci Neto (Ardhje − Largime)</span>
+            {(() => {
+              const netDetailed = data.newStudents.count - (grade9.count + data.departedStudents.count);
+              return (
+                <span className={`text-lg font-bold ${netDetailed >= 0 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
+                  {netDetailed > 0 ? "+" : ""}{netDetailed}
+                </span>
+              );
+            })()}
+          </div>
+        </div>
+
         {/* Bilanci i nxënësve — vetëm identitet aritmetik nga të dhënat reale */}
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -290,6 +351,15 @@ function BilanciCell({ label, value, valueClass, bold }: { label: string; value:
     <div className="flex-1 sm:px-5 first:sm:pl-0">
       <p className="text-xs text-slate-400 mb-0.5">{label}</p>
       <p className={`font-bold ${bold ? "text-xl" : "text-lg"} ${valueClass ?? "text-slate-800 dark:text-white"}`}>{value}</p>
+    </div>
+  );
+}
+
+function BilanciRow({ label, value, bold }: { label: string; value: number; bold?: boolean }) {
+  return (
+    <div className={`flex items-center justify-between text-sm ${bold ? "pt-1.5 border-t border-slate-100 dark:border-slate-700 font-bold text-slate-800 dark:text-white" : "text-slate-500 dark:text-slate-400"}`}>
+      <span>{label}</span>
+      <span className={bold ? "" : "font-semibold text-slate-700 dark:text-slate-200"}>{value}</span>
     </div>
   );
 }

@@ -37,6 +37,7 @@ model Organization {
   applicationEvidenca ApplicationEvidenca[]
   schoolDocuments  SchoolDocument[]
   familyEmailLogs  FamilyEmailLog[]
+  gradeNineLeavers GradeNineLeaver[]
 }
 
 model User {
@@ -451,6 +452,25 @@ model StudentEvidenca {
   createdAt      DateTime     @default(now())
 
   @@index([studentId])
+}
+
+// Lista e thjeshtë manuale e nxënësve të Klasës së 9 që u diplomuan/u larguan
+// një vit të kaluar (ose vit tjetër) — këta nxënës NUK janë (më) të regjistruar
+// si Student në sistem, ndaj nuk mund të "gjenden" apo lidhen me një rresht real
+// (shih src/app/(dashboard)/levizjet — karta "Klasa e 9"). Vetëm emër + klasë +
+// viti, pa lidhje me Student.
+model GradeNineLeaver {
+  id             Int          @id @default(autoincrement())
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  fullName       String
+  className      String?
+  year           Int
+  yearType       String       @default("academic") // "academic" | "calendar" — njësoj si period-i i faqes Lëvizjet
+  note           String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, year, yearType])
 }
 
 model PromotionRun {
