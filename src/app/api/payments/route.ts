@@ -127,6 +127,7 @@ export async function POST(req: NextRequest) {
         year: body.year ? parseInt(body.year) : new Date().getFullYear(),
         receiptNumber,
       },
+      include: { student: { select: { firstName: true, lastName: true } } },
     });
 
     const userId = parseInt((session?.user as { id?: string } | undefined)?.id ?? "0");
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest) {
           action: "CREATE",
           entity: "Payment",
           entityId: payment.id,
-          details: `Shtoi pagesë ${finalAmount} lekë për nxënësin ${body.studentId}`,
+          details: `Shtoi pagesë ${finalAmount}€ për ${payment.student.firstName} ${payment.student.lastName} (${category?.name ?? "?"})`,
         },
       });
     }
