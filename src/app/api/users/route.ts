@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const sessionUser = session.user as { role?: string };
-  if (sessionUser?.role !== "ADMIN") {
-    return NextResponse.json({ error: "Vetëm adminët mund të shtojnë përdorues" }, { status: 403 });
+  if (sessionUser?.role !== "SUPERADMIN") {
+    return NextResponse.json({ error: "Vetëm Super Admin mund të shtojë përdorues" }, { status: 403 });
   }
 
   const body = await req.json();
@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
 
   if (!name || !email || !password) {
     return NextResponse.json({ error: "Emri, emaili dhe fjalëkalimi janë të detyrueshme" }, { status: 400 });
+  }
+  if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+    return NextResponse.json({ error: "Fjalëkalimi duhet të ketë të paktën 8 karaktere, me shkronja dhe numra" }, { status: 400 });
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });

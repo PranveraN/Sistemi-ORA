@@ -13,8 +13,8 @@ export async function PATCH(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const sessionUser = session.user as { role?: string };
-  if (sessionUser?.role !== "ADMIN") {
-    return NextResponse.json({ error: "Vetëm adminët mund të modifikojnë përdorues" }, { status: 403 });
+  if (sessionUser?.role !== "SUPERADMIN") {
+    return NextResponse.json({ error: "Vetëm Super Admin mund të modifikojë përdorues" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -28,6 +28,9 @@ export async function PATCH(
   if (body.role   !== undefined) data.role   = body.role;
   if (body.active !== undefined) data.active = body.active;
   if (body.password) {
+    if (body.password.length < 8 || !/[a-zA-Z]/.test(body.password) || !/[0-9]/.test(body.password)) {
+      return NextResponse.json({ error: "Fjalëkalimi duhet të ketë të paktën 8 karaktere, me shkronja dhe numra" }, { status: 400 });
+    }
     data.password = await bcrypt.hash(body.password, 10);
   }
 
@@ -64,16 +67,19 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const sessionUser = session.user as { role?: string };
-  if (sessionUser?.role !== "ADMIN") {
-    return NextResponse.json({ error: "Vetëm adminët mund të fshijnë përdorues" }, { status: 403 });
+  if (sessionUser?.role !== "SUPERADMIN") {
+    return NextResponse.json({ error: "Vetëm Super Admin mund të fshijë përdorues" }, { status: 403 });
   }
 
   const { id } = await params;
 
-  const adminCount = await prisma.user.count({ where: { role: "ADMIN", active: true } });
+  // Mbrojtje: meqë tani VETËM Super Admin mund të menaxhojë përdorues, s'duhet
+  // fshirë i fundit — përndryshe askush s'do të mund të menaxhonte më
+  // përdorues fare (mbyllje e vetvetishme, e pakthyeshme pa qasje në server).
+  const superAdminCount = await prisma.user.count({ where: { role: "SUPERADMIN", active: true } });
   const user = await prisma.user.findUnique({ where: { id: parseInt(id) } });
-  if (user?.role === "ADMIN" && adminCount <= 1) {
-    return NextResponse.json({ error: "Nuk mund të fshish administratorin e fundit" }, { status: 400 });
+  if (user?.role === "SUPERADMIN" && superAdminCount <= 1) {
+    return NextResponse.json({ error: "Nuk mund të fshish Super Adminin e fundit" }, { status: 400 });
   }
 
   try {

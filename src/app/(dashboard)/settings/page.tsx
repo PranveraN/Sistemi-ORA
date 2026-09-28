@@ -1546,6 +1546,10 @@ const emptyUserForm = { name: "", email: "", password: "", role: "SECRETARY", ac
 function UsersSection() {
   const { data: session } = useSession();
   const currentUserId = parseInt((session?.user as { id?: string })?.id ?? "0");
+  // Vetëm Super Admin mund të krijojë/modifikojë/fshijë përdorues (zbatuar
+  // edhe në API — kjo është vetëm për të mos shfaqur butona që gjithsesi do
+  // të refuzoheshin). Admin/Financë/Sekretari e shohin listën vetëm-shikim.
+  const isSuperAdmin = (session?.user as { role?: string } | undefined)?.role === "SUPERADMIN";
 
   const [users, setUsers]     = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1677,33 +1681,35 @@ function UsersSection() {
                 <td className="table-cell text-center">
                   <button
                     onClick={() => handleToggleActive(u)}
-                    disabled={u.id === currentUserId}
-                    title={u.active ? "Çaktivizo" : "Aktivizo"}
+                    disabled={!isSuperAdmin || u.id === currentUserId}
+                    title={!isSuperAdmin ? "Vetëm Super Admin mund ta ndryshojë" : u.active ? "Çaktivizo" : "Aktivizo"}
                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
                       u.active
                         ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-100"
                         : pending
                           ? "bg-amber-500 text-white hover:bg-amber-600"
                           : "bg-slate-100 text-slate-500 dark:bg-slate-700 hover:bg-slate-200"
-                    } disabled:cursor-not-allowed`}
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
                   >
                     {u.active ? <><Eye className="w-3 h-3" /> Aktiv</> : <><EyeOff className="w-3 h-3" /> {pending ? "Aktivizo" : "Joaktiv"}</>}
                   </button>
                 </td>
                 <td className="table-cell">
-                  <div className="flex gap-1 justify-end">
-                    <button onClick={() => openEdit(u)}
-                      className="p-1.5 rounded text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500 transition-colors"
-                      title="Modifiko">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={() => handleDelete(u)}
-                      disabled={u.id === currentUserId}
-                      className="p-1.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-500 transition-colors disabled:opacity-30"
-                      title="Fshi">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  {isSuperAdmin && (
+                    <div className="flex gap-1 justify-end">
+                      <button onClick={() => openEdit(u)}
+                        className="p-1.5 rounded text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500 transition-colors"
+                        title="Modifiko">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => handleDelete(u)}
+                        disabled={u.id === currentUserId}
+                        className="p-1.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-500 transition-colors disabled:opacity-30"
+                        title="Fshi">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
               );
@@ -1725,12 +1731,16 @@ function UsersSection() {
             </div>
             <div>
               <h2 className="font-bold text-slate-900 dark:text-white">Stafi Administrativ</h2>
-              <p className="text-xs text-slate-400">Admin, Financë, Sekretari</p>
+              <p className="text-xs text-slate-400">
+                {isSuperAdmin ? "Admin, Financë, Sekretari" : "Vetëm shikim — vetëm Super Admin mund të bëjë ndryshime"}
+              </p>
             </div>
           </div>
-          <button onClick={openAdd} className="btn-primary text-sm">
-            <Plus className="w-4 h-4" /> Shto Përdorues
-          </button>
+          {isSuperAdmin && (
+            <button onClick={openAdd} className="btn-primary text-sm">
+              <Plus className="w-4 h-4" /> Shto Përdorues
+            </button>
+          )}
         </div>
         {renderTable(staffUsers, "Nuk ka staf", false)}
       </div>
