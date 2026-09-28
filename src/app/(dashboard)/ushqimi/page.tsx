@@ -435,7 +435,13 @@ export default function UshqimiPage() {
     setLoading(true);
     const params = new URLSearchParams({ category: "Ushqimi", search });
     if (month > 0) params.set("month", String(month));
-    if (resolvedYear  > 0) params.set("year",  String(resolvedYear));
+    if (resolvedYear  > 0) {
+      params.set("year",  String(resolvedYear));
+      // "Të gjitha muajt" + vit akademik → kapërcen dy vite kalendarike (Shtator–Gusht),
+      // njësoj si te Shkollimi — përndryshe pagesat/dorëzimet/shpenzimet e Janar–Gusht
+      // bien jashtë filtrit kur shihet "Të gjitha".
+      if (!(month > 0) && yearType === "academic") params.set("yearType", "academic");
+    }
     const res = await fetch(`/api/category-payments?${params}`);
     if (res.ok) {
       const d = await res.json();
@@ -444,7 +450,7 @@ export default function UshqimiPage() {
       if (d.category?.id) setCategoryId(d.category.id);
     }
     setLoading(false);
-  }, [month, resolvedYear, search]);
+  }, [month, resolvedYear, yearType, search]);
 
   const fetchYearData = useCallback(async () => {
     setYearLoading(true);
@@ -656,12 +662,12 @@ export default function UshqimiPage() {
 
         {/* ── EXPENSE TAB ── */}
         {tab === "expense" && (
-          <ExpensesSection categoryId={categoryId} type="EXPENSE" month={month} year={resolvedYear} />
+          <ExpensesSection categoryId={categoryId} type="EXPENSE" month={month} year={resolvedYear} yearType={yearType} />
         )}
 
         {/* ── HANDOVER TAB ── */}
         {tab === "handover" && (
-          <ExpensesSection categoryId={categoryId} type="HANDOVER" month={month} year={resolvedYear} />
+          <ExpensesSection categoryId={categoryId} type="HANDOVER" month={month} year={resolvedYear} yearType={yearType} />
         )}
 
         {/* ── REPORT TAB ── */}

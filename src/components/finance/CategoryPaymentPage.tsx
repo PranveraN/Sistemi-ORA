@@ -1261,11 +1261,11 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
         )}
 
         {tab === "expense" && (
-          <ExpensesSection categoryId={category?.id ?? null} type="EXPENSE" month={month} year={resolvedYear} />
+          <ExpensesSection categoryId={category?.id ?? null} type="EXPENSE" month={month} year={resolvedYear} yearType={yearType} />
         )}
 
         {tab === "handover" && (
-          <ExpensesSection categoryId={category?.id ?? null} type="HANDOVER" month={month} year={resolvedYear} />
+          <ExpensesSection categoryId={category?.id ?? null} type="HANDOVER" month={month} year={resolvedYear} yearType={yearType} />
         )}
       </div>
 

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { expensePeriodWhere } from "@/lib/expensePeriod";
+import type { YearType } from "@/lib/academicYear";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -11,13 +13,13 @@ export async function GET(req: NextRequest) {
   const type  = searchParams.get("type")  || "EXPENSE";
   const month = parseInt(searchParams.get("month") || "0");
   const year  = parseInt(searchParams.get("year")  || "0");
+  const yearType = (searchParams.get("yearType") || "calendar") as YearType;
 
   const expenses = await prisma.expense.findMany({
     where: {
       categoryId,
       type,
-      ...(month > 0 ? { month } : {}),
-      ...(year  > 0 ? { year  } : {}),
+      ...expensePeriodWhere(month, year, yearType),
     },
     orderBy: { date: "desc" },
   });

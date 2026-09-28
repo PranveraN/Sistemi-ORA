@@ -21,9 +21,10 @@ interface Props {
   type: "EXPENSE" | "HANDOVER";
   month: number;
   year: number;
+  yearType?: "academic" | "calendar";
 }
 
-export default function ExpensesSection({ categoryId, type, month, year }: Props) {
+export default function ExpensesSection({ categoryId, type, month, year, yearType = "calendar" }: Props) {
   const [items, setItems]       = useState<Expense[]>([]);
   const [loading, setLoading]   = useState(true);
   const [modal, setModal]       = useState(false);
@@ -44,11 +45,12 @@ export default function ExpensesSection({ categoryId, type, month, year }: Props
       type,
       month: String(month),
       year:  String(year),
+      yearType,
     });
     const res = await fetch(`/api/expenses?${params}`);
     if (res.ok) setItems(await res.json());
     setLoading(false);
-  }, [categoryId, type, month, year]);
+  }, [categoryId, type, month, year, yearType]);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 

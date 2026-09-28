@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 import { computeTiExpectedPrice } from "@/lib/timiInvestPricing";
+import { expensePeriodWhere } from "@/lib/expensePeriod";
+import type { YearType } from "@/lib/academicYear";
 
 type PrismaPayment = {
   id: number;
@@ -54,7 +56,7 @@ export async function GET(req: NextRequest) {
   const categoryName = searchParams.get("category") || "";
   const monthParam   = searchParams.get("month");
   const yearParam    = searchParams.get("year");
-  const yearType     = searchParams.get("yearType") || "calendar"; // "academic" = Shtator–Gusht (dy vite kalendarike)
+  const yearType     = (searchParams.get("yearType") || "calendar") as YearType; // "academic" = Shtator–Gusht (dy vite kalendarike)
   const month  = monthParam  ? parseInt(monthParam)  : null;  // null = all months
   const year   = yearParam   ? parseInt(yearParam)   : null;  // null = all years
   const search  = searchParams.get("search")  || "";
@@ -143,25 +145,24 @@ export async function GET(req: NextRequest) {
       select: { id: true, studentId: true, finalAmount: true, paidAmount: true, balance: true, note: true },
     }),
     // Shuma e dorëzuar (Expense.type="HANDOVER") — përdor SAKTËSISHT të njëjtin filtër
-    // muaj/vit (barazi e thjeshtë) si /api/expenses, që numri këtu të përputhet gjithmonë
-    // me "Total Dorëzuar" të skedës "Dorezim Parash" të kësaj faqeje.
+    // (muaj/vit, me OR-in që kapërcen dy vite kalendarike për "Të gjitha + Vit
+    // Akademik") si /api/expenses, që numri këtu të përputhet gjithmonë me "Total
+    // Dorëzuar" të skedës "Dorezim Parash" të kësaj faqeje.
     prisma.expense.aggregate({
       where: {
         categoryId: category.id,
         type: "HANDOVER",
-        ...(month && month > 0 ? { month } : {}),
-        ...(year && year > 0 ? { year } : {}),
+        ...expensePeriodWhere(month ?? 0, year ?? 0, yearType),
       },
       _sum: { amount: true },
     }),
-    // Shpenzimet (Expense.type="EXPENSE") — i njëjti filtër i thjeshtë, që të
-    // përputhet me "Total Shpenzuar" të skedës "Shpenzime" (p.sh. Ushqimi).
+    // Shpenzimet (Expense.type="EXPENSE") — i njëjti filtër, që të përputhet me
+    // "Total Shpenzuar" të skedës "Shpenzime" (p.sh. Ushqimi).
     prisma.expense.aggregate({
       where: {
         categoryId: category.id,
         type: "EXPENSE",
-        ...(month && month > 0 ? { month } : {}),
-        ...(year && year > 0 ? { year } : {}),
+        ...expensePeriodWhere(month ?? 0, year ?? 0, yearType),
       },
       _sum: { amount: true },
     }),

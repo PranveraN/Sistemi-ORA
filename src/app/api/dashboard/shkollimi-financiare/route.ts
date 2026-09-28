@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getDateRange, getAcademicMonths, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 import { computeTiExpectedPrice } from "@/lib/timiInvestPricing";
+import { expensePeriodWhere } from "@/lib/expensePeriod";
 
 interface Row { studentId: number; name: string; className: string | null; phone: string; amount: number }
 
@@ -63,8 +64,22 @@ export async function GET(req: NextRequest) {
       where: { active: true, studentId: { not: null } },
       select: { studentId: true, regularPrice: true, discountPct: true, manualDiscAmt: true },
     }),
-    prisma.paymentHandover.aggregate({
-      where: { organizationId: orgId, categoryId: shkollimiCategory.id, handoverAt: { gte: start, lte: end } },
+    // Shuma e dorëzuar — burimi është TANI Expense.type="HANDOVER" (jo
+    // PaymentHandover), pikërisht e njëjta tabelë që lexon skeda "Dorëzim
+    // Parash" brenda faqes së Shkollimit dhe "Pasqyra e Arkës" e saj — që
+    // kjo kartë të përputhet GJITHMONË me atë që shihet vetë te faqja e
+    // Shkollimit (2026-09-28: më parë lexonte PaymentHandover, një tabelë
+    // krejt tjetër, e mbushur vetëm nga faqja e veçantë "/dorëzimet", ndaj
+    // dilte gjithmonë 0,00 € këtu edhe kur dorëzimet ishin regjistruar
+    // rregullisht te faqja e Shkollimit). Filtri (muaj/vit, me OR-in që
+    // kapërcen dy vite kalendarike për vit akademik) është i njëjti që
+    // përdor /api/expenses dhe /api/category-payments.
+    prisma.expense.aggregate({
+      where: {
+        categoryId: shkollimiCategory.id,
+        type: "HANDOVER",
+        ...expensePeriodWhere(0, year, yearType),
+      },
       _sum: { amount: true },
     }),
     prisma.shpenzim.findMany({
