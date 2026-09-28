@@ -38,6 +38,7 @@ model Organization {
   schoolDocuments  SchoolDocument[]
   familyEmailLogs  FamilyEmailLog[]
   gradeNineLeavers GradeNineLeaver[]
+  roleModulePermissions RoleModulePermission[]
 }
 
 model User {
@@ -45,7 +46,7 @@ model User {
   email          String       @unique
   name           String
   password       String
-  role           String       @default("SECRETARY") // ADMIN, FINANCE, SECRETARY, SUPERADMIN, TEACHER, PEDAGOGIA (vetëm /classes)
+  role           String       @default("SECRETARY") // ADMIN (vetëm shikim), FINANCE, SECRETARY, SUPERADMIN (qasje e plotë), TEACHER (portal i vet), PEDAGOGIA (module të konfigurueshme)
   active         Boolean      @default(true)
   organizationId Int          @default(1)
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -471,6 +472,24 @@ model GradeNineLeaver {
   createdAt      DateTime     @default(now())
 
   @@index([organizationId, year, yearType])
+}
+
+// Leje modulesh PËR ROL (jo për SUPERADMIN — gjithmonë qasje e plotë — as për
+// TEACHER, që ka portalin e vet krejt të veçantë, /kerkesa-material, jashtë
+// këtij sistemi modulesh). Mungesa e një rreshti për (role, moduleKey) do të
+// thotë "përdor parazgjedhjen" (shih DEFAULT_ALLOWED te src/lib/modules.ts) —
+// kështu instalimi ekzistues NUK ndryshon sjellje derisa dikush eksplicitisht
+// të ndryshojë një leje nga faqja e re e administrimit.
+model RoleModulePermission {
+  id             Int          @id @default(autoincrement())
+  organizationId Int          @default(1)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  role           String
+  moduleKey      String
+  allowed        Boolean
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, role, moduleKey])
 }
 
 model PromotionRun {

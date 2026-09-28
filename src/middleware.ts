@@ -1,24 +1,38 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import { moduleForPath, firstAllowedPath, isConfigurableRole } from "@/lib/modules";
 
 export default auth((req) => {
   const { nextUrl } = req;
   const isLoggedIn = !!req.auth;
   const role = (req.auth?.user as { role?: string })?.role;
+  const allowedModules = (req.auth?.user as { allowedModules?: string[] })?.allowedModules ?? [];
+
+  // Roli "Admin" ka VETËM të drejtë shikimi — asnjë veprim shkrimi (krijim/
+  // ndryshim/fshirje), pavarësisht modulit. Zbatohet këtu, në një vend të
+  // vetëm, mbi çdo kërkesë API — jo e përsëritur në çdo skedar route.ts.
+  if (nextUrl.pathname.startsWith("/api")) {
+    // /api/auth/* (kyçja/daljja e vetë NextAuth-it) përjashtohet gjithmonë —
+    // mekanizëm autentikimi, jo veprim mbi të dhëna, s'duhet bllokuar kurrë.
+    const isAuthApi = nextUrl.pathname.startsWith("/api/auth");
+    if (!isAuthApi && isLoggedIn && role === "ADMIN" && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+      return NextResponse.json({ error: "Roli 'Admin' ka vetëm qasje shikimi — ky veprim nuk lejohet." }, { status: 403 });
+    }
+    return NextResponse.next();
+  }
 
   const isLoginPage = nextUrl.pathname === "/login";
   const isSuperAdminPage = nextUrl.pathname.startsWith("/superadmin");
   const isTeacherArea = nextUrl.pathname.startsWith("/kerkesa-material");
   const isTeacherPublicPage = nextUrl.pathname === "/kerkesa-material/regjistrohu";
   const isEnrollmentPublicPage = nextUrl.pathname === "/apliko";
-  const isPedagogiaArea = nextUrl.pathname.startsWith("/classes")
-    || nextUrl.pathname.startsWith("/regjistrimet")
-    || nextUrl.pathname.startsWith("/levizjet");
 
   if (isLoginPage && isLoggedIn) {
     if (role === "SUPERADMIN") return NextResponse.redirect(new URL("/superadmin", nextUrl));
     if (role === "TEACHER") return NextResponse.redirect(new URL("/kerkesa-material", nextUrl));
-    if (role === "PEDAGOGIA") return NextResponse.redirect(new URL("/classes", nextUrl));
+    if (role && isConfigurableRole(role)) {
+      return NextResponse.redirect(new URL(firstAllowedPath(allowedModules) ?? "/dashboard", nextUrl));
+    }
     return NextResponse.redirect(new URL("/dashboard", nextUrl));
   }
 
@@ -31,21 +45,28 @@ export default auth((req) => {
   }
 
   // Mësimdhënësit shohin VETËM zonën e tyre — jo asnjë faqe tjetër të stafit.
+  // (Portal krejt i veçantë, jashtë sistemit të përgjithshëm të moduleve.)
   if (isLoggedIn && role === "TEACHER" && !isTeacherArea) {
     return NextResponse.redirect(new URL("/kerkesa-material", nextUrl));
   }
 
-  // Pedagogia sheh "Klasat", "Regjistrimet" (përfshi skedën "Evidenca" —
-  // vlerësimi i takimit me nxënësin e sapopranuar) dhe "Lëvizjet e Nxënësve"
-  // — asgjë tjetër, sipas kërkesës eksplicite (rol i ngushtë, i ndarë nga
-  // SECRETARY normale).
-  if (isLoggedIn && role === "PEDAGOGIA" && !isPedagogiaArea) {
-    return NextResponse.redirect(new URL("/classes", nextUrl));
+  // Rolet e konfigurueshme (Admin, Financë, Sekretari, Pedagogia) — qasja në
+  // faqe drejtohet nga lejet e moduleve (të konfigurueshme te /superadmin →
+  // "Lejet e Moduleve"), jo më nga lista e ngurtë e kodit.
+  if (isLoggedIn && role && isConfigurableRole(role)) {
+    const mod = moduleForPath(nextUrl.pathname);
+    if (mod && !allowedModules.includes(mod.key)) {
+      const fallback = firstAllowedPath(allowedModules);
+      if (fallback && fallback !== nextUrl.pathname) return NextResponse.redirect(new URL(fallback, nextUrl));
+      // Asnjë modul i lejuar (rast i pazakontë, konfigurim bosh) — s'ka ku ta
+      // ridrejtojmë pa hyrë në lak; lëmë faqen ta trajtojë (do të shfaqet
+      // bosh/e mbrojtur nga vetë API-t, që gjithsesi kontrollojnë sesionin).
+    }
   }
 
   return NextResponse.next();
 });
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

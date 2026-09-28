@@ -28,6 +28,9 @@ export async function POST(req: NextRequest) {
   if (!name || !slug || !adminEmail || !adminPassword) {
     return NextResponse.json({ error: "Mungojnë të dhënat" }, { status: 400 });
   }
+  if (adminPassword.length < 8 || !/[a-zA-Z]/.test(adminPassword) || !/[0-9]/.test(adminPassword)) {
+    return NextResponse.json({ error: "Fjalëkalimi duhet të ketë të paktën 8 karaktere, me shkronja dhe numra" }, { status: 400 });
+  }
 
   const existing = await prisma.organization.findUnique({ where: { slug } });
   if (existing) {

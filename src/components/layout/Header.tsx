@@ -23,6 +23,7 @@ function getRoleLabel(role: string) {
     ADMIN: "Administrator",
     FINANCE: "Financë",
     SECRETARY: "Sekretari",
+    PEDAGOGIA: "Pedagogia",
   };
   return map[role] || role;
 }
@@ -32,6 +33,7 @@ function getRoleColor(role: string) {
     ADMIN: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
     FINANCE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
     SECRETARY: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+    PEDAGOGIA: "bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300",
   };
   return map[role] || "bg-slate-100 text-slate-600";
 }
@@ -443,6 +445,14 @@ export default function Header({ title, backHref }: { title?: string; backHref?:
           </button>
         )}
         {title && <h1 className="text-lg font-semibold text-slate-800 dark:text-white">{title}</h1>}
+        {userRole === "ADMIN" && (
+          <span
+            title="Roli 'Admin' mund vetëm të shikojë — çdo veprim krijimi/ndryshimi/fshirjeje është i çaktivizuar."
+            className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap"
+          >
+            👁 Vetëm Shikim
+          </span>
+        )}
       </div>
 
       {/* Right */}

@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useSidebar } from "@/components/layout/SidebarContext";
+import { moduleForPath } from "@/lib/modules";
 
 type Role = "ADMIN" | "FINANCE" | "SECRETARY" | "PEDAGOGIA";
 
@@ -75,6 +76,14 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { data: session } = useSession();
   const role = ((session?.user as { role?: string } | undefined)?.role ?? "ADMIN") as Role;
+  // Lejet reale (të konfigurueshme te /superadmin → "Lejet e Moduleve") —
+  // menyja tani pasqyron SAKTËSISHT atë që lejohet vërtet (jo më vetëm një
+  // listë e ngurtë rolesh që s'ishte kurrë e zbatuar në middleware/API).
+  const allowedModules = (session?.user as { allowedModules?: string[] } | undefined)?.allowedModules ?? [];
+  function itemVisible(href: string) {
+    const mod = moduleForPath(href);
+    return mod ? allowedModules.includes(mod.key) : true;
+  }
   const { mobileOpen, close } = useSidebar();
 
   // Numri i dukshëm te "Kërkesat" — kërkesa në pritje + aprovuara e padërguara,
@@ -134,8 +143,7 @@ export default function Sidebar() {
       <nav className="flex-1 py-3 overflow-y-auto">
         <div className="space-y-1 px-2">
           {navSections.map((section, si) => {
-            if (!section.roles.includes(role)) return null;
-            const visibleItems = section.items.filter(item => item.roles.includes(role));
+            const visibleItems = section.items.filter(item => itemVisible(item.href));
             if (visibleItems.length === 0) return null;
 
             return (

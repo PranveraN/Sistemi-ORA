@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
+import { getAllowedModules } from "./modulePermissions";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
@@ -45,17 +46,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as { role?: string; organizationId?: number }).role;
+        const role = (user as { role?: string; organizationId?: number }).role as string;
+        const organizationId = (user as { role?: string; organizationId?: number }).organizationId as number;
+        token.role = role;
         token.id = user.id;
-        token.organizationId = (user as { role?: string; organizationId?: number }).organizationId;
+        token.organizationId = organizationId;
+        // Llogaritet VETËM në momentin e kyçjes (jo në çdo kërkesë) — ndaj
+        // ndryshimet e lejeve (faqja e re e administrimit) marrin efekt për
+        // një përdorues të kyçur tashmë vetëm pas kyçjes së tij të radhës.
+        token.allowedModules = await getAllowedModules(organizationId, role);
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as { role?: string; id?: string; organizationId?: number }).role = token.role as string;
-        (session.user as { role?: string; id?: string; organizationId?: number }).id = token.id as string;
-        (session.user as { role?: string; id?: string; organizationId?: number }).organizationId = token.organizationId as number;
+        (session.user as { role?: string; id?: string; organizationId?: number; allowedModules?: string[] }).role = token.role as string;
+        (session.user as { role?: string; id?: string; organizationId?: number; allowedModules?: string[] }).id = token.id as string;
+        (session.user as { role?: string; id?: string; organizationId?: number; allowedModules?: string[] }).organizationId = token.organizationId as number;
+        (session.user as { role?: string; id?: string; organizationId?: number; allowedModules?: string[] }).allowedModules = token.allowedModules as string[];
       }
       return session;
     },

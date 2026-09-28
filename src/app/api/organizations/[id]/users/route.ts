@@ -16,6 +16,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!email || !password) {
     return NextResponse.json({ error: "Email dhe fjalëkalimi janë të detyrueshme" }, { status: 400 });
   }
+  if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+    return NextResponse.json({ error: "Fjalëkalimi duhet të ketë të paktën 8 karaktere, me shkronja dhe numra" }, { status: 400 });
+  }
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {

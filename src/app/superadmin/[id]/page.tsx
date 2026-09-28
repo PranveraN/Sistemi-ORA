@@ -21,8 +21,16 @@ interface Org {
   users: OrgUser[];
 }
 
+interface ModuleDef { key: string; label: string; pathPrefixes: string[] }
+interface PermData {
+  modules: ModuleDef[];
+  roles: string[];
+  matrix: Record<string, Record<string, boolean>>;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Admin", FINANCE: "Financë", SECRETARY: "Sekretari", SUPERADMIN: "Super Admin",
+  PEDAGOGIA: "Pedagogia", TEACHER: "Mësimdhënës",
 };
 
 const ROLE_COLORS: Record<string, string> = {
@@ -30,10 +38,13 @@ const ROLE_COLORS: Record<string, string> = {
   FINANCE: "text-emerald-300 bg-emerald-500/15 border-emerald-500/20",
   SECRETARY: "text-blue-300 bg-blue-500/15 border-blue-500/20",
   SUPERADMIN: "text-amber-300 bg-amber-500/15 border-amber-500/20",
+  PEDAGOGIA: "text-pink-300 bg-pink-500/15 border-pink-500/20",
+  TEACHER: "text-cyan-300 bg-cyan-500/15 border-cyan-500/20",
 };
 
 const ROLE_ICONS: Record<string, string> = {
   ADMIN: "⚡", FINANCE: "💰", SECRETARY: "📋", SUPERADMIN: "👑",
+  PEDAGOGIA: "🎓", TEACHER: "📖",
 };
 
 const FEATURES = [
@@ -61,7 +72,43 @@ export default function OrgDetailPage() {
   const [licenseLoading, setLicenseLoading] = useState(false);
   const [activeLoading, setActiveLoading] = useState(false);
 
-  useEffect(() => { fetchOrg(); }, [orgId]);
+  const [permData, setPermData] = useState<PermData | null>(null);
+  const [permMatrix, setPermMatrix] = useState<Record<string, Record<string, boolean>>>({});
+  const [permLoading, setPermLoading] = useState(true);
+  const [permSaving, setPermSaving] = useState(false);
+  const [permMsg, setPermMsg] = useState("");
+
+  useEffect(() => { fetchOrg(); fetchPermissions(); }, [orgId]);
+
+  async function fetchPermissions() {
+    setPermLoading(true);
+    const res = await fetch(`/api/organizations/${orgId}/permissions`);
+    if (res.ok) {
+      const d: PermData = await res.json();
+      setPermData(d);
+      setPermMatrix(d.matrix);
+    }
+    setPermLoading(false);
+  }
+
+  function toggleCell(role: string, moduleKey: string) {
+    setPermMatrix(prev => ({
+      ...prev,
+      [role]: { ...prev[role], [moduleKey]: !prev[role]?.[moduleKey] },
+    }));
+  }
+
+  async function savePermissions() {
+    setPermSaving(true);
+    setPermMsg("");
+    const res = await fetch(`/api/organizations/${orgId}/permissions`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matrix: permMatrix }),
+    });
+    setPermSaving(false);
+    setPermMsg(res.ok ? "ok" : "err");
+  }
 
   async function fetchOrg() {
     setLoading(true);
@@ -290,6 +337,8 @@ export default function OrgDetailPage() {
                       <option value="ADMIN">⚡ Admin</option>
                       <option value="FINANCE">💰 Financë</option>
                       <option value="SECRETARY">📋 Sekretari</option>
+                      <option value="PEDAGOGIA">🎓 Pedagogia</option>
+                      <option value="TEACHER">📖 Mësimdhënës</option>
                     </select>
                   </div>
                   <div className="col-span-2 flex gap-2 pt-1">
@@ -362,6 +411,62 @@ export default function OrgDetailPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Lejet e Moduleve — cilat role shohin cilat module (Super Admin ka
+            gjithmonë qasje të plotë, s'shfaqet këtu; Mësimdhënësi ka portalin
+            e vet të veçantë, gjithashtu jashtë kësaj tabele). */}
+        <div className="mt-6 bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h2 className="text-sm font-semibold">Lejet e Moduleve</h2>
+              <p className="text-xs text-gray-600 mt-0.5">Cilat module mund t&apos;i shohë/përdorë secili rol — Admin ka gjithsesi vetëm shikim, pavarësisht listës.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {permMsg === "ok" && <span className="text-xs text-emerald-400">✓ U ruajt</span>}
+              {permMsg === "err" && <span className="text-xs text-red-400">Gabim gjatë ruajtjes</span>}
+              <button onClick={savePermissions} disabled={permSaving || permLoading}
+                className="bg-violet-600 hover:bg-violet-500 px-4 py-2 rounded-xl text-xs font-medium transition disabled:opacity-50">
+                {permSaving ? "Duke ruajtur..." : "Ruaj Lejet"}
+              </button>
+            </div>
+          </div>
+
+          {permLoading || !permData ? (
+            <p className="text-xs text-gray-600 py-6 text-center">Duke ngarkuar...</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-gray-600 uppercase tracking-wide">
+                    <th className="pb-2 pr-3 font-medium">Moduli</th>
+                    {permData.roles.map(role => (
+                      <th key={role} className="pb-2 px-2 font-medium text-center whitespace-nowrap">
+                        {ROLE_ICONS[role] ?? ""} {ROLE_LABELS[role] ?? role}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.05]">
+                  {permData.modules.map(m => (
+                    <tr key={m.key}>
+                      <td className="py-1.5 pr-3 text-gray-300">{m.label}</td>
+                      {permData.roles.map(role => (
+                        <td key={role} className="py-1.5 px-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={!!permMatrix[role]?.[m.key]}
+                            onChange={() => toggleCell(role, m.key)}
+                            className="cursor-pointer accent-violet-500"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
