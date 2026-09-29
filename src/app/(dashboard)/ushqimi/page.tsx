@@ -426,24 +426,34 @@ export default function UshqimiPage() {
 
   async function handleSavePrice2Meals() {
     setSavingPrice(true);
-    await fetch("/api/settings", {
+    const res = await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ushqimiPrice2Meals: String(price2Meals) }),
     });
-    setPrice2MealsSaved(price2Meals);
     setSavingPrice(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
+    setPrice2MealsSaved(price2Meals);
   }
 
   async function handleSavePrice2MealsG1() {
     setSavingPriceG1(true);
-    await fetch("/api/settings", {
+    const res = await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ushqimiPrice2MealsGrade1: String(price2MealsG1) }),
     });
-    setPrice2MealsG1Saved(price2MealsG1);
     setSavingPriceG1(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
+    setPrice2MealsG1Saved(price2MealsG1);
   }
 
   // Norma e saktë sipas klasës — përdoret kudo që llogaritet shuma e parazgjedhur
@@ -578,7 +588,7 @@ export default function UshqimiPage() {
     if (!missing.length) return;
 
     const rate = priceRateForClass(s.class?.name);
-    await Promise.all(missing.map(({ period, i }) => {
+    const results = await Promise.all(missing.map(({ period, i }) => {
       const days = periods[i]?.days ?? workingDays;
       const finalAmount = Math.round(days * rate * 100) / 100;
       const calYear = periodCalYear(period.canonicalMonth);
@@ -597,6 +607,9 @@ export default function UshqimiPage() {
         }),
       });
     }));
+    if (results.some(r => !r.ok)) {
+      alert(`Disa periudha nuk u faturuan dot për ${s.firstName} ${s.lastName} — provo përsëri.`);
+    }
     fetchYearData();
   }
 
@@ -1586,6 +1599,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
   );
   const [note, setNote] = useState(existing?.note ?? "");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   // Zgjedhje e lirë e disa periudhave njëherësh (p.sh. Shtator/Tetor +
   // Nëntor/Dhjetor = 4 muaj) — përveç periudhës që u klikua për ta hapur
@@ -1621,6 +1635,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
 
   async function handleSave(withPrint = false) {
     setSaving(true);
+    setSaveError("");
     const payload = {
       studentId: student.id,
       categoryId: 2,
@@ -1636,33 +1651,44 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       note: note || null,
     };
 
-    const catRes = await fetch("/api/categories");
-    const cats = await catRes.json();
-    const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
-    if (cat) payload.categoryId = cat.id;
+    try {
+      const catRes = await fetch("/api/categories");
+      const cats = await catRes.json();
+      const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
+      if (cat) payload.categoryId = cat.id;
 
-    let receiptPaymentId: number | undefined;
+      let receiptPaymentId: number | undefined;
+      let ok: boolean;
 
-    if (existing) {
-      const r = await fetch(`/api/payments/${existing.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (r.ok && paid > 0) receiptPaymentId = existing.id;
-    } else {
-      const r = await fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (r.ok && paid > 0) {
-        const created = await r.json();
-        receiptPaymentId = created.id;
+      if (existing) {
+        const r = await fetch(`/api/payments/${existing.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        ok = r.ok;
+        if (r.ok && paid > 0) receiptPaymentId = existing.id;
+        if (!r.ok) { const d = await r.json().catch(() => ({})); setSaveError(d.error || `Ruajtja dështoi (gabim ${r.status})`); }
+      } else {
+        const r = await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        ok = r.ok;
+        if (r.ok && paid > 0) {
+          const created = await r.json();
+          receiptPaymentId = created.id;
+        }
+        if (!r.ok) { const d = await r.json().catch(() => ({})); setSaveError(d.error || `Ruajtja dështoi (gabim ${r.status})`); }
       }
+      setSaving(false);
+      if (!ok) return;
+      onSave(withPrint && receiptPaymentId ? { paymentId: receiptPaymentId } : undefined);
+    } catch {
+      setSaving(false);
+      setSaveError("Gabim rrjeti — provo përsëri.");
     }
-    setSaving(false);
-    onSave(withPrint && receiptPaymentId ? { paymentId: receiptPaymentId } : undefined);
   }
 
   const isSkipped = existing?.description === SKIPPED_MARKER;
@@ -1670,6 +1696,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
 
   async function markAs(marker: string) {
     setSaving(true);
+    setSaveError("");
     const payload: Record<string, unknown> = {
       studentId: student.id, categoryId: 2,
       amount: 0, discount: 0, discountType: null, scholarship: 0,
@@ -1678,26 +1705,35 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       month, year,
       description: marker,
     };
-    if (!existing) {
-      const catRes = await fetch("/api/categories");
-      const cats = await catRes.json();
-      const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
-      if (cat) payload.categoryId = cat.id;
+    try {
+      if (!existing) {
+        const catRes = await fetch("/api/categories");
+        const cats = await catRes.json();
+        const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
+        if (cat) payload.categoryId = cat.id;
+      }
+      const r = existing
+        ? await fetch(`/api/payments/${existing.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/payments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+      setSaving(false);
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setSaveError(d.error || `Veprimi dështoi (gabim ${r.status})`);
+        return;
+      }
+    } catch {
+      setSaving(false);
+      setSaveError("Gabim rrjeti — provo përsëri.");
+      return;
     }
-    if (existing) {
-      await fetch(`/api/payments/${existing.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } else {
-      await fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    }
-    setSaving(false);
     onSave(undefined);
   }
 
@@ -1734,6 +1770,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
     if (!confirm(`Do të shënohen si paguar plotësisht ${label} për ${student.firstName} ${student.lastName} — gjithsej ${formatCurrency(selectedTotal)}. Vazhdo?`)) return;
 
     setSaving(true);
+    setSaveError("");
     const catRes = await fetch("/api/categories");
     const cats = await catRes.json();
     const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
@@ -1770,16 +1807,18 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
         }),
       });
       setSaving(false);
-      if (res.ok) {
-        const { id } = await res.json();
-        onSave({ familyReceiptId: id });
-      } else {
-        onSave(undefined);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSaveError(d.error || `Pagesa dështoi (gabim ${res.status})`);
+        return;
       }
+      const { id } = await res.json();
+      onSave({ familyReceiptId: id });
       return;
     }
 
     let receiptPaymentId: number | undefined;
+    let failed = false;
     for (const it of toPay) {
       const payload = {
         studentId: student.id, categoryId: catId,
@@ -1796,13 +1835,17 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       };
       if (it.existing) {
         const r = await fetch(`/api/payments/${it.existing.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-        if (r.ok) receiptPaymentId = it.existing.id;
+        if (r.ok) receiptPaymentId = it.existing.id; else failed = true;
       } else {
         const r = await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-        if (r.ok) receiptPaymentId = (await r.json()).id;
+        if (r.ok) receiptPaymentId = (await r.json()).id; else failed = true;
       }
     }
     setSaving(false);
+    if (failed) {
+      setSaveError("Disa nga periudhat nuk u ruajtën (gabim serveri) — kontrollo dhe provo përsëri.");
+      return;
+    }
     onSave(receiptPaymentId ? { paymentId: receiptPaymentId } : undefined);
   }
 
@@ -1984,6 +2027,10 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
           <div className="mx-5 mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm text-blue-700 dark:text-blue-300">
             Kjo periudhë është shënuar si <strong>Falas</strong> (nxënësi e ndjek pa pagesë). Plotëso ditë/çmim dhe ruaj për ta rikthyer si periudhë normale.
           </div>
+        )}
+
+        {saveError && (
+          <p className="mx-5 mb-3 text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{saveError}</p>
         )}
 
         {/* Footer */}

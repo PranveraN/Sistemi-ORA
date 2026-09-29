@@ -523,7 +523,7 @@ export default function LibratPage() {
 
   async function saveHandover() {
     setSavingHandover(true);
-    await fetch("/api/librat/handovers", {
+    const res = await fetch("/api/librat/handovers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -536,6 +536,11 @@ export default function LibratPage() {
       }),
     });
     setSavingHandover(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
     setHandoverModal(false);
     setHandoverForm({ amount: "", description: "", recipient: "", method: "CASH", reference: "", handoverAt: new Date().toISOString().split("T")[0] });
     fetchHandovers();
@@ -543,7 +548,12 @@ export default function LibratPage() {
 
   async function deleteHandover(id: number) {
     if (!confirm("Fshi këtë dorëzim?")) return;
-    await fetch(`/api/librat/handovers/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/librat/handovers/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     fetchHandovers();
   }
 
@@ -583,7 +593,12 @@ export default function LibratPage() {
 
   async function deleteSale(id: number) {
     if (!confirm("Fshi këtë shitje? Stoku do të rikthehet.")) return;
-    await fetch(`/api/librat/sales/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/librat/sales/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     setDetailSale(null);
     fetchSales();
     fetchMissing();
@@ -758,10 +773,13 @@ export default function LibratPage() {
 
   async function saveProd() {
     const body = { ...prodForm };
-    if (editProd) {
-      await fetch(`/api/librat/products/${editProd.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    } else {
-      await fetch("/api/librat/products", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = editProd
+      ? await fetch(`/api/librat/products/${editProd.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      : await fetch("/api/librat/products", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
     }
     setProdModal(false); setEditProd(null); setProdForm({ name: "", description: "", buyPrice: "", sellPrice: "", stock: "0" });
     fetchProducts();
@@ -769,7 +787,12 @@ export default function LibratPage() {
 
   async function deleteProd(id: number) {
     if (!confirm("Çaktivizo këtë produkt?")) return;
-    await fetch(`/api/librat/products/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/librat/products/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Veprimi dështoi.");
+      return;
+    }
     fetchProducts();
   }
 
@@ -1481,7 +1504,12 @@ export default function LibratPage() {
           onPrint={() => printReceipt(detailSale)}
           onDelete={() => deleteSale(detailSale.id)}
           onPayment={async (amount, method) => {
-            await fetch(`/api/librat/sales/${detailSale.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ addPayment: amount, method }) });
+            const res = await fetch(`/api/librat/sales/${detailSale.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ addPayment: amount, method }) });
+            if (!res.ok) {
+              const d = await res.json().catch(() => ({}));
+              alert(d.error || "Pagesa dështoi.");
+              return;
+            }
             const r = await fetch(`/api/librat/sales/${detailSale.id}`);
             if (r.ok) setDetailSale(await r.json());
             fetchSales();
@@ -1718,6 +1746,7 @@ function NewSaleModal({ products, presetStudent, onClose, onSave }: { products: 
   const [method, setMethod] = useState("CASH");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     if (!studentSearch || studentSearch.length < 2) { setStudents([]); return; }
@@ -1750,6 +1779,7 @@ function NewSaleModal({ products, presetStudent, onClose, onSave }: { products: 
   async function handleSave() {
     if (!selStudent || items.length === 0) return;
     setSaving(true);
+    setSaveError("");
     const res = await fetch("/api/librat/sales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1760,15 +1790,18 @@ function NewSaleModal({ products, presetStudent, onClose, onSave }: { products: 
         items, paidAmount: paid, method, notes,
       }),
     });
+    setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setSaveError(d.error || `Ruajtja dështoi (gabim ${res.status})`);
+      return;
+    }
     // Butoni thotë "Ruaj & Gjenero Fletëpagesë" — printo direkt pas ruajtjes,
     // jo vetëm mbyllja e modalit. Fletëpagesa kërkon artikujt e plotë (`items`),
     // të cilët POST-i i shitjes s'i kthen mbrapsht, ndaj merret detaji i plotë.
-    if (res.ok) {
-      const created = await res.json();
-      const detailRes = await fetch(`/api/librat/sales/${created.id}`);
-      if (detailRes.ok) printReceipt(await detailRes.json());
-    }
-    setSaving(false);
+    const created = await res.json();
+    const detailRes = await fetch(`/api/librat/sales/${created.id}`);
+    if (detailRes.ok) printReceipt(await detailRes.json());
     onSave();
   }
 
@@ -1912,6 +1945,9 @@ function NewSaleModal({ products, presetStudent, onClose, onSave }: { products: 
           )}
         </div>
 
+        {saveError && (
+          <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg mx-6 mb-2 px-3 py-2">{saveError}</p>
+        )}
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
           <button onClick={onClose} className="btn-secondary">Anulo</button>
           <button onClick={handleSave} disabled={!selStudent || items.length === 0 || saving} className="btn-primary">

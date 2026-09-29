@@ -145,15 +145,24 @@ export default function UshqimiImportPage() {
     const toImport = records.filter(r => r._valid);
     if (!toImport.length) return;
     setImporting(true);
-    const res = await fetch("/api/ushqimi/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ records: toImport, month, year }),
-    });
-    const data = await res.json();
-    setResult(data);
-    setImporting(false);
-    setStep("done");
+    try {
+      const res = await fetch("/api/ushqimi/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ records: toImport, month, year }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setImporting(false);
+      if (!res.ok) {
+        alert(data.error || `Importi dështoi (gabim ${res.status})`);
+        return;
+      }
+      setResult(data);
+      setStep("done");
+    } catch {
+      setImporting(false);
+      alert("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   const validCount   = records.filter(r =>  r._valid).length;

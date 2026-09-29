@@ -237,12 +237,17 @@ export default function MaterialOrdersPage() {
 
   async function transitionOrder(id: number, status: "ORDERED" | "CANCELLED") {
     setActingId(id);
-    await fetch(`/api/material-orders/${id}`, {
+    const res = await fetch(`/api/material-orders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
     setActingId(null);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Veprimi dështoi.");
+      return;
+    }
     load();
   }
 

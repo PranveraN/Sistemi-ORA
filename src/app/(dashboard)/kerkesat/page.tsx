@@ -207,12 +207,17 @@ export default function KerkesatPage() {
       note = window.prompt("Arsyeja e refuzimit (opsionale):") ?? "";
     }
     setActingId(id);
-    await fetch(`/api/material-requests/${id}`, {
+    const res = await fetch(`/api/material-requests/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, reviewNote: note || undefined }),
     });
     setActingId(null);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Veprimi dështoi.");
+      return;
+    }
     load();
   }
 
@@ -229,12 +234,17 @@ export default function KerkesatPage() {
 
   async function markUnderReview(id: number) {
     setActingId(id);
-    await fetch(`/api/material-requests/${id}`, {
+    const res = await fetch(`/api/material-requests/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "UNDER_REVIEW" }),
     });
     setActingId(null);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Veprimi dështoi.");
+      return;
+    }
     load();
   }
 
@@ -269,12 +279,17 @@ export default function KerkesatPage() {
     const items = Object.entries(decisions).map(([id, dec]) => ({
       id: Number(id), status: dec.status, approvedQuantity: dec.approvedQuantity,
     }));
-    await fetch(`/api/material-requests/${reviewingId}`, {
+    const res = await fetch(`/api/material-requests/${reviewingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items, reviewNote: reviewNote || undefined }),
     });
     setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
     setReviewingId(null);
     load();
   }

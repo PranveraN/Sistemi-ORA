@@ -236,12 +236,18 @@ export default function LibriAmePage() {
   async function handleSave() {
     if (!selectedId) return;
     setSaving(true);
-    await fetch(`/api/libri-ame/${selectedId}`, {
+    const res = await fetch(`/api/libri-ame/${selectedId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...extra, notat: grades69, levizjet: move69, notatFillore: grades15, levizjetFillore: move15 }),
     });
-    setSaving(false); setSaved(true);
+    setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
+    setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
 

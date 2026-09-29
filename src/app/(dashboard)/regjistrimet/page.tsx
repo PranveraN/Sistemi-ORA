@@ -59,7 +59,12 @@ export default function RegjistrimetPage() {
 
   async function handleDelete(r: Row) {
     if (!confirm(`T'a fshij aplikimin e ${r.firstName} ${r.lastName} (${r.referenceNumber ?? `#${r.id}`})? Ky veprim s'kthehet mbrapa. Dokumentet e bashkëngjitura fshihen gjithashtu.`)) return;
-    await fetch(`/api/enrollment/applications/${r.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/enrollment/applications/${r.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     fetchRows();
   }
 

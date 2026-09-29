@@ -120,19 +120,27 @@ export default function StafiPage() {
 
   const save = async () => {
     setSaving(true);
-    if (modal === "add") {
-      await fetch("/api/staff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    } else {
-      await fetch(`/api/staff/${editId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    }
+    const res = modal === "add"
+      ? await fetch("/api/staff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) })
+      : await fetch(`/api/staff/${editId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
     setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
     setModal(null);
     load();
   };
 
   const confirmDelete = async () => {
     if (!deleteId) return;
-    await fetch(`/api/staff/${deleteId}`, { method: "DELETE" });
+    const res = await fetch(`/api/staff/${deleteId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     setDeleteId(null);
     load();
   };
@@ -140,12 +148,23 @@ export default function StafiPage() {
   const saveAdresa = async (id: number, adresa: string) => {
     const member = staff.find(s => s.id === id);
     if (!member) return;
+    const prevAdresa = member.adresa;
     setStaff(prev => prev.map(s => s.id === id ? { ...s, adresa: adresa || null } : s));
-    await fetch(`/api/staff/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...member, adresa: adresa || null }),
-    });
+    try {
+      const res = await fetch(`/api/staff/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...member, adresa: adresa || null }),
+      });
+      if (!res.ok) {
+        setStaff(prev => prev.map(s => s.id === id ? { ...s, adresa: prevAdresa } : s));
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Ruajtja e adresës dështoi.");
+      }
+    } catch {
+      setStaff(prev => prev.map(s => s.id === id ? { ...s, adresa: prevAdresa } : s));
+      alert("Gabim rrjeti — provo përsëri.");
+    }
   };
 
   const menaxhment = staff.filter(s => s.tipi === "Menaxhment");

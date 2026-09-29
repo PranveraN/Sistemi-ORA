@@ -45,7 +45,12 @@ export default function DokumentetPage() {
 
   async function handleDelete(doc: DocRow) {
     if (!confirm(`T'a fshij dokumentin "${doc.title}"? Ky veprim s'kthehet mbrapa.`)) return;
-    await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     load();
   }
 

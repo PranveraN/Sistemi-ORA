@@ -162,7 +162,12 @@ export default function ArkivaPage() {
 
   async function deleteDoc(id: number) {
     if (!confirm("Fshi këtë dokument nga arkiva?")) return;
-    await fetch(`/api/arkiva/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/arkiva/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     fetchDocs();
   }
 

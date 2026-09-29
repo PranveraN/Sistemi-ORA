@@ -60,12 +60,17 @@ export default function ClassesPage() {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    await fetch("/api/classes", {
+    const res = await fetch("/api/classes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     });
     setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Shtimi dështoi.");
+      return;
+    }
     setShowForm(false);
     setForm({ name: "", level: "", teacher: "" });
     fetchClasses();
@@ -74,38 +79,58 @@ export default function ClassesPage() {
   async function handleSetup() {
     setSetupBusy(true);
     const res = await fetch("/api/classes/setup", { method: "POST" });
-    setSetupResult(await res.json());
+    const data = await res.json().catch(() => ({}));
     setSetupBusy(false);
+    if (!res.ok) {
+      alert(data.error || "Krijimi automatik dështoi.");
+      return;
+    }
+    setSetupResult(data);
     fetchClasses();
   }
 
   async function saveTeacher(id: number) {
-    await fetch(`/api/classes/${id}`, {
+    const res = await fetch(`/api/classes/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teacher: editTeacher }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
     setEditId(null);
     fetchClasses();
   }
 
   async function saveCapacity(id: number) {
-    await fetch(`/api/classes/${id}`, {
+    const res = await fetch(`/api/classes/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ capacity: editCap }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
     setEditCapId(null);
     fetchClasses();
   }
 
   async function toggleActive(cls: Class) {
     if (cls.active && !confirm(`T'a shënoj paralelen ${cls.name} si joaktive? Nuk do të numërohet më te kontrolli i vendeve/lista e pritjes te aplikimi publik.`)) return;
-    await fetch(`/api/classes/${cls.id}`, {
+    const res = await fetch(`/api/classes/${cls.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !cls.active }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ndryshimi dështoi.");
+      return;
+    }
     fetchClasses();
   }
 
