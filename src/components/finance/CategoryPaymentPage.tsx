@@ -19,7 +19,7 @@ import {
   Plus, X, Save, Users, Loader2, Printer,
   TrendingUp, TrendingDown, ArrowLeftRight, FileUp,
   CalendarDays, Download, Trash2, Calculator, Lock, StickyNote, MessageSquare, Send, Bot,
-  Wallet,
+  Wallet, Receipt, Building2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
@@ -79,6 +79,8 @@ interface Stats {
   totalRevenue: number;
   totalDebt: number;
   handedOver: number;
+  totalExpenses: number;
+  totalInvestments: number;
 }
 
 interface Category {
@@ -699,11 +701,17 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
             )}
 
             {stats && (() => {
-              const cashOnHand = Math.round((stats.totalRevenue - stats.handedOver) * 100) / 100;
+              // Mbetja e vërtetë në arkë — nga sa u mor, hiqet jo vetëm ç'u dorëzua,
+              // por edhe ç'u shpenzua dhe ç'u investua direkt nga paraja e arkës
+              // (Investimet s'kanë kategori pagese, ndaj janë gjithmonë shkollore,
+              // jo vetëm të kësaj kategorie — shih investimDateWhere te API).
+              const cashOnHand = Math.round(
+                (stats.totalRevenue - stats.handedOver - stats.totalExpenses - stats.totalInvestments) * 100
+              ) / 100;
               return (
                 <div className="card p-4 border-2 border-primary-100 dark:border-primary-900/40">
                   <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Pasqyra e Arkës</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-green-50 dark:bg-green-900/30 flex items-center justify-center shrink-0">
                         <TrendingUp className="w-4.5 h-4.5 text-green-600 dark:text-green-400" />
@@ -723,13 +731,31 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
+                        <Receipt className="w-4.5 h-4.5 text-orange-600 dark:text-orange-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-400">Shpenzime</p>
+                        <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{formatCurrency(stats.totalExpenses)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center shrink-0">
+                        <Building2 className="w-4.5 h-4.5 text-violet-600 dark:text-violet-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-400">Investime</p>
+                        <p className="text-lg font-bold text-violet-600 dark:text-violet-400">{formatCurrency(stats.totalInvestments)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${cashOnHand < 0 ? "bg-red-50 dark:bg-red-900/30" : "bg-amber-50 dark:bg-amber-900/30"}`}>
                         <Wallet className={`w-4.5 h-4.5 ${cashOnHand < 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`} />
                       </div>
                       <div>
                         <p className="text-xs text-slate-400">Sa kam në arkë</p>
                         <p className={`text-lg font-bold ${cashOnHand < 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>{formatCurrency(cashOnHand)}</p>
-                        {cashOnHand < 0 && <p className="text-[11px] text-red-500 mt-0.5">⚠ Keni dorëzuar më shumë se ç&apos;keni marrë</p>}
+                        {cashOnHand < 0 && <p className="text-[11px] text-red-500 mt-0.5">⚠ Ke dorëzuar/shpenzuar më shumë se ç&apos;ke marrë</p>}
                       </div>
                     </div>
                   </div>

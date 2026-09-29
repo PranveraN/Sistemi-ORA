@@ -35,6 +35,23 @@ function aggregateStatus(payments: PrismaPayment[]): string {
   return "PENDING";
 }
 
+// Investim (kapitale/të përkohshme) s'ka fare `categoryId` — janë gjithmonë
+// shkollore, jo për një kategori pagese specifike — ndaj përfshihen kudo që
+// shfaqet "Pasqyra e Arkës" (jo vetëm Shkollimi), por respektojnë të njëjtën
+// periudhë (muaj/vit) si Shpenzimet/Dorëzimet, mbi fushën reale `data`.
+function investimDateWhere(month: number, year: number, yearType: YearType): Record<string, unknown> {
+  if (month > 0 && year > 0) {
+    return { data: { gte: new Date(year, month - 1, 1), lt: new Date(year, month, 1) } };
+  }
+  if (year > 0) {
+    if (yearType === "academic") {
+      return { data: { gte: new Date(year, 8, 1), lt: new Date(year + 1, 8, 1) } };
+    }
+    return { data: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) } };
+  }
+  return {};
+}
+
 function aggregatePayment(payments: PrismaPayment[]): PrismaPayment | null {
   if (!payments.length) return null;
   if (payments.length === 1) return payments[0];
@@ -111,7 +128,7 @@ export async function GET(req: NextRequest) {
   const isNarrow = (month && month > 0) && (year && year > 0);
   const takeLimit = isNarrow ? 2 : 60;
 
-  const [students, allTiRows, inactiveDates, oldDebtRows, handoverAgg, expenseAgg] = await Promise.all([
+  const [students, allTiRows, inactiveDates, oldDebtRows, handoverAgg, expenseAgg, investimAgg] = await Promise.all([
     prisma.student.findMany({
       where,
       include: {
@@ -166,12 +183,19 @@ export async function GET(req: NextRequest) {
       },
       _sum: { amount: true },
     }),
+    // Investimet — shih komentin te `investimDateWhere` (s'ka categoryId, ndaj
+    // përfshihen kudo, jo vetëm te Shkollimi).
+    prisma.investim.aggregate({
+      where: investimDateWhere(month ?? 0, year ?? 0, yearType),
+      _sum: { vlera: true },
+    }),
   ]);
   const oldDebtMap = new Map(oldDebtRows.map(r => [r.studentId, {
     id: r.id, finalAmount: r.finalAmount, paidAmount: r.paidAmount, balance: r.balance, note: r.note,
   }]));
   const handedOver = handoverAgg._sum.amount ?? 0;
   const totalExpenses = expenseAgg._sum.amount ?? 0;
+  const totalInvestments = investimAgg._sum.vlera ?? 0;
 
   // Harta e TIMI Invest (sipas studentId dhe emrit, si rezervë) — përdoret për
   // badge-in informativ "TI" te rreshti i nxënësit, DHE (poshtë) për të
@@ -258,6 +282,7 @@ export async function GET(req: NextRequest) {
       totalDebt,
       handedOver,
       totalExpenses,
+      totalInvestments,
     },
   });
 }

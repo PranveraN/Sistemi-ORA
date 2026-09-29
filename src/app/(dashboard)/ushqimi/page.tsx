@@ -13,7 +13,7 @@ import {
   Search, CheckCircle, AlertCircle, Plus, X, Save,
   Users, Loader2, Printer, Calculator, ChevronDown, ChevronUp, Info,
   TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard, Trash2, Receipt, Send, Bot,
-  Wallet,
+  Wallet, Building2,
 } from "lucide-react";
 import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
@@ -118,6 +118,7 @@ interface CashStats {
   totalRevenue: number;
   handedOver: number;
   totalExpenses: number;
+  totalInvestments: number;
 }
 
 function findPeriodPayment(installments: Payment[], months: number[]): Payment | null {
@@ -551,7 +552,7 @@ export default function UshqimiPage() {
       // "pa ushqim" duhet të numërojnë VETËM nxënësit aktivë, përndryshe numrat
       // dalin të fryrë (përfshihen edhe ata që kanë lëshuar shkollën).
       setYearStudents((d.students as StudentRow[]).filter(s => s.status === "ACTIVE"));
-      setYearCashStats(d.stats ? { totalRevenue: d.stats.totalRevenue, handedOver: d.stats.handedOver, totalExpenses: d.stats.totalExpenses } : null);
+      setYearCashStats(d.stats ? { totalRevenue: d.stats.totalRevenue, handedOver: d.stats.handedOver, totalExpenses: d.stats.totalExpenses, totalInvestments: d.stats.totalInvestments } : null);
       if (d.category?.id) setCategoryId(d.category.id);
     }
     setYearLoading(false);
@@ -800,7 +801,7 @@ export default function UshqimiPage() {
               </div>
 
               {/* KPI cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
                 <div className="card p-4">
                   <p className="text-xs text-slate-400 mb-1">Nxënës me ushqim</p>
                   <p className="text-xl font-bold text-slate-800 dark:text-white">{enrolled}</p>
@@ -829,6 +830,11 @@ export default function UshqimiPage() {
                 <div className="card p-4">
                   <p className="text-xs text-slate-400 mb-1">Dorëzimet</p>
                   <p className="text-xl font-bold text-blue-600">{formatCurrency(yearCashStats?.handedOver ?? 0)}</p>
+                  <p className="text-xs text-slate-400 mt-1">gjatë {yearType === "academic" ? `${effectiveYear}–${effectiveYear + 1}` : effectiveYear}</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-slate-400 mb-1">Investime</p>
+                  <p className="text-xl font-bold text-violet-600">{formatCurrency(yearCashStats?.totalInvestments ?? 0)}</p>
                   <p className="text-xs text-slate-400 mt-1">gjatë {yearType === "academic" ? `${effectiveYear}–${effectiveYear + 1}` : effectiveYear}</p>
                 </div>
               </div>
@@ -876,11 +882,11 @@ export default function UshqimiPage() {
             "Të Hyra", që më parë e bënte "Sa kam marrë" të mos përputhej me
             "Paguar gjithsej" të Raportit). */}
         {yearCashStats && (() => {
-          const cashOnHand = Math.round((yearCashStats.totalRevenue - yearCashStats.handedOver - yearCashStats.totalExpenses) * 100) / 100;
+          const cashOnHand = Math.round((yearCashStats.totalRevenue - yearCashStats.handedOver - yearCashStats.totalExpenses - yearCashStats.totalInvestments) * 100) / 100;
           return (
             <div className="card p-4 border-2 border-primary-100 dark:border-primary-900/40">
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Pasqyra e Arkës</p>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-full bg-green-50 dark:bg-green-900/30 flex items-center justify-center shrink-0">
                     <TrendingUp className="w-4.5 h-4.5 text-green-600 dark:text-green-400" />
@@ -906,6 +912,15 @@ export default function UshqimiPage() {
                   <div>
                     <p className="text-xs text-slate-400">Sa kam shpenzuar</p>
                     <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{formatCurrency(yearCashStats.totalExpenses)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center shrink-0">
+                    <Building2 className="w-4.5 h-4.5 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Investime</p>
+                    <p className="text-lg font-bold text-violet-600 dark:text-violet-400">{formatCurrency(yearCashStats.totalInvestments)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
