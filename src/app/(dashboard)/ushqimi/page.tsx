@@ -222,6 +222,78 @@ function exportUshqimiGridExcel(students: StudentRow[], year: number) {
   XLSX.writeFile(wb, `Ushqimi-${year}-${today}.xlsx`);
 }
 
+function buildBadgeSheetHTML(students: StudentRow[]): string {
+  const cards = students
+    .map(s => buildBadgeCardHTML({ id: s.id, firstName: s.firstName, lastName: s.lastName, className: s.class?.name || "" }))
+    .join("");
+  return `<!DOCTYPE html><html lang="sq"><head><meta charset="UTF-8"/>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#fff; }
+.sheet { display:grid; grid-template-columns: repeat(2, 90mm); grid-auto-rows: 55mm; gap: 4mm; padding: 10mm; justify-content:center; }
+${BADGE_CSS}
+</style></head><body><div class="sheet">${cards}</div></body></html>`;
+}
+
+// Shkarkon bexhet si PDF — ndan një "canvas" të vetëm, potencialisht shumë
+// të gjatë (shumë nxënës), në aq faqe A4 sa duhen, njësoj si mekanizmi i
+// përdorur tashmë për profaturat e TIMI Invest (shih TimiInvestModal.tsx).
+async function downloadClassBadgesPDF(students: StudentRow[], className: string) {
+  if (students.length === 0) return;
+  const html = buildBadgeSheetHTML(students);
+
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:800px;height:1200px;border:none;";
+  document.body.appendChild(iframe);
+  iframe.contentDocument!.open();
+  iframe.contentDocument!.write(html);
+  iframe.contentDocument!.close();
+
+  await new Promise(r => setTimeout(r, 400));
+
+  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+    import("jspdf"),
+    import("html2canvas"),
+  ]);
+
+  const canvas = await html2canvas(iframe.contentDocument!.body, {
+    scale: 2,
+    useCORS: true,
+    width: 800,
+    backgroundColor: "#ffffff",
+  });
+
+  document.body.removeChild(iframe);
+
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pdfW = pdf.internal.pageSize.getWidth();
+  const pdfH = pdf.internal.pageSize.getHeight();
+  const imgW = pdfW;
+  // Sa piksela të canvas-it i përgjigjen lartësisë së një faqeje A4, në
+  // shkallën e imazhit të plotë.
+  const pageCanvasHeight = Math.floor((pdfH * canvas.width) / imgW);
+
+  let renderedHeight = 0;
+  let page = 0;
+  while (renderedHeight < canvas.height) {
+    const sliceHeight = Math.min(pageCanvasHeight, canvas.height - renderedHeight);
+    const pageCanvas = document.createElement("canvas");
+    pageCanvas.width = canvas.width;
+    pageCanvas.height = sliceHeight;
+    const ctx = pageCanvas.getContext("2d")!;
+    ctx.drawImage(canvas, 0, renderedHeight, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+
+    if (page > 0) pdf.addPage();
+    const sliceImgH = (sliceHeight * imgW) / canvas.width;
+    pdf.addImage(pageCanvas.toDataURL("image/png"), "PNG", 0, 0, imgW, sliceImgH);
+
+    renderedHeight += sliceHeight;
+    page++;
+  }
+
+  pdf.save(`Bexhet-${(className || "te-gjithe").replace(/\s+/g, "-")}.pdf`);
+}
+
 function printClassBadges(students: StudentRow[], className: string) {
   const cards = students
     .map(s => buildBadgeCardHTML({ id: s.id, firstName: s.firstName, lastName: s.lastName, className: s.class?.name || "" }))
@@ -304,6 +376,7 @@ export default function UshqimiPage() {
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [yearCashStats, setYearCashStats] = useState<CashStats | null>(null);
   const [loading, setLoading]   = useState(true);
+  const [badgePdfLoading, setBadgePdfLoading] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [notifyRecipients, setNotifyRecipients] = useState<NotificationRecipient[] | null>(null);
 
@@ -1142,6 +1215,20 @@ export default function UshqimiPage() {
             <button onClick={() => printClassBadges(displayed, selectedClassName)} className="btn-secondary text-sm" disabled={displayed.length === 0}>
               <IdCard className="w-4 h-4" />
               Printo Bexhet {classId && <span className="ml-1 text-xs text-slate-400">({selectedClassName})</span>}
+            </button>
+
+            {/* Shkarko Bexhet si PDF — e njëjta listë, njësoj si printimi */}
+            <button
+              onClick={async () => {
+                setBadgePdfLoading(true);
+                try { await downloadClassBadgesPDF(displayed, selectedClassName); }
+                finally { setBadgePdfLoading(false); }
+              }}
+              className="btn-secondary text-sm"
+              disabled={displayed.length === 0 || badgePdfLoading}
+            >
+              {badgePdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {badgePdfLoading ? "Duke gjeneruar..." : "Shkarko PDF"}
             </button>
           </div>
         </div>
