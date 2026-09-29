@@ -87,6 +87,10 @@ export default function SettingsPage() {
   const { data: session } = useSession();
   const role = (session?.user as { role?: string })?.role;
   const isAdmin = role === "ADMIN" || role === "SUPERADMIN";
+  // Sekretaria sheh skedën "Përdoruesit" VETËM për të aprovuar/menaxhuar
+  // mësimdhënësit (jo stafin administrativ) — shih gate-t brenda vetë
+  // UsersSection (showStaffSection/canManageTeachers).
+  const canSeeUsersTab = isAdmin || role === "SECRETARY";
 
   const [tab, setTab] = useState<TabKey>("shkolla");
 
@@ -98,7 +102,8 @@ export default function SettingsPage() {
         {/* Tab bar */}
         <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-fit flex-wrap">
           {TABS.map(t => {
-            if ((t.key === "perdoruesit" || t.key === "backup" || t.key === "vitet") && !isAdmin) return null;
+            if (t.key === "perdoruesit" && !canSeeUsersTab) return null;
+            if ((t.key === "backup" || t.key === "vitet") && !isAdmin) return null;
             const Icon = t.icon;
             return (
               <button
@@ -123,7 +128,7 @@ export default function SettingsPage() {
         {tab === "shpenzime"   && <ExpenseCatsSection />}
         {tab === "formulari"   && <EnrollmentFormSection />}
         {tab === "evidenca"    && <EvidencaConfigSection />}
-        {tab === "perdoruesit" && isAdmin && <UsersSection />}
+        {tab === "perdoruesit" && canSeeUsersTab && <UsersSection />}
         {tab === "backup"     && isAdmin && <BackupSection />}
         {tab === "vitet"      && isAdmin && <SchoolYearsSection />}
       </div>
@@ -1549,7 +1554,14 @@ function UsersSection() {
   // Vetëm Super Admin mund të krijojë/modifikojë/fshijë përdorues (zbatuar
   // edhe në API — kjo është vetëm për të mos shfaqur butona që gjithsesi do
   // të refuzoheshin). Admin/Financë/Sekretari e shohin listën vetëm-shikim.
-  const isSuperAdmin = (session?.user as { role?: string } | undefined)?.role === "SUPERADMIN";
+  const sessionRole = (session?.user as { role?: string } | undefined)?.role;
+  const isSuperAdmin = sessionRole === "SUPERADMIN";
+  // Menaxhimi i STAFIT (Admin/Financë/Sekretari/Super Admin) mbetet
+  // ekskluzivisht te Super Admin. Aprovimi/editimi/fshirja e MËSIMDHËNËSVE
+  // (vetëm ata) është punë rutinë (aprovim regjistrimesh për kërkesa
+  // materiale) — i lejohet edhe Sekretarisë, jo vetëm Super Adminit.
+  const canManageTeachers = isSuperAdmin || sessionRole === "SECRETARY";
+  const showStaffSection = isSuperAdmin || sessionRole === "ADMIN";
 
   const [users, setUsers]     = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1638,7 +1650,7 @@ function UsersSection() {
     .sort((a, b) => Number(a.active) - Number(b.active));
   const pendingTeachers = teacherUsers.filter(u => !u.active).length;
 
-  function renderTable(list: UserRow[], emptyMessage: string, highlightPending: boolean) {
+  function renderTable(list: UserRow[], emptyMessage: string, highlightPending: boolean, canManage: boolean) {
     if (loading) return <div className="py-10 text-center text-slate-400 text-sm">Duke ngarkuar...</div>;
     if (list.length === 0) return <div className="py-10 text-center text-slate-400 text-sm">{emptyMessage}</div>;
     return (
@@ -1681,8 +1693,8 @@ function UsersSection() {
                 <td className="table-cell text-center">
                   <button
                     onClick={() => handleToggleActive(u)}
-                    disabled={!isSuperAdmin || u.id === currentUserId}
-                    title={!isSuperAdmin ? "Vetëm Super Admin mund ta ndryshojë" : u.active ? "Çaktivizo" : "Aktivizo"}
+                    disabled={!canManage || u.id === currentUserId}
+                    title={!canManage ? "S'keni të drejtë ta ndryshoni" : u.active ? "Çaktivizo" : "Aktivizo"}
                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
                       u.active
                         ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-100"
@@ -1695,7 +1707,7 @@ function UsersSection() {
                   </button>
                 </td>
                 <td className="table-cell">
-                  {isSuperAdmin && (
+                  {canManage && (
                     <div className="flex gap-1 justify-end">
                       <button onClick={() => openEdit(u)}
                         className="p-1.5 rounded text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500 transition-colors"
@@ -1723,6 +1735,7 @@ function UsersSection() {
   return (
     <>
     <div className="space-y-5">
+      {showStaffSection && (
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
           <div className="flex items-center gap-3">
@@ -1742,8 +1755,9 @@ function UsersSection() {
             </button>
           )}
         </div>
-        {renderTable(staffUsers, "Nuk ka staf", false)}
+        {renderTable(staffUsers, "Nuk ka staf", false, isSuperAdmin)}
       </div>
+      )}
 
       <div className="card overflow-hidden">
         <div className="flex items-center gap-3 p-5 border-b border-slate-100 dark:border-slate-700">
@@ -1752,7 +1766,9 @@ function UsersSection() {
           </div>
           <div className="flex-1">
             <h2 className="font-bold text-slate-900 dark:text-white">Mësimdhënësit</h2>
-            <p className="text-xs text-slate-400">Përfshin vetë-regjistrimet nga faqja e kërkesave për material</p>
+            <p className="text-xs text-slate-400">
+              {canManageTeachers ? "Përfshin vetë-regjistrimet nga faqja e kërkesave për material" : "Vetëm shikim"}
+            </p>
           </div>
           {pendingTeachers > 0 && (
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white">
@@ -1761,7 +1777,7 @@ function UsersSection() {
             </span>
           )}
         </div>
-        {renderTable(teacherUsers, "Asnjë mësimdhënës", true)}
+        {renderTable(teacherUsers, "Asnjë mësimdhënës", true, canManageTeachers)}
       </div>
     </div>
 

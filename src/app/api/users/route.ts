@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { logAction } from "@/lib/audit";
 
 export async function GET() {
   const session = await auth();
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
     data: { name, email, password: hashedPassword, role: role || "SECRETARY", active: true },
     select: { id: true, email: true, name: true, role: true, active: true, createdAt: true },
   });
+
+  await logAction(session, "CREATE", "User", user.id, `Krijoi përdoruesin ${user.name} (${user.email}) — rol ${user.role}`);
 
   return NextResponse.json(user, { status: 201 });
 }

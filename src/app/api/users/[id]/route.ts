@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { sendEmail } from "@/lib/email";
+import { logAction } from "@/lib/audit";
 
 export async function PATCH(
   req: NextRequest,
@@ -12,15 +13,25 @@ export async function PATCH(
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const sessionUser = session.user as { role?: string };
-  if (sessionUser?.role !== "SUPERADMIN") {
-    return NextResponse.json({ error: "Vetëm Super Admin mund të modifikojë përdorues" }, { status: 403 });
+  const { id } = await params;
+  const before = await prisma.user.findUnique({ where: { id: parseInt(id) } });
+  if (!before) return NextResponse.json({ error: "Përdoruesi s'u gjet" }, { status: 404 });
+
+  // Menaxhimi i STAFIT (Admin/Financë/Sekretari/Super Admin) mbetet
+  // ekskluzivisht te Super Admin. Sekretaria mund të veprojë VETËM mbi
+  // llogari mësimdhënësish (aprovim/editim/fshirje rutinë) — jo t'i
+  // ndryshojë rolin drejt diçkaje tjetër.
+  const sessionRole = (session.user as { role?: string })?.role;
+  const isSuperAdmin = sessionRole === "SUPERADMIN";
+  const isSecretaryManagingTeacher = sessionRole === "SECRETARY" && before.role === "TEACHER";
+  if (!isSuperAdmin && !isSecretaryManagingTeacher) {
+    return NextResponse.json({ error: "S'keni të drejtë të modifikoni këtë përdorues" }, { status: 403 });
   }
 
-  const { id } = await params;
   const body = await req.json();
-
-  const before = await prisma.user.findUnique({ where: { id: parseInt(id) } });
+  if (body.role !== undefined && body.role !== before.role && !isSuperAdmin) {
+    return NextResponse.json({ error: "Vetëm Super Admin mund të ndryshojë rolin e një përdoruesi" }, { status: 403 });
+  }
 
   const data: Record<string, unknown> = {};
   if (body.name   !== undefined) data.name   = body.name;
@@ -39,6 +50,10 @@ export async function PATCH(
     data,
     select: { id: true, email: true, name: true, role: true, active: true, createdAt: true },
   });
+
+  const justApproved = !before.active && user.active;
+  await logAction(session, "UPDATE", "User", user.id,
+    `${justApproved ? "Aprovoi" : "Ndryshoi"} përdoruesin ${user.name} (${user.email}) — rol ${user.role}`);
 
   // Njofton mësimdhënësin vetëm kur llogaria kalon nga joaktive në aktive
   // (aprovimi) — jo në çdo modifikim tjetër (emër, email, fjalëkalim, etj.).
@@ -66,19 +81,23 @@ export async function DELETE(
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const sessionUser = session.user as { role?: string };
-  if (sessionUser?.role !== "SUPERADMIN") {
-    return NextResponse.json({ error: "Vetëm Super Admin mund të fshijë përdorues" }, { status: 403 });
+  const { id } = await params;
+  const user = await prisma.user.findUnique({ where: { id: parseInt(id) } });
+  if (!user) return NextResponse.json({ error: "Përdoruesi s'u gjet" }, { status: 404 });
+
+  // Njësoj si te PATCH: Sekretaria mund të fshijë VETËM mësimdhënës, jo staf.
+  const sessionRole = (session.user as { role?: string })?.role;
+  const isSuperAdmin = sessionRole === "SUPERADMIN";
+  const isSecretaryManagingTeacher = sessionRole === "SECRETARY" && user.role === "TEACHER";
+  if (!isSuperAdmin && !isSecretaryManagingTeacher) {
+    return NextResponse.json({ error: "S'keni të drejtë ta fshini këtë përdorues" }, { status: 403 });
   }
 
-  const { id } = await params;
-
-  // Mbrojtje: meqë tani VETËM Super Admin mund të menaxhojë përdorues, s'duhet
+  // Mbrojtje: meqë tani VETËM Super Admin mund të menaxhojë staf, s'duhet
   // fshirë i fundit — përndryshe askush s'do të mund të menaxhonte më
   // përdorues fare (mbyllje e vetvetishme, e pakthyeshme pa qasje në server).
   const superAdminCount = await prisma.user.count({ where: { role: "SUPERADMIN", active: true } });
-  const user = await prisma.user.findUnique({ where: { id: parseInt(id) } });
-  if (user?.role === "SUPERADMIN" && superAdminCount <= 1) {
+  if (user.role === "SUPERADMIN" && superAdminCount <= 1) {
     return NextResponse.json({ error: "Nuk mund të fshish Super Adminin e fundit" }, { status: 400 });
   }
 
@@ -96,5 +115,8 @@ export async function DELETE(
     }
     throw err;
   }
+
+  await logAction(session, "DELETE", "User", user.id, `Fshiu përdoruesin ${user.name} (${user.email}) — rol ${user.role}`);
+
   return NextResponse.json({ success: true });
 }

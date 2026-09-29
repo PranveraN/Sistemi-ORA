@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const role = (session.user as { role?: string })?.role;
-  if (role !== "ADMIN") {
+  if (role !== "ADMIN" && role !== "SUPERADMIN") {
     return NextResponse.json({ error: "Vetëm adminët mund ta shohin historikun" }, { status: 403 });
   }
 
