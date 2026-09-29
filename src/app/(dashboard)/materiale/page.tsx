@@ -133,11 +133,12 @@ function CategoriesSection() {
   }
 
   async function toggleActive(cat: MaterialCategoryRow) {
-    await fetch(`/api/material-categories/${cat.id}`, {
+    const res = await fetch(`/api/material-categories/${cat.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !cat.active }),
     });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ndryshimi dështoi."); return; }
     fetchCats();
   }
 
@@ -282,11 +283,12 @@ function SubjectsSection() {
   }
 
   async function toggleActive(s: SubjectRow) {
-    await fetch(`/api/subjects/${s.id}`, {
+    const res = await fetch(`/api/subjects/${s.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !s.active }),
     });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ndryshimi dështoi."); return; }
     fetchSubjects();
   }
 
@@ -477,11 +479,12 @@ function MaterialsSection() {
   }
 
   async function toggleActive(m: MaterialRow) {
-    await fetch(`/api/materials/${m.id}`, {
+    const res = await fetch(`/api/materials/${m.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !m.active }),
     });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ndryshimi dështoi."); return; }
     fetchAll();
   }
 

@@ -228,27 +228,30 @@ export default function FletorjaPage() {
   /* ── Note Actions ── */
   async function saveNote() {
     if (!newNote || !newNote.content.trim()) return;
-    await fetch("/api/fletorja/notes", {
+    const res = await fetch("/api/fletorja/notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newNote),
     });
+    if (!res.ok) { alert("Ruajtja e shënimit dështoi."); return; }
     setNewNote(null);
     fetchNotes();
   }
 
   async function updateNote(id: number, data: Partial<AdminNote>) {
-    await fetch(`/api/fletorja/notes/${id}`, {
+    const res = await fetch(`/api/fletorja/notes/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
+    if (!res.ok) { alert("Ndryshimi dështoi."); return; }
     fetchNotes();
     if (tab === "overview") fetchStats();
   }
 
   async function deleteNote(id: number) {
-    await fetch(`/api/fletorja/notes/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/fletorja/notes/${id}`, { method: "DELETE" });
+    if (!res.ok) { alert("Fshirja dështoi."); return; }
     fetchNotes();
   }
 
@@ -267,23 +270,26 @@ export default function FletorjaPage() {
   async function saveTask() {
     const method = editTask ? "PUT" : "POST";
     const url    = editTask ? `/api/fletorja/tasks/${editTask.id}` : "/api/fletorja/tasks";
-    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(taskForm) });
+    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(taskForm) });
+    if (!res.ok) { alert("Ruajtja e detyrës dështoi."); return; }
     setShowTaskModal(false);
     fetchTasks();
     fetchStats();
   }
 
   async function deleteTask(id: number) {
-    await fetch(`/api/fletorja/tasks/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/fletorja/tasks/${id}`, { method: "DELETE" });
+    if (!res.ok) { alert("Fshirja dështoi."); return; }
     fetchTasks();
     fetchStats();
   }
 
   async function toggleTaskDone(task: AdminTask) {
     const status = task.status === "DONE" ? "TODO" : "DONE";
-    await fetch(`/api/fletorja/tasks/${task.id}`, {
+    const res = await fetch(`/api/fletorja/tasks/${task.id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
     });
+    if (!res.ok) { alert("Ndryshimi dështoi."); return; }
     fetchTasks();
     fetchStats();
   }
@@ -304,23 +310,26 @@ export default function FletorjaPage() {
   async function saveEvent() {
     const method = editEvent ? "PUT" : "POST";
     const url    = editEvent ? `/api/fletorja/events/${editEvent.id}` : "/api/fletorja/events";
-    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(eventForm) });
+    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(eventForm) });
+    if (!res.ok) { alert("Ruajtja e ngjarjes dështoi."); return; }
     setShowEventModal(false);
     fetchEvents();
     fetchStats();
   }
 
   async function deleteEvent(id: number) {
-    await fetch(`/api/fletorja/events/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/fletorja/events/${id}`, { method: "DELETE" });
+    if (!res.ok) { alert("Fshirja dështoi."); return; }
     fetchEvents();
     fetchStats();
   }
 
   /* ── Reminder Actions ── */
   async function saveReminder() {
-    await fetch("/api/fletorja/reminders", {
+    const res = await fetch("/api/fletorja/reminders", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(reminderForm),
     });
+    if (!res.ok) { alert("Ruajtja e kujtesës dështoi."); return; }
     setShowReminderModal(false);
     setReminderForm({ title: "", type: "GENERAL", dueDate: "", description: "" });
     fetchReminders();
@@ -328,15 +337,17 @@ export default function FletorjaPage() {
   }
 
   async function toggleReminder(r: AdminReminder) {
-    await fetch(`/api/fletorja/reminders/${r.id}`, {
+    const res = await fetch(`/api/fletorja/reminders/${r.id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ done: !r.done }),
     });
+    if (!res.ok) { alert("Ndryshimi dështoi."); return; }
     fetchReminders();
     fetchStats();
   }
 
   async function deleteReminder(id: number) {
-    await fetch(`/api/fletorja/reminders/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/fletorja/reminders/${id}`, { method: "DELETE" });
+    if (!res.ok) { alert("Fshirja dështoi."); return; }
     fetchReminders();
     fetchStats();
   }
