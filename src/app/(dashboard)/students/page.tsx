@@ -89,29 +89,37 @@ export default function StudentsPage() {
     setTiModal(m => m ? { ...m, saving: true } : null);
     const s = tiModal.student;
 
-    if (s.timiInvest) {
-      // Update existing TI record
-      await fetch(`/api/timi-invest/students/${s.timiInvest.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ regularPrice: price }),
-      });
-    } else {
-      // Create new TI record linked to this student
-      await fetch("/api/timi-invest/students", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName:   s.firstName,
-          lastName:    s.lastName,
-          parentName:  s.parentName || "",
-          parentPhone: s.parentPhone || "",
-          regularPrice: price,
-          studentId:   s.id,
-        }),
-      });
+    try {
+      const res = s.timiInvest
+        ? await fetch(`/api/timi-invest/students/${s.timiInvest.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ regularPrice: price }),
+          })
+        : await fetch("/api/timi-invest/students", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              firstName:   s.firstName,
+              lastName:    s.lastName,
+              parentName:  s.parentName || "",
+              parentPhone: s.parentPhone || "",
+              regularPrice: price,
+              studentId:   s.id,
+            }),
+          });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Ruajtja dështoi.");
+        setTiModal(m => m ? { ...m, saving: false } : null);
+        return;
+      }
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      setTiModal(m => m ? { ...m, saving: false } : null);
+      return;
     }
-    // Refresh row optimistically
+    // Refresh row pas konfirmimit te serverit
     setStudents(prev => prev.map(x =>
       x.id === s.id
         ? { ...x, timiInvest: { id: x.timiInvest?.id ?? 0, regularPrice: price, discountPct: 0, manualDiscAmt: 0 } }
@@ -123,11 +131,21 @@ export default function StudentsPage() {
   async function removeTiLink(s: Student) {
     if (!s.timiInvest) return;
     if (!confirm(`Hiq lidhjen Timi Invest për ${s.firstName} ${s.lastName}?`)) return;
-    await fetch(`/api/timi-invest/students/${s.timiInvest.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ studentId: null }),
-    });
+    try {
+      const res = await fetch(`/api/timi-invest/students/${s.timiInvest.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId: null }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Heqja dështoi.");
+        return;
+      }
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      return;
+    }
     setStudents(prev => prev.map(x => x.id === s.id ? { ...x, timiInvest: null } : x));
   }
 
@@ -141,13 +159,24 @@ export default function StudentsPage() {
     setEditingPriceId(null);
     const newPrice = parseFloat(editingPriceVal);
     if (isNaN(newPrice) || newPrice <= 0) return;
+    const prevDisc = s.discountPct;
     const newDisc = Math.max(0, Math.round((1 - newPrice / tuitionPrice) * 10000) / 100);
     setStudents(prev => prev.map(x => x.id === s.id ? { ...x, discountPct: newDisc } : x));
-    await fetch(`/api/students/${s.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ discountPct: newDisc }),
-    });
+    try {
+      const res = await fetch(`/api/students/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ discountPct: newDisc }),
+      });
+      if (!res.ok) {
+        setStudents(prev => prev.map(x => x.id === s.id ? { ...x, discountPct: prevDisc } : x));
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Ndryshimi i çmimit dështoi.");
+      }
+    } catch {
+      setStudents(prev => prev.map(x => x.id === s.id ? { ...x, discountPct: prevDisc } : x));
+      alert("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   useEffect(() => {
@@ -355,7 +384,17 @@ export default function StudentsPage() {
       `Fshi përgjithmonë "${s.firstName} ${s.lastName}"?\n\nKJO VEPRIM NUK MUND TË KTHEHET — fshihen edhe të gjitha pagesat dhe faturat.`
     );
     if (!ok) return;
-    await fetch(`/api/students/${s.id}?permanent=true`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/students/${s.id}?permanent=true`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || `Fshirja dështoi (gabim ${res.status})`);
+        return;
+      }
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      return;
+    }
     fetchStudents();
   }
 

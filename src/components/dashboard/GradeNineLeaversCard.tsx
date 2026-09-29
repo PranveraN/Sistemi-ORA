@@ -36,8 +36,13 @@ export default function GradeNineLeaversCard({ data, period, year, yearType, onC
   async function deleteOne(entry: GradeNineLeaverRow) {
     if (!confirm(`T'a heq ${entry.fullName} nga lista "Klasa e 9"?`)) return;
     setDeletingId(entry.id);
-    await fetch(`/api/movements/grade9-leavers/${entry.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/movements/grade9-leavers/${entry.id}`, { method: "DELETE" });
     setDeletingId(null);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     onChanged();
   }
 

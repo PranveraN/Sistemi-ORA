@@ -111,11 +111,23 @@ export default function OfertaModal({
     const cleaned = locDraft.filter(l => l.label.trim()).map(l => ({ label: l.label.trim(), price: l.price }));
     if (!cleaned.length) return;
     setSavingLocations(true);
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transportLocations: JSON.stringify(cleaned) }),
-    });
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transportLocations: JSON.stringify(cleaned) }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Ruajtja dështoi.");
+        setSavingLocations(false);
+        return;
+      }
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      setSavingLocations(false);
+      return;
+    }
     setLocations(cleaned);
     setTransporti(v => ({ ...v, locationIdx: Math.min(v.locationIdx, cleaned.length - 1) }));
     setSavingLocations(false);

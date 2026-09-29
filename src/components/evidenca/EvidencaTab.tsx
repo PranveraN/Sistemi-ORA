@@ -182,16 +182,19 @@ function EvidencaFillModal({ student, config, existing, onClose, onSaved }: {
 
   async function handleSave() {
     setSaving(true);
-    if (existing) {
-      await fetch(`/api/students/${student.id}/evidenca/${existing.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
-      });
-    } else {
-      await fetch(`/api/students/${student.id}/evidenca`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
-      });
-    }
+    const res = existing
+      ? await fetch(`/api/students/${student.id}/evidenca/${existing.id}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
+        })
+      : await fetch(`/api/students/${student.id}/evidenca`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
+        });
     setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
     onSaved();
   }
 
@@ -273,8 +276,13 @@ function EvidencaHistoryModal({ student, config, onClose, onChanged }: {
   async function confirmDelete() {
     if (!deleteRecord) return;
     setDeleting(true);
-    await fetch(`/api/students/${student.id}/evidenca/${deleteRecord.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/students/${student.id}/evidenca/${deleteRecord.id}`, { method: "DELETE" });
     setDeleting(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     setDeleteRecord(null);
     loadRecords();
     onChanged();

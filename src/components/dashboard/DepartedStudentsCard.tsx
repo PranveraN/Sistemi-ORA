@@ -49,21 +49,31 @@ export default function DepartedStudentsCard({ data, period, onChanged, emptyMes
 
   async function clearReason(s: DepartedStudentRow) {
     if (!confirm(`T'i pastroj arsyen e largimit dhe shkollën ku kaloi ${s.firstName} ${s.lastName}? Statusi Joaktiv NUK ndryshon.`)) return;
-    await fetch(`/api/students/${s.id}`, {
+    const res = await fetch(`/api/students/${s.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ leaveReason: null, destinationSchool: null }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ndryshimi dështoi.");
+      return;
+    }
     onChanged();
   }
 
   // Heq nga kjo listë — VETËM raporti, statusi INACTIVE i nxënësit NUK ndryshon.
   async function hideIds(ids: number[]) {
-    await fetch("/api/students/hide-from-departed", {
+    const res = await fetch("/api/students/hide-from-departed", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Veprimi dështoi.");
+      return;
+    }
     setSelected(new Set());
     onChanged();
   }

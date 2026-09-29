@@ -372,7 +372,17 @@ export default function StudentProfile({ student }: { student: Student }) {
       `Fshi përgjithmonë "${student.firstName} ${student.lastName}"?\n\nKJO VEPRIM NUK MUND TË KTHEHET — fshihen edhe të gjitha pagesat dhe faturat.`
     );
     if (!ok) return;
-    await fetch(`/api/students/${student.id}?permanent=true`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/students/${student.id}?permanent=true`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || `Fshirja dështoi (gabim ${res.status})`);
+        return;
+      }
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      return;
+    }
     router.push("/students");
     router.refresh();
   }
@@ -419,11 +429,21 @@ export default function StudentProfile({ student }: { student: Student }) {
     const newPrice = parseFloat(priceVal);
     if (isNaN(newPrice) || newPrice <= 0 || !tuitionPrice) return;
     const newDisc = Math.max(0, Math.round((1 - newPrice / tuitionPrice) * 10000) / 100);
-    await fetch(`/api/students/${student.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ discountPct: newDisc }),
-    });
+    try {
+      const res = await fetch(`/api/students/${student.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ discountPct: newDisc }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Ndryshimi i çmimit dështoi.");
+        return;
+      }
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      return;
+    }
     router.refresh();
   }
 
@@ -436,13 +456,23 @@ export default function StudentProfile({ student }: { student: Student }) {
   async function saveNotes() {
     setNotesSaving(true);
     setNotesSaved(false);
-    await fetch(`/api/students/${student.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes: notesVal }),
-    });
-    setNotesSaving(false);
-    setNotesSaved(true);
+    try {
+      const res = await fetch(`/api/students/${student.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: notesVal }),
+      });
+      setNotesSaving(false);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Ruajtja e shënimeve dështoi.");
+        return;
+      }
+      setNotesSaved(true);
+    } catch {
+      setNotesSaving(false);
+      alert("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   // Foto e profilit — ripërdor saktë të njëjtin mekanizëm si te "Bexhi i

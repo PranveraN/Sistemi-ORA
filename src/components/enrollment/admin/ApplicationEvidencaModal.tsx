@@ -42,10 +42,15 @@ export default function ApplicationEvidencaModal({ applicationId, applicantName,
 
   async function handleSave() {
     setSaving(true);
-    await fetch(`/api/enrollment/applications/${applicationId}/evidenca`, {
+    const res = await fetch(`/api/enrollment/applications/${applicationId}/evidenca`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
     });
     setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
     setAnswers({});
     setFilling(false);
     loadRecords();

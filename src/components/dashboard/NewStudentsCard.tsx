@@ -61,21 +61,31 @@ export default function NewStudentsCard({ data, activeStudents, period, onChange
 
   async function clearEnrichment(s: NewStudentRow) {
     if (!confirm(`T'i pastroj detajet e regjistrimit (pikët, vlerësimin, shkollën paraardhëse, fletëkalimin) për ${s.firstName} ${s.lastName}? Vetë nxënësi NUK fshihet.`)) return;
-    await fetch(`/api/students/${s.id}`, {
+    const res = await fetch(`/api/students/${s.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ previousSchool: null, transferResult: null, admissionScore: null, studentRating: null }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ndryshimi dështoi.");
+      return;
+    }
     onChanged();
   }
 
   // Heq nga kjo listë — VETËM raporti, nxënësi mbetet ACTIVE në sistem.
   async function hideIds(ids: number[]) {
-    await fetch("/api/students/hide-from-new", {
+    const res = await fetch("/api/students/hide-from-new", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Veprimi dështoi.");
+      return;
+    }
     setSelected(new Set());
     onChanged();
   }

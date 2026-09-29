@@ -150,6 +150,7 @@ function SchoolSection() {
   });
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
   const [materialLinkCopied, setMaterialLinkCopied] = useState(false);
   const applyUrl = typeof window !== "undefined" ? `${window.location.origin}/apliko` : "/apliko";
@@ -178,11 +179,24 @@ function SchoolSection() {
   async function handleSave(e: React.SyntheticEvent) {
     e.preventDefault();
     setSaving(true);
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(info),
-    });
+    setSaveError("");
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(info),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSaveError(d.error || `Ruajtja dështoi (gabim ${res.status})`);
+        setSaving(false);
+        return;
+      }
+    } catch {
+      setSaveError("Gabim rrjeti — provo përsëri.");
+      setSaving(false);
+      return;
+    }
     setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
@@ -334,6 +348,7 @@ function SchoolSection() {
       </div>
 
       <div className="flex items-center justify-end gap-3 pt-2">
+        {saveError && <span className="text-sm text-red-500">{saveError}</span>}
         {saved && (
           <span className="text-sm text-green-600 flex items-center gap-1">
             <Check className="w-4 h-4" /> U ruajt
@@ -392,16 +407,27 @@ function EnrollmentFormSection() {
 
   async function saveConfig() {
     setSavingConfig(true);
-    await fetch("/api/settings/enrollment-fields", {
+    const res = await fetch("/api/settings/enrollment-fields", {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config }),
     });
-    setSavingConfig(false); setConfigSaved(true);
+    setSavingConfig(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
+    setConfigSaved(true);
     setTimeout(() => setConfigSaved(false), 2000);
   }
 
   async function deleteCustomField(id: number) {
     if (!confirm("T'a fshij këtë pyetje? Aplikimet e vjetra do ta ruajnë ende përgjigjen dhe etiketën.")) return;
-    await fetch(`/api/enrollment-form-fields/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/enrollment-form-fields/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     load();
   }
 
@@ -623,12 +649,22 @@ function EvidencaConfigSection() {
 
   async function deleteCategory(id: number) {
     if (!confirm("T'a fshij këtë kategori? Pikat e saj s'do të shfaqen më te formulari i ri (evidencat e vjetra ruajnë etiketën).")) return;
-    await fetch(`/api/evidenca-categories/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/evidenca-categories/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     load();
   }
   async function deleteItem(id: number) {
     if (!confirm("T'a fshij këtë pyetje? Evidencat e vjetra ruajnë ende përgjigjen dhe etiketën.")) return;
-    await fetch(`/api/evidenca-items/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/evidenca-items/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     load();
   }
   async function moveCategory(cat: EvidCategory, direction: -1 | 1) {
@@ -659,16 +695,35 @@ function EvidencaConfigSection() {
     setSeeding(true);
     for (const cat of DEFAULT_EVIDENCA_TEMPLATE.skills) {
       const catRes = await fetch("/api/evidenca-categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label: cat.label }) });
+      if (!catRes.ok) {
+        setSeeding(false);
+        const d = await catRes.json().catch(() => ({}));
+        alert(d.error || `Ngarkimi dështoi te kategoria "${cat.label}" — provo sërish.`);
+        load();
+        return;
+      }
       const category = await catRes.json();
       for (const label of cat.items) {
-        await fetch("/api/evidenca-items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label, type: "RATING", section: "SKILLS", categoryId: category.id }) });
+        const r = await fetch("/api/evidenca-items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label, type: "RATING", section: "SKILLS", categoryId: category.id }) });
+        if (!r.ok) {
+          setSeeding(false);
+          alert(`Ngarkimi dështoi te pyetja "${label}" — provo sërish.`);
+          load();
+          return;
+        }
       }
     }
     for (const item of DEFAULT_EVIDENCA_TEMPLATE.general) {
-      await fetch("/api/evidenca-items", {
+      const r = await fetch("/api/evidenca-items", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: item.label, type: item.type, section: "GENERAL", hasSpecify: item.hasSpecify ?? false, options: item.options }),
       });
+      if (!r.ok) {
+        setSeeding(false);
+        alert(`Ngarkimi dështoi te pyetja "${item.label}" — provo sërish.`);
+        load();
+        return;
+      }
     }
     setSeeding(false);
     load();
@@ -980,12 +1035,17 @@ function CategoriesSection() {
   async function handleAdd(e: React.SyntheticEvent) {
     e.preventDefault();
     setAdding(true);
-    await fetch("/api/categories", {
+    const res = await fetch("/api/categories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...newCat, defaultAmount: parseFloat(newCat.defaultAmount) || 0 }),
     });
     setAdding(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Shtimi dështoi.");
+      return;
+    }
     setNewCat({ name: "", type: "monthly", description: "", defaultAmount: "" });
     fetchCats();
   }
@@ -1001,12 +1061,18 @@ function CategoriesSection() {
 
   async function handleSaveEdit(id: number) {
     setSaving(true);
-    await fetch(`/api/categories/${id}`, {
+    const res = await fetch(`/api/categories/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...editForm, defaultAmount: parseFloat(editForm.defaultAmount) || 0 }),
     });
-    setSaving(false); setEditId(null);
+    setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
+    setEditId(null);
     fetchCats();
   }
 
@@ -1180,30 +1246,46 @@ function ClassesSection() {
   async function handleAdd(e: React.SyntheticEvent) {
     e.preventDefault();
     setAdding(true);
-    await fetch("/api/classes", {
+    const res = await fetch("/api/classes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newCls),
     });
     setAdding(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Shtimi dështoi.");
+      return;
+    }
     setNewCls({ name: "", level: "", teacher: "" });
     fetchClasses();
   }
 
   async function handleSaveEdit(id: number) {
     setSaving(true);
-    await fetch(`/api/classes/${id}`, {
+    const res = await fetch(`/api/classes/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editForm),
     });
-    setSaving(false); setEditId(null);
+    setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
+    setEditId(null);
     fetchClasses();
   }
 
   async function handleDelete(id: number, name: string) {
     if (!confirm(`Fshi klasën "${name}"? Nxënësit e kësaj klase do të qëndrojnë pa klasë.`)) return;
-    await fetch(`/api/classes/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/classes/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     fetchClasses();
   }
 
@@ -1364,12 +1446,17 @@ function ExpenseCatsSection() {
     if (!source || !target) return;
     if (!confirm(`Bashko "${source.emri}" (${source._count.shpenzime} shpenzime) me "${target.emri}"?\n\nTë gjitha shpenzimet e "${source.emri}" zhvendosen te "${target.emri}", dhe "${source.emri}" fshihet (bosh, pa humbje të dhënash).`)) return;
     setMerging(true);
-    await fetch("/api/shpenzime/kategorite/merge", {
+    const res = await fetch("/api/shpenzime/kategorite/merge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sourceId, targetId }),
     });
     setMerging(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Bashkimi dështoi.");
+      return;
+    }
     setMergeId(null);
     setMergeTarget("");
     fetchCats();
@@ -1378,30 +1465,46 @@ function ExpenseCatsSection() {
   async function handleAdd(e: React.SyntheticEvent) {
     e.preventDefault();
     setAdding(true);
-    await fetch("/api/shpenzime/kategorite", {
+    const res = await fetch("/api/shpenzime/kategorite", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newCat),
     });
     setAdding(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Shtimi dështoi.");
+      return;
+    }
     setNewCat({ emri: "", ngjyra: "#6366f1", ikona: "" });
     fetchCats();
   }
 
   async function handleSaveEdit(id: number) {
     setSaving(true);
-    await fetch(`/api/shpenzime/kategorite?id=${id}`, {
+    const res = await fetch(`/api/shpenzime/kategorite?id=${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editForm),
     });
-    setSaving(false); setEditId(null);
+    setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
+    setEditId(null);
     fetchCats();
   }
 
   async function handleDelete(id: number, name: string) {
     if (!confirm(`Fshi kategorinë "${name}"? Fshihen edhe të gjitha shpenzimet e lidhura.`)) return;
-    await fetch(`/api/shpenzime/kategorite?id=${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/shpenzime/kategorite?id=${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     fetchCats();
   }
 
@@ -1619,11 +1722,16 @@ function UsersSection() {
 
   async function handleToggleActive(u: UserRow) {
     if (u.id === currentUserId) return;
-    await fetch(`/api/users/${u.id}`, {
+    const res = await fetch(`/api/users/${u.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !u.active }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ndryshimi dështoi.");
+      return;
+    }
     fetchUsers();
   }
 
@@ -2000,11 +2108,16 @@ function SchoolYearsSection() {
 
   async function handleSavePrices(yearId: number) {
     setSavingPrices(true);
-    await fetch(`/api/school-years/${yearId}/prices`, {
+    const res = await fetch(`/api/school-years/${yearId}/prices`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prices: prices.map(p => ({ categoryId: p.categoryId, defaultAmount: p.defaultAmount })) }),
     });
     setSavingPrices(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja e çmimeve dështoi.");
+      return;
+    }
     setPricesForYear(null);
   }
 

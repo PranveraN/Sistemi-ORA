@@ -52,7 +52,19 @@ export default function DocumentDropzone({ applicationId, resumeToken, docType, 
 
   async function handleDelete(docId: number) {
     if (!applicationId || !resumeToken) return;
-    await fetch(`/api/public/enrollment/applications/${applicationId}/documents/${docId}?token=${encodeURIComponent(resumeToken)}`, { method: "DELETE" });
+    setError("");
+    try {
+      const r = await fetch(`/api/public/enrollment/applications/${applicationId}/documents/${docId}?token=${encodeURIComponent(resumeToken)}`, { method: "DELETE" });
+      if (r.status === 403) { onExpired(); return; }
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        setError(data.message || "Fshirja dështoi.");
+        return;
+      }
+    } catch {
+      setError("Fshirja dështoi — kontrollo lidhjen e internetit.");
+      return;
+    }
     onChanged(docs.filter(d => d.id !== docId));
   }
 

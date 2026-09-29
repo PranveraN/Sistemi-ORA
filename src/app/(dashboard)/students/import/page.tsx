@@ -320,15 +320,24 @@ export default function ImportStudentsPage() {
     const toImport = students.filter(s => s._valid);
     if (!toImport.length) return;
     setImporting(true);
-    const res = await fetch("/api/students/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ students: toImport }),
-    });
-    const data = await res.json();
-    setResult(data);
-    setImporting(false);
-    setStep("done");
+    try {
+      const res = await fetch("/api/students/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ students: toImport }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setImporting(false);
+      if (!res.ok) {
+        alert(data.error || `Importi dështoi (gabim ${res.status})`);
+        return;
+      }
+      setResult(data);
+      setStep("done");
+    } catch {
+      setImporting(false);
+      alert("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   const validCount   = students.filter(s =>  s._valid).length;
@@ -395,15 +404,24 @@ export default function ImportStudentsPage() {
     const toImport = fatherRows.filter(r => r._valid);
     if (!toImport.length) return;
     setFatherImporting(true);
-    const res = await fetch("/api/students/import-father", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows: toImport }),
-    });
-    const data = await res.json();
-    setFatherResult(data);
-    setFatherImporting(false);
-    setFatherStep("done");
+    try {
+      const res = await fetch("/api/students/import-father", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: toImport }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setFatherImporting(false);
+      if (!res.ok) {
+        alert(data.error || `Importi dështoi (gabim ${res.status})`);
+        return;
+      }
+      setFatherResult(data);
+      setFatherStep("done");
+    } catch {
+      setFatherImporting(false);
+      alert("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   return (
