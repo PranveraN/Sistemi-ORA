@@ -119,7 +119,11 @@ export default function LevizjetPage() {
 
   if (!data) return null;
 
-  const net = data.newStudents.count - data.departedStudents.count;
+  // Largimet përfshijnë edhe Klasën e 9 (të diplomuar) — jo vetëm nxënësit e
+  // shënuar manualisht si "të larguar" nga klasat e tjera, përndryshe numri
+  // këtu s'përputhej me "Totalin e Largimeve" te Bilanci i Detajuar më poshtë.
+  const totalDeparted = data.departedStudents.count + grade9.count;
+  const net = data.newStudents.count - totalDeparted;
   // Nxënës në fillim = aktualë − (regjistrime − largime) të kësaj periudhe —
   // vetëm identiteti aritmetik i kërkuar nga stafi, pa fushë/model të ri.
   const startCount = data.activeStudents - net;
@@ -165,8 +169,8 @@ export default function LevizjetPage() {
             active={typeFilter === "new"} onClick={() => setTypeFilter(v => v === "new" ? "all" : "new")}
           />
           <SummaryCard
-            icon={UserPlus} rotate color="red" label="Largime / Transfere" value={data.departedStudents.count}
-            hint={`-${data.departedStudents.count} këtë ${yearType === "academic" ? "vit shkollor" : "vit"}`}
+            icon={UserPlus} rotate color="red" label="Largime / Transfere" value={totalDeparted}
+            hint={`-${totalDeparted} këtë ${yearType === "academic" ? "vit shkollor" : "vit"}`}
             active={typeFilter === "departed"} onClick={() => setTypeFilter(v => v === "departed" ? "all" : "departed")}
           />
           <SummaryCard
@@ -262,20 +266,15 @@ export default function LevizjetPage() {
               <div className="space-y-1.5">
                 <BilanciRow label="Klasa e 9 (të diplomuar)" value={grade9.count} />
                 <BilanciRow label="Nxënës që kanë shkuar nga klasat tjera" value={data.departedStudents.count} />
-                <BilanciRow label="Totali i Largimeve" value={grade9.count + data.departedStudents.count} bold />
+                <BilanciRow label="Totali i Largimeve" value={totalDeparted} bold />
               </div>
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
             <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Bilanci Neto (Ardhje − Largime)</span>
-            {(() => {
-              const netDetailed = data.newStudents.count - (grade9.count + data.departedStudents.count);
-              return (
-                <span className={`text-lg font-bold ${netDetailed >= 0 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
-                  {netDetailed > 0 ? "+" : ""}{netDetailed}
-                </span>
-              );
-            })()}
+            <span className={`text-lg font-bold ${net >= 0 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
+              {net > 0 ? "+" : ""}{net}
+            </span>
           </div>
         </div>
 
@@ -291,7 +290,7 @@ export default function LevizjetPage() {
           <div className="flex flex-col sm:flex-row sm:items-stretch gap-4 sm:gap-0 sm:divide-x divide-slate-100 dark:divide-slate-700">
             <BilanciCell label="Nxënës në Fillim" value={startCount} />
             <BilanciCell label="+ Regjistrime" value={data.newStudents.count} valueClass="text-green-600 dark:text-green-400" />
-            <BilanciCell label="− Largime" value={data.departedStudents.count} valueClass="text-red-600 dark:text-red-400" />
+            <BilanciCell label="− Largime" value={totalDeparted} valueClass="text-red-600 dark:text-red-400" />
             <BilanciCell label="= Nxënës Aktualë" value={data.activeStudents} bold />
             <div className="flex-1 flex items-center sm:pl-5">
               <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${net >= 0 ? "bg-green-50 dark:bg-green-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
