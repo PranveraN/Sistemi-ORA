@@ -13,7 +13,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const role = (session.user as { role?: string }).role;
-  if (role !== "ADMIN" && role !== "SECRETARY") {
+  if (role !== "ADMIN" && role !== "SUPERADMIN" && role !== "SECRETARY") {
     return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
   }
 

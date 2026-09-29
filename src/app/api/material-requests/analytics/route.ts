@@ -9,7 +9,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const role = (session.user as { role?: string }).role;
-  if (role !== "ADMIN" && role !== "FINANCE") {
+  if (role !== "ADMIN" && role !== "SUPERADMIN" && role !== "FINANCE") {
     return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
   }
 

@@ -6,7 +6,7 @@ async function requireManagement() {
   const session = await auth();
   if (!session) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   const role = (session.user as { role?: string }).role;
-  if (role !== "ADMIN" && role !== "FINANCE") {
+  if (role !== "ADMIN" && role !== "SUPERADMIN" && role !== "FINANCE") {
     return { error: NextResponse.json({ error: "Vetëm adminët ose financat mund të menaxhojnë kategoritë" }, { status: 403 }) };
   }
   return { session };

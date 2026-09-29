@@ -76,6 +76,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { data: session } = useSession();
   const role = ((session?.user as { role?: string } | undefined)?.role ?? "ADMIN") as Role;
+  const isSuperAdmin = (session?.user as { role?: string } | undefined)?.role === "SUPERADMIN";
   // Lejet reale (të konfigurueshme te /superadmin → "Lejet e Moduleve") —
   // menyja tani pasqyron SAKTËSISHT atë që lejohet vërtet (jo më vetëm një
   // listë e ngurtë rolesh që s'ishte kurrë e zbatuar në middleware/API).
@@ -90,7 +91,7 @@ export default function Sidebar() {
   // që stafi ta shohë menjëherë pa hapur faqen (plotëson popup-in periodik).
   const [requestBadge, setRequestBadge] = useState(0);
   useEffect(() => {
-    if (role !== "ADMIN" && role !== "FINANCE") return;
+    if (!isSuperAdmin && role !== "ADMIN" && role !== "FINANCE") return;
     let cancelled = false;
     async function check() {
       try {
@@ -103,7 +104,7 @@ export default function Sidebar() {
     check();
     const t = setInterval(check, 60 * 1000);
     return () => { cancelled = true; clearInterval(t); };
-  }, [role]);
+  }, [role, isSuperAdmin]);
 
   return (
     <>

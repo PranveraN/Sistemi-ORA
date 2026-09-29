@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const role = (session.user as { role?: string })?.role;
-  if (role !== "ADMIN") {
+  if (role !== "ADMIN" && role !== "SUPERADMIN") {
     return NextResponse.json({ error: "Vetëm adminët mund ta kryejnë këtë veprim" }, { status: 403 });
   }
 

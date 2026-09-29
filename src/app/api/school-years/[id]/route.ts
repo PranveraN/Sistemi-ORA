@@ -8,7 +8,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const role = (session.user as { role?: string })?.role;
-  if (role !== "ADMIN") {
+  if (role !== "ADMIN" && role !== "SUPERADMIN") {
     return NextResponse.json({ error: "Vetëm adminët mund të ndryshojnë vitet shkollore" }, { status: 403 });
   }
 
@@ -57,7 +57,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const role = (session.user as { role?: string })?.role;
-  if (role !== "ADMIN") {
+  if (role !== "ADMIN" && role !== "SUPERADMIN") {
     return NextResponse.json({ error: "Vetëm adminët mund të fshijnë vitet shkollore" }, { status: 403 });
   }
 

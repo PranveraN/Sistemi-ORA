@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const role = (session.user as { role?: string }).role;
-  if (role !== "ADMIN" && role !== "FINANCE") {
+  if (role !== "ADMIN" && role !== "SUPERADMIN" && role !== "FINANCE") {
     return NextResponse.json({ error: "Vetëm adminët ose financat mund të menaxhojnë kategoritë" }, { status: 403 });
   }
 
