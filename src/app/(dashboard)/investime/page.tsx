@@ -228,6 +228,7 @@ export default function InvestimetPage() {
   const [editItem,     setEditItem]     = useState<Investim | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Investim | null>(null);
   const [deleting,     setDeleting]     = useState(false);
+  const [deleteError,  setDeleteError]  = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
@@ -259,7 +260,20 @@ export default function InvestimetPage() {
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
-    await fetch(`/api/investime/${deleteTarget.id}`, { method: "DELETE" });
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/investime/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setDeleteError(d.error || `Fshirja dështoi (gabim ${res.status})`);
+        setDeleting(false);
+        return;
+      }
+    } catch {
+      setDeleteError("Gabim rrjeti — provo përsëri.");
+      setDeleting(false);
+      return;
+    }
     setDeleting(false);
     setDeleteTarget(null);
     fetchData();
@@ -466,8 +480,9 @@ export default function InvestimetPage() {
             <h3 className="font-bold text-slate-800 dark:text-white mb-2">Fshi Investimin?</h3>
             <p className="text-sm text-slate-500 mb-1">{deleteTarget.pershkrim}</p>
             <p className="text-lg font-bold text-red-600 mb-5">{formatCurrency(deleteTarget.vlera)}</p>
+            {deleteError && <p className="text-sm text-red-500 mb-3">{deleteError}</p>}
             <div className="flex gap-2">
-              <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">Anulo</button>
+              <button onClick={() => { setDeleteTarget(null); setDeleteError(""); }} className="btn-secondary flex-1">Anulo</button>
               <button onClick={confirmDelete} disabled={deleting} className="btn-primary bg-red-600 hover:bg-red-700 flex-1">
                 {deleting ? "Duke fshirë..." : "Fshi"}
               </button>

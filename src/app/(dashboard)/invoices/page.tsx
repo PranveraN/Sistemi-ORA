@@ -109,12 +109,17 @@ export default function InvoicesPage() {
   async function markPaid(inv: Invoice) {
     if (!confirm(`Shëno faturën ${inv.number} (${inv.student.firstName} ${inv.student.lastName}) si Paguar?`)) return;
     setMarkingPaid(inv.id);
-    await fetch(`/api/invoices/${inv.id}`, {
+    const res = await fetch(`/api/invoices/${inv.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "PAID" }),
     });
     setMarkingPaid(null);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Gabim gjatë shënimit si Paguar");
+      return;
+    }
     fetchInvoices();
   }
 

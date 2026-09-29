@@ -74,7 +74,9 @@ export default function DorezimetPage() {
     handoverAt: new Date().toISOString().split("T")[0],
   });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     fetch("/api/categories").then(r => r.json()).then(setCategories).catch(() => {});
@@ -94,19 +96,32 @@ export default function DorezimetPage() {
 
   const save = async () => {
     setSaving(true);
-    await fetch("/api/payment-handovers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        categoryId: form.categoryId || null,
-        amount: parseFloat(form.amount),
-        description: form.description.trim() || null,
-        recipient: form.recipient.trim() || null,
-        method: form.method,
-        reference: form.reference.trim() || null,
-        handoverAt: form.handoverAt,
-      }),
-    });
+    setError("");
+    try {
+      const res = await fetch("/api/payment-handovers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryId: form.categoryId || null,
+          amount: parseFloat(form.amount),
+          description: form.description.trim() || null,
+          recipient: form.recipient.trim() || null,
+          method: form.method,
+          reference: form.reference.trim() || null,
+          handoverAt: form.handoverAt,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error || `Ruajtja dështoi (gabim ${res.status})`);
+        setSaving(false);
+        return;
+      }
+    } catch {
+      setError("Gabim rrjeti — provo përsëri.");
+      setSaving(false);
+      return;
+    }
     setSaving(false);
     setShowModal(false);
     setForm({ categoryId: "", amount: "", description: "", recipient: "", method: "CASH", reference: "", handoverAt: new Date().toISOString().split("T")[0] });
@@ -115,7 +130,18 @@ export default function DorezimetPage() {
 
   const confirmDelete = async () => {
     if (!deleteId) return;
-    await fetch(`/api/payment-handovers/${deleteId}`, { method: "DELETE" });
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/payment-handovers/${deleteId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setDeleteError(d.error || `Fshirja dështoi (gabim ${res.status})`);
+        return;
+      }
+    } catch {
+      setDeleteError("Gabim rrjeti — provo përsëri.");
+      return;
+    }
     setDeleteId(null);
     load();
   };
@@ -272,9 +298,10 @@ export default function DorezimetPage() {
                   <textarea className="form-input resize-none" rows={2} placeholder="opsional" value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
                 </div>
+                {error && <p className="text-sm text-red-500">{error}</p>}
               </div>
               <div className="flex gap-3 p-6 pt-0">
-                <button onClick={() => setShowModal(false)} className="btn-secondary flex-1">Anulo</button>
+                <button onClick={() => { setShowModal(false); setError(""); }} className="btn-secondary flex-1">Anulo</button>
                 <button onClick={save} disabled={saving || !form.amount} className="btn-primary flex-1">
                   {saving ? "Duke ruajtur..." : "Ruaj"}
                 </button>
@@ -292,8 +319,9 @@ export default function DorezimetPage() {
               </div>
               <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Fshi dorëzimin?</h3>
               <p className="text-sm text-slate-400 mb-6">Ky veprim nuk mund të kthehet.</p>
+              {deleteError && <p className="text-sm text-red-500 mb-4">{deleteError}</p>}
               <div className="flex gap-3">
-                <button onClick={() => setDeleteId(null)} className="btn-secondary flex-1">Anulo</button>
+                <button onClick={() => { setDeleteId(null); setDeleteError(""); }} className="btn-secondary flex-1">Anulo</button>
                 <button onClick={confirmDelete} className="btn-danger flex-1">Fshi</button>
               </div>
             </div>

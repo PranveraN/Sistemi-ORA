@@ -32,6 +32,7 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
   const [importing, setImporting]   = useState(false);
   const [importMsg, setImportMsg]   = useState<{ text: string; ok: boolean } | null>(null);
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [deleteError, setDeleteError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isHandover = type === "HANDOVER";
@@ -62,7 +63,18 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
 
   async function deleteItem(id: number) {
     if (!confirm("Fshi këtë regjistrim?")) return;
-    await fetch(`/api/expenses/${id}`, { method: "DELETE" });
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/expenses/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setDeleteError(d.error || `Fshirja dështoi (gabim ${res.status})`);
+        return;
+      }
+    } catch {
+      setDeleteError("Gabim rrjeti — provo përsëri.");
+      return;
+    }
     await fetchItems();
   }
 
@@ -240,6 +252,13 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
         </div>
       </div>
 
+      {deleteError && (
+        <div className="rounded-xl border bg-red-50 dark:bg-red-900/20 text-red-700 border-red-200 p-3 text-sm font-medium flex items-center justify-between">
+          <span>{deleteError}</span>
+          <button onClick={() => setDeleteError("")}><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
       {importMsg && (
         <div className={`rounded-xl border text-sm ${importMsg.ok ? "bg-green-50 dark:bg-green-900/20 text-green-700 border-green-200" : "bg-red-50 dark:bg-red-900/20 text-red-700 border-red-200"}`}>
           <div className="flex items-center justify-between p-3 font-medium">
@@ -372,10 +391,12 @@ function ExpenseModal({ type, categoryId, month, year, existing, onClose, onSave
       : new Date().toISOString().split("T")[0]
   );
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleSave() {
     if (!amount) return;
     setSaving(true);
+    setError("");
     const payload = {
       categoryId,
       type,
@@ -388,18 +409,28 @@ function ExpenseModal({ type, categoryId, month, year, existing, onClose, onSave
       month,
       year,
     };
-    if (existing) {
-      await fetch(`/api/expenses/${existing.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } else {
-      await fetch("/api/expenses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    try {
+      const res = existing
+        ? await fetch(`/api/expenses/${existing.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/expenses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error || `Ruajtja dështoi (gabim ${res.status})`);
+        setSaving(false);
+        return;
+      }
+    } catch {
+      setError("Gabim rrjeti — provo përsëri.");
+      setSaving(false);
+      return;
     }
     setSaving(false);
     onSave();
@@ -498,6 +529,8 @@ function ExpenseModal({ type, categoryId, month, year, existing, onClose, onSave
               />
             </div>
           </div>
+
+          {error && <p className="text-sm text-red-500">{error}</p>}
         </div>
 
         {/* Footer */}

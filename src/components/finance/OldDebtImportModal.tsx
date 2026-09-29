@@ -28,6 +28,7 @@ export default function OldDebtImportModal({ categoryId, onClose, onImported }: 
   const [dragging, setDragging] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ created: number; updated: number; skipped: number; errors: string[] } | null>(null);
+  const [importError, setImportError] = useState("");
 
   async function downloadTemplate() {
     const XLSX = await import("xlsx");
@@ -110,18 +111,29 @@ export default function OldDebtImportModal({ categoryId, onClose, onImported }: 
     const toImport = rows.filter(r => r._matchedId && r.amount > 0);
     if (!toImport.length) return;
     setImporting(true);
-    const res = await fetch("/api/category-payments/old-debt", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        categoryId,
-        year,
-        rows: toImport.map(r => ({ studentId: r._matchedId, amount: r.amount, note: r.note || undefined })),
-      }),
-    });
-    setResult(await res.json());
-    setImporting(false);
-    setStep("done");
+    setImportError("");
+    try {
+      const res = await fetch("/api/category-payments/old-debt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryId,
+          year,
+          rows: toImport.map(r => ({ studentId: r._matchedId, amount: r.amount, note: r.note || undefined })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setImporting(false);
+      if (!res.ok) {
+        setImportError(data.error || `Importi dështoi (gabim ${res.status})`);
+        return;
+      }
+      setResult(data);
+      setStep("done");
+    } catch {
+      setImporting(false);
+      setImportError("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   const matched = rows.filter(r => r._matchedId && r.amount > 0).length;
@@ -223,6 +235,9 @@ export default function OldDebtImportModal({ categoryId, onClose, onImported }: 
                   </tbody>
                 </table>
               </div>
+              {importError && (
+                <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{importError}</p>
+              )}
             </>
           )}
 

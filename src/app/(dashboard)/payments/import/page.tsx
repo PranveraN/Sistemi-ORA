@@ -54,6 +54,7 @@ export default function ImportPaymentsPage() {
   const [search, setSearch] = useState("");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ created: number; updated: number; skipped: number; errors: string[] } | null>(null);
+  const [importError, setImportError] = useState("");
 
   useEffect(() => {
     fetch("/api/categories")
@@ -205,32 +206,43 @@ export default function ImportPaymentsPage() {
     const toImport = rows.filter(r => r._matched);
     if (!toImport.length) return;
     setImporting(true);
+    setImportError("");
 
-    const res = await fetch("/api/payments/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        categoryId,
-        month: isMonthly ? month : undefined,
-        year,
-        rows: toImport.map(r => ({
-          firstName:   r.firstName,
-          lastName:    r.lastName,
-          amount:      r.tuitionPrice || r.finalAmount,
-          discount:    r.discount,
-          discountType: "fixed",
-          scholarship: 0,
-          finalAmount: r.finalAmount,
-          paidAmount:  r.paidAmount,
-          method:      r.method || "CASH",
-          description: r.comment || undefined,
-        })),
-      }),
-    });
+    try {
+      const res = await fetch("/api/payments/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryId,
+          month: isMonthly ? month : undefined,
+          year,
+          rows: toImport.map(r => ({
+            firstName:   r.firstName,
+            lastName:    r.lastName,
+            amount:      r.tuitionPrice || r.finalAmount,
+            discount:    r.discount,
+            discountType: "fixed",
+            scholarship: 0,
+            finalAmount: r.finalAmount,
+            paidAmount:  r.paidAmount,
+            method:      r.method || "CASH",
+            description: r.comment || undefined,
+          })),
+        }),
+      });
 
-    setResult(await res.json());
-    setImporting(false);
-    setStep("done");
+      const data = await res.json().catch(() => ({}));
+      setImporting(false);
+      if (!res.ok) {
+        setImportError(data.error || `Importi dështoi (gabim ${res.status})`);
+        return;
+      }
+      setResult(data);
+      setStep("done");
+    } catch {
+      setImporting(false);
+      setImportError("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   const matched   = rows.filter(r =>  r._matched).length;
@@ -596,6 +608,10 @@ export default function ImportPaymentsPage() {
                 <p className="text-lg font-bold text-red-600">{formatCurrency(rows.reduce((s,r) => s + r.debt, 0))}</p>
               </div>
             </div>
+
+            {importError && (
+              <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{importError}</p>
+            )}
 
             {/* Actions */}
             <div className="flex items-center justify-end gap-3">

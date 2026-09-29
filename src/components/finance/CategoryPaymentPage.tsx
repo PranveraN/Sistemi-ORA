@@ -376,12 +376,23 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   }
 
   async function savePaymentPlan(studentId: number, plan: string) {
+    const prevPlan = students.find(s => s.id === studentId)?.paymentPlan ?? null;
     setStudents(prev => prev.map(s => s.id === studentId ? { ...s, paymentPlan: plan || null } : s));
-    await fetch(`/api/students/${studentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentPlan: plan || null }),
-    });
+    try {
+      const res = await fetch(`/api/students/${studentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentPlan: plan || null }),
+      });
+      if (!res.ok) {
+        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, paymentPlan: prevPlan } : s));
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Ndryshimi i planit të pagesës dështoi.");
+      }
+    } catch {
+      setStudents(prev => prev.map(s => s.id === studentId ? { ...s, paymentPlan: prevPlan } : s));
+      alert("Gabim rrjeti — provo përsëri.");
+    }
   }
 
   function applySort(list: StudentRow[]) {
@@ -1720,6 +1731,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     isAlreadyMonthly ? "monthly" : isAlreadyFlex ? "flex" : isAlreadyTwo ? "two" : "single"
   );
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   // "Çmimi Bazë" kyçet parazgjedhur pasi ka këste reale (shih komentin te
   // `hasExistingInstallmentPlan`), por administrata duhet mundësi për ta
   // shkyçur qëllimisht kur ka bërë vetë një gabim (p.sh. shumë e gabuar) —
@@ -1985,7 +1997,17 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     const row = flexRows[idx];
     if (row.id) {
       if (!confirm("Fshi këtë këst? Ky veprim nuk mund të kthehet.")) return;
-      await fetch(`/api/payments/${row.id}`, { method: "DELETE" });
+      try {
+        const r = await fetch(`/api/payments/${row.id}`, { method: "DELETE" });
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          alert(d.error || `Fshirja dështoi (gabim ${r.status})`);
+          return;
+        }
+      } catch {
+        alert("Gabim rrjeti — provo përsëri.");
+        return;
+      }
     }
     setFlexRows(f => f.filter((_, i) => i !== idx));
   }
@@ -2005,244 +2027,277 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     if (!payment) return;
     if (!confirm("Fshi këtë këst? Ky veprim nuk mund të kthehet.")) return;
     setSaving(true);
-    await fetch(`/api/payments/${payment.id}`, { method: "DELETE" });
+    setSaveError("");
+    try {
+      const r = await fetch(`/api/payments/${payment.id}`, { method: "DELETE" });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setSaveError(d.error || `Fshirja dështoi (gabim ${r.status})`);
+        setSaving(false);
+        return;
+      }
+    } catch {
+      setSaveError("Gabim rrjeti — provo përsëri.");
+      setSaving(false);
+      return;
+    }
     setSaving(false);
     onSave();
   }
 
   async function handleSave(withPrint = false) {
     setSaving(true);
+    setSaveError("");
     let receiptPaymentId: number | undefined;
+    // Çdo shkrim (krijim/ndryshim/fshirje) kontrollohet — nëse ndonjë dështon,
+    // modali s'mbyllet dhe s'thirret onSave() sikur pati sukses (defekti i
+    // raportuar: pagesa dukej "e ruajtur" edhe kur serveri e kishte refuzuar).
+    let failed = false;
+    function noteFail(r: Response) { if (!r.ok) failed = true; return r; }
 
-    if (mode === "single") {
-      // If switching from two-installment to single: delete both old ones
-      if (isAlreadyTwo) {
-        await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
-      }
-      const payload = {
-        studentId:    student.id,
-        categoryId:   category.id,
-        amount:       form.amount,
-        discount:     form.discount,
-        discountType: form.discountType,
-        scholarship:  form.scholarship,
-        paidAmount:   sForm.paidAmount,
-        method:       sForm.method,
-        dueDate:      sForm.dueDate,
-        paidDate:     sForm.paidDate,
-        description:  null,
-        note:         form.note || null,
-        // Muaji/viti llogariten nga Afati i pagesës, jo nga filtri aktual i tabelës
-        // (mund të jetë "Të gjitha" → pa muaj konkret, gjë që e bënte pagesën të
-        // "padukshme" për query-t e ardhshme që kërkojnë muaj real).
-        ...monthYearFromDateStr(sForm.dueDate),
-      };
-      if (singleExisting) {
-        const r = await fetch(`/api/payments/${singleExisting.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (r.ok && parseFloat(sForm.paidAmount) > 0) receiptPaymentId = singleExisting.id;
-      } else {
-        const r = await fetch("/api/payments", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (r.ok && parseFloat(sForm.paidAmount) > 0) {
-          const created = await r.json();
-          receiptPaymentId = created.id;
+    try {
+      if (mode === "single") {
+        // If switching from two-installment to single: delete both old ones
+        if (isAlreadyTwo) {
+          const rs = await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+          rs.forEach(noteFail);
         }
-      }
-    } else if (mode === "two") {
-      // Two-installment mode
-      // If switching from single to two: delete old single payment
-      if (!isAlreadyTwo && singleExisting) {
-        await fetch(`/api/payments/${singleExisting.id}`, { method: "DELETE" });
-      }
-
-      const saveInstallment = async (
-        existing: Payment | null,
-        grossAmt: number,
-        discAmt: number,
-        scholAmt: number,
-        paidAmt: number,
-        dueDate: string,
-        paidDate: string,
-        method: string,
-        description: string,
-      ): Promise<number | undefined> => {
         const payload = {
           studentId:    student.id,
           categoryId:   category.id,
-          amount:       grossAmt,
-          discount:     discAmt,
+          amount:       form.amount,
+          discount:     form.discount,
           discountType: form.discountType,
-          scholarship:  scholAmt,
-          paidAmount:   paidAmt,
-          method,
-          dueDate,
-          paidDate,
-          description,
+          scholarship:  form.scholarship,
+          paidAmount:   sForm.paidAmount,
+          method:       sForm.method,
+          dueDate:      sForm.dueDate,
+          paidDate:     sForm.paidDate,
+          description:  null,
           note:         form.note || null,
-          // Muaji/viti llogariten nga Afati i vetë këstit, jo nga filtri i tabelës.
-          ...monthYearFromDateStr(dueDate),
+          // Muaji/viti llogariten nga Afati i pagesës, jo nga filtri aktual i tabelës
+          // (mund të jetë "Të gjitha" → pa muaj konkret, gjë që e bënte pagesën të
+          // "padukshme" për query-t e ardhshme që kërkojnë muaj real).
+          ...monthYearFromDateStr(sForm.dueDate),
         };
-        if (existing) {
-          const r = await fetch(`/api/payments/${existing.id}`, {
+        if (singleExisting) {
+          const r = noteFail(await fetch(`/api/payments/${singleExisting.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
-          });
-          return r.ok ? existing.id : undefined;
+          }));
+          if (r.ok && parseFloat(sForm.paidAmount) > 0) receiptPaymentId = singleExisting.id;
         } else {
-          const r = await fetch("/api/payments", {
+          const r = noteFail(await fetch("/api/payments", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
-          });
-          if (!r.ok) return undefined;
-          const created = await r.json();
-          return created.id;
+          }));
+          if (r.ok && parseFloat(sForm.paidAmount) > 0) {
+            const created = await r.json();
+            receiptPaymentId = created.id;
+          }
         }
-      };
+      } else if (mode === "two") {
+        // Two-installment mode
+        // If switching from single to two: delete old single payment
+        if (!isAlreadyTwo && singleExisting) {
+          noteFail(await fetch(`/api/payments/${singleExisting.id}`, { method: "DELETE" }));
+        }
 
-      // Çmimi bruto (para zbritjes) dhe zbritja ndahen proporcionalisht mes K1/K2
-      // (shih `splitGross`) — JO më `discount:0` fiks si më parë. Kështu, "Çmimi
-      // Bazë" origjinal (p.sh. 2000€, -10%) rindërtohet gjithmonë saktë kur
-      // rihapet plani, në vend që të "zhvishej" përgjithmonë te shuma tashmë e
-      // zbritur (p.sh. 1800€) — pikërisht defekti i raportuar.
-      const split1 = splitGross(portion1, totalFinal, amount, form.discountType, discount, scholarship);
-      const split2 = splitGross(portion2, totalFinal, amount, form.discountType, discount, scholarship);
-
-      // Krijo/perditeso vetem kestet qe kane shume reale (ose qe ekzistojne tashme) —
-      // perndryshe ruajtja e vetem njerit kesti krijonte automatikisht nje pagese
-      // "fantazme" 0-euro per tjetrin, gje qe ngatarronte stafin ne Historik.
-      // Fletëpagesa printohet për këstin e fundit që mori pagesë reale në këtë ruajtje
-      // (K2 mbizotëron K1 nëse të dy paguhen njëkohësisht).
-      if (k1Existing || portion1 > 0) {
-        const rid = await saveInstallment(k1Existing, split1.amount, split1.discount, split1.scholarship, k1Paid, k1Form.dueDate, k1Form.paidDate, k1Form.method, "KESTI_1");
-        if (k1Paid > 0 && rid) receiptPaymentId = rid;
-      }
-      if (k2Existing || portion2 > 0) {
-        const rid = await saveInstallment(k2Existing, split2.amount, split2.discount, split2.scholarship, k2Paid, k2Form.dueDate, k2Form.paidDate, k2Form.method, "KESTI_2");
-        if (k2Paid > 0 && rid) receiptPaymentId = rid;
-      }
-    } else if (mode === "monthly") {
-      // Monthly mode — delete non-monthly installments if switching from other mode
-      if (!isAlreadyMonthly) {
-        await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
-      }
-      const yr = year > 0 ? year : new Date().getFullYear();
-      // Fletëpagesa printohet për muajin e fundit (indeksi më i madh) që mori pagesë
-      // reale në këtë ruajtje.
-      const lastPaidMonthIdx = mForms.reduce((last, f, i) => parseFloat(f.paidAmount || "0") > 0 ? i : last, -1);
-      await Promise.all(mForms.map(async (mf, i) => {
-        const ex = installments.find(p => p.description === `MUAJI_${i + 1}`) ?? null;
-        // Shih komentin te modaliteti "Dy Këste" — çmimi bruto/zbritja ndahen
-        // proporcionalisht, jo `discount:0` fiks, që "Çmimi Bazë" origjinal të
-        // mos ndryshojë kurrë kur rihapet plani.
-        const splitM = splitGross(parseFloat(mf.portion || "0"), totalFinal, amount, form.discountType, discount, scholarship);
-        const payload = {
-          studentId:    student.id,
-          categoryId:   category.id,
-          amount:       splitM.amount,
-          discount:     splitM.discount,
-          discountType: form.discountType,
-          scholarship:  splitM.scholarship,
-          paidAmount:   parseFloat(mf.paidAmount || "0"),
-          method:       mf.method,
-          dueDate:      mf.dueDate,
-          paidDate:     mf.paidDate,
-          description:  `MUAJI_${i + 1}`,
-          note:         form.note || null,
-          month:        SCHOOL_MONTH_CALS[i],
-          year:         i < 4 ? yr : yr + 1,
+        const saveInstallment = async (
+          existing: Payment | null,
+          grossAmt: number,
+          discAmt: number,
+          scholAmt: number,
+          paidAmt: number,
+          dueDate: string,
+          paidDate: string,
+          method: string,
+          description: string,
+        ): Promise<number | undefined> => {
+          const payload = {
+            studentId:    student.id,
+            categoryId:   category.id,
+            amount:       grossAmt,
+            discount:     discAmt,
+            discountType: form.discountType,
+            scholarship:  scholAmt,
+            paidAmount:   paidAmt,
+            method,
+            dueDate,
+            paidDate,
+            description,
+            note:         form.note || null,
+            // Muaji/viti llogariten nga Afati i vetë këstit, jo nga filtri i tabelës.
+            ...monthYearFromDateStr(dueDate),
+          };
+          if (existing) {
+            const r = noteFail(await fetch(`/api/payments/${existing.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            }));
+            return r.ok ? existing.id : undefined;
+          } else {
+            const r = noteFail(await fetch("/api/payments", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            }));
+            if (!r.ok) return undefined;
+            const created = await r.json();
+            return created.id;
+          }
         };
-        let rid: number | undefined;
-        if (ex) {
-          const r = await fetch(`/api/payments/${ex.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-          rid = r.ok ? ex.id : undefined;
-        } else {
-          const r = await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-          if (r.ok) rid = (await r.json()).id;
-        }
-        if (i === lastPaidMonthIdx) receiptPaymentId = rid;
-      }));
-    } else {
-      // Flex mode — delete installments from a DIFFERENT mode if switching in
-      if (!isAlreadyFlex) {
-        await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
-      }
-      // Fshi rreshtat "legacy" (para header-it) — u zëvendësuan nga header-i +
-      // pagesat individuale më poshtë, pjesë e migrimit një-herësh.
-      if (flexLegacyRows.length > 0) {
-        await Promise.all(flexLegacyRows.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
-      }
 
-      // HEADER — një rekord i vetëm mban Çmimin Bazë/Zbritjen EXAKTËSISHT siç
-      // janë në formular, e kopjuar direkt, ASNJËHERË e rindërtuar nga ndonjë
-      // ndarje proporcionale. Meqë s'rrjedh nga asnjë shumë tjetër, s'ka MËNYRË
-      // që të ndryshojë vetvetiu, sido që shtohen/hiqen pagesa më poshtë.
-      const headerDueDate = flexHeaderExisting?.dueDate ? new Date(flexHeaderExisting.dueDate).toISOString().split("T")[0] : today;
-      const headerPayload = {
-        studentId:    student.id,
-        categoryId:   category.id,
-        amount:       form.amount,
-        discount:     form.discount,
-        discountType: form.discountType,
-        scholarship:  form.scholarship,
-        paidAmount:   0,
-        method:       "CASH",
-        dueDate:      headerDueDate,
-        paidDate:     null,
-        description:  "FLEX_HEADER",
-        note:         form.note || null,
-        ...monthYearFromDateStr(headerDueDate),
-      };
-      if (flexHeaderExisting) {
-        await fetch(`/api/payments/${flexHeaderExisting.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(headerPayload) });
+        // Çmimi bruto (para zbritjes) dhe zbritja ndahen proporcionalisht mes K1/K2
+        // (shih `splitGross`) — JO më `discount:0` fiks si më parë. Kështu, "Çmimi
+        // Bazë" origjinal (p.sh. 2000€, -10%) rindërtohet gjithmonë saktë kur
+        // rihapet plani, në vend që të "zhvishej" përgjithmonë te shuma tashmë e
+        // zbritur (p.sh. 1800€) — pikërisht defekti i raportuar.
+        const split1 = splitGross(portion1, totalFinal, amount, form.discountType, discount, scholarship);
+        const split2 = splitGross(portion2, totalFinal, amount, form.discountType, discount, scholarship);
+
+        // Krijo/perditeso vetem kestet qe kane shume reale (ose qe ekzistojne tashme) —
+        // perndryshe ruajtja e vetem njerit kesti krijonte automatikisht nje pagese
+        // "fantazme" 0-euro per tjetrin, gje qe ngatarronte stafin ne Historik.
+        // Fletëpagesa printohet për këstin e fundit që mori pagesë reale në këtë ruajtje
+        // (K2 mbizotëron K1 nëse të dy paguhen njëkohësisht).
+        if (k1Existing || portion1 > 0) {
+          const rid = await saveInstallment(k1Existing, split1.amount, split1.discount, split1.scholarship, k1Paid, k1Form.dueDate, k1Form.paidDate, k1Form.method, "KESTI_1");
+          if (k1Paid > 0 && rid) receiptPaymentId = rid;
+        }
+        if (k2Existing || portion2 > 0) {
+          const rid = await saveInstallment(k2Existing, split2.amount, split2.discount, split2.scholarship, k2Paid, k2Form.dueDate, k2Form.paidDate, k2Form.method, "KESTI_2");
+          if (k2Paid > 0 && rid) receiptPaymentId = rid;
+        }
+      } else if (mode === "monthly") {
+        // Monthly mode — delete non-monthly installments if switching from other mode
+        if (!isAlreadyMonthly) {
+          const rs = await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+          rs.forEach(noteFail);
+        }
+        const yr = year > 0 ? year : new Date().getFullYear();
+        // Fletëpagesa printohet për muajin e fundit (indeksi më i madh) që mori pagesë
+        // reale në këtë ruajtje.
+        const lastPaidMonthIdx = mForms.reduce((last, f, i) => parseFloat(f.paidAmount || "0") > 0 ? i : last, -1);
+        await Promise.all(mForms.map(async (mf, i) => {
+          const ex = installments.find(p => p.description === `MUAJI_${i + 1}`) ?? null;
+          // Shih komentin te modaliteti "Dy Këste" — çmimi bruto/zbritja ndahen
+          // proporcionalisht, jo `discount:0` fiks, që "Çmimi Bazë" origjinal të
+          // mos ndryshojë kurrë kur rihapet plani.
+          const splitM = splitGross(parseFloat(mf.portion || "0"), totalFinal, amount, form.discountType, discount, scholarship);
+          const payload = {
+            studentId:    student.id,
+            categoryId:   category.id,
+            amount:       splitM.amount,
+            discount:     splitM.discount,
+            discountType: form.discountType,
+            scholarship:  splitM.scholarship,
+            paidAmount:   parseFloat(mf.paidAmount || "0"),
+            method:       mf.method,
+            dueDate:      mf.dueDate,
+            paidDate:     mf.paidDate,
+            description:  `MUAJI_${i + 1}`,
+            note:         form.note || null,
+            month:        SCHOOL_MONTH_CALS[i],
+            year:         i < 4 ? yr : yr + 1,
+          };
+          let rid: number | undefined;
+          if (ex) {
+            const r = noteFail(await fetch(`/api/payments/${ex.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+            rid = r.ok ? ex.id : undefined;
+          } else {
+            const r = noteFail(await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+            if (r.ok) rid = (await r.json()).id;
+          }
+          if (i === lastPaidMonthIdx) receiptPaymentId = rid;
+        }));
       } else {
-        await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(headerPayload) });
-      }
+        // Flex mode — delete installments from a DIFFERENT mode if switching in
+        if (!isAlreadyFlex) {
+          const rs = await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+          rs.forEach(noteFail);
+        }
+        // Fshi rreshtat "legacy" (para header-it) — u zëvendësuan nga header-i +
+        // pagesat individuale më poshtë, pjesë e migrimit një-herësh.
+        if (flexLegacyRows.length > 0) {
+          const rs = await Promise.all(flexLegacyRows.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+          rs.forEach(noteFail);
+        }
 
-      // PAGESAT — çdo rresht = 1 pagesë REALE, e vetë-mjaftueshme (amount =
-      // paidAmount, 0% zbritje) — thjesht një dëftesë e vogël e paguar
-      // plotësisht. Asnjë ndarje proporcionale, asnjë varësi nga rreshtat e
-      // tjerë. Fletëpagesa printohet për rreshtin e fundit që mori pagesë
-      // reale në këtë ruajtje.
-      const lastPaidFlexIdx = flexRows.reduce((last, r, i) => parseFloat(r.paidAmount || "0") > 0 ? i : last, -1);
-      await Promise.all(flexRows.map(async (fr, i) => {
-        const paidAmt = parseFloat(fr.paidAmount || "0");
-        if (!fr.id && paidAmt <= 0) return;
-        const payload = {
+        // HEADER — një rekord i vetëm mban Çmimin Bazë/Zbritjen EXAKTËSISHT siç
+        // janë në formular, e kopjuar direkt, ASNJËHERË e rindërtuar nga ndonjë
+        // ndarje proporcionale. Meqë s'rrjedh nga asnjë shumë tjetër, s'ka MËNYRË
+        // që të ndryshojë vetvetiu, sido që shtohen/hiqen pagesa më poshtë.
+        const headerDueDate = flexHeaderExisting?.dueDate ? new Date(flexHeaderExisting.dueDate).toISOString().split("T")[0] : today;
+        const headerPayload = {
           studentId:    student.id,
           categoryId:   category.id,
-          amount:       paidAmt,
-          discount:     0,
-          discountType: "fixed",
-          scholarship:  0,
-          paidAmount:   paidAmt,
-          method:       fr.method,
-          dueDate:      fr.dueDate,
-          paidDate:     fr.paidDate,
-          description:  `FLEX_PAY_${i + 1}`,
-          ...monthYearFromDateStr(fr.dueDate),
+          amount:       form.amount,
+          discount:     form.discount,
+          discountType: form.discountType,
+          scholarship:  form.scholarship,
+          paidAmount:   0,
+          method:       "CASH",
+          dueDate:      headerDueDate,
+          paidDate:     null,
+          description:  "FLEX_HEADER",
+          note:         form.note || null,
+          ...monthYearFromDateStr(headerDueDate),
         };
-        let rid: number | undefined;
-        if (fr.id) {
-          const r = await fetch(`/api/payments/${fr.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-          rid = r.ok ? fr.id : undefined;
+        if (flexHeaderExisting) {
+          noteFail(await fetch(`/api/payments/${flexHeaderExisting.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(headerPayload) }));
         } else {
-          const r = await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-          if (r.ok) rid = (await r.json()).id;
+          noteFail(await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(headerPayload) }));
         }
-        if (i === lastPaidFlexIdx) receiptPaymentId = rid;
-      }));
+
+        // PAGESAT — çdo rresht = 1 pagesë REALE, e vetë-mjaftueshme (amount =
+        // paidAmount, 0% zbritje) — thjesht një dëftesë e vogël e paguar
+        // plotësisht. Asnjë ndarje proporcionale, asnjë varësi nga rreshtat e
+        // tjerë. Fletëpagesa printohet për rreshtin e fundit që mori pagesë
+        // reale në këtë ruajtje.
+        const lastPaidFlexIdx = flexRows.reduce((last, r, i) => parseFloat(r.paidAmount || "0") > 0 ? i : last, -1);
+        await Promise.all(flexRows.map(async (fr, i) => {
+          const paidAmt = parseFloat(fr.paidAmount || "0");
+          if (!fr.id && paidAmt <= 0) return;
+          const payload = {
+            studentId:    student.id,
+            categoryId:   category.id,
+            amount:       paidAmt,
+            discount:     0,
+            discountType: "fixed",
+            scholarship:  0,
+            paidAmount:   paidAmt,
+            method:       fr.method,
+            dueDate:      fr.dueDate,
+            paidDate:     fr.paidDate,
+            description:  `FLEX_PAY_${i + 1}`,
+            ...monthYearFromDateStr(fr.dueDate),
+          };
+          let rid: number | undefined;
+          if (fr.id) {
+            const r = noteFail(await fetch(`/api/payments/${fr.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+            rid = r.ok ? fr.id : undefined;
+          } else {
+            const r = noteFail(await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+            if (r.ok) rid = (await r.json()).id;
+          }
+          if (i === lastPaidFlexIdx) receiptPaymentId = rid;
+        }));
+      }
+    } catch {
+      setSaving(false);
+      setSaveError("Gabim rrjeti — provo përsëri. Kontrollo nëse ndonjë pjesë u ruajt tashmë përpara se të rihapësh.");
+      return;
     }
 
     setSaving(false);
+    if (failed) {
+      setSaveError("Disa nga ndryshimet nuk u ruajtën (gabim serveri) — kontrollo Historikun e pagesave dhe provo përsëri.");
+      return;
+    }
     onSave(withPrint ? receiptPaymentId : undefined);
   }
 
@@ -2771,6 +2826,10 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
             </div>
           )}
         </div>
+
+        {saveError && (
+          <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2 mx-5">{saveError}</p>
+        )}
 
         <div className="flex flex-wrap gap-2 p-5 pt-0 sticky bottom-0 bg-white dark:bg-slate-800">
           <button onClick={onClose} className="btn-secondary">

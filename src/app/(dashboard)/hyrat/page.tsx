@@ -132,6 +132,7 @@ export default function HyratPage() {
   const [showModal, setShowModal] = useState(false);
   const [editId,    setEditId]    = useState<number | null>(null);
   const [saving,    setSaving]    = useState(false);
+  const [saveError, setSaveError] = useState("");
   const emptyForm = {
     paguesit: "", shuma: "",
     muaj: String(now.getMonth() + 1), vit: String(now.getFullYear()),
@@ -237,19 +238,37 @@ export default function HyratPage() {
   async function handleSave() {
     if (!form.paguesit || !form.shuma) return;
     setSaving(true);
+    setSaveError("");
     try {
       const url    = editId ? `/api/hyrat/${editId}` : "/api/hyrat";
       const method = editId ? "PUT" : "POST";
-      await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSaveError(d.error || `Ruajtja dështoi (gabim ${res.status})`);
+        return;
+      }
       setShowModal(false);
       fetchLista();
       fetchSummary();
+    } catch {
+      setSaveError("Gabim rrjeti — provo përsëri.");
     } finally { setSaving(false); }
   }
 
   async function handleDelete(id: number) {
     if (!confirm("Fshi këtë të hyrë?")) return;
-    await fetch(`/api/hyrat/${id}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/hyrat/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || `Fshirja dështoi (gabim ${res.status})`);
+        return;
+      }
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      return;
+    }
     fetchLista();
     fetchSummary();
   }
@@ -590,9 +609,10 @@ export default function HyratPage() {
                 <label className="form-label">Referenca</label>
                 <input value={form.referenca} onChange={e => setForm(f => ({ ...f, referenca: e.target.value }))} className="form-input" placeholder="Nr. faturës, etj." />
               </div>
+              {saveError && <p className="text-sm text-red-500">{saveError}</p>}
             </div>
             <div className="flex gap-3 p-5 pt-0">
-              <button onClick={() => setShowModal(false)} className="btn-ghost flex-1">Anulo</button>
+              <button onClick={() => { setShowModal(false); setSaveError(""); }} className="btn-ghost flex-1">Anulo</button>
               <button onClick={handleSave} disabled={saving || !form.paguesit || !form.shuma} className="btn-primary flex-1 justify-center">
                 {saving ? "Duke ruajtur..." : <><Check className="w-4 h-4" /> Ruaj</>}
               </button>

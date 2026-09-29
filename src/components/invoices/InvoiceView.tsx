@@ -88,12 +88,17 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
 
   async function updateStatus(status: string) {
     setUpdatingStatus(true);
-    await fetch(`/api/invoices/${invoice.id}`, {
+    const res = await fetch(`/api/invoices/${invoice.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
     setUpdatingStatus(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Gabim gjatë ndryshimit të statusit");
+      return;
+    }
     window.location.reload();
   }
 

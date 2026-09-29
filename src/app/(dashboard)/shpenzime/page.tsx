@@ -121,6 +121,7 @@ export default function ShpenzimePage() {
   const [editPartnerId, setEditPartnerId] = useState<number | null>(null);
   const [partnerForm, setPartnerForm] = useState({ emri: "", nrFiskal: "", adresa: "", telefoni: "", email: "" });
   const [savingPartner, setSavingPartner] = useState(false);
+  const [partnerError, setPartnerError] = useState("");
   const [partnerTab, setPartnerTab] = useState<"shto" | "lista" | "import">("shto");
   const partnerImportRef = useRef<HTMLInputElement>(null);
   const [partnerImportMsg, setPartnerImportMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -151,11 +152,24 @@ export default function ShpenzimePage() {
   async function handleSavePartner() {
     if (!partnerForm.emri) return;
     setSavingPartner(true);
-    await fetch("/api/sipartner", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...partnerForm, id: editPartnerId }),
-    });
+    setPartnerError("");
+    try {
+      const res = await fetch("/api/sipartner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...partnerForm, id: editPartnerId }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setPartnerError(d.error || `Ruajtja dështoi (gabim ${res.status})`);
+        setSavingPartner(false);
+        return;
+      }
+    } catch {
+      setPartnerError("Gabim rrjeti — provo përsëri.");
+      setSavingPartner(false);
+      return;
+    }
     setSavingPartner(false);
     setPartnerForm({ emri: "", nrFiskal: "", adresa: "", telefoni: "", email: "" });
     setEditPartnerId(null);
@@ -165,7 +179,17 @@ export default function ShpenzimePage() {
 
   async function handleDeletePartner(id: number) {
     if (!confirm("Fshi këtë partner?")) return;
-    await fetch(`/api/sipartner?id=${id}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/sipartner?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || `Fshirja dështoi (gabim ${res.status})`);
+        return;
+      }
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      return;
+    }
     fetchPartners();
   }
 
@@ -194,6 +218,8 @@ export default function ShpenzimePage() {
   const [editKatId, setEditKatId] = useState<number | null>(null);
   const [katForm, setKatForm] = useState({ emri: "", ngjyra: NGJYRAT[0], ikona: "" });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [katError, setKatError] = useState("");
 
   // Bashko kategoritë (p.sh. dyfishime aksidentale si "Mirëmbajtja hixhienike"
   // vs "Mirëmbajtje Hixhienike") — zhvendos të gjitha shpenzimet te kategoria
@@ -289,9 +315,22 @@ export default function ShpenzimePage() {
   async function handleSave() {
     if (!form.kategoriId || !form.shuma) return;
     setSaving(true);
+    setSaveError("");
     const url = editId ? `/api/shpenzime/${editId}` : "/api/shpenzime";
     const method = editId ? "PUT" : "POST";
-    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+    try {
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSaveError(d.error || `Ruajtja dështoi (gabim ${res.status})`);
+        setSaving(false);
+        return;
+      }
+    } catch {
+      setSaveError("Gabim rrjeti — provo përsëri.");
+      setSaving(false);
+      return;
+    }
     setSaving(false);
     setShowModal(false);
     fetchData();
@@ -301,7 +340,17 @@ export default function ShpenzimePage() {
 
   async function handleDelete(id: number) {
     if (!confirm("Fshi këtë shpenzim?")) return;
-    await fetch(`/api/shpenzime/${id}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/shpenzime/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || `Fshirja dështoi (gabim ${res.status})`);
+        return;
+      }
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      return;
+    }
     fetchData();
     if (tab === "raport") fetchRaport();
     if (cellModal) fetchCellRows(cellModal);
@@ -420,7 +469,12 @@ export default function ShpenzimePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: [...selectedSh], action: "DELETE" }),
     });
-    if (res.ok) setLastBulkAction(await res.json());
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || `Fshirja dështoi (gabim ${res.status})`);
+      return;
+    }
+    setLastBulkAction(await res.json());
     setSelectedSh(new Set());
     fetchData();
   }
@@ -431,7 +485,12 @@ export default function ShpenzimePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: [...selectedSh], patch }),
     });
-    if (res.ok) setLastBulkAction(await res.json());
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || `Veprimi dështoi (gabim ${res.status})`);
+      return;
+    }
+    setLastBulkAction(await res.json());
     setSelectedSh(new Set());
     setShowBulkKat(false);
     fetchData();
@@ -452,18 +511,29 @@ export default function ShpenzimePage() {
   async function handleSaveKategori() {
     if (!katForm.emri) return;
     setSaving(true);
-    if (editKatId) {
-      await fetch(`/api/shpenzime/kategorite?id=${editKatId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(katForm),
-      });
-    } else {
-      await fetch("/api/shpenzime/kategorite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(katForm),
-      });
+    setKatError("");
+    try {
+      const res = editKatId
+        ? await fetch(`/api/shpenzime/kategorite?id=${editKatId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(katForm),
+          })
+        : await fetch("/api/shpenzime/kategorite", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(katForm),
+          });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setKatError(d.error || `Ruajtja dështoi (gabim ${res.status})`);
+        setSaving(false);
+        return;
+      }
+    } catch {
+      setKatError("Gabim rrjeti — provo përsëri.");
+      setSaving(false);
+      return;
     }
     setSaving(false);
     setShowKatModal(false);
@@ -637,7 +707,17 @@ export default function ShpenzimePage() {
 
   async function handleDeleteKat(id: number) {
     if (!confirm("Fshi këtë kategori dhe të gjitha shpenzimet e saj?")) return;
-    await fetch(`/api/shpenzime/kategorite?id=${id}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/shpenzime/kategorite?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || `Fshirja dështoi (gabim ${res.status})`);
+        return;
+      }
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      return;
+    }
     fetchData();
   }
 
@@ -1510,9 +1590,10 @@ export default function ShpenzimePage() {
                   <input type="text" value={form.referenca} onChange={e => setForm(f => ({ ...f, referenca: e.target.value }))} className="form-input" placeholder="Nr. ref., etj." />
                 </div>
               </div>
+              {saveError && <p className="text-sm text-red-500 px-1">{saveError}</p>}
             </div>
             <div className="flex gap-3 p-5 pt-0">
-              <button onClick={() => setShowModal(false)} className="btn-secondary flex-1 justify-center"><X className="w-4 h-4" /> Anulo</button>
+              <button onClick={() => { setShowModal(false); setSaveError(""); }} className="btn-secondary flex-1 justify-center"><X className="w-4 h-4" /> Anulo</button>
               <button onClick={handleSave} disabled={saving || !form.kategoriId || !form.shuma} className="btn-primary flex-1 justify-center">
                 {saving ? "Duke ruajtur..." : <><Save className="w-4 h-4" /> Ruaj</>}
               </button>
@@ -1569,6 +1650,7 @@ export default function ShpenzimePage() {
                       <input type="email" value={partnerForm.email} onChange={e => setPartnerForm(f => ({ ...f, email: e.target.value }))} className="form-input" placeholder="info@kompania.com" />
                     </div>
                   </div>
+                  {partnerError && <p className="text-sm text-red-500">{partnerError}</p>}
                   <div className="flex gap-3 pt-2">
                     {editPartnerId && (
                       <button onClick={() => { setEditPartnerId(null); setPartnerForm({ emri: "", nrFiskal: "", adresa: "", telefoni: "", email: "" }); }} className="btn-secondary flex-1 justify-center">
@@ -1701,9 +1783,10 @@ export default function ShpenzimePage() {
                   ))}
                 </div>
               </div>
+              {katError && <p className="text-sm text-red-500">{katError}</p>}
             </div>
             <div className="flex gap-3 p-5 pt-0">
-              <button onClick={() => setShowKatModal(false)} className="btn-secondary flex-1 justify-center">Anulo</button>
+              <button onClick={() => { setShowKatModal(false); setKatError(""); }} className="btn-secondary flex-1 justify-center">Anulo</button>
               <button onClick={handleSaveKategori} disabled={saving || !katForm.emri} className="btn-primary flex-1 justify-center">
                 {saving ? "Duke ruajtur..." : editKatId ? "Ruaj Ndryshimet" : "Shto"}
               </button>

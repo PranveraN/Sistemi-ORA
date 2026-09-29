@@ -26,6 +26,7 @@ export default function ShkollimiVerifikimPage() {
   const [rows, setRows] = useState<PaymentRow[] | null>(null);
   const [tiStudentIds, setTiStudentIds] = useState<Set<number>>(new Set());
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     const [paymentsRes, tiRes] = await Promise.all([
@@ -42,7 +43,20 @@ export default function ShkollimiVerifikimPage() {
 
   async function confirmPayment(id: number) {
     setConfirmingId(id);
-    await fetch(`/api/payments/${id}/confirm`, { method: "PATCH" });
+    setError("");
+    try {
+      const r = await fetch(`/api/payments/${id}/confirm`, { method: "PATCH" });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setError(d.error || `Konfirmimi dështoi (gabim ${r.status})`);
+        setConfirmingId(null);
+        return;
+      }
+    } catch {
+      setError("Gabim rrjeti — provo përsëri.");
+      setConfirmingId(null);
+      return;
+    }
     setConfirmingId(null);
     load();
   }
@@ -63,6 +77,8 @@ export default function ShkollimiVerifikimPage() {
             Verifikojini dhe klikoni &quot;Konfirmo&quot; vetëm pasi të jeni siguruar që paraja është marrë realisht nga shkolla.
           </p>
         </div>
+
+        {error && <p className="text-sm text-red-500">{error}</p>}
 
         <div className="card overflow-hidden">
           {rows === null ? (
