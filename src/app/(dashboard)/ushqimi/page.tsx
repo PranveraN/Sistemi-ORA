@@ -570,7 +570,10 @@ export default function UshqimiPage() {
       : `Hiq ${s.firstName} ${s.lastName} nga ushqimi (${effectiveYear})?`;
     if (!confirm(warning)) return;
 
-    await Promise.all(payments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+    const results = await Promise.all(payments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+    if (results.some(r => !r.ok)) {
+      alert("Disa nga periudhat nuk u fshinë (gabim serveri) — provo përsëri.");
+    }
     fetchYearData();
   }
 
@@ -1325,6 +1328,7 @@ export default function UshqimiPage() {
                     payment: findPeriodPayment(s.installments, period.months),
                   }));
                   const hasMissingPeriods = rowPeriods.some(rp => !rp.payment);
+                  const hasAnyPayment = rowPeriods.some(rp => rp.payment);
                   const totalPlan = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.finalAmount || 0), 0);
                   const totalPaid = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.paidAmount  || 0), 0);
                   const totalDebtRow = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.balance   || 0), 0);
@@ -1434,7 +1438,7 @@ export default function UshqimiPage() {
                               <Receipt className="w-4 h-4" />
                             </button>
                           )}
-                          {totalPlan > 0 && (
+                          {hasAnyPayment && (
                             <button
                               onClick={() => handleRemoveFromUshqimi(s)}
                               title="Hiq nga ushqimi"
