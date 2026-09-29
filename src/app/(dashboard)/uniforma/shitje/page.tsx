@@ -63,7 +63,12 @@ export default function ShitjetPage() {
 
   const confirmDelete = async () => {
     if (!deleteId) return;
-    await fetch(`/api/uniforms/sales/${deleteId}`, { method: "DELETE" });
+    const res = await fetch(`/api/uniforms/sales/${deleteId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     setDeleteId(null);
     load();
   };

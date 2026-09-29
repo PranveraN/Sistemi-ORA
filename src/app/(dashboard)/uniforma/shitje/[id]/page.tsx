@@ -203,7 +203,7 @@ export default function SaleDetailPage() {
   const addPayment = async () => {
     if (!sale) return;
     setSaving(true);
-    await fetch(`/api/uniforms/sales/${sale.id}/payments`, {
+    const res = await fetch(`/api/uniforms/sales/${sale.id}/payments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -214,6 +214,11 @@ export default function SaleDetailPage() {
       }),
     });
     setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja e pagesës dështoi.");
+      return;
+    }
     setShowPayModal(false);
     setPayAmount(""); setPayNotes("");
     load();

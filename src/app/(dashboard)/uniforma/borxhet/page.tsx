@@ -124,8 +124,13 @@ export default function UniformaBorxhetPage() {
   async function confirmDeleteRow() {
     if (!deleteRow) return;
     setDeleting(true);
-    await fetch(`/api/uniforms/sales/${deleteRow.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/uniforms/sales/${deleteRow.id}`, { method: "DELETE" });
     setDeleting(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     setDeleteRow(null);
     fetchDebts();
   }

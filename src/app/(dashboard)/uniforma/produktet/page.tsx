@@ -59,11 +59,16 @@ export default function ProduktetPage() {
   const savePrice = async (p: Product) => {
     const e = editing[p.id];
     if (!e) return;
-    await fetch(`/api/uniforms/products/${p.id}`, {
+    const res = await fetch(`/api/uniforms/products/${p.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ buyPrice: parseFloat(e.buyPrice), sellPrice: parseFloat(e.sellPrice) }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
     cancelEdit(p.id);
     load();
   };
@@ -71,7 +76,7 @@ export default function ProduktetPage() {
   const addProduct = async () => {
     if (!newName.trim()) return;
     setSaving(true);
-    await fetch("/api/uniforms/products", {
+    const res = await fetch("/api/uniforms/products", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -82,6 +87,11 @@ export default function ProduktetPage() {
       }),
     });
     setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Shtimi dështoi.");
+      return;
+    }
     setShowAdd(false);
     setNewName(""); setNewBuy(""); setNewSell("");
     load();
@@ -89,20 +99,28 @@ export default function ProduktetPage() {
 
   const seedProducts = async () => {
     setSeeding(true);
+    let failed = false;
     for (const p of INITIAL_PRODUCTS) {
-      await fetch("/api/uniforms/products", {
+      const res = await fetch("/api/uniforms/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: p.name, buyPrice: p.buyPrice, sellPrice: p.sellPrice, stock: 0, stockAlert: 5 }),
       });
+      if (!res.ok) failed = true;
     }
     setSeeding(false);
+    if (failed) alert("Disa produkte standarde nuk u shtuan — provo përsëri.");
     load();
   };
 
   const confirmDelete = async () => {
     if (!deleteId) return;
-    await fetch(`/api/uniforms/products/${deleteId}`, { method: "DELETE" });
+    const res = await fetch(`/api/uniforms/products/${deleteId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     setDeleteId(null);
     load();
   };

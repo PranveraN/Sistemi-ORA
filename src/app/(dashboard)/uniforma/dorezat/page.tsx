@@ -83,7 +83,7 @@ export default function DorezatPage() {
 
   const save = async () => {
     setSaving(true);
-    await fetch("/api/uniforms/handovers", {
+    const res = await fetch("/api/uniforms/handovers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -96,6 +96,11 @@ export default function DorezatPage() {
       }),
     });
     setSaving(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Ruajtja dështoi.");
+      return;
+    }
     setShowModal(false);
     setForm({ amount: "", description: "", recipient: "", method: "CASH", reference: "", handoverAt: new Date().toISOString().split("T")[0] });
     load();
@@ -103,7 +108,12 @@ export default function DorezatPage() {
 
   const confirmDelete = async () => {
     if (!deleteId) return;
-    await fetch(`/api/uniforms/handovers/${deleteId}`, { method: "DELETE" });
+    const res = await fetch(`/api/uniforms/handovers/${deleteId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "Fshirja dështoi.");
+      return;
+    }
     setDeleteId(null);
     load();
   };

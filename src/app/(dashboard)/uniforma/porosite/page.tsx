@@ -101,12 +101,17 @@ export default function PorositePage() {
   async function markReceived(order: Order) {
     if (!confirm(`Shëno porosinë ${order.orderNumber} si "Mbërriti"? Stoku i produkteve do të rritet automatikisht.`)) return;
     setBusyId(order.id);
-    await fetch(`/api/uniforms/orders/${order.id}`, {
+    const r = await fetch(`/api/uniforms/orders/${order.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "RECEIVED" }),
     });
     setBusyId(null);
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert(d.error || "Veprimi dështoi.");
+      return;
+    }
     fetchOrders();
     fetch("/api/uniforms/products").then(r => r.json()).then(setProducts);
   }
