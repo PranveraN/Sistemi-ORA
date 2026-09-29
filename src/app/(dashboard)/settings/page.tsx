@@ -1873,6 +1873,7 @@ function BackupSection() {
   const [backups, setBackups] = useState<BackupRow[]>([]);
   const [loading, setLoading]  = useState(true);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
 
   const fetchBackups = useCallback(async () => {
     setLoading(true);
@@ -1885,8 +1886,14 @@ function BackupSection() {
 
   async function handleCreateNow() {
     setCreating(true);
-    await fetch("/api/backups", { method: "POST" });
+    setError("");
+    const r = await fetch("/api/backups", { method: "POST" });
     setCreating(false);
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      setError(d.error || "Krijimi i backup-it dështoi.");
+      return;
+    }
     fetchBackups();
   }
 
@@ -1907,6 +1914,12 @@ function BackupSection() {
           {creating ? "Duke krijuar..." : "Bëj Backup Tani"}
         </button>
       </div>
+
+      {error && (
+        <div className="px-5 py-3 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-900/40 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </div>
+      )}
 
       {loading ? (
         <div className="py-10 text-center text-slate-400 text-sm">Duke ngarkuar...</div>
