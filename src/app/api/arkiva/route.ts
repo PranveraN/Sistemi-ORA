@@ -1,44 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+// 2026-09-29: më parë s'kishte AS NJË kontroll identifikimi (çdokush mund ta
+// thërriste drejtpërdrejt), dhe ndërtonte SQL me ngjitje teksti (rrezik
+// injektimi). Rishkruar me auth() + query-t e sigurta të vetë Prisma-s.
+async function requireAccess() {
+  const session = await auth();
+  if (!session) return null;
+  const role = (session.user as { role?: string })?.role;
+  if (!["ADMIN", "SUPERADMIN", "FINANCE", "SECRETARY"].includes(role ?? "")) return null;
+  return session;
+}
+
 export async function GET(req: NextRequest) {
+  const session = await requireAccess();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") || "";
   const search = searchParams.get("search") || "";
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "30");
-  const offset = (page - 1) * limit;
 
-  const typeFilter = type ? `AND type = '${type.replace(/'/g, "''")}'` : "";
-  const searchFilter = search
-    ? `AND (studentName LIKE '%${search.replace(/'/g, "''")}%' OR className LIKE '%${search.replace(/'/g, "''")}%')`
-    : "";
+  const where: Record<string, unknown> = {};
+  if (type) where.type = type;
+  if (search) {
+    where.OR = [
+      { studentName: { contains: search } },
+      { className: { contains: search } },
+    ];
+  }
 
-  const rows = await prisma.$queryRawUnsafe<{
-    id: number; type: string; studentId: number | null; studentName: string;
-    className: string | null; generatedBy: string | null; createdAt: string;
-  }[]>(`
-    SELECT id, type, studentId, studentName, className, generatedBy, createdAt
-    FROM DocArchive
-    WHERE 1=1 ${typeFilter} ${searchFilter}
-    ORDER BY createdAt DESC
-    LIMIT ${limit} OFFSET ${offset}
-  `);
+  const [docs, total] = await Promise.all([
+    prisma.docArchive.findMany({
+      where,
+      select: { id: true, type: true, studentId: true, studentName: true, className: true, generatedBy: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.docArchive.count({ where }),
+  ]);
 
-  const [countRow] = await prisma.$queryRawUnsafe<{ total: bigint | number }[]>(`
-    SELECT COUNT(*) as total FROM DocArchive WHERE 1=1 ${typeFilter} ${searchFilter}
-  `);
-
-  const safeRows = rows.map(r => ({
-    ...r,
-    id: Number(r.id),
-    studentId: r.studentId != null ? Number(r.studentId) : null,
-  }));
-
-  return NextResponse.json({ docs: safeRows, total: Number(countRow.total), page, limit });
+  return NextResponse.json({ docs, total, page, limit });
 }
 
 export async function POST(req: NextRequest) {
+  const session = await requireAccess();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await req.json();
   const { type, studentId, studentName, className, data, generatedBy } = body;
 
@@ -46,22 +57,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "type dhe studentName janë të detyrueshme" }, { status: 400 });
   }
 
-  const dataJson = typeof data === "string" ? data : JSON.stringify(data);
-  const sid = studentId ? parseInt(String(studentId)) : null;
+  const doc = await prisma.docArchive.create({
+    data: {
+      type,
+      studentId: studentId ? parseInt(String(studentId)) : null,
+      studentName,
+      className: className || null,
+      data: typeof data === "string" ? data : JSON.stringify(data),
+      generatedBy: generatedBy || null,
+    },
+    select: { id: true },
+  });
 
-  const [row] = await prisma.$queryRawUnsafe<{ id: bigint | number }[]>(`
-    INSERT INTO DocArchive (type, studentId, studentName, className, data, generatedBy, createdAt)
-    VALUES (
-      '${type.replace(/'/g, "''")}',
-      ${sid === null ? "NULL" : sid},
-      '${studentName.replace(/'/g, "''")}',
-      ${className ? `'${className.replace(/'/g, "''")}'` : "NULL"},
-      '${dataJson.replace(/'/g, "''")}',
-      ${generatedBy ? `'${generatedBy.replace(/'/g, "''")}'` : "NULL"},
-      datetime('now')
-    )
-    RETURNING id
-  `);
-
-  return NextResponse.json({ id: Number(row.id) }, { status: 201 });
+  return NextResponse.json({ id: doc.id }, { status: 201 });
 }

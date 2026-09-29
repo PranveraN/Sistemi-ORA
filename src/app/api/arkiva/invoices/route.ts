@@ -1,38 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+async function requireAccess() {
+  const session = await auth();
+  if (!session) return null;
+  const role = (session.user as { role?: string })?.role;
+  if (!["ADMIN", "SUPERADMIN", "FINANCE", "SECRETARY"].includes(role ?? "")) return null;
+  return session;
+}
+
 export async function GET(req: NextRequest) {
+  const session = await requireAccess();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "25");
-  const offset = (page - 1) * limit;
 
-  const searchFilter = search
-    ? `AND (s.firstName || ' ' || s.lastName LIKE '%${search.replace(/'/g, "''")}%' OR i.number LIKE '%${search.replace(/'/g, "''")}%')`
-    : "";
+  const where: Record<string, unknown> = search
+    ? {
+        OR: [
+          { number: { contains: search } },
+          { student: { firstName: { contains: search } } },
+          { student: { lastName: { contains: search } } },
+        ],
+      }
+    : {};
 
-  const rows = await prisma.$queryRawUnsafe<{
-    id: number; number: string; type: string; status: string; total: number;
-    createdAt: string; studentName: string; className: string | null;
-  }[]>(`
-    SELECT i.id, i.number, i.type, i.status, i.total, i.createdAt,
-           s.firstName || ' ' || s.lastName AS studentName,
-           c.name AS className
-    FROM Invoice i
-    JOIN Student s ON s.id = i.studentId
-    LEFT JOIN Class c ON c.id = s.classId
-    WHERE 1=1 ${searchFilter}
-    ORDER BY i.createdAt DESC
-    LIMIT ${limit} OFFSET ${offset}
-  `);
+  const [rows, total] = await Promise.all([
+    prisma.invoice.findMany({
+      where,
+      select: {
+        id: true, number: true, type: true, status: true, total: true, createdAt: true,
+        student: { select: { firstName: true, lastName: true, class: { select: { name: true } } } },
+      },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.invoice.count({ where }),
+  ]);
 
-  const [countRow] = await prisma.$queryRawUnsafe<{ total: bigint | number }[]>(`
-    SELECT COUNT(*) as total
-    FROM Invoice i
-    JOIN Student s ON s.id = i.studentId
-    WHERE 1=1 ${searchFilter}
-  `);
+  const invoices = rows.map(r => ({
+    id: r.id, number: r.number, type: r.type, status: r.status, total: r.total, createdAt: r.createdAt,
+    studentName: `${r.student.firstName} ${r.student.lastName}`,
+    className: r.student.class?.name ?? null,
+  }));
 
-  return NextResponse.json({ invoices: rows, total: Number(countRow.total), page, limit });
+  return NextResponse.json({ invoices, total, page, limit });
 }

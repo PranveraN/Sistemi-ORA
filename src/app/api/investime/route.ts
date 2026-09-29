@@ -1,55 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+// 2026-09-29: më parë s'kishte AS NJË kontroll identifikimi, dhe ndërtonte SQL
+// me ngjitje teksti (rrezik injektimi). Rishkruar me auth() + query-t e
+// sigurta të vetë Prisma-s.
+async function requireAccess() {
+  const session = await auth();
+  if (!session) return null;
+  const role = (session.user as { role?: string })?.role;
+  if (!["ADMIN", "SUPERADMIN", "FINANCE"].includes(role ?? "")) return null;
+  return session;
+}
+
 export async function GET(req: NextRequest) {
+  const session = await requireAccess();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
-  const tipi    = searchParams.get("tipi")   || "";
-  const metoda  = searchParams.get("metoda") || "";
-  const from    = searchParams.get("from")   || "";
-  const to      = searchParams.get("to")     || "";
-  const search  = searchParams.get("search") || "";
-  const page    = parseInt(searchParams.get("page")  || "1");
-  const limit   = parseInt(searchParams.get("limit") || "30");
-  const offset  = (page - 1) * limit;
+  const tipi   = searchParams.get("tipi")   || "";
+  const metoda = searchParams.get("metoda") || "";
+  const from   = searchParams.get("from")   || "";
+  const to     = searchParams.get("to")     || "";
+  const search = searchParams.get("search") || "";
+  const page   = parseInt(searchParams.get("page")  || "1");
+  const limit  = parseInt(searchParams.get("limit") || "30");
 
-  const s = (v: string) => v.replace(/'/g, "''");
+  const where: Record<string, unknown> = {};
+  if (tipi)   where.tipi = tipi;
+  if (metoda) where.metoda = metoda;
+  if (search) where.pershkrim = { contains: search };
+  if (from || to) {
+    where.data = {
+      ...(from ? { gte: new Date(from) } : {}),
+      ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+    };
+  }
 
-  const filters: string[] = [];
-  if (tipi)   filters.push(`tipi = '${s(tipi)}'`);
-  if (metoda) filters.push(`metoda = '${s(metoda)}'`);
-  if (from)   filters.push(`date(data) >= '${s(from)}'`);
-  if (to)     filters.push(`date(data) <= '${s(to)}'`);
-  if (search) filters.push(`pershkrim LIKE '%${s(search)}%'`);
-
-  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-
-  const [investime, countRow, kapRow, perkRow] = await Promise.all([
-    prisma.$queryRawUnsafe<{
-      id: number; tipi: string; data: string; pershkrim: string;
-      kategoria: string|null; vlera: number; metoda: string;
-      dokumenti: string|null; regjistruarNga: string|null; createdAt: string;
-    }[]>(`SELECT * FROM Investim ${where} ORDER BY data DESC LIMIT ${limit} OFFSET ${offset}`),
-
-    prisma.$queryRawUnsafe<{ total: bigint }[]>(
-      `SELECT COUNT(*) as total FROM Investim ${where}`),
-
-    prisma.$queryRawUnsafe<{ s: number|null }[]>(
-      `SELECT SUM(vlera) as s FROM Investim WHERE tipi='KAPITAL'`),
-
-    prisma.$queryRawUnsafe<{ s: number|null }[]>(
-      `SELECT SUM(vlera) as s FROM Investim WHERE tipi='PERKOHSHEM'`),
+  const [investime, total, kapAgg, perkAgg] = await Promise.all([
+    prisma.investim.findMany({ where, orderBy: { data: "desc" }, skip: (page - 1) * limit, take: limit }),
+    prisma.investim.count({ where }),
+    prisma.investim.aggregate({ where: { tipi: "KAPITAL" }, _sum: { vlera: true } }),
+    prisma.investim.aggregate({ where: { tipi: "PERKOHSHEM" }, _sum: { vlera: true } }),
   ]);
 
   return NextResponse.json({
-    investime: investime.map(r => ({ ...r, id: Number(r.id) })),
-    total:           Number(countRow[0].total),
-    page, limit,
-    totalKapital:    kapRow[0].s  ?? 0,
-    totalPerkohshem: perkRow[0].s ?? 0,
+    investime, total, page, limit,
+    totalKapital: kapAgg._sum.vlera ?? 0,
+    totalPerkohshem: perkAgg._sum.vlera ?? 0,
   });
 }
 
 export async function POST(req: NextRequest) {
+  const session = await requireAccess();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await req.json();
   const { tipi, data, pershkrim, kategoria, vlera, metoda, dokumenti, regjistruarNga } = body;
 
@@ -57,17 +62,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "tipi, pershkrim dhe vlera janë të detyrueshme" }, { status: 400 });
   }
 
-  const s = (v: string | null | undefined) =>
-    v ? `'${String(v).replace(/'/g, "''")}'` : "NULL";
+  const row = await prisma.investim.create({
+    data: {
+      tipi,
+      data: data ? new Date(data) : new Date(),
+      pershkrim,
+      kategoria: kategoria || null,
+      vlera: parseFloat(String(vlera)),
+      metoda: metoda || "CASH",
+      dokumenti: dokumenti || null,
+      regjistruarNga: regjistruarNga || null,
+    },
+    select: { id: true },
+  });
 
-  const dateVal = data ? `'${new Date(data).toISOString()}'` : `datetime('now')`;
-  const vleraVal = parseFloat(String(vlera));
-
-  const [row] = await prisma.$queryRawUnsafe<{ id: bigint }[]>(`
-    INSERT INTO Investim (tipi, data, pershkrim, kategoria, vlera, metoda, dokumenti, regjistruarNga, createdAt, updatedAt)
-    VALUES (${s(tipi)}, ${dateVal}, ${s(pershkrim)}, ${s(kategoria)}, ${vleraVal}, ${s(metoda || "CASH")}, ${s(dokumenti)}, ${s(regjistruarNga)}, datetime('now'), datetime('now'))
-    RETURNING id
-  `);
-
-  return NextResponse.json({ id: Number(row.id) }, { status: 201 });
+  return NextResponse.json({ id: row.id }, { status: 201 });
 }

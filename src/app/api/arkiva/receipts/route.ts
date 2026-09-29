@@ -1,38 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+async function requireAccess() {
+  const session = await auth();
+  if (!session) return null;
+  const role = (session.user as { role?: string })?.role;
+  if (!["ADMIN", "SUPERADMIN", "FINANCE", "SECRETARY"].includes(role ?? "")) return null;
+  return session;
+}
+
 export async function GET(req: NextRequest) {
+  const session = await requireAccess();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "25");
-  const offset = (page - 1) * limit;
 
-  const searchFilter = search
-    ? `AND (s.firstName || ' ' || s.lastName LIKE '%${search.replace(/'/g, "''")}%' OR p.receiptNumber LIKE '%${search.replace(/'/g, "''")}%')`
-    : "";
+  const where: Record<string, unknown> = {
+    receiptNumber: { not: null },
+    ...(search
+      ? {
+          OR: [
+            { receiptNumber: { contains: search } },
+            { student: { firstName: { contains: search } } },
+            { student: { lastName: { contains: search } } },
+          ],
+        }
+      : {}),
+  };
 
-  const rows = await prisma.$queryRawUnsafe<{
-    id: number; receiptNumber: string; amount: number; paidDate: string | null;
-    method: string | null; studentName: string; categoryName: string;
-  }[]>(`
-    SELECT p.id, p.receiptNumber, p.finalAmount AS amount, p.paidDate, p.method,
-           s.firstName || ' ' || s.lastName AS studentName,
-           pc.name AS categoryName
-    FROM Payment p
-    JOIN Student s ON s.id = p.studentId
-    JOIN PaymentCategory pc ON pc.id = p.categoryId
-    WHERE p.receiptNumber IS NOT NULL ${searchFilter}
-    ORDER BY p.paidDate DESC, p.createdAt DESC
-    LIMIT ${limit} OFFSET ${offset}
-  `);
+  const [rows, total] = await Promise.all([
+    prisma.payment.findMany({
+      where,
+      select: {
+        id: true, receiptNumber: true, finalAmount: true, paidDate: true, method: true,
+        student: { select: { firstName: true, lastName: true } },
+        category: { select: { name: true } },
+      },
+      orderBy: [{ paidDate: "desc" }, { createdAt: "desc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.payment.count({ where }),
+  ]);
 
-  const [countRow] = await prisma.$queryRawUnsafe<{ total: bigint | number }[]>(`
-    SELECT COUNT(*) as total
-    FROM Payment p
-    JOIN Student s ON s.id = p.studentId
-    WHERE p.receiptNumber IS NOT NULL ${searchFilter}
-  `);
+  const receipts = rows.map(r => ({
+    id: r.id, receiptNumber: r.receiptNumber, amount: r.finalAmount, paidDate: r.paidDate, method: r.method,
+    studentName: `${r.student.firstName} ${r.student.lastName}`,
+    categoryName: r.category.name,
+  }));
 
-  return NextResponse.json({ receipts: rows, total: Number(countRow.total), page, limit });
+  return NextResponse.json({ receipts, total, page, limit });
 }
