@@ -529,7 +529,11 @@ export default function UshqimiPage() {
     const res = await fetch(`/api/category-payments?${params}`);
     if (res.ok) {
       const d = await res.json();
-      setStudents(d.students);
+      // /api/category-payments kthen edhe nxënësit JOAKTIVË (për borxhin e
+      // vjetër) — KPI-të e sipërme (Gjithsej/Paguar/Vonuar/Të Hyra/Borxhe)
+      // duhet të numërojnë VETËM nxënësit aktivë, njësoj si grafiku i
+      // periudhave (yearStudents) më poshtë, përndryshe numri del i fryrë.
+      setStudents((d.students as StudentRow[]).filter(s => s.status === "ACTIVE"));
       if (d.category?.id) setCategoryId(d.category.id);
     }
     setLoading(false);
