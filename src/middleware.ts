@@ -2,6 +2,27 @@ import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { moduleForPath, firstAllowedPath, isConfigurableRole } from "@/lib/modules";
 
+// Prefikse API që i përkasin EKSKLUZIVISHT një moduli të vetëm (pa u ndarë me
+// module të tjera) — "Lejet e Moduleve" deri tani fshihnin vetëm lidhjen e
+// menysë, por vetë API-të s'i kontrollonin fare (çdo i kyçur mund t'i thërriste
+// direkt, pavarësisht lejeve). Këtu zbatohet REALISHT, njësoj si për faqet.
+// QËLLIMISHT s'përfshihen API "të përbashkëta" mes disa moduleve (p.sh.
+// /api/students, /api/category-payments, /api/payments, /api/expenses,
+// /api/categories) — një rregull i tillë do të bllokonte thirrje legjitime
+// nga module të tjera të lejuara.
+const API_MODULE_PREFIXES: { prefix: string; moduleKey: string }[] = [
+  { prefix: "/api/investime",          moduleKey: "investime" },
+  { prefix: "/api/timi-invest",        moduleKey: "investime" },
+  { prefix: "/api/arkiva",             moduleKey: "arkiva" },
+  { prefix: "/api/shpenzime",          moduleKey: "shpenzime" },
+  { prefix: "/api/librat",             moduleKey: "librat" },
+  { prefix: "/api/uniforms",           moduleKey: "uniforma" },
+  { prefix: "/api/materials",          moduleKey: "materiale" },
+  { prefix: "/api/material-categories", moduleKey: "materiale" },
+  { prefix: "/api/material-orders",    moduleKey: "materiale" },
+  { prefix: "/api/material-requests",  moduleKey: "kerkesat" },
+];
+
 export default auth((req) => {
   const { nextUrl } = req;
   const isLoggedIn = !!req.auth;
@@ -18,6 +39,14 @@ export default auth((req) => {
     if (!isAuthApi && isLoggedIn && role === "ADMIN" && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
       return NextResponse.json({ error: "Roli 'Admin' ka vetëm qasje shikimi — ky veprim nuk lejohet." }, { status: 403 });
     }
+
+    if (!isAuthApi && isLoggedIn && role && isConfigurableRole(role)) {
+      const match = API_MODULE_PREFIXES.find(m => nextUrl.pathname.startsWith(m.prefix));
+      if (match && !allowedModules.includes(match.moduleKey)) {
+        return NextResponse.json({ error: "Nuk ke leje për këtë modul." }, { status: 403 });
+      }
+    }
+
     return NextResponse.next();
   }
 
