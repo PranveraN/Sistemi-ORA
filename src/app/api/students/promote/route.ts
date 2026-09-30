@@ -99,9 +99,14 @@ export async function POST(req: NextRequest) {
         });
       }
       if (graduatedOrLeft.length) {
-        await tx.$executeRawUnsafe(
-          `UPDATE Student SET inactiveDate = datetime('now') WHERE id IN (${graduatedOrLeft.map(d => d.studentId).join(",") || "0"})`
-        );
+        // Numra të plotë të detyrueshëm — `studentId` vjen nga trupi i kërkesës
+        // (TypeScript `number` është vetëm gjatë kompilimit, jo e zbatuar në runtime).
+        const ids = graduatedOrLeft.map(d => parseInt(String(d.studentId), 10)).filter(n => Number.isInteger(n));
+        if (ids.length) {
+          await tx.$executeRawUnsafe(
+            `UPDATE Student SET inactiveDate = datetime('now') WHERE id IN (${ids.join(",")})`
+          );
+        }
       }
 
       // Arkivo foton PARA-ndryshim për çdo nxënës (nëse ka vit aktiv paraardhës për ta arkivuar).

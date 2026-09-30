@@ -30,11 +30,11 @@ export async function GET(req: NextRequest) {
   const offset = (page - 1) * limit;
 
   let where = "WHERE 1=1";
-  if (status) where += ` AND bs.status='${status}'`;
-  if (klasa)  where += ` AND bs.studentClass='${klasa.replace(/'/g, "''")}'`;
-  if (search) where += ` AND bs.studentName LIKE '%${search.replace(/'/g, "''")}%'`;
-  if (from)   where += ` AND bs.saleDate >= '${from}'`;
-  if (to)     where += ` AND bs.saleDate <= '${to}'`;
+  if (status) where += ` AND bs.status=${s(status)}`;
+  if (klasa)  where += ` AND bs.studentClass=${s(klasa)}`;
+  if (search) where += ` AND bs.studentName LIKE ${s(`%${search}%`)}`;
+  if (from)   where += ` AND bs.saleDate >= ${s(from)}`;
+  if (to)     where += ` AND bs.saleDate <= ${s(to)}`;
 
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(`
     SELECT bs.*, COUNT(bsi.id) as itemCount
@@ -61,10 +61,12 @@ export async function POST(req: NextRequest) {
 
   if (!items?.length) return NextResponse.json({ error: "Asnjë libër" }, { status: 400 });
 
-  // Merr produktet nga DB
-  const ids = items.map((i: { productId: number }) => i.productId).join(",");
+  // Merr produktet nga DB — id-të detyrimisht numra të plotë (jo çfarëdo teksti
+  // nga trupi i kërkesës, që s'kalon fare nëpër ndonjë konvertim numerik më parë).
+  const ids = items.map((i: { productId: number }) => parseInt(String(i.productId), 10)).filter((n: number) => Number.isInteger(n));
+  if (!ids.length) return NextResponse.json({ error: "Asnjë libër i vlefshëm" }, { status: 400 });
   const products = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT * FROM BookProduct WHERE id IN (${ids})`
+    `SELECT * FROM BookProduct WHERE id IN (${ids.join(",")})`
   );
 
   // Shitjet e regjistruara për data të kaluara (p.sh. rakordim historik) nuk e kufizojnë

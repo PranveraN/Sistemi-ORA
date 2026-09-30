@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 
 const LOW_STOCK_THRESHOLD = 5;
 
+// Shpëton apostrofët — `from`/`to` vijnë direkt nga parametrat e URL-së dhe
+// interpoloheshin të papastruara në SQL të papërpunuar (rrezik injektimi SQL).
+const sqlStr = (v: string) => `'${v.replace(/'/g, "''")}'`;
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -29,8 +33,8 @@ export async function GET(req: NextRequest) {
   // përdor filtrin TIPIZUAR gte/lte të Prisma-s dhe funksionon saktë) — ndaj
   // këtu përdoret i njëjti filtër tipizuar si /api/librat/handovers.
   let saleWhere = "WHERE 1=1";
-  if (from) saleWhere += ` AND saleDate >= '${from}'`;
-  if (to)   saleWhere += ` AND saleDate <= '${to}'`;
+  if (from) saleWhere += ` AND saleDate >= ${sqlStr(from)}`;
+  if (to)   saleWhere += ` AND saleDate <= ${sqlStr(to)}`;
 
   const [salesRaw, handoverAgg, products] = await Promise.all([
     prisma.$queryRawUnsafe<Record<string, unknown>[]>(
