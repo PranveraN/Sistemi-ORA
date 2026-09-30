@@ -23,6 +23,7 @@ const navSections = [
     items: [
       { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard",  roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
       { href: "/students",  icon: Users,           label: "Nxënësit",   roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
+      { href: "/classes",   icon: GraduationCap,   label: "Klasat",     roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[] },
       { href: "/levizjet",  icon: Repeat,          label: "Lëvizjet e Nxënësve", roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[] },
       { href: "/regjistrimet", icon: ClipboardCheck, label: "Regjistrimet", roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[] },
       { href: "/families",  icon: Home,            label: "Familjet",   roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
@@ -63,7 +64,6 @@ const navSections = [
     items: [
       { href: "/arkiva",   icon: Archive,        label: "Arkiva",    roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
       { href: "/fletorja", icon: NotebookPen,    label: "Fletorja",  roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
-      { href: "/classes",  icon: GraduationCap,  label: "Klasat",    roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[] },
       { href: "/reports",  icon: BarChart3,      label: "Raportet",  roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/historiku", icon: History,       label: "Historiku", roles: ["ADMIN"] as Role[] },
       { href: "/settings", icon: Settings,       label: "Cilësimet", roles: ["ADMIN"] as Role[] },
