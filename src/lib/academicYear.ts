@@ -35,7 +35,7 @@ export function getAcademicMonths(startYear: number): { calMonth: number; calYea
 }
 
 /** Vitet akademike të disponueshme — që nga 2017, për të mbuluar edhe të dhëna historike */
-export const ACADEMIC_YEARS = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026];
+export const ACADEMIC_YEARS = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027];
 /** Vitet kalendarike */
 export const CALENDAR_YEARS = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027];
 
