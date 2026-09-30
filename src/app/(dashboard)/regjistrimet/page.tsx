@@ -57,11 +57,14 @@ export default function RegjistrimetPage() {
   useEffect(() => { fetchRows(); }, [fetchRows]);
   useEffect(() => { fetch("/api/enrollment-form-fields?includeInactive=1").then(r => r.json()).then(setFieldDefs); }, []);
 
-  async function handleDelete(r: Row) {
-    if (!confirm(`T'a fshij aplikimin e ${r.firstName} ${r.lastName} (${r.referenceNumber ?? `#${r.id}`})? Ky veprim s'kthehet mbrapa. Dokumentet e bashkëngjitura fshihen gjithashtu.`)) return;
-    const res = await fetch(`/api/enrollment/applications/${r.id}`, { method: "DELETE" });
+  async function handleDelete(r: Row, force = false) {
+    if (!force && !confirm(`T'a fshij aplikimin e ${r.firstName} ${r.lastName} (${r.referenceNumber ?? `#${r.id}`})? Ky veprim s'kthehet mbrapa. Dokumentet e bashkëngjitura fshihen gjithashtu.`)) return;
+    const res = await fetch(`/api/enrollment/applications/${r.id}${force ? "?force=true" : ""}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
+      if (d.requiresForce && confirm(`${d.error}\n\nFshije GJITHSESI (përfshi dokumentet e nxënësit aktiv)?`)) {
+        return handleDelete(r, true);
+      }
       alert(d.error || "Fshirja dështoi.");
       return;
     }
