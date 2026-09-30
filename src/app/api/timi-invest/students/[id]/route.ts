@@ -2,14 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const ALLOWED_ROLES = ["ADMIN", "SUPERADMIN", "FINANCE"];
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const role = (session.user as { role?: string }).role;
+  if (!ALLOWED_ROLES.includes(role ?? "")) return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
 
   const { id } = await params;
   const body = await req.json();
   const now = new Date().toISOString();
   const sid = parseInt(id);
+
+  // `studentId` mund të lidhet me çdo numër pa asnjë verifikim ekzistence —
+  // nëse jepet dhe s'ekziston, refuzohet me gabim të qartë (jo lidhje "e heshtur"
+  // me nxënës të gabuar/joekzistues).
+  if (body.studentId) {
+    const targetId = parseInt(body.studentId);
+    const exists = await prisma.student.findUnique({ where: { id: targetId }, select: { id: true } });
+    if (!exists) return NextResponse.json({ error: `Nxënësi #${targetId} nuk ekziston` }, { status: 400 });
+  }
   if (body.firstName    !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET firstName=?, updatedAt=? WHERE id=?`,    body.firstName, now, sid);
   if (body.lastName     !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET lastName=?, updatedAt=? WHERE id=?`,     body.lastName,  now, sid);
   if (body.parentName   !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET parentName=?, updatedAt=? WHERE id=?`,   body.parentName, now, sid);
@@ -30,6 +43,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const role = (session.user as { role?: string }).role;
+  if (!ALLOWED_ROLES.includes(role ?? "")) return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
 
   const { id } = await params;
   await prisma.timiInvestStudent.delete({ where: { id: parseInt(id) } });

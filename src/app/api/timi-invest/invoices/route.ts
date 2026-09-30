@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const ALLOWED_ROLES = ["ADMIN", "SUPERADMIN", "FINANCE"];
+
 export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const role = (session.user as { role?: string }).role;
+  if (!ALLOWED_ROLES.includes(role ?? "")) return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
 
   const invoices = await prisma.timiInvestInvoice.findMany({
     orderBy: { createdAt: "desc" },
@@ -15,6 +19,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const role = (session.user as { role?: string }).role;
+  if (!ALLOWED_ROLES.includes(role ?? "")) return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
 
   const body = await req.json();
   const date = body.date ? new Date(body.date) : new Date();
