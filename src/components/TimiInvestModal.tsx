@@ -551,6 +551,13 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
       const data = await r.json();
       if (!r.ok) { alert(data.error || "Gabim gjatë konvertimit"); return; }
       fetchInvoices();
+      const createdInvoices: { id: number; number: string }[] = data.invoices ?? [data];
+      if (createdInvoices.length > 1) {
+        alert(
+          `Profatura mbulonte disa fëmijë — u krijuan ${createdInvoices.length} fatura të veçanta, një për secilin:\n` +
+          createdInvoices.map(x => `• ${x.number}`).join("\n")
+        );
+      }
       window.open(`/invoices/${data.id}`, "_blank");
     } catch {
       alert("Gabim rrjeti.");
