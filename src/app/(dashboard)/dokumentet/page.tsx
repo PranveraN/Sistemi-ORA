@@ -159,7 +159,7 @@ function UploadDocumentModal({ categories, onClose, onSaved }: { categories: str
 
     const r = await fetch("/api/documents", { method: "POST", body: form });
     setSaving(false);
-    if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.message || "Dështoi."); return; }
+    if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.message || `Ngarkimi dështoi (gabim ${r.status})`); return; }
     onSaved();
   }
 

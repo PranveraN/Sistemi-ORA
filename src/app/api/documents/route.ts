@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const fileName = await saveDocument(buffer, file.type);
+    const fileName = await saveDocument(buffer, file.type, file.name);
 
     const doc = await prisma.schoolDocument.create({
       data: {
