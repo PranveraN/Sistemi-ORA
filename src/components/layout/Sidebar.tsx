@@ -43,9 +43,6 @@ const navSections = [
       { href: "/hyrat",     icon: TrendingUp,     label: "Të Hyrat",   roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/bilanci",    icon: Scale,          label: "Bilanci",      roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/investime",  icon: Building2,      label: "Investimet",   roles: ["ADMIN", "FINANCE"] as Role[] },
-      { href: "/kerkesat",   icon: Package,        label: "Kërkesat",     roles: ["ADMIN", "FINANCE"] as Role[] },
-      { href: "/materiale",  icon: Boxes,          label: "Katalogu i Materialeve", roles: ["ADMIN", "FINANCE"] as Role[] },
-      { href: "/materiale/porosite", icon: Truck,  label: "Porositë e Materialeve", roles: ["ADMIN", "FINANCE"] as Role[] },
     ],
   },
   {
@@ -55,6 +52,9 @@ const navSections = [
       { href: "/sekretaria", icon: ClipboardList, label: "Administrata", roles: ["ADMIN", "SECRETARY"] as Role[] },
       { href: "/sms", icon: MessageSquare, label: "Mesazhe SMS", roles: ["ADMIN", "SECRETARY"] as Role[] },
       { href: "/dokumentet", icon: Paperclip, label: "Dokumentet", roles: ["ADMIN", "SECRETARY"] as Role[] },
+      { href: "/kerkesat",   icon: Package,        label: "Kërkesat",     roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/materiale",  icon: Boxes,          label: "Katalogu i Materialeve", roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/materiale/porosite", icon: Truck,  label: "Porositë e Materialeve", roles: ["ADMIN", "FINANCE"] as Role[] },
     ],
   },
   {
