@@ -124,9 +124,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // When filtering broadly (all months or all years), fetch more records per student
+  // When filtering broadly (all months or all years), fetch more records per student.
+  // NUK e ulim dot te 2 për pamjen e ngushtë (muaj+vit specifik) — ai supozim
+  // ("max 2 pagesa për student në (muaj,vit)") vlen VETËM për planin "Dy Këste";
+  // plani "Fleksibël" mund të krijojë 1 FLEX_HEADER + N FLEX_PAY_k në të NJËJTIN
+  // muaj (p.sh. familja paguan në 3 këste brenda po atij muaji) — me take:2,
+  // këstet shtesë injoroheshin nga llogaritja e borxhit/statusit (defekt i
+  // raportuar: borxh/status i gabuar edhe kur pagesa reale ishte e plotë).
   const isNarrow = (month && month > 0) && (year && year > 0);
-  const takeLimit = isNarrow ? 2 : 60;
+  const takeLimit = isNarrow ? 20 : 60;
 
   const [students, allTiRows, inactiveDates, oldDebtRows, handoverAgg, expenseAgg, investimAgg] = await Promise.all([
     prisma.student.findMany({
