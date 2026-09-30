@@ -14,7 +14,16 @@ export function expensePeriodWhere(month: number, year: number, yearType: YearTy
   }
   if (year > 0) {
     if (yearType === "academic") {
-      return { OR: [{ month: { gte: 9 }, year }, { month: { lte: 8 }, year: year + 1 }] };
+      // `month: null` përfshihet gjithashtu — rreshta të vjetër, regjistruar
+      // përpara se muaji/viti të rrjedhin gjithmonë nga vetë data (shih POST
+      // /api/expenses), mund të kenë muaj bosh; "Të gjitha muajt" duhet t'i
+      // përfshijë ende, jo t'i lërë përgjithmonë të padukshëm.
+      return { OR: [
+        { month: { gte: 9 }, year },
+        { month: { lte: 8 }, year: year + 1 },
+        { month: null, year },
+        { month: null, year: year + 1 },
+      ] };
     }
     return { year };
   }

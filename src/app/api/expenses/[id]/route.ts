@@ -11,7 +11,14 @@ export async function PUT(
 
   const { id } = await params;
   const body = await req.json();
+  const date = new Date(body.date);
+  if (isNaN(date.getTime())) {
+    return NextResponse.json({ error: `Datë e pavlefshme: "${body.date}"` }, { status: 400 });
+  }
 
+  // month/year rrjedhin nga vetë data (shih komentin te POST /api/expenses) —
+  // rillogariten edhe këtu që nëse dikush e ndryshon datën gjatë modifikimit,
+  // rreshti të mos "ngecë" me muajin/vitin e vjetër.
   const expense = await prisma.expense.update({
     where: { id: parseInt(id) },
     data: {
@@ -20,7 +27,9 @@ export async function PUT(
       recipient:   body.recipient   || null,
       method:      body.method      || null,
       reference:   body.reference   || null,
-      date:        new Date(body.date),
+      date,
+      month: date.getMonth() + 1,
+      year:  date.getFullYear(),
     },
   });
 

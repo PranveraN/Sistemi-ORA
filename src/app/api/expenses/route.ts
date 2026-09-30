@@ -58,6 +58,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Datë e pavlefshme: "${body.date}"` }, { status: 400 });
     }
 
+    // `month`/`year` rrjedhin GJITHMONË nga vetë data e futur (jo nga filtri i
+    // faqes në atë moment) — përndryshe një shpenzim/dorëzim i regjistruar kur
+    // faqja ishte në "Të gjitha muajt" (month=0) ruhej me muaj bosh/NULL (`0 ||
+    // null` e trajton 0-n si "false"), dhe një rresht i tillë s'i plotësonte
+    // KURRË kushtet e `expensePeriodWhere` nën asnjë filtër "Akademik" — bëhej
+    // i padukshëm përgjithmonë (defekt i raportuar: "shpenzimet u zhdukën").
     const expense = await prisma.expense.create({
       data: {
         categoryId:  parseInt(body.categoryId),
@@ -68,8 +74,8 @@ export async function POST(req: NextRequest) {
         method:      body.method      || null,
         reference:   body.reference   || null,
         date,
-        month: body.month || null,
-        year:  body.year  || null,
+        month: date.getMonth() + 1,
+        year:  date.getFullYear(),
       },
     });
 
