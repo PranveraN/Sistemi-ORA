@@ -23,6 +23,18 @@ const API_MODULE_PREFIXES: { prefix: string; moduleKey: string }[] = [
   { prefix: "/api/material-requests",  moduleKey: "kerkesat" },
 ];
 
+// API-të e lejuara për rolin TEACHER (shih TeacherRequestsClient.tsx).
+// Kërkesat e veta: çdo metodë (vetë route-t e kufizojnë mësuesin te kërkesat
+// e TIJ dhe i ndalojnë veprimet e menaxhimit). Katalogët: vetëm lexim.
+function isTeacherApiAllowed(pathname: string, method: string): boolean {
+  const under = (p: string) => pathname === p || pathname.startsWith(`${p}/`);
+  if (under("/api/material-requests")) return true;
+  if (under("/api/public") || under("/api/teacher-auth")) return true;
+  const readOnly = method === "GET" || method === "HEAD";
+  if (readOnly && ["/api/materials", "/api/material-categories", "/api/subjects", "/api/classes"].some(p => pathname === p)) return true;
+  return false;
+}
+
 export default auth((req) => {
   const { nextUrl } = req;
   const isLoggedIn = !!req.auth;
@@ -38,6 +50,14 @@ export default auth((req) => {
     const isAuthApi = nextUrl.pathname.startsWith("/api/auth");
     if (!isAuthApi && isLoggedIn && role === "ADMIN" && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
       return NextResponse.json({ error: "Roli 'Admin' ka vetëm qasje shikimi — ky veprim nuk lejohet." }, { status: 403 });
+    }
+
+    // Mësimdhënësit (portal i veçantë /kerkesa-material) — VETËM API-të që
+    // përdor vetë portali. Më parë faqet ishin të bllokuara, por API-të jo:
+    // shumica e route.ts kontrollojnë vetëm "a je i kyçur", ndaj një mësues i
+    // aprovuar mund të lexonte/ndryshonte nxënës, pagesa, stafin etj. direkt.
+    if (!isAuthApi && isLoggedIn && role === "TEACHER" && !isTeacherApiAllowed(nextUrl.pathname, req.method)) {
+      return NextResponse.json({ error: "Nuk ke leje për këtë veprim." }, { status: 403 });
     }
 
     if (!isAuthApi && isLoggedIn && role && isConfigurableRole(role)) {
