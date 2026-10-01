@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
+import { useModuleAccess } from "@/lib/useModuleAccess";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import {
   Users, Phone, MapPin, Eye, FileSignature,
@@ -68,6 +69,9 @@ interface FamilyData {
 export default function FamiliesPage() {
   const searchParams = useSearchParams();
   const router       = useRouter();
+  // Lidhjet drejt SMS/Sekretarisë/Faturave vetëm me leje moduli — përndryshe
+  // middleware i ridrejton heshtazi dhe butoni duket i vdekur.
+  const { canAccess } = useModuleAccess();
   const phoneParam   = searchParams.get("phone") || "";
   const nameParam    = searchParams.get("name")  || "";
 
@@ -412,9 +416,11 @@ ${childrenHTML}
                     <button onClick={printFamilyHistory} className="btn-secondary text-xs" title="Historik i Familjes">
                       <Printer className="w-3.5 h-3.5" /> Historiku
                     </button>
-                    <button onClick={goToSms} disabled={!(p?.fatherPhone || p?.motherPhone || p?.parentPhone)} className="btn-secondary text-xs" title="Dërgo SMS">
-                      <MessageSquare className="w-3.5 h-3.5" /> SMS
-                    </button>
+                    {canAccess("/sms") && (
+                      <button onClick={goToSms} disabled={!(p?.fatherPhone || p?.motherPhone || p?.parentPhone)} className="btn-secondary text-xs" title="Dërgo SMS">
+                        <MessageSquare className="w-3.5 h-3.5" /> SMS
+                      </button>
+                    )}
                     <button onClick={() => setEmailModalOpen(true)} className="btn-secondary text-xs" title="Dërgo Email">
                       <Mail className="w-3.5 h-3.5" /> Email
                     </button>
@@ -489,9 +495,11 @@ ${childrenHTML}
                           <Link href={`/students/${child.id}`} className="p-2 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors" title="Shiko profilin">
                             <Eye className="w-4 h-4" />
                           </Link>
-                          <Link href={`/sekretaria/kontratat-nxenesve?studentId=${child.id}`} className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Kontrata">
-                            <FileSignature className="w-4 h-4" />
-                          </Link>
+                          {canAccess("/sekretaria") && (
+                            <Link href={`/sekretaria/kontratat-nxenesve?studentId=${child.id}`} className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Kontrata">
+                              <FileSignature className="w-4 h-4" />
+                            </Link>
+                          )}
                           {cats.length > 0 && (
                             <button onClick={() => toggleExpand(child.id)} className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" title="Shiko pagesat">
                               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -582,9 +590,11 @@ ${childrenHTML}
                 <div className="flex gap-3">
                   <button onClick={() => setInv(prev => ({ ...prev, open: false, createdId: null }))}
                     className="btn-secondary">Mbyll</button>
-                  <Link href={`/invoices/${inv.createdId}`} className="btn-primary">
-                    <Eye className="w-4 h-4" /> Shiko Faturën
-                  </Link>
+                  {canAccess("/invoices") && (
+                    <Link href={`/invoices/${inv.createdId}`} className="btn-primary">
+                      <Eye className="w-4 h-4" /> Shiko Faturën
+                    </Link>
+                  )}
                 </div>
               </div>
             ) : (

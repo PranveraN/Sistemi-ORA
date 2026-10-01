@@ -17,6 +17,7 @@ import FinancialOverview from "@/components/dashboard/FinancialOverview";
 import YearPicker from "@/components/dashboard/YearPicker";
 import ShkollimiFinancialOverview from "@/components/dashboard/ShkollimiFinancialOverview";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { useModuleAccess } from "@/lib/useModuleAccess";
 
 interface DashboardData {
   period: { year: number; yearType: YearType; label: string };
@@ -71,6 +72,7 @@ export default function DashboardPage() {
   const [showTimiInvest, setShowTimiInvest] = useState(false);
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
   const [mainTab, setMainTab] = useState<"permbledhje" | "financat">("permbledhje");
+  const { canAccess } = useModuleAccess();
 
   const years = yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
 
@@ -144,9 +146,10 @@ export default function DashboardPage() {
               { icon: FileText,   label: "Krijo Ofertë & Parafaturë", color: "text-primary-600 dark:text-primary-400", bg: "bg-primary-50 dark:bg-primary-900/30", onClick: () => { setOfertaView("form"); setShowOferta(true); } },
               { icon: History,    label: "Historiku i Ofertave",      color: "text-slate-500 dark:text-slate-400",     bg: "bg-slate-100 dark:bg-slate-700/60",    onClick: () => { setOfertaView("history"); setShowOferta(true); } },
               { icon: Receipt,    label: "Faturat e Rregullta",       color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/30", href: "/faturat-rregullta" },
-              ...(timiInvestEnabled ? [{ icon: CreditCard, label: "TIMI INVEST", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/30", onClick: () => setShowTimiInvest(true) }] : []),
+              // TIMI Invest ka API-n e vet të kufizuar te moduli "investime" (shih middleware.ts)
+              ...(timiInvestEnabled && canAccess("/investime") ? [{ icon: CreditCard, label: "TIMI INVEST", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/30", onClick: () => setShowTimiInvest(true) }] : []),
               { icon: Wallet,     label: "Shpenzimet",                color: "text-red-600 dark:text-red-400",         bg: "bg-red-50 dark:bg-red-900/30",         href: "/shpenzime" },
-            ].map((a, i) => {
+            ].filter(a => !a.href || canAccess(a.href)).map((a, i) => {
               const Icon = a.icon;
               const content = (
                 <>
@@ -354,9 +357,11 @@ export default function DashboardPage() {
             <div className="card">
               <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
                 <h2 className="section-title">Pagesat e Fundit — {data.period.label}</h2>
-                <a href="/payments" className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium">
-                  Shiko të gjitha →
-                </a>
+                {canAccess("/payments") && (
+                  <a href="/payments" className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium">
+                    Shiko të gjitha →
+                  </a>
+                )}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">

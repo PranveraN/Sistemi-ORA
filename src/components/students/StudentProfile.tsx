@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote, MessageSquare, Send, Wand2, Camera, FileCheck2 } from "lucide-react";
 import { buildObligationMessage, buildSummaryMessage, type Obligation } from "@/lib/notificationTemplates";
+import { useModuleAccess } from "@/lib/useModuleAccess";
 
 interface Payment {
   id: number;
@@ -285,6 +286,9 @@ tfoot td { font-weight:800; border-top:2px solid #cbd5e1; border-bottom:none; pa
 
 export default function StudentProfile({ student }: { student: Student }) {
   const router = useRouter();
+  // Lidhjet drejt Pagesave/Faturave/Shkollimit shfaqen vetëm me leje moduli —
+  // përndryshe (p.sh. Sekretaria) klikimi ridrejtohej heshtazi nga middleware.
+  const { canAccess } = useModuleAccess();
   const payments = student.payments;
   const bookGroup = salesToGroup("Librat e Anglishtes", student.bookSales);
   const uniGroup  = salesToGroup("Uniforma", student.uniSales);
@@ -622,10 +626,17 @@ export default function StudentProfile({ student }: { student: Student }) {
               onKeyDown={e => { if (e.key === "Enter") commitEditPrice(); if (e.key === "Escape") setEditingPrice(false); }}
             />
           ) : hasShkollimiPlan ? (
-            <Link href="/shkollimi" className="group flex items-center gap-1.5" title="Ka pagesë reale te Shkollimi — modifikoje shumën atje">
-              <span className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors">{formatCurrency(finalPrice)}</span>
-              <Lock className="w-3.5 h-3.5 text-slate-300" />
-            </Link>
+            canAccess("/shkollimi") ? (
+              <Link href="/shkollimi" className="group flex items-center gap-1.5" title="Ka pagesë reale te Shkollimi — modifikoje shumën atje">
+                <span className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors">{formatCurrency(finalPrice)}</span>
+                <Lock className="w-3.5 h-3.5 text-slate-300" />
+              </Link>
+            ) : (
+              <div className="flex items-center gap-1.5" title="Ka pagesë reale te Shkollimi">
+                <span className="text-xl font-bold text-slate-900 dark:text-white">{formatCurrency(finalPrice)}</span>
+                <Lock className="w-3.5 h-3.5 text-slate-300" />
+              </div>
+            )
           ) : (
             <button onClick={startEditPrice} className="group flex items-center gap-1.5 text-left" title="Kliko për ta ndryshuar">
               <span className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors">{formatCurrency(finalPrice)}</span>
@@ -812,9 +823,11 @@ export default function StudentProfile({ student }: { student: Student }) {
                 <CreditCard className="w-4 h-4 text-slate-400" />
                 Pagesat
               </h3>
-              <Link href={`/payments/new?studentId=${student.id}`} className="btn-primary text-xs">
-                + Pagesë e re
-              </Link>
+              {canAccess("/payments") && (
+                <Link href={`/payments/new?studentId=${student.id}`} className="btn-primary text-xs">
+                  + Pagesë e re
+                </Link>
+              )}
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
               {categoryGroups.length === 0 ? (
@@ -879,9 +892,11 @@ export default function StudentProfile({ student }: { student: Student }) {
                 <FileText className="w-4 h-4 text-slate-400" />
                 Faturat
               </h3>
-              <Link href={`/invoices/new?studentId=${student.id}`} className="btn-primary text-xs">
-                + Faturë e re
-              </Link>
+              {canAccess("/invoices") && (
+                <Link href={`/invoices/new?studentId=${student.id}`} className="btn-primary text-xs">
+                  + Faturë e re
+                </Link>
+              )}
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
               {student.invoices.length === 0 ? (
@@ -901,12 +916,14 @@ export default function StudentProfile({ student }: { student: Student }) {
                     <span className="text-sm font-semibold text-slate-900 dark:text-white">
                       {formatCurrency(inv.total)}
                     </span>
-                    <Link
-                      href={`/invoices/${inv.id}`}
-                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
-                    >
-                      Shiko
-                    </Link>
+                    {canAccess("/invoices") && (
+                      <Link
+                        href={`/invoices/${inv.id}`}
+                        className="text-primary-600 hover:text-primary-700 text-xs font-medium"
+                      >
+                        Shiko
+                      </Link>
+                    )}
                   </div>
                 </div>
               ))}

@@ -14,8 +14,10 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // FINANCE përfshihet: "Familjet" është modul i përbashkët dhe butoni "Email"
+  // u shfaqet edhe asaj — pa të, dërgimi dështonte 403.
   const role = (session.user as { role?: string }).role;
-  if (role !== "ADMIN" && role !== "SUPERADMIN" && role !== "SECRETARY") {
+  if (role !== "ADMIN" && role !== "SUPERADMIN" && role !== "SECRETARY" && role !== "FINANCE") {
     return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
   }
 

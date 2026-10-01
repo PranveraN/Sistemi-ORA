@@ -11,8 +11,11 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // FINANCE përfshihet: butonat "Njofto/Dërgo SMS" për borxhet ndodhen pikërisht
+  // te modulet e Financës (Shkollimi, Ushqimi, Uniforma, Librat, Pasqyra
+  // Financiare, profili i nxënësit) — pa të, çdo dërgim prej tyre dështonte 403.
   const role = (session.user as { role?: string }).role;
-  if (role !== "ADMIN" && role !== "SUPERADMIN" && role !== "SECRETARY") {
+  if (role !== "ADMIN" && role !== "SUPERADMIN" && role !== "SECRETARY" && role !== "FINANCE") {
     return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
   }
 

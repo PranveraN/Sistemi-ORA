@@ -350,20 +350,44 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
     setShowStudentForm(true);
   }
 
+  // Kontroll i përbashkët i përgjigjes — më parë këto veprime s'e kontrollonin
+  // fare `res.ok`: forma mbyllej / profatura "printohej" (me numër bosh) edhe
+  // kur serveri e refuzonte, pa asnjë mesazh gabimi.
+  async function okOrAlert(req: Promise<Response>, fallback: string): Promise<Response | null> {
+    try {
+      const r = await req;
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        alert(d.error || fallback);
+        return null;
+      }
+      return r;
+    } catch {
+      alert("Gabim rrjeti — provo përsëri.");
+      return null;
+    }
+  }
+
   async function changeStage(s: TimiStudent, stage: TimiStudent["stage"]) {
     setStudents(prev => prev.map(x => x.id === s.id ? { ...x, stage } : x));
-    await fetch(`/api/timi-invest/students/${s.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) });
+    const r = await okOrAlert(
+      fetch(`/api/timi-invest/students/${s.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) }),
+      "Ndryshimi i fazës dështoi.",
+    );
+    // Kthe gjendjen e mëparshme nëse serveri s'e ruajti
+    if (!r) setStudents(prev => prev.map(x => x.id === s.id ? { ...x, stage: s.stage } : x));
   }
 
   async function saveStudent() {
     const method = editStudent ? "PUT" : "POST";
     const url    = editStudent ? `/api/timi-invest/students/${editStudent.id}` : "/api/timi-invest/students";
-    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+    const r = await okOrAlert(fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({
       ...studentForm,
       regularPrice:    parseFloat(studentForm.regularPrice),
       discountPct:     parseFloat(studentForm.discountPct),
       studentId:       studentForm.linkedStudentId ? parseInt(studentForm.linkedStudentId) : null,
-    }) });
+    }) }), "Ruajtja dështoi.");
+    if (!r) return; // forma mbetet e hapur — të dhënat e shkruara s'humbin
     setShowStudentForm(false);
     fetchStudents();
   }
@@ -390,7 +414,8 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
       schoolYear:     null,
       timiStudentIds: [s.id],
     };
-    const r   = await fetch("/api/timi-invest/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const r   = await okOrAlert(fetch("/api/timi-invest/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), "Krijimi i profaturës dështoi.");
+    if (!r) return;
     const inv = await r.json();
     fetchInvoices();
     printInvoice(inv);
@@ -427,7 +452,8 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
 
   async function deleteStudent(id: number) {
     if (!confirm("Fshi nxënësin nga lista TIMI INVEST?")) return;
-    await fetch(`/api/timi-invest/students/${id}`, { method: "DELETE" });
+    const r = await okOrAlert(fetch(`/api/timi-invest/students/${id}`, { method: "DELETE" }), "Fshirja dështoi.");
+    if (!r) return;
     fetchStudents();
   }
 
@@ -459,7 +485,8 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
       return;
     }
     const body = { ...profForm, timiDiscPct: TIMI_DISC_PCT, items, totalAmount, timiDiscAmt, finalAmount, timiStudentIds: [...selectedIds] };
-    const r = await fetch("/api/timi-invest/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const r = await okOrAlert(fetch("/api/timi-invest/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), "Krijimi i profaturës dështoi.");
+    if (!r) return;
     const inv = await r.json();
     fetchInvoices();
     printInvoice(inv);
@@ -537,7 +564,8 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
 
   async function deleteInvoice(id: number) {
     if (!confirm("Fshi këtë profaturë?")) return;
-    await fetch(`/api/timi-invest/invoices/${id}`, { method: "DELETE" });
+    const r = await okOrAlert(fetch(`/api/timi-invest/invoices/${id}`, { method: "DELETE" }), "Fshirja dështoi.");
+    if (!r) return;
     fetchInvoices();
   }
 

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Archive, FileText, Receipt, BookOpen, Search, Trash2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import Link from "next/link";
+import { useModuleAccess } from "@/lib/useModuleAccess";
 import PaymentReceiptModal from "@/components/finance/PaymentReceiptModal";
 
 // ─── Types ─────────────────────────────────────────────────
@@ -76,6 +77,9 @@ function fmt(iso: string) {
 type Tab = "docs" | "invoices" | "receipts";
 
 export default function ArkivaPage() {
+  // "Rihap" (Sekretaria) / "Hap" (Faturat) vetëm me leje moduli — përndryshe
+  // middleware i ridrejton heshtazi dhe butoni duket i vdekur.
+  const { canAccess } = useModuleAccess();
   const [tab, setTab] = useState<Tab>("docs");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -311,13 +315,15 @@ export default function ArkivaPage() {
                     <td className="px-4 py-3 text-sm text-slate-500">{fmt(doc.createdAt)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
-                        <Link
-                          href={`/sekretaria/fletkalimet?archiveId=${doc.id}`}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          Rihap
-                        </Link>
+                        {canAccess("/sekretaria") && (
+                          <Link
+                            href={`/sekretaria/fletkalimet?archiveId=${doc.id}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            Rihap
+                          </Link>
+                        )}
                         <button
                           onClick={() => deleteDoc(doc.id)}
                           className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -386,13 +392,17 @@ export default function ArkivaPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-500">{fmt(inv.createdAt)}</td>
                     <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/invoices/${inv.id}`}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-100 transition-colors"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        Hap
-                      </Link>
+                      {canAccess("/invoices") ? (
+                        <Link
+                          href={`/invoices/${inv.id}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-100 transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Hap
+                        </Link>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

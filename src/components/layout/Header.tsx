@@ -11,6 +11,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSidebar } from "@/components/layout/SidebarContext";
+import { useModuleAccess } from "@/lib/useModuleAccess";
 
 /* ── helpers ─────────────────────────────────────────────── */
 function getInitials(name?: string | null) {
@@ -111,6 +112,7 @@ function NotifPanel({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
   const panelRef = useRef<HTMLDivElement>(null);
+  const { canAccess } = useModuleAccess();
 
   useEffect(() => {
     const saved = localStorage.getItem("notif_seen");
@@ -258,16 +260,18 @@ function NotifPanel({ onClose }: { onClose: () => void }) {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-slate-100 dark:border-slate-800 px-5 py-3">
-        <Link
-          href="/admin/fletorja"
-          onClick={onClose}
-          className="flex items-center justify-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 font-medium"
-        >
-          Shiko të gjitha te Fletorja <ChevronRight className="w-3.5 h-3.5" />
-        </Link>
-      </div>
+      {/* Footer — /admin/fletorja s'ekzistonte (404); faqja reale është /fletorja */}
+      {canAccess("/fletorja") && (
+        <div className="border-t border-slate-100 dark:border-slate-800 px-5 py-3">
+          <Link
+            href="/fletorja"
+            onClick={onClose}
+            className="flex items-center justify-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 font-medium"
+          >
+            Shiko të gjitha te Fletorja <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
@@ -278,6 +282,7 @@ function NotifPanel({ onClose }: { onClose: () => void }) {
 function ProfileMenu({ onClose }: { onClose: () => void }) {
   const { data: session } = useSession();
   const menuRef = useRef<HTMLDivElement>(null);
+  const { canAccess } = useModuleAccess();
   const userRole = (session?.user as { role?: string })?.role || "";
   const name = session?.user?.name;
   const email = session?.user?.email;
@@ -325,9 +330,9 @@ function ProfileMenu({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* Menu items */}
+      {/* Menu items — vetëm modulet e lejuara (përndryshe middleware ridrejton heshtazi) */}
       <div className="py-2">
-        <Link
+        {canAccess("/settings") && <Link
           href="/settings"
           onClick={onClose}
           className="flex items-center gap-3 px-5 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
@@ -340,10 +345,10 @@ function ProfileMenu({ onClose }: { onClose: () => void }) {
             <p className="text-xs text-slate-400">Shkolla, kategorite, klasat</p>
           </div>
           <ChevronRight className="w-3.5 h-3.5 text-slate-300 ml-auto" />
-        </Link>
+        </Link>}
 
-        <Link
-          href="/admin/fletorja"
+        {canAccess("/fletorja") && <Link
+          href="/fletorja"
           onClick={onClose}
           className="flex items-center gap-3 px-5 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
         >
@@ -355,7 +360,7 @@ function ProfileMenu({ onClose }: { onClose: () => void }) {
             <p className="text-xs text-slate-400">Shënime, detyra, kujtuese</p>
           </div>
           <ChevronRight className="w-3.5 h-3.5 text-slate-300 ml-auto" />
-        </Link>
+        </Link>}
       </div>
 
       {/* Divider + sign out */}

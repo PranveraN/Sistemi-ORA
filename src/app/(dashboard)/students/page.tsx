@@ -12,6 +12,7 @@ import {
 import * as XLSX from "xlsx";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import YearPicker from "@/components/dashboard/YearPicker";
+import { useModuleAccess } from "@/lib/useModuleAccess";
 
 
 interface Class {
@@ -65,6 +66,10 @@ export default function StudentsPage() {
   const [year, setYear] = useState(DEFAULT_ACADEMIC_YEAR);
   const [tuitionPrice, setTuitionPrice] = useState<number>(2000);
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
+  // Lidhjet/butonat drejt moduleve të tjera shfaqen VETËM kur roli i ka lejet
+  // (p.sh. kolona TI thërret /api/timi-invest, i kufizuar te moduli "investime").
+  const { canAccess } = useModuleAccess();
+  const showTi = timiInvestEnabled && canAccess("/investime");
   const limit = 20;
 
   /* Inline price editing */
@@ -554,7 +559,7 @@ export default function StudentsPage() {
                   <th className="table-header">Klasa</th>
                   <th className="table-header">Kontrata</th>
                   <th className="table-header">Çmimi Final</th>
-                  {timiInvestEnabled && (
+                  {showTi && (
                     <th className="table-header">
                       <span className="inline-flex items-center gap-1">
                         <span className="w-2 h-2 rounded-full bg-violet-500 inline-block"></span>
@@ -582,7 +587,7 @@ export default function StudentsPage() {
                   </tr>
                 ) : students.length === 0 ? (
                   <tr>
-                    <td colSpan={timiInvestEnabled ? 12 : 11} className="table-cell text-center py-12 text-slate-400">
+                    <td colSpan={showTi ? 12 : 11} className="table-cell text-center py-12 text-slate-400">
                       Asnjë nxënës nuk u gjet
                     </td>
                   </tr>
@@ -621,13 +626,17 @@ export default function StudentsPage() {
                         )}
                       </td>
                       <td className="table-cell">
-                        <Link
-                          href={`/sekretaria/kontratat-nxenesve?studentId=${s.id}`}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:text-blue-400 transition-colors"
-                        >
-                          <FileSignature className="w-3.5 h-3.5" />
-                          Kontratë
-                        </Link>
+                        {canAccess("/sekretaria") ? (
+                          <Link
+                            href={`/sekretaria/kontratat-nxenesve?studentId=${s.id}`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:text-blue-400 transition-colors"
+                          >
+                            <FileSignature className="w-3.5 h-3.5" />
+                            Kontratë
+                          </Link>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
                       {/* Çmimi Final — editueshëm inline VETËM nëse s'ka ende plan real te
                           Shkollimi. Sapo ka plan real, kjo shifër vjen drejtpërdrejt nga
@@ -648,14 +657,23 @@ export default function StudentsPage() {
                             onClick={e => e.stopPropagation()}
                           />
                         ) : s.hasShkollimiPlan ? (
-                          <Link href="/shkollimi" className="group" title="Ka plan real te Shkollimi — modifikoje shumën atje">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm group-hover:text-primary-600 transition-colors">
+                          canAccess("/shkollimi") ? (
+                            <Link href="/shkollimi" className="group" title="Ka plan real te Shkollimi — modifikoje shumën atje">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm group-hover:text-primary-600 transition-colors">
+                                  {formatCurrency(fp)}
+                                </span>
+                                <Lock className="w-3 h-3 text-slate-300" />
+                              </div>
+                            </Link>
+                          ) : (
+                            <div className="flex items-center gap-1.5" title="Ka plan real te Shkollimi">
+                              <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
                                 {formatCurrency(fp)}
                               </span>
                               <Lock className="w-3 h-3 text-slate-300" />
                             </div>
-                          </Link>
+                          )
                         ) : (
                           <div className="cursor-pointer group">
                             <div className="flex items-center gap-1">
@@ -675,7 +693,7 @@ export default function StudentsPage() {
                         )}
                       </td>
                       {/* Çmimi TI */}
-                      {timiInvestEnabled && (
+                      {showTi && (
                         <td className="table-cell">
                           {s.timiInvest ? (
                             <div className="flex items-center gap-1">

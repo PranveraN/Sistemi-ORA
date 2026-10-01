@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { UserPlus, CreditCard, FileText, FileSpreadsheet, X, Plus, ChevronRight } from "lucide-react";
+import { useModuleAccess } from "@/lib/useModuleAccess";
 
 const ACTIONS = [
   {
@@ -57,6 +58,12 @@ const ACTIONS = [
 
 export default function QuickActions() {
   const [fabOpen, setFabOpen] = useState(false);
+  // Fsheh veprimet drejt moduleve pa leje (p.sh. Pagesë/Faturë për Sekretarinë)
+  // — përndryshe middleware i ridrejton heshtazi te Dashboard dhe butoni duket i vdekur.
+  const { canAccess } = useModuleAccess();
+  const actions = ACTIONS.filter(a => canAccess(a.href));
+
+  if (actions.length === 0) return null;
 
   return (
     <>
@@ -66,7 +73,7 @@ export default function QuickActions() {
           Veprime të shpejta
         </p>
         <div className="flex items-center gap-2 flex-1">
-          {ACTIONS.map(a => {
+          {actions.map(a => {
             const Icon = a.icon;
             return (
               <Link
@@ -111,7 +118,7 @@ export default function QuickActions() {
           transition-all duration-200
           ${fabOpen ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 translate-y-4 pointer-events-none"}
         `}>
-          {[...ACTIONS].reverse().map((a, i) => {
+          {[...actions].reverse().map((a, i) => {
             const Icon = a.icon;
             return (
               <Link

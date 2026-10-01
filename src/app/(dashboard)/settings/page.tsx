@@ -436,10 +436,12 @@ function EnrollmentFormSection() {
     const idx = sorted.findIndex(f => f.id === field.id);
     const swapWith = sorted[idx + direction];
     if (!swapWith) return;
-    await Promise.all([
+    const rs = await Promise.all([
       fetch(`/api/enrollment-form-fields/${field.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: swapWith.order }) }),
       fetch(`/api/enrollment-form-fields/${swapWith.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: field.order }) }),
     ]);
+    // Pa këtë kontroll, shigjeta s'bënte asgjë (p.sh. Admin vetëm-shikim → 403) pa asnjë mesazh
+    if (rs.some(r => !r.ok)) alert("Renditja s'u ruajt — provo përsëri.");
     load();
   }
 
@@ -672,10 +674,11 @@ function EvidencaConfigSection() {
     const idx = sorted.findIndex(c => c.id === cat.id);
     const swap = sorted[idx + direction];
     if (!swap) return;
-    await Promise.all([
+    const rs = await Promise.all([
       fetch(`/api/evidenca-categories/${cat.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: swap.order }) }),
       fetch(`/api/evidenca-categories/${swap.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: cat.order }) }),
     ]);
+    if (rs.some(r => !r.ok)) alert("Renditja s'u ruajt — provo përsëri.");
     load();
   }
   async function moveItem(item: EvidItem, siblings: EvidItem[], direction: -1 | 1) {
@@ -683,10 +686,11 @@ function EvidencaConfigSection() {
     const idx = sorted.findIndex(i => i.id === item.id);
     const swap = sorted[idx + direction];
     if (!swap) return;
-    await Promise.all([
+    const rs = await Promise.all([
       fetch(`/api/evidenca-items/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: swap.order }) }),
       fetch(`/api/evidenca-items/${swap.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: item.order }) }),
     ]);
+    if (rs.some(r => !r.ok)) alert("Renditja s'u ruajt — provo përsëri.");
     load();
   }
 

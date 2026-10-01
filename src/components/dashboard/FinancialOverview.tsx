@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useModuleAccess } from "@/lib/useModuleAccess";
 import {
   Wallet, CreditCard, Landmark, ArrowRightLeft, AlertCircle, CheckCircle,
   XCircle, Clock, CreditCard as CardIcon, Search, Loader2, ArrowRight,
@@ -65,6 +66,8 @@ function Kpi({ icon, label, value, sub, color, onClick }: {
 }
 
 export default function FinancialOverview({ yearType, year }: { yearType: YearType; year: number }) {
+  // Lidhjet "Dorëzimet" vetëm me leje moduli (p.sh. jo për Sekretarinë).
+  const { canAccess } = useModuleAccess();
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("paid");
@@ -187,9 +190,11 @@ export default function FinancialOverview({ yearType, year }: { yearType: YearTy
           <h2 className="section-title">Pasqyrë Financiare</h2>
           <p className="text-xs text-slate-400 mt-0.5">{periodLabel}</p>
         </div>
-        <Link href="/dorezimet" className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium inline-flex items-center gap-1">
-          Dorëzimet <ArrowRight className="w-3.5 h-3.5" />
-        </Link>
+        {canAccess("/dorezimet") && (
+          <Link href="/dorezimet" className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium inline-flex items-center gap-1">
+            Dorëzimet <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        )}
       </div>
 
       <div className="p-5 space-y-5">
@@ -379,7 +384,7 @@ export default function FinancialOverview({ yearType, year }: { yearType: YearTy
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                 {handoverRows.length === 0 && (
                   <tr><td colSpan={5} className="text-center py-8 text-slate-400 text-sm">
-                    Asnjë dorëzim i regjistruar këtë periudhë — <Link href="/dorezimet" className="text-primary-600 hover:underline">regjistro një</Link>
+                    Asnjë dorëzim i regjistruar këtë periudhë{canAccess("/dorezimet") && <> — <Link href="/dorezimet" className="text-primary-600 hover:underline">regjistro një</Link></>}
                   </td></tr>
                 )}
                 {handoverRows.map(h => (
