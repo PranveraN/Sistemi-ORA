@@ -3,7 +3,48 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email";
 
+// Kufi tentativash për IP (faqe publike, pa login) — pengon krijimin masiv të
+// llogarive false dhe dërgimin e email-eve "Regjistrimi u krye" në adresa të
+// çfarëdoshme. I qëllimshëm bujar (20/orë): gjithë stafi mund të regjistrohet
+// njëkohësisht nga Wi-Fi i shkollës (e njëjta IP) pa u bllokuar. Një gabim në
+// formular harxhon thjesht një tentativë — s'bllokon asnjë email.
+// Në memorie (pa ndryshim në databazë); rinis me rinisjen e serverit.
+const MAX_ATTEMPTS_PER_HOUR = 20;
+const WINDOW_MS = 60 * 60 * 1000;
+const attempts = new Map<string, number[]>();
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const recent = (attempts.get(ip) ?? []).filter(t => now - t < WINDOW_MS);
+  if (recent.length >= MAX_ATTEMPTS_PER_HOUR) {
+    attempts.set(ip, recent);
+    return true;
+  }
+  recent.push(now);
+  attempts.set(ip, recent);
+  // Pastrim periodik që Map-i të mos rritet pa fund
+  if (attempts.size > 5000) {
+    for (const [k, ts] of attempts) if (!ts.some(t => now - t < WINDOW_MS)) attempts.delete(k);
+  }
+  return false;
+}
+
+function clientIp(req: NextRequest): string {
+  // X-Real-IP vendoset nga nginx ($remote_addr) — s'mund të falsifikohet nga
+  // klienti, ndryshe nga elementi i parë i X-Forwarded-For.
+  return req.headers.get("x-real-ip")
+    ?? req.headers.get("x-forwarded-for")?.split(",").pop()?.trim()
+    ?? "unknown";
+}
+
 export async function POST(req: NextRequest) {
+  if (isRateLimited(clientIp(req))) {
+    return NextResponse.json(
+      { error: "Shumë tentativa regjistrimi nga ky rrjet. Provo përsëri pas pak minutash." },
+      { status: 429 },
+    );
+  }
+
   const body = await req.json();
   const name = String(body.name ?? "").trim();
   const email = String(body.email ?? "").trim().toLowerCase();
