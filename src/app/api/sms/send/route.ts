@@ -4,8 +4,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/sms";
 import { logAction } from "@/lib/audit";
+import { MESSAGE_TYPES } from "@/lib/smsStatus";
 
-interface RecipientInput { phone: string; name?: string; studentId?: number | string; message?: string }
+interface RecipientInput { phone: string; name?: string; studentId?: number | string; message?: string; paymentStatus?: string }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -24,6 +25,9 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const message = String(body.message ?? "").trim();
+  // Opsionale (moduli i ri i mesazheve) — për mbrojtjen nga dërgimi i dyfishtë.
+  // Thirrjet e vjetra (pa këtë fushë) ruhen si më parë, me null.
+  const messageType = MESSAGE_TYPES.some(t => t.key === body.messageType) ? String(body.messageType) : null;
   const rawRecipients: RecipientInput[] = Array.isArray(body.recipients) ? body.recipients : [];
 
   // Mesazhi i përbashkët (klasë/familje/individual/debt) mbetet i detyrueshëm
@@ -108,6 +112,8 @@ export async function POST(req: NextRequest) {
         status: result.ok ? "SENT" : "FAILED",
         errorMessage: result.ok ? null : result.error,
         sentById: userId,
+        messageType,
+        paymentStatus: r.paymentStatus ? String(r.paymentStatus).slice(0, 100) : null,
       },
     });
 

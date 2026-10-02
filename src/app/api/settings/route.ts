@@ -15,6 +15,9 @@ const DEFAULTS: Record<string, string> = {
   enrollmentOpen: "true", // A pranohen aplikime të reja te /apliko (formulari publik i regjistrimit)
   furnitoriOraEmail: "",
   furnitoriOraPhone: "",
+  // Afati i përgjithshëm i shkollimit ("MM-DD") — VETËM për statusin "Me vonesë"
+  // te moduli i mesazheve (nxënësit pa këste / plan fleksibël). S'prek pagesat.
+  tuitionDueDate: "09-30",
   ushqimiPrice2Meals: "4",
   ushqimiPrice2MealsGrade1: "4",
   transportLocations: JSON.stringify([

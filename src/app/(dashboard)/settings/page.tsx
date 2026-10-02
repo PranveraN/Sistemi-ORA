@@ -22,6 +22,7 @@ interface SchoolInfo {
   furnitoriOraEmail: string;
   furnitoriOraPhone: string;
   enrollmentOpen: string;
+  tuitionDueDate: string;
 }
 
 interface Category {
@@ -147,6 +148,7 @@ function SchoolSection() {
     furnitoriOraEmail: "",
     furnitoriOraPhone: "",
     enrollmentOpen: "true",
+    tuitionDueDate: "09-30",
   });
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
@@ -272,6 +274,21 @@ function SchoolSection() {
           />
           <p className="text-xs text-slate-400 mt-1">
             Numri i parazgjedhur kur dërgohet një kërkesë e aprovuar për material me SMS.
+          </p>
+        </div>
+        <div>
+          <label className="form-label">Afati i pagesës së shkollimit (për SMS)</label>
+          <input
+            type="text"
+            value={info.tuitionDueDate}
+            onChange={e => setInfo(s => ({ ...s, tuitionDueDate: e.target.value }))}
+            className="form-input"
+            placeholder="09-30"
+            pattern="\d{1,2}-\d{1,2}"
+          />
+          <p className="text-xs text-slate-400 mt-1">
+            Formati MM-DD (p.sh. 09-30 = 30 Shtator). Pas kësaj date, nxënësit pa këste ose me plan fleksibël
+            shfaqen si &quot;Me vonesë&quot; te Mesazhet SMS. Nuk ndikon pagesat dhe raportet.
           </p>
         </div>
       </div>

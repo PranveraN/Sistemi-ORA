@@ -1125,11 +1125,17 @@ model SmsMessage {
   errorMessage   String?
   sentById       Int
   sentBy         User         @relation(fields: [sentById], references: [id])
+  // Opsionale (shtuar 2026-10) — lloji i mesazhit (SHKOLLIMI, USHQIMI, ...) dhe
+  // statusi i pagesës në momentin e dërgimit; për mbrojtjen nga dërgimi i
+  // dyfishtë. Mesazhet e vjetra mbeten null.
+  messageType    String?
+  paymentStatus  String?
   createdAt      DateTime     @default(now())
 
   @@index([organizationId, createdAt])
   @@index([batchId])
   @@index([studentId])
+  @@index([messageType, createdAt])
 }
 
 // Log i dërgimeve email nga karta e Familjes ("Buton Email") — mesazh i lirë
