@@ -636,6 +636,14 @@ model MaterialRequest {
   subject        Subject?     @relation(fields: [subjectId], references: [id])
   comment        String?
   submittedAt    DateTime?
+  // Forma e re e mësuesit — shtuar 2026-10 (kërkesat e vjetra i kanë null)
+  originalText   String?      // teksti i lirë siç e shkroi mësuesi
+  mode           String?      // TEXT | CATALOG
+  urgencyReason  String?
+  classScope     String?      // CLASS | MULTI | SELF
+  classIdsJson   String?      // JSON [id] për "Disa klasa"
+  deliveredAt    DateTime?    // "Dorëzuar" te mësuesi
+  deliveredById  Int?
 
   items          MaterialRequestItem[]
   statusHistory  MaterialRequestStatusHistory[]
@@ -692,6 +700,11 @@ model Material {
   requestItems   MaterialRequestItem[]
   orderItems     MaterialOrderItem[]
   transactions   MaterialInventoryTransaction[]
+  aliases        MaterialAlias[]
+  // Artikuj të krijuar automatikisht nga teksti i mësuesit — "pending" derisa t'i rishikojë administrata
+  reviewStatus   String       @default("approved") // approved | pending
+  createdById    Int?
+  createdFromRequestId Int?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -720,6 +733,10 @@ model MaterialRequestItem {
   approvedQuantity   Int?
   approvalNote       String?
   addedToCatalogAsId Int?             // vendoset kur admini e shton artikullin e veçantë në katalog
+  // Forma e re (tekst i lirë) — shtuar 2026-10
+  sourceText         String?          // pjesa e tekstit të mësuesit që e krijoi këtë rresht
+  matchType          String?          // exact | alias | fuzzy | new | manual | ai | catalog (null = rresht i vjetër)
+  confirmedByTeacher Boolean          @default(false)
   orderLinks         MaterialOrderRequestItem[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
@@ -1471,4 +1488,20 @@ model ClassYearSnapshot {
   createdAt       DateTime @default(now())
 
   @@index([organizationId, academicYear])
+}
+
+// Sinonime/fjalë alternative për artikujt e katalogut — përdoren nga motori i
+// përputhjes (src/lib/materialMatcher.ts). Krijohen nga administrata ose
+// automatikisht kur bashkohet/lidhet një tekst i mësuesit ("sistemi mëson").
+model MaterialAlias {
+  id          Int      @id @default(autoincrement())
+  materialId  Int
+  material    Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  alias       String
+  normalized  String   // forma e normalizuar (pa ë/ç, pa mbaresa) për përputhje
+  createdById Int?
+  createdAt   DateTime @default(now())
+
+  @@unique([materialId, normalized])
+  @@index([normalized])
 }

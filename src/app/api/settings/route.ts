@@ -18,6 +18,9 @@ const DEFAULTS: Record<string, string> = {
   // Afati i përgjithshëm i shkollimit ("MM-DD") — VETËM për statusin "Me vonesë"
   // te moduli i mesazheve (nxënësit pa këste / plan fleksibël). S'prek pagesat.
   tuitionDueDate: "09-30",
+  // Kërkesat për materiale (shih src/lib/materialConfig.ts)
+  materialAutoCreateItems: "false", // AUTO_CREATE_ITEMS — krijim automatik i artikujve të rinj
+  materialRequestLeadDays: "3",     // sa ditë përpara duhet bërë një kërkesë "Normale"
   ushqimiPrice2Meals: "4",
   ushqimiPrice2MealsGrade1: "4",
   transportLocations: JSON.stringify([
