@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sessionHasModule } from "@/lib/specialCarePermissions";
 import { buildStaffData } from "@/lib/staffFields";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Të dhëna të ndjeshme të stafit (paga, llogari bankare, kontrata) — vetëm me modulin "Sekretaria"
+  if (!sessionHasModule(session, "sekretaria")) return NextResponse.json({ error: "Nuk ke leje për këtë modul." }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
@@ -34,6 +37,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Të dhëna të ndjeshme të stafit (paga, llogari bankare, kontrata) — vetëm me modulin "Sekretaria"
+  if (!sessionHasModule(session, "sekretaria")) return NextResponse.json({ error: "Nuk ke leje për këtë modul." }, { status: 403 });
 
   const body = await req.json();
   const member = await prisma.staff.create({ data: buildStaffData(body) });
