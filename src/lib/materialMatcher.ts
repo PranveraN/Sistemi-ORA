@@ -117,8 +117,52 @@ export function splitSegments(text: string): Segment[] {
 
   for (const p of parts) {
     if (!p.raw.trim()) continue;
-    out.push(analyzeSegment(p.raw, p.start));
+    for (const sub of splitByQuantity(p.raw, p.start)) out.push(analyzeSegment(sub.raw, sub.start));
   }
+  return out;
+}
+
+// Njësi MADHËSIE — "1 l ose 2 l", "500 ml", "30 cm" përshkruajnë artikullin, s'fillojnë artikull të ri
+const SIZE_UNITS = new Set(["l", "ml", "cl", "dl", "liter", "litra", "litre", "kg", "g", "gr", "gram", "grame", "cm", "mm", "m", "meter", "metra", "metro"]);
+
+function isNumberWord(n: string): boolean {
+  return /^\d+$/.test(n) || NUMBER_WORDS[n] != null;
+}
+
+/**
+ * Mësuesit shpesh s'vendosin presje: "4 shpuza të mëdha 2 shishe xhami 50 shkopinj".
+ * Një numër i ri sasie fillon artikull të ri, PËRVEÇ kur:
+ *  - pasohet nga njësi madhësie ("1 l ose 2 l", "500 ml") → përshkrim i artikullit;
+ *  - paraprihet nga "ose"/"deri"/"x" ("1 l ose 2 l", "20 x 30");
+ *  - pas tij s'ka emër materiali para numrit tjetër ("lapsa me ngjyra 12 copë") → mbetet me artikullin.
+ */
+function splitByQuantity(raw: string, start: number): { raw: string; start: number }[] {
+  const words: { n: string; s: number }[] = [];
+  const wre = /[^\s]+/g;
+  let m: RegExpExecArray | null;
+  while ((m = wre.exec(raw))) words.push({ n: normalizeText(m[0]), s: m.index });
+  const isNameWord = (n: string) => !!n && !isNumberWord(n) && !UNIT_WORDS[n] && !SIZE_UNITS.has(n) && !STOPWORDS.has(n) && n !== "ose" && lettersCount(n) >= 2;
+
+  const cuts: number[] = [];
+  let hasNameSinceCut = false;
+  for (let k = 0; k < words.length; k++) {
+    const w = words[k].n;
+    if (isNumberWord(w) && k > 0 && hasNameSinceCut) {
+      const prev = words[k - 1].n;
+      const next = words[k + 1]?.n ?? "";
+      const isSpec = SIZE_UNITS.has(next) || ["ose", "deri", "x", "me", "nga"].includes(prev);
+      // a ka emër materiali pas këtij numri (para numrit tjetër)?
+      let nameAfter = false;
+      for (let j = k + 1; j < words.length && !isNumberWord(words[j].n); j++) if (isNameWord(words[j].n)) { nameAfter = true; break; }
+      if (!isSpec && nameAfter) { cuts.push(words[k].s); hasNameSinceCut = false; }
+    }
+    if (isNameWord(w)) hasNameSinceCut = true;
+  }
+  if (!cuts.length) return [{ raw, start }];
+  const out: { raw: string; start: number }[] = [];
+  let prev = 0;
+  for (const c of cuts) { out.push({ raw: raw.slice(prev, c), start: start + prev }); prev = c; }
+  out.push({ raw: raw.slice(prev), start: start + prev });
   return out;
 }
 

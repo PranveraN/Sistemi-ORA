@@ -58,6 +58,20 @@ test("shembulli 3: artikull i ri — s'përputhet, por s'injorohet", () => {
   assert.equal(r[0].item, null);
   assert.ok(r[0].alternatives.some(a => a.item.id === 6));
 });
+test("tekst real pa presje: numri i ri fillon artikull të ri; '1 l ose 2 l' është përshkrim", () => {
+  const segs = splitSegments("4 shpuza te medha 2 shishe xhami me te medha 1 l ose 2 l 50 shkopinj te gjate dhe gota pllastike").filter(s => !s.ignored);
+  assert.deepEqual(segs.map(s => [s.core, s.quantity]), [
+    ["shpuza te medha", 4],
+    ["shishe xhami me te medha 1 l ose 2 l", 2],
+    ["shkopinj te gjate", 50],
+    ["gota pllastike", 1],
+  ]);
+});
+test("numri me njësi numërimi pa emër mbetet me artikullin", () => {
+  const segs = splitSegments("2 pako lapsa me ngjyra 12 copë").filter(s => !s.ignored);
+  assert.equal(segs.length, 1);
+  assert.equal(segs[0].quantity, 2);
+});
 test("fjali qëllimi/kohe injorohen", () => {
   const all = matchText("10 markera. Na duhen për projektin e artit javën tjetër.", idx);
   assert.equal(all.filter(x => !x.segment.ignored).length, 1);
