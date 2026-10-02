@@ -1,5 +1,6 @@
 import Header from "@/components/layout/Header";
-import StudentForm from "@/components/students/StudentForm";
+import { Suspense } from "react";
+import NewStudentForm from "@/components/students/NewStudentForm";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
@@ -17,7 +18,7 @@ export default function NewStudentPage() {
             <p className="text-sm text-slate-400 mt-0.5">Emri dhe mbiemri janë të detyrueshëm — të tjerat mund të plotësohen më vonë</p>
           </div>
         </div>
-        <StudentForm />
+        <Suspense><NewStudentForm /></Suspense>
       </div>
     </>
   );

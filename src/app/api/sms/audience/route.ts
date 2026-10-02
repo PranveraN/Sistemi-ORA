@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
         categoryId: category.id,
         studentId: { in: students.map(s => s.id) },
         // Borxhi i vjetër i importuar s'hyn në statusin e vitit aktual
-        NOT: { description: "BORXH_VJETER" },
+        AND: [{ OR: [{ description: null }, { description: { not: "BORXH_VJETER" } }] }],
         ...periodWhere,
       },
       select: { studentId: true, finalAmount: true, paidAmount: true, description: true, dueDate: true },

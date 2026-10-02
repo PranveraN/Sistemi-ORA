@@ -90,7 +90,8 @@ export default function SmsPage() {
   const [selectedStudents, setSelectedStudents] = useState<{ id: number; name: string; className: string | null }[]>([]);
   const [individualQuery, setIndividualQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [familyMode, setFamilyMode] = useState(!!familyPhoneParam);
+  // "Dërgo SMS" nga profili i familjes (&family=1) — një SMS për familje si parazgjedhje
+  const [familyMode, setFamilyMode] = useState(!!familyPhoneParam || searchParams.get("family") === "1");
 
   /* ── Mesazhi ── */
   const [message, setMessage] = useState("");

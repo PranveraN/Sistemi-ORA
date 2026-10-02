@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { recordStudentEvent } from "@/lib/studentHistory";
+import { ensureStudentFamily } from "@/lib/families";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -142,6 +143,7 @@ export async function POST(req: NextRequest) {
         },
       });
       await recordStudentEvent(session, { studentId: created.id, type: "REGJISTRIM", title: "Regjistruar përmes importit të listës" });
+      await ensureStudentFamily(created.id);
 
       results.created++;
     } catch {

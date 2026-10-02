@@ -10,6 +10,7 @@ import {
 } from "@/lib/enrollmentRules";
 import { ENROLLMENT_SMS } from "@/lib/smsTemplates";
 import { sendLoggedSms } from "@/lib/smsServer";
+import { ensureStudentFamily } from "@/lib/families";
 
 // Pranimi i një aplikimi — krijon Student-in real duke rimarrë të dhënat e
 // aplikimit (asnjë fushë s'rishkruhet manualisht nga administrata). Fushat pa
@@ -187,6 +188,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ message: "Pranimi dështoi — asgjë s'u ndryshua." }, { status: 500 });
   }
 
+  await ensureStudentFamily(student.id);
   await logAction(session, "CREATE", "Student", student.id, `Krijoi nxënësin ${student.firstName} ${student.lastName} nga aplikimi ${app.referenceNumber ?? `#${app.id}`}`);
   await recordStudentEvent(session, {
     studentId: student.id, type: "REGJISTRIM",

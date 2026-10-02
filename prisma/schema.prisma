@@ -68,6 +68,7 @@ model User {
   documentsSent            DocumentEmailLog[]
   familyEmailsSent         FamilyEmailLog[]
   studentHistory           StudentHistory[]
+  familyNotes              FamilyNote[]
 }
 
 model Class {
@@ -144,6 +145,8 @@ model Student {
   documentEmailLogs DocumentEmailLog[]
   history        StudentHistory[]
   specialCare    StudentSpecialCare[]
+  familyRefId    Int?      // → Family (shtuar 2026-10; "familyId" tekst i vjetër s'preket)
+  family         Family?   @relation(fields: [familyRefId], references: [id], onDelete: SetNull)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1525,4 +1528,51 @@ model ApplicationStatusHistory {
   createdAt     DateTime              @default(now())
 
   @@index([applicationId])
+}
+
+// ── Familjet ──────────────────────────────────────────────
+// Rekordi i familjes (shtuar 2026-10). Lidhja fillestare: sipas telefonit të
+// prindit (src/lib/families.ts), me rindërtim nga Super Admin; nxënësit e rinj
+// lidhen automatikisht. Bashkimet sipas emrit bëhen vetëm me konfirmim.
+model Family {
+  id             Int       @id @default(autoincrement())
+  organizationId Int       @default(1)
+  displayName    String?   // p.sh. "Krasniqi" — bosh = nga mbiemri i fëmijëve
+  primaryContact String?   // FATHER | MOTHER | GUARDIAN — kush merr SMS-të
+  students       Student[]
+  notes          FamilyNote[]
+  documents      FamilyDocument[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId])
+}
+
+model FamilyNote {
+  id         Int      @id @default(autoincrement())
+  familyId   Int
+  family     Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  text       String
+  authorId   Int?
+  author     User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  authorName String?
+  createdAt  DateTime @default(now())
+
+  @@index([familyId])
+}
+
+model FamilyDocument {
+  id           Int      @id @default(autoincrement())
+  familyId     Int
+  family       Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  studentId    Int?     // opsionale — dokument i një fëmije të caktuar
+  title        String?
+  fileName     String   // emri i ruajtur në disk
+  originalName String
+  contentType  String
+  size         Int
+  uploadedById Int?
+  createdAt    DateTime @default(now())
+
+  @@index([familyId])
 }

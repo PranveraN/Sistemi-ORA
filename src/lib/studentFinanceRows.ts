@@ -47,7 +47,7 @@ export async function computeStudentFinanceRows(
       where: {
         studentId: { in: ids },
         category: { name: "Shkollimi" },
-        NOT: { description: "BORXH_VJETER" },
+        AND: [{ OR: [{ description: null }, { description: { not: "BORXH_VJETER" } }] }],
         ...periodWhere,
       },
       select: { studentId: true, amount: true, finalAmount: true, paidAmount: true, description: true, dueDate: true },

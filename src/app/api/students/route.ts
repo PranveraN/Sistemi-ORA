@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordStudentEvent } from "@/lib/studentHistory";
+import { ensureStudentFamily } from "@/lib/families";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
@@ -215,6 +216,8 @@ export async function POST(req: NextRequest) {
       });
     }
     await recordStudentEvent(session, { studentId: student.id, type: "REGJISTRIM", title: "Regjistruar në sistem", occurredAt: student.enrollDate });
+    // Familja: lidhet me familjen ekzistuese (telefon + mbiemër/prind) ose krijohet e re
+    await ensureStudentFamily(student.id);
 
     return NextResponse.json(student, { status: 201 });
   } catch (err: unknown) {

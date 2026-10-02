@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import BackfillHistoryCard from "@/components/superadmin/BackfillHistoryCard";
+import FamilyBackfillCard from "@/components/superadmin/FamilyBackfillCard";
 
 interface OrgUser {
   id: number;
@@ -261,6 +262,7 @@ export default function SuperAdminPage() {
         </div>
 
         <BackfillHistoryCard />
+        <FamilyBackfillCard />
       </div>
     </div>
   );
