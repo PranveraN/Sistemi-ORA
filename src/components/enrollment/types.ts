@@ -79,6 +79,8 @@ export interface ConfigCustomField {
 
 export interface EnrollmentConfig {
   enrollmentOpen: boolean;
+  /** Stafi i kyçur (modul "Regjistrimet") po plotëson nga zyra — "Shto aplikim me dorë" */
+  officeMode?: boolean;
   schoolYears: { value: string; label: string }[];
   defaultSchoolYear: string;
   grades: ConfigGrade[];

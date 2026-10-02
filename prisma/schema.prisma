@@ -240,6 +240,11 @@ model EnrollmentApplication {
   reviewedAt      DateTime?
   reviewNote      String?   // p.sh. arsyeja e refuzimit
   createdStudentId Int?     // Student i krijuar kur u pranua — pa relacion Prisma të detyruar, njësoj si BookSale/UniSale.studentId
+  // Rrjedha e re (shtuar 2026-10): Për shqyrtim → (Evidenca) → Pranuar / Refuzuar
+  evidencaState   String?   // IN_PROGRESS | DONE | REQUIRED | NOT_REQUIRED — null = llogaritet nga rregulli (src/lib/enrollmentRules.ts)
+  rejectReason    String?   // kodi i arsyes (lista te enrollmentRules.ts); teksti i lirë mbetet te reviewNote
+  source          String?   // ONLINE | OFFICE
+  statusHistory   ApplicationStatusHistory[]
 
   documents       ApplicationDocument[]
   evidenca        ApplicationEvidenca[]
@@ -1504,4 +1509,20 @@ model MaterialAlias {
 
   @@unique([materialId, normalized])
   @@index([normalized])
+}
+
+// Historiku i statuseve të aplikimit (kush dhe kur) — shkruhet nga
+// recordApplicationStatus() te src/lib/enrollmentRules.ts.
+model ApplicationStatusHistory {
+  id            Int                   @id @default(autoincrement())
+  applicationId Int
+  application   EnrollmentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStatus    String?
+  toStatus      String
+  userId        Int?
+  userName      String?
+  note          String?
+  createdAt     DateTime              @default(now())
+
+  @@index([applicationId])
 }

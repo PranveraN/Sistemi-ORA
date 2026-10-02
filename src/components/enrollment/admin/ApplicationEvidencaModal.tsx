@@ -13,8 +13,8 @@ interface EvidCategoryLite { id: number; label: string; order: number }
 // I njëjti model si EvidencaTab.tsx (student), por për një APLIKIM PARA se
 // të bëhet nxënës real — shih ApplicationEvidenca në schema.prisma. Kur
 // aplikimi pranohet, këto rreshta migrohen te StudentEvidenca (approve/route.ts).
-export default function ApplicationEvidencaModal({ applicationId, applicantName, onClose }: {
-  applicationId: number; applicantName: string; onClose: () => void;
+export default function ApplicationEvidencaModal({ applicationId, applicantName, onClose, onSaved }: {
+  applicationId: number; applicantName: string; onClose: () => void; onSaved?: () => void;
 }) {
   const [config, setConfig] = useState<EvidencaConfig | null>(null);
   const [items, setItems] = useState<EvidencaItemDef[]>([]);
@@ -40,10 +40,11 @@ export default function ApplicationEvidencaModal({ applicationId, applicantName,
     setAnswers(prev => ({ ...prev, [key]: value }));
   }
 
-  async function handleSave() {
+  // complete = "Ruaj si të plotë" → gjendja "E plotësuar" (lejon pranimin)
+  async function handleSave(complete: boolean) {
     setSaving(true);
     const res = await fetch(`/api/enrollment/applications/${applicationId}/evidenca`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers, complete }),
     });
     setSaving(false);
     if (!res.ok) {
@@ -54,6 +55,7 @@ export default function ApplicationEvidencaModal({ applicationId, applicantName,
     setAnswers({});
     setFilling(false);
     loadRecords();
+    onSaved?.();
   }
 
   function computeDisplay(rec: EvidencaRecord) {
@@ -162,8 +164,11 @@ ${generalHTML}
               </div>
               <div className="flex gap-2 p-5 pt-0">
                 <button onClick={() => { setFilling(false); setAnswers({}); }} className="btn-secondary">Anulo</button>
-                <button onClick={handleSave} disabled={saving} className="btn-primary flex-1">
-                  {saving ? "Duke ruajtur..." : "Ruaj Evidencën"}
+                <button onClick={() => handleSave(false)} disabled={saving} className="btn-secondary flex-1" title="Ruaj — evidenca mbetet 'Në plotësim'">
+                  {saving ? "Duke ruajtur..." : "Ruaj"}
+                </button>
+                <button onClick={() => handleSave(true)} disabled={saving} className="btn-primary flex-1" title="Ruaj dhe shëno evidencën 'E plotësuar' — lejon pranimin">
+                  {saving ? "Duke ruajtur..." : "Ruaj si të plotë"}
                 </button>
               </div>
             </>

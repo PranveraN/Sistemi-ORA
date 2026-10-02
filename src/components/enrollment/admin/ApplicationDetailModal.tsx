@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X, FileText, Image as ImageIcon, Check, Ban, ExternalLink, AlertTriangle, Trash2, ClipboardList } from "lucide-react";
+import { X, FileText, Image as ImageIcon, ExternalLink, AlertTriangle, Trash2, History } from "lucide-react";
 import { formatDate, formatDateTime, formatFileSize } from "@/lib/utils";
 import { docTypeLabel } from "@/lib/enrollmentDocs";
-import { getGradeNumber } from "@/lib/school-cycles";
-import ApplicationEvidencaModal from "./ApplicationEvidencaModal";
+import DecisionButtons, { EVIDENCA_BADGE, type DecisionApp } from "./DecisionButtons";
+import type { EvidencaState } from "@/lib/enrollmentRules";
 
 interface Doc { id: number; docType: string; originalName: string; contentType: string; size: number; }
-interface ClassOption { id: number; name: string; level: string; capacity: number | null; active: boolean; _count: { students: number } }
 interface Detail {
   id: number; referenceNumber: string | null; status: string; createdStudentId: number | null;
   firstName: string; lastName: string; birthDate: string | null; gender: string | null;
@@ -26,63 +25,56 @@ interface Detail {
   additionalInfo: string | null; submittedAt: string | null; createdAt: string;
   customAnswers: string | null;
   documents: Doc[];
+  evidencaState: EvidencaState;
+  evidencaLegacy?: boolean;
+  age: number | null;
+  source: string | null;
+  reviewNote: string | null;
+  rejectReasonLabel: string | null;
+  statusHistory: { id: number; fromStatus: string | null; toStatus: string; userName: string | null; note: string | null; createdAt: string }[];
+  duplicate: {
+    duplicateOf: { id: number; referenceNumber: string | null; status: string } | null;
+    existingStudent: { id: number; name: string; className: string | null } | null;
+  } | null;
 }
+
+const STATUS_LABEL: Record<string, string> = {
+  DRAFT: "Draft (pa dërguar)", PENDING: "Për shqyrtim", EVIDENCA: "Evidenca", APPROVED: "Pranuar", REJECTED: "Refuzuar",
+};
 
 interface CustomFieldDef { id: number; label: string; type: string; active: boolean }
 
-export default function ApplicationDetailModal({ id, onClose, onChanged }: { id: number; onClose: () => void; onChanged: () => void }) {
+// Paneli anësor i detajeve të aplikimit (hapet nga e djathta; mbyllet me X/Esc).
+// Vendimet (Prano/Refuzo/Evidenca) kalojnë te dialogët e faqes, me TË NJËJTAT
+// butona si tabela (DecisionButtons); backend-i i rikontrollon rregullat.
+export default function ApplicationDetailModal({ id, onClose, onChanged, decision, onApprove, onReject, onEvidenca, reloadKey }: {
+  id: number; onClose: () => void; onChanged: () => void;
+  decision?: DecisionApp | null;
+  onApprove?: (overCapacity: boolean) => void;
+  onReject?: () => void;
+  onEvidenca?: () => void;
+  reloadKey?: number;
+}) {
   const [data, setData] = useState<Detail | null>(null);
-  const [classes, setClasses] = useState<ClassOption[]>([]);
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDef[]>([]);
-  const [assignClassId, setAssignClassId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [rejectNote, setRejectNote] = useState("");
-  const [showRejectBox, setShowRejectBox] = useState(false);
-  const [showEvidenca, setShowEvidenca] = useState(false);
 
   useEffect(() => {
     fetch(`/api/enrollment/applications/${id}`).then(r => r.json()).then(setData);
-    fetch("/api/classes").then(r => r.json()).then(setClasses);
     fetch("/api/enrollment-form-fields?includeInactive=1").then(r => r.json()).then(setCustomFieldDefs);
-  }, [id]);
+  }, [id, reloadKey]);
+
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [onClose]);
 
   const customAnswers: Record<string, string> = data?.customAnswers ? JSON.parse(data.customAnswers) : {};
   const customAnswerRows = customFieldDefs
     .filter(f => customAnswers[String(f.id)] !== undefined && customAnswers[String(f.id)] !== "")
     .map(f => ({ label: f.label, value: f.type === "CHECKBOX" ? (customAnswers[String(f.id)] === "true" ? "Po" : "Jo") : customAnswers[String(f.id)] }));
-
-  const matchingClasses = classes.filter(c => c.active && getGradeNumber(c.name) === data?.desiredGrade);
-
-  async function approve() {
-    if (!assignClassId) return;
-    if (!confirm("Ta pranoj këtë aplikim dhe të krijoj nxënësin në sistem?")) return;
-    setBusy(true); setError("");
-    const r = await fetch(`/api/enrollment/applications/${id}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ classId: Number(assignClassId) }),
-    });
-    const d = await r.json();
-    setBusy(false);
-    if (!r.ok) { setError(d.message || "Dështoi."); return; }
-    onChanged();
-    onClose();
-  }
-
-  async function reject() {
-    setBusy(true); setError("");
-    const r = await fetch(`/api/enrollment/applications/${id}/reject`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reviewNote: rejectNote || null }),
-    });
-    const d = await r.json();
-    setBusy(false);
-    if (!r.ok) { setError(d.message || "Dështoi."); return; }
-    onChanged();
-    onClose();
-  }
 
   async function handleDelete() {
     if (!data) return;
@@ -96,18 +88,38 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/30 z-50 flex justify-end" onClick={onClose} role="dialog" aria-modal="true" aria-label="Detajet e aplikimit">
+      <div className="bg-white dark:bg-slate-800 shadow-2xl w-full max-w-xl h-full overflow-y-auto animate-slide-in-right" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-800">
           <div>
             <h3 className="font-bold text-slate-900 dark:text-white">{data ? `${data.firstName} ${data.lastName}` : "Duke ngarkuar..."}</h3>
             {data?.referenceNumber && <p className="text-xs text-slate-400 mt-0.5">{data.referenceNumber}</p>}
           </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Mbyll" title="Mbyll (Esc)" className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
 
         {data && (
           <div className="p-5 space-y-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{STATUS_LABEL[data.status] ?? data.status}</span>
+              {!data.evidencaLegacy && <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${EVIDENCA_BADGE[data.evidencaState].className}`}>Evidenca: {EVIDENCA_BADGE[data.evidencaState].label}</span>}
+              {data.source === "OFFICE" && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">Shtuar nga zyra</span>}
+            </div>
+            {data.duplicate?.duplicateOf && (
+              <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl text-sm text-orange-700 dark:text-orange-400 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>Aplikim i dyfishtë — i njëjti fëmijë ka aplikuar edhe te {data.duplicate.duplicateOf.referenceNumber ?? `#${data.duplicate.duplicateOf.id}`} ({STATUS_LABEL[data.duplicate.duplicateOf.status] ?? data.duplicate.duplicateOf.status}).</span>
+              </div>
+            )}
+            {data.duplicate?.existingStudent && (
+              <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl text-sm text-orange-700 dark:text-orange-400 flex items-center justify-between gap-2">
+                <span className="flex items-start gap-2"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> Tashmë nxënës: {data.duplicate.existingStudent.name}{data.duplicate.existingStudent.className ? ` (${data.duplicate.existingStudent.className})` : ""}</span>
+                <Link href={`/students/${data.duplicate.existingStudent.id}`} className="font-medium hover:underline shrink-0">Shiko →</Link>
+              </div>
+            )}
+            {decision && onApprove && onReject && onEvidenca && (
+              <DecisionButtons app={decision} onApprove={onApprove} onReject={onReject} onEvidenca={onEvidenca} />
+            )}
             {data.status === "APPROVED" && data.createdStudentId && (
               <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl text-sm text-green-700 dark:text-green-400 flex items-center justify-between">
                 Aplikimi u pranua.
@@ -118,7 +130,8 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
             )}
             {data.status === "REJECTED" && (
               <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400">
-                Aplikimi u refuzua.
+                Aplikimi u refuzua.{data.rejectReasonLabel && <> Arsyeja: <b>{data.rejectReasonLabel}</b>.</>}
+                {data.reviewNote && data.reviewNote !== data.rejectReasonLabel && <span className="block mt-1">{data.reviewNote}</span>}
               </div>
             )}
             {data.waitlisted && (
@@ -129,7 +142,7 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
 
             <Section title="Nxënësi">
               <Row label="Emri" value={`${data.firstName} ${data.lastName}`} />
-              <Row label="Datëlindja" value={data.birthDate ? formatDate(data.birthDate) : "—"} />
+              <Row label="Datëlindja" value={data.birthDate ? `${formatDate(data.birthDate)}${data.age != null ? ` · ${data.age} vjeç` : ""}` : "—"} />
               <Row label="Gjinia" value={data.gender ?? "—"} />
               <Row label="Numri Personal" value={data.personalNumber ?? "—"} />
               <Row label="Shtetësia" value={data.citizenship ?? "—"} />
@@ -218,64 +231,28 @@ export default function ApplicationDetailModal({ id, onClose, onChanged }: { id:
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
-            {data.status === "PENDING" && (
-              <div className="space-y-3 border-t border-slate-100 dark:border-slate-700 pt-4">
-                <button onClick={() => setShowEvidenca(true)} className="btn-secondary w-full justify-center">
-                  <ClipboardList className="w-4 h-4" /> Evidenca
-                </button>
-                <div>
-                  <label className="form-label">Cakto Paralelen (Klasa {data.desiredGrade ?? "—"}) <span className="text-red-500">*</span></label>
-                  {matchingClasses.length === 0 ? (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Asnjë paralele aktive për këtë klasë te "Klasat" (krijo një, ose shëno një ekzistuese si aktive).
-                    </p>
-                  ) : (
-                    <select className="form-input" value={assignClassId} onChange={e => setAssignClassId(e.target.value)}>
-                      <option value="">— Zgjidh paralelen —</option>
-                      {matchingClasses.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} — {c._count.students}{c.capacity != null ? `/${c.capacity}` : ""} nxënës{c.capacity != null && c._count.students >= c.capacity ? " (plot)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-                {showRejectBox && (
-                  <textarea
-                    className="form-input"
-                    rows={2}
-                    placeholder="Arsyeja e refuzimit (opsionale)"
-                    value={rejectNote}
-                    onChange={e => setRejectNote(e.target.value)}
-                  />
-                )}
-                <div className="flex gap-2">
-                  {!showRejectBox ? (
-                    <button onClick={() => setShowRejectBox(true)} disabled={busy} className="btn-secondary flex-1">
-                      <Ban className="w-4 h-4" /> Refuzo
-                    </button>
-                  ) : (
-                    <button onClick={reject} disabled={busy} className="btn-secondary flex-1 text-red-600">
-                      <Ban className="w-4 h-4" /> Konfirmo Refuzimin
-                    </button>
-                  )}
-                  <button onClick={approve} disabled={busy || !assignClassId} className="btn-primary flex-1">
-                    <Check className="w-4 h-4" /> Prano
-                  </button>
-                </div>
-              </div>
-            )}
+            <div>
+              <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5"><History className="w-3.5 h-3.5" /> Historiku i statusit</h4>
+              {data.statusHistory.length === 0 ? (
+                <p className="text-sm text-slate-400">Pa ndryshime të regjistruara (aplikim i vjetër).</p>
+              ) : (
+                <ol className="space-y-2 border-l border-slate-200 dark:border-slate-700 ml-1.5 pl-4">
+                  {data.statusHistory.map(h => (
+                    <li key={h.id} className="text-sm">
+                      <p className="font-medium text-slate-700 dark:text-slate-200">
+                        {h.fromStatus && h.fromStatus !== h.toStatus ? `${STATUS_LABEL[h.fromStatus] ?? h.fromStatus} → ` : ""}{STATUS_LABEL[h.toStatus] ?? h.toStatus}
+                      </p>
+                      {h.note && <p className="text-xs text-slate-500">{h.note}</p>}
+                      <p className="text-[11px] text-slate-400">{formatDateTime(h.createdAt)}{h.userName ? ` · ${h.userName}` : ""}</p>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {showEvidenca && data && (
-        <ApplicationEvidencaModal
-          applicationId={data.id}
-          applicantName={`${data.firstName} ${data.lastName}`}
-          onClose={() => setShowEvidenca(false)}
-        />
-      )}
     </div>
   );
 }

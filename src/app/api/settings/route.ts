@@ -21,6 +21,10 @@ const DEFAULTS: Record<string, string> = {
   // Kërkesat për materiale (shih src/lib/materialConfig.ts)
   materialAutoCreateItems: "false", // AUTO_CREATE_ITEMS — krijim automatik i artikujve të rinj
   materialRequestLeadDays: "3",     // sa ditë përpara duhet bërë një kërkesë "Normale"
+  // Regjistrimet (shih src/lib/enrollmentRules.ts)
+  enrollmentEvidencaGrade1: "true",       // Klasa 1: evidenca e detyrueshme para pranimit
+  enrollmentEvidencaOtherGrades: "false", // Klasat 2–9: evidenca e detyrueshme?
+  enrollmentDelayDays: "10",              // pas sa ditësh "Për shqyrtim" shënohet "vonesë"
   ushqimiPrice2Meals: "4",
   ushqimiPrice2MealsGrade1: "4",
   transportLocations: JSON.stringify([
@@ -54,9 +58,18 @@ export async function PATCH(req: NextRequest) {
 
   const body: Record<string, string> = await req.json();
 
+  // Rregulli i evidencës së regjistrimeve — vetëm administratorët (Super Admin;
+  // roli "Admin" është vetëm-shikim). Rolet e tjera s'mund t'i ndryshojnë.
+  const ADMIN_ONLY = ["enrollmentEvidencaGrade1", "enrollmentEvidencaOtherGrades", "enrollmentDelayDays"];
+  const isSuperAdmin = (session.user as { role?: string }).role === "SUPERADMIN";
+  const requested = ALLOWED.filter((key) => key in body);
+  if (!isSuperAdmin && requested.length > 0 && requested.every(k => ADMIN_ONLY.includes(k))) {
+    return NextResponse.json({ error: "Vetëm administratorët mund ta ndryshojnë rregullin e evidencës." }, { status: 403 });
+  }
+
   await Promise.all(
-    ALLOWED
-      .filter((key) => key in body)
+    requested
+      .filter((key) => isSuperAdmin || !ADMIN_ONLY.includes(key))
       .map((key) =>
         prisma.setting.upsert({
           where: { key },

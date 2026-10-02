@@ -240,6 +240,11 @@ export default function ApplicationWizard() {
 
   return (
     <div className="space-y-5">
+      {config.officeMode && (
+        <div className="p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-xl text-sm text-primary-700 dark:text-primary-300">
+          Po plotësoni aplikimin nga zyra (staf). Aplikimi do të shënohet &quot;Shtuar nga zyra&quot; dhe pranohet edhe kur formulari publik është i mbyllur.
+        </div>
+      )}
       {resumedBanner && (
         <div className="flex items-center justify-between gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm text-blue-700 dark:text-blue-400">
           <span>Aplikimi juaj i papërfunduar u rikthye.</span>

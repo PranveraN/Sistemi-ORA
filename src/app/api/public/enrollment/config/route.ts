@@ -4,6 +4,7 @@ import { DEFAULT_ACADEMIC_YEAR } from "@/lib/academicYear";
 import { getGradeNumber } from "@/lib/school-cycles";
 import { classHasRoom } from "@/lib/classCapacity";
 import { resolveFieldConfig } from "@/lib/enrollmentFieldConfig";
+import { getOfficeSession } from "@/lib/enrollmentRules";
 
 // Endpoint PUBLIK (pa auth) — ushqen formularin e aplikimit të regjistrimit
 // (src/app/apliko) me klasat ekzistuese + a janë "hapur" aplikimet. Vetëm
@@ -31,8 +32,11 @@ export async function GET() {
     prisma.enrollmentFormField.findMany({ where: { organizationId: orgId, active: true }, orderBy: { order: "asc" } }),
   ]);
 
+  // Stafi në zyrë ("Shto aplikim me dorë") e sheh formularin të hapur gjithmonë
+  const office = await getOfficeSession();
   return NextResponse.json({
-    enrollmentOpen: (openSetting?.value ?? "true") !== "false",
+    enrollmentOpen: !!office || (openSetting?.value ?? "true") !== "false",
+    officeMode: !!office,
     // Viti aktual + ai i ardhshëm — jo ACADEMIC_YEARS (mbahet dorazi dhe s'e
     // ka ende vitin e ardhshëm kur hapen aplikimet prill/maj).
     schoolYears: [

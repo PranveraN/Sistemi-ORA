@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { buildApplicationData, isRateLimited, getClientIp } from "@/lib/enrollmentApplication";
+import { getEnrollmentRules, getOfficeSession } from "@/lib/enrollmentRules";
 
 // Endpoint PUBLIK (pa auth) — krijon draftin e aplikimit sapo prindi kalon nga
 // hapi i parë. Askush s'ka sesion këtu, ndaj çdo aplikim merr një `resumeToken`
@@ -21,8 +22,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Emri dhe mbiemri i nxënësit janë të domosdoshëm." }, { status: 400 });
   }
 
+  // "Pranon aplikime" i fikur → mbyllur edhe në server (jo vetëm në pamje).
+  // Stafi në zyrë ("Shto aplikim me dorë") lejohet gjithmonë.
+  const office = await getOfficeSession();
+  if (!office && !(await getEnrollmentRules()).enrollmentOpen) {
+    return NextResponse.json({ message: "Regjistrimet janë të mbyllura për momentin." }, { status: 403 });
+  }
+
   const ip = getClientIp(req);
-  if (await isRateLimited(ip)) {
+  if (!office && await isRateLimited(ip)) {
     return NextResponse.json({ message: "Keni arritur kufirin e aplikimeve për sot. Provoni sërish nesër." }, { status: 429 });
   }
 
@@ -38,6 +46,7 @@ export async function POST(req: NextRequest) {
       organizationId: 1,
       resumeToken,
       submitterIp: ip,
+      source: office ? "OFFICE" : "ONLINE",
     },
   });
 

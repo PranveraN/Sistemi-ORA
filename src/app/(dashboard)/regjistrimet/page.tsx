@@ -1,205 +1,371 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 import Header from "@/components/layout/Header";
 import { formatDate } from "@/lib/utils";
-import { Search, Eye, Clock, CheckCircle, XCircle, ClipboardList, Download, Trash2, FileCheck2 } from "lucide-react";
+import { Search, Download, Plus, ChevronLeft, ChevronRight, AlertTriangle, Copy, Check, ClipboardList, ArrowLeft } from "lucide-react";
 import ApplicationDetailModal from "@/components/enrollment/admin/ApplicationDetailModal";
+import ApplicationEvidencaModal from "@/components/enrollment/admin/ApplicationEvidencaModal";
+import DecisionButtons, { EVIDENCA_BADGE, seatsInfo, type DecisionApp } from "@/components/enrollment/admin/DecisionButtons";
+import { ApproveDialog, RejectDialog } from "@/components/enrollment/admin/DecisionDialogs";
+import EnrollmentSidebar from "@/components/enrollment/admin/EnrollmentSidebar";
 import EvidencaTab from "@/components/evidenca/EvidencaTab";
-import { exportEnrollmentApplicationsExcel, type ExportableApplication, type CustomFieldDef } from "@/lib/enrollmentApplicationExport";
+import { exportEnrollmentApplicationsExcel } from "@/lib/enrollmentApplicationExport";
+import type { EvidencaState } from "@/lib/enrollmentRules";
 
-interface Row extends ExportableApplication {
-  id: number;
+type Tab = "PENDING" | "EVIDENCA" | "APPROVED" | "REJECTED" | "ALL";
+
+interface Row {
+  id: number; status: string; referenceNumber: string | null; schoolYear: string;
+  firstName: string; lastName: string; birthDate: string | null; age: number | null;
+  desiredGrade: number | null; class: { name: string } | null;
+  primaryContact: string | null;
+  motherName: string | null; motherPhone: string | null; fatherName: string | null; fatherPhone: string | null;
+  guardianOtherName: string | null; guardianOtherPhone: string | null;
+  submittedAt: string | null; createdAt: string; daysWaiting: number; overdue: boolean;
+  evidencaState: EvidencaState; evidencaLegacy?: boolean; waitlisted: boolean; source: string | null;
+  gradeSeats: { free: number; capacity: number } | null;
+  duplicate: { duplicateOf: { id: number; referenceNumber: string | null } | null; existingStudent: { id: number; name: string; className: string | null } | null } | null;
+  [k: string]: unknown;
 }
 
-const TABS = [
-  { value: "PENDING", label: "Për Shqyrtim", icon: Clock },
-  { value: "EVIDENCA", label: "Evidenca", icon: FileCheck2 },
-  { value: "APPROVED", label: "Pranuar", icon: CheckCircle },
-  { value: "REJECTED", label: "Refuzuar", icon: XCircle },
-  { value: "ALL", label: "Të Gjitha", icon: ClipboardList },
+interface ListResponse {
+  rows: Row[]; total: number; page: number; limit: number;
+  counts: Record<Tab, number>; newThisWeek: number;
+  rules: { evidencaGrade1: boolean; evidencaOtherGrades: boolean; delayDays: number; enrollmentOpen: boolean };
+  seats: { id: number; name: string; free: number; capacity: number; students: number }[];
+  years: string[];
+}
+
+interface CustomFieldDef { id: number; label: string; type: string; active: boolean }
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "PENDING", label: "Për shqyrtim" },
+  { key: "EVIDENCA", label: "Evidenca" },
+  { key: "APPROVED", label: "Pranuar" },
+  { key: "REJECTED", label: "Refuzuar" },
+  { key: "ALL", label: "Të gjitha" },
 ];
 
-const STATUS_BADGE: Record<string, { label: string; icon: typeof Clock; className: string }> = {
-  PENDING:  { label: "Për Shqyrtim", icon: Clock,       className: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-  APPROVED: { label: "Pranuar",      icon: CheckCircle, className: "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  REJECTED: { label: "Refuzuar",     icon: XCircle,     className: "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+const EMPTY: Record<Tab, string> = {
+  PENDING: "S'ka aplikime që presin shqyrtim. Aplikimet e reja nga prindërit shfaqen këtu.",
+  EVIDENCA: "Asnjë aplikim në evidencë. Klikoni \"Plotëso evidencën\" te një aplikim për ta nisur.",
+  APPROVED: "Ende s'është pranuar asnjë aplikim me këto filtra.",
+  REJECTED: "Asnjë aplikim i refuzuar me këto filtra.",
+  ALL: "Asnjë aplikim me këto filtra.",
 };
 
-function contactOf(r: Row): { name: string; phone: string } {
-  if (r.primaryContact === "FATHER") return { name: r.fatherName ?? "—", phone: r.fatherPhone ?? "—" };
-  if (r.primaryContact === "OTHER") return { name: r.guardianOtherName ?? "—", phone: r.guardianOtherPhone ?? "—" };
-  return { name: r.motherName ?? "—", phone: r.motherPhone ?? "—" };
+const LIMIT = 20;
+
+function contactOf(r: Row) {
+  if (r.primaryContact === "FATHER") return { name: r.fatherName, phone: r.fatherPhone };
+  if (r.primaryContact === "OTHER") return { name: r.guardianOtherName, phone: r.guardianOtherPhone };
+  return { name: r.motherName || r.fatherName, phone: r.motherPhone || r.fatherPhone };
+}
+
+function useDebounced<T>(v: T, ms = 300) {
+  const [d, setD] = useState(v);
+  useEffect(() => { const t = setTimeout(() => setD(v), ms); return () => clearTimeout(t); }, [v, ms]);
+  return d;
 }
 
 export default function RegjistrimetPage() {
-  const searchParams = useSearchParams();
-  const [status, setStatus] = useState(() => searchParams.get("tab")?.toUpperCase() ?? "PENDING");
-  const [rows, setRows] = useState<Row[]>([]);
+  const sp = useSearchParams();
+  const router = useRouter();
+  const { data: session } = useSession();
+  const canEditRules = (session?.user as { role?: string } | undefined)?.role === "SUPERADMIN";
+
+  const tabParam = (sp.get("tab") || "PENDING").toUpperCase();
+  const showStudentEvidenca = tabParam === "EVIDENCAT_NXENESVE";
+  const [tab, setTab] = useState<Tab>((TABS.some(t => t.key === tabParam) ? tabParam : "PENDING") as Tab);
+  const [qInput, setQInput] = useState(sp.get("q") || "");
+  const q = useDebounced(qInput);
+  const [grade, setGrade] = useState(sp.get("grade") || "");
+  const [year, setYear] = useState(sp.get("year") || "");
+  const [sort, setSort] = useState(sp.get("sort") || "");
+  const [page, setPage] = useState(parseInt(sp.get("page") || "1") || 1);
+
+  const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  // Nga njoftimi "U lirua vend" (bell-i, shih /api/notifications) — çon
-  // direkt te kjo klasë, pa pasur nevojë ta kërkojë vetë stafi.
-  const [classFilter, setClassFilter] = useState(() => searchParams.get("grade") ?? "");
-  const [yearFilter, setYearFilter] = useState("");
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [error, setError] = useState("");
   const [fieldDefs, setFieldDefs] = useState<CustomFieldDef[]>([]);
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [panelReload, setPanelReload] = useState(0);
+  const [approveFor, setApproveFor] = useState<Row | null>(null);
+  const [rejectFor, setRejectFor] = useState<Row | null>(null);
+  const [evidencaFor, setEvidencaFor] = useState<Row | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const fetchRows = useCallback(async () => {
-    if (status === "EVIDENCA") return;
-    setLoading(true);
-    const r = await fetch(`/api/enrollment/applications?status=${status}`);
-    setRows(await r.json());
-    setLoading(false);
-  }, [status]);
+  const effectiveSort = sort || (tab === "PENDING" || tab === "EVIDENCA" ? "old" : "new");
 
-  useEffect(() => { fetchRows(); }, [fetchRows]);
-  useEffect(() => { fetch("/api/enrollment-form-fields?includeInactive=1").then(r => r.json()).then(setFieldDefs); }, []);
+  const params = useMemo(() => {
+    const p = new URLSearchParams({ tab, sort: effectiveSort });
+    if (q.trim()) p.set("q", q.trim());
+    if (grade) p.set("grade", grade);
+    if (year) p.set("year", year);
+    return p;
+  }, [tab, effectiveSort, q, grade, year]);
 
-  async function handleDelete(r: Row, force = false) {
-    if (!force && !confirm(`T'a fshij aplikimin e ${r.firstName} ${r.lastName} (${r.referenceNumber ?? `#${r.id}`})? Ky veprim s'kthehet mbrapa. Dokumentet e bashkëngjitura fshihen gjithashtu.`)) return;
-    const res = await fetch(`/api/enrollment/applications/${r.id}${force ? "?force=true" : ""}`, { method: "DELETE" });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      if (d.requiresForce && confirm(`${d.error}\n\nFshije GJITHSESI (përfshi dokumentet e nxënësit aktiv)?`)) {
-        return handleDelete(r, true);
-      }
-      alert(d.error || "Fshirja dështoi.");
-      return;
-    }
-    fetchRows();
+  // Filtrat në URL
+  useEffect(() => {
+    if (showStudentEvidenca) return;
+    const u = new URLSearchParams();
+    if (tab !== "PENDING") u.set("tab", tab);
+    if (q.trim()) u.set("q", q.trim());
+    if (grade) u.set("grade", grade);
+    if (year) u.set("year", year);
+    if (sort) u.set("sort", sort);
+    if (page > 1) u.set("page", String(page));
+    const s = u.toString();
+    router.replace(s ? `/regjistrimet?${s}` : "/regjistrimet", { scroll: false });
+  }, [router, tab, q, grade, year, sort, page, showStudentEvidenca]);
+
+  const load = useCallback(async () => {
+    if (showStudentEvidenca) return;
+    setError("");
+    try {
+      const p = new URLSearchParams(params);
+      p.set("page", String(page));
+      p.set("limit", String(LIMIT));
+      const r = await fetch(`/api/enrollment/applications?${p}`);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setError(d.error || "Ngarkimi dështoi."); return; }
+      setData(d);
+    } catch { setError("Gabim rrjeti — provo përsëri."); }
+    finally { setLoading(false); }
+  }, [params, page, showStudentEvidenca]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { fetch("/api/enrollment-form-fields?includeInactive=1").then(r => r.ok ? r.json() : []).then(setFieldDefs).catch(() => {}); }, []);
+
+  function refreshAll() { load(); setPanelReload(k => k + 1); }
+  function changeTab(t: Tab) { setTab(t); setPage(1); setSort(""); }
+
+  async function startEvidenca(r: Row) {
+    try {
+      const res = await fetch(`/api/enrollment/applications/${r.id}/evidenca`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "START" }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Hapja e evidencës dështoi."); return; }
+    } catch { alert("Gabim rrjeti — provo përsëri."); return; }
+    setEvidencaFor(r);
+    refreshAll();
   }
 
-  // Opsionet e filtrit — nga vetë të dhënat e ngarkuara, jo listë fikse.
-  const gradeOptions = Array.from(new Set(rows.map(r => r.desiredGrade).filter((g): g is number => g != null))).sort((a, b) => a - b);
-  const yearOptions = Array.from(new Set(rows.map(r => r.schoolYear).filter(Boolean))).sort();
+  async function exportExcel() {
+    const p = new URLSearchParams(params);
+    p.set("export", "1");
+    const r = await fetch(`/api/enrollment/applications?${p}`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { alert(d.error || "Eksporti dështoi."); return; }
+    exportEnrollmentApplicationsExcel(d.rows, `Regjistrimet-${TABS.find(t => t.key === tab)?.label.replace(/\s+/g, "-") ?? tab}`, fieldDefs);
+  }
 
-  const filtered = rows.filter(r =>
-    (!search.trim() || `${r.firstName} ${r.lastName}`.toLowerCase().includes(search.trim().toLowerCase())) &&
-    (!classFilter || String(r.desiredGrade) === classFilter) &&
-    (!yearFilter || r.schoolYear === yearFilter)
-  );
+  async function copyLink() {
+    const url = `${window.location.origin}/apliko`;
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); }
+    catch { prompt("Kopjo linkun:", url); }
+  }
+
+  const decisionOf = (r: Row): DecisionApp => ({ id: r.id, status: r.status, evidencaState: r.evidencaState, gradeSeats: r.gradeSeats });
+  const rows = data?.rows ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+  const openRow = rows.find(r => r.id === openId) ?? null;
+
+  if (showStudentEvidenca) {
+    return (
+      <>
+        <Header title="Regjistrimet" />
+        <div className="p-4 sm:p-6 space-y-4">
+          <Link href="/regjistrimet" className="text-sm text-slate-500 hover:text-primary-600 inline-flex items-center gap-1"><ArrowLeft className="w-4 h-4" /> Kthehu te aplikimet</Link>
+          <h2 className="section-title">Evidencat e nxënësve</h2>
+          <EvidencaTab initialQuery={sp.get("q") ?? ""} />
+        </div>
+      </>
+    );
+  }
+
+  const cards: { key: Tab; label: string; sub: string; tone: string }[] = [
+    { key: "PENDING", label: "Për shqyrtim", sub: `${data?.newThisWeek ?? 0} të reja këtë javë`, tone: "text-orange-600" },
+    { key: "EVIDENCA", label: "Evidenca", sub: "Në plotësim, para pranimit", tone: "text-primary-600" },
+    { key: "APPROVED", label: "Pranuar", sub: year ? `Viti ${year}` : "Të gjitha vitet", tone: "text-green-600" },
+    { key: "REJECTED", label: "Refuzuar", sub: year ? `Viti ${year}` : "Të gjitha vitet", tone: "text-red-600" },
+  ];
 
   return (
     <>
       <Header title="Regjistrimet" />
-      <div className="p-4 sm:p-6 space-y-5 animate-fade-in">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <ClipboardList className="w-5 h-5 text-primary-500" /> Regjistrimet
-          </h1>
-          <p className="text-sm text-slate-400 mt-0.5">Aplikimet e dorëzuara nga prindërit te formulari publik i regjistrimit (/apliko)</p>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600 text-sm font-medium">
-            {TABS.map(t => (
-              <button key={t.value} onClick={() => setStatus(t.value)}
-                className={`px-4 py-2 flex items-center gap-1.5 transition-colors ${status === t.value ? "bg-primary-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}>
-                <t.icon className="w-3.5 h-3.5" /> {t.label}
-              </button>
-            ))}
+      <div className="p-4 sm:p-6 space-y-4 animate-fade-in">
+        {/* ── Koka ── */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2"><ClipboardList className="w-5 h-5 text-primary-500" /> Regjistrimet</h1>
+            <p className="text-sm text-slate-400 mt-0.5">Aplikimet e dërguara nga prindërit përmes formularit publik të regjistrimit</p>
           </div>
-          {status !== "EVIDENCA" && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <select className="form-input text-sm py-2 w-auto" value={classFilter} onChange={e => setClassFilter(e.target.value)} disabled={!gradeOptions.length}>
-                <option value="">Klasa — të gjitha</option>
-                {gradeOptions.map(g => <option key={g} value={g}>Klasa {g}</option>)}
-              </select>
-              <select className="form-input text-sm py-2 w-auto" value={yearFilter} onChange={e => setYearFilter(e.target.value)} disabled={!yearOptions.length}>
-                <option value="">Viti — të gjithë</option>
-                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-              <div className="relative min-w-[220px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                <input className="form-input pl-9 text-sm py-2" placeholder="Kërko sipas emrit..." value={search} onChange={e => setSearch(e.target.value)} />
-              </div>
-              {(classFilter || yearFilter || search) && (
-                <button
-                  onClick={() => { setClassFilter(""); setYearFilter(""); setSearch(""); }}
-                  className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
-                >
-                  Pastro filtrat
-                </button>
-              )}
-              <button
-                onClick={() => exportEnrollmentApplicationsExcel(filtered, `Regjistrimet-${TABS.find(t => t.value === status)?.label.replace(/\s+/g, "-") ?? status}`, fieldDefs)}
-                disabled={!filtered.length}
-                className="btn-secondary text-sm shrink-0"
-              >
-                <Download className="w-4 h-4" /> Eksporto Excel
-              </button>
-            </div>
-          )}
+          <div className="flex gap-2">
+            <button onClick={exportExcel} disabled={!total} className="btn-secondary" title="Eksporton sipas filtrave aktivë"><Download className="w-4 h-4" /> Eksporto Excel</button>
+            <a href="/apliko?burimi=zyre" target="_blank" rel="noopener noreferrer" className="btn-primary"><Plus className="w-4 h-4" /> Shto aplikim me dorë</a>
+          </div>
         </div>
 
-        {status === "EVIDENCA" ? (
-          <EvidencaTab initialQuery={searchParams.get("q") ?? ""} />
-        ) : (
-        <div className="card overflow-hidden">
-          {loading ? (
-            <p className="text-center text-slate-400 py-10 text-sm">Duke ngarkuar...</p>
-          ) : filtered.length === 0 ? (
-            <p className="text-center text-slate-400 py-10 text-sm">Asnjë aplikim në këtë kategori.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50 dark:bg-slate-800/50">
-                  <tr>
-                    <th className="table-header">Nxënësi</th>
-                    <th className="table-header">Statusi</th>
-                    <th className="table-header">Klasa</th>
-                    <th className="table-header">Viti</th>
-                    <th className="table-header">Kontakti Kryesor</th>
-                    <th className="table-header">Data</th>
-                    <th className="table-header">Referenca</th>
-                    <th className="table-header text-right">Veprimet</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                  {filtered.map(r => {
-                    const contact = contactOf(r);
-                    const badge = STATUS_BADGE[r.status];
-                    return (
-                      <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer" onClick={() => setOpenId(r.id)}>
-                        <td className="table-cell font-medium text-slate-900 dark:text-white">
-                          {r.firstName} {r.lastName}
-                          {r.waitlisted && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-semibold">Listë Pritjeje</span>}
-                        </td>
-                        <td className="table-cell">
-                          {badge && (
-                            <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>
-                              <badge.icon className="w-3 h-3" /> {badge.label}
-                            </span>
-                          )}
-                        </td>
-                        <td className="table-cell text-slate-500 dark:text-slate-400">{r.class?.name ?? (r.desiredGrade != null ? `Klasa ${r.desiredGrade}` : "—")}</td>
-                        <td className="table-cell text-slate-500 dark:text-slate-400">{r.schoolYear}</td>
-                        <td className="table-cell text-slate-500 dark:text-slate-400">{contact.name} · {contact.phone}</td>
-                        <td className="table-cell text-slate-500 dark:text-slate-400">{formatDate(r.submittedAt ?? r.createdAt)}</td>
-                        <td className="table-cell text-slate-400 text-xs">{r.referenceNumber ?? "—"}</td>
-                        <td className="table-cell text-right">
-                          <button onClick={e => { e.stopPropagation(); setOpenId(r.id); }} title="Shiko" className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20">
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button onClick={e => { e.stopPropagation(); handleDelete(r); }} title="Fshi" className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+        {/* ── Kartat ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+          {cards.map(c => (
+            <button key={c.key} type="button" onClick={() => changeTab(c.key)} aria-pressed={tab === c.key}
+              className={`card p-3 sm:p-4 text-left border-2 transition-all ${tab === c.key ? "border-primary-500 ring-2 ring-primary-100 dark:ring-primary-900/40" : "border-transparent hover:border-slate-200 dark:hover:border-slate-600"}`}>
+              <p className="text-xs font-medium text-slate-500">{c.label}</p>
+              <p className={`text-2xl font-bold ${c.tone}`}>{data?.counts[c.key] ?? "—"}</p>
+              <p className="text-[11px] text-slate-400">{c.sub}</p>
+            </button>
+          ))}
         </div>
-        )}
+
+        <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+          <div className="card overflow-hidden min-w-0">
+            {/* ── Tabat ── */}
+            <div className="flex gap-1 px-3 pt-3 border-b border-slate-100 dark:border-slate-700 overflow-x-auto">
+              {TABS.map(t => (
+                <button key={t.key} onClick={() => changeTab(t.key)}
+                  className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px ${tab === t.key ? "border-primary-600 text-primary-700 dark:text-primary-300" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+                  {t.label} <span className="ml-1 text-[11px] px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700">{data?.counts[t.key] ?? 0}</span>
+                </button>
+              ))}
+            </div>
+            {/* ── Filtrat ── */}
+            <div className="flex flex-wrap gap-2 p-3">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                <input value={qInput} onChange={e => { setQInput(e.target.value); setPage(1); }} className="form-input pl-9 text-sm py-2" placeholder="Kërko fëmijën, prindin ose telefonin" />
+              </div>
+              <select value={grade} onChange={e => { setGrade(e.target.value); setPage(1); }} className="form-input w-auto text-sm py-2" aria-label="Klasa">
+                <option value="">Klasa: të gjitha</option>
+                {Array.from({ length: 9 }, (_, i) => i + 1).map(g => <option key={g} value={g}>Klasa {g}</option>)}
+              </select>
+              <select value={year} onChange={e => { setYear(e.target.value); setPage(1); }} className="form-input w-auto text-sm py-2" aria-label="Viti akademik">
+                <option value="">Viti: të gjithë</option>
+                {(data?.years ?? []).map(y => <option key={y} value={y}>Viti {y}</option>)}
+              </select>
+              <select value={effectiveSort} onChange={e => { setSort(e.target.value); setPage(1); }} className="form-input w-auto text-sm py-2" aria-label="Renditja">
+                <option value="old">Më të vjetrat së pari</option>
+                <option value="new">Më të rejat së pari</option>
+              </select>
+            </div>
+
+            {/* ── Tabela ── */}
+            <div className="overflow-x-auto">
+              {loading ? (
+                <p className="text-center text-slate-400 py-10 text-sm">Duke ngarkuar...</p>
+              ) : error ? (
+                <p className="text-center text-red-500 py-10 text-sm">{error}</p>
+              ) : rows.length === 0 ? (
+                <div className="text-center py-12 px-4 space-y-3">
+                  <p className="text-sm text-slate-500">{EMPTY[tab]}</p>
+                  {tab === "PENDING" && (
+                    <button onClick={copyLink} className="btn-secondary text-sm">
+                      {copied ? <><Check className="w-4 h-4" /> U kopjua</> : <><Copy className="w-4 h-4" /> Kopjo linkun e formularit publik</>}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50">
+                    <tr>
+                      <th className="table-header">Fëmija</th>
+                      <th className="table-header">Klasa e kërkuar</th>
+                      <th className="table-header">Prindi</th>
+                      <th className="table-header">Aplikuar</th>
+                      <th className="table-header">Evidenca</th>
+                      <th className="table-header text-right">Vendimi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                    {rows.map(r => {
+                      const c = contactOf(r);
+                      const seat = r.gradeSeats ? seatsInfo(r.gradeSeats.free) : null;
+                      const applied = r.submittedAt ?? r.createdAt;
+                      const isOpen = r.status === "PENDING" || r.status === "EVIDENCA";
+                      const full = !!r.gradeSeats && r.gradeSeats.free <= 0;
+                      return (
+                        <tr key={r.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 ${isOpen && full ? "bg-orange-50/40 dark:bg-orange-900/10" : ""}`}>
+                          <td className="table-cell">
+                            <button onClick={() => setOpenId(r.id)} className="font-semibold text-slate-900 dark:text-white hover:text-primary-600 text-left">{r.firstName} {r.lastName}</button>
+                            <p className="text-xs text-slate-400">{r.birthDate ? `Lindur: ${formatDate(r.birthDate)}` : "Pa datëlindje"}{r.age != null ? ` · ${r.age} vjeç` : ""}</p>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {r.duplicate?.duplicateOf && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400 inline-flex items-center gap-0.5"><AlertTriangle className="w-3 h-3" /> Aplikim i dyfishtë</span>}
+                              {r.duplicate?.existingStudent && (
+                                <Link href={`/students/${r.duplicate.existingStudent.id}`} className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400 inline-flex items-center gap-0.5 hover:underline">
+                                  <AlertTriangle className="w-3 h-3" /> Tashmë nxënës
+                                </Link>
+                              )}
+                              {r.source === "OFFICE" && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">Zyra</span>}
+                              {r.status === "DRAFT" && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">Draft</span>}
+                            </div>
+                          </td>
+                          <td className="table-cell">
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                              {r.class?.name ?? (r.desiredGrade != null ? `Klasa ${r.desiredGrade}` : "—")}
+                            </span>
+                            {isOpen && seat && <p className={`text-xs mt-0.5 ${seat.className}`}>{seat.text}</p>}
+                          </td>
+                          <td className="table-cell">
+                            <p className="text-sm">{c.name || "—"}</p>
+                            {c.phone && <p className="text-xs text-slate-400">{c.phone}</p>}
+                          </td>
+                          <td className="table-cell">
+                            <p className="text-sm">{formatDate(applied)}</p>
+                            <p className={`text-xs ${r.overdue ? "text-red-600 font-semibold" : "text-slate-400"}`}>
+                              {r.daysWaiting === 0 ? "sot" : `para ${r.daysWaiting} ${r.daysWaiting === 1 ? "dite" : "ditësh"}`}{r.overdue ? " · vonesë" : ""}
+                            </p>
+                          </td>
+                          <td className="table-cell">
+                            {r.evidencaLegacy ? <span className="text-slate-300">—</span> : (
+                              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${EVIDENCA_BADGE[r.evidencaState].className}`}>{EVIDENCA_BADGE[r.evidencaState].label}</span>
+                            )}
+                          </td>
+                          <td className="table-cell">
+                            <DecisionButtons app={decisionOf(r)} compact
+                              onEvidenca={() => startEvidenca(r)}
+                              onApprove={() => setApproveFor(r)}
+                              onReject={() => setRejectFor(r)}
+                              onView={() => setOpenId(r.id)} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            {total > 0 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 dark:border-slate-700">
+                <p className="text-sm text-slate-500">Duke shfaqur {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} nga {total}</p>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} aria-label="Faqja e mëparshme" className="btn-secondary text-xs px-2 py-1 disabled:opacity-40"><ChevronLeft className="w-4 h-4" /> Para</button>
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} aria-label="Faqja tjetër" className="btn-secondary text-xs px-2 py-1 disabled:opacity-40">Pas <ChevronRight className="w-4 h-4" /></button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {data && <EnrollmentSidebar seats={data.seats} rules={data.rules} canEditRules={canEditRules} onChanged={load} />}
+        </div>
       </div>
 
-      {openId && (
-        <ApplicationDetailModal id={openId} onClose={() => setOpenId(null)} onChanged={fetchRows} />
+      {openId !== null && (
+        <ApplicationDetailModal id={openId} reloadKey={panelReload} onClose={() => setOpenId(null)} onChanged={refreshAll}
+          decision={openRow ? decisionOf(openRow) : null}
+          onApprove={() => openRow && setApproveFor(openRow)}
+          onReject={() => openRow && setRejectFor(openRow)}
+          onEvidenca={() => openRow && startEvidenca(openRow)} />
+      )}
+      {approveFor && <ApproveDialog app={approveFor} onClose={() => setApproveFor(null)} onDone={refreshAll} />}
+      {rejectFor && <RejectDialog app={{ ...rejectFor, parentPhone: contactOf(rejectFor).phone }} onClose={() => setRejectFor(null)} onDone={refreshAll} />}
+      {evidencaFor && (
+        <ApplicationEvidencaModal applicationId={evidencaFor.id} applicantName={`${evidencaFor.firstName} ${evidencaFor.lastName}`}
+          onSaved={refreshAll} onClose={() => { setEvidencaFor(null); refreshAll(); }} />
       )}
     </>
   );

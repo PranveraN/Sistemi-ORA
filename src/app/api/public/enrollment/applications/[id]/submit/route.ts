@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { findApplicationByToken } from "@/lib/enrollmentApplication";
 import { isDocRequired, docTypeLabel, type DocType } from "@/lib/enrollmentDocs";
 import { sendEmail } from "@/lib/email";
+import { getEnrollmentRules, getOfficeSession, recordApplicationStatus } from "@/lib/enrollmentRules";
 import { EXISTING_FIELDS, resolveFieldConfig } from "@/lib/enrollmentFieldConfig";
 
 // Rivalidon gjithçka SERVER-SIDE (asnjëherë s'i besohet vetëm klientit) —
@@ -13,6 +14,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const applicationId = parseInt(id);
   const body = await req.json();
+
+  // "Pranon aplikime" i fikur → s'pranohen dorëzime të reja (drafti ruhet).
+  // Stafi në zyrë lejohet gjithmonë.
+  const office = await getOfficeSession();
+  if (!office && !(await getEnrollmentRules()).enrollmentOpen) {
+    return NextResponse.json({ message: "Regjistrimet janë të mbyllura për momentin." }, { status: 403 });
+  }
 
   const app = await findApplicationByToken(applicationId, body.resumeToken);
   if (!app) return NextResponse.json({ message: "Aplikimi nuk u gjet." }, { status: 403 });
@@ -77,8 +85,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const updated = await prisma.enrollmentApplication.update({
     where: { id: applicationId },
-    data: { status: "PENDING", submittedAt: new Date(), referenceNumber },
+    data: { status: "PENDING", submittedAt: new Date(), referenceNumber, ...(office ? { source: "OFFICE" } : {}) },
   });
+  await recordApplicationStatus(prisma, office?.session ?? null, applicationId, "DRAFT", "PENDING",
+    office ? "Shtuar me dorë nga zyra" : "Dërguar nga prindi (formulari publik)");
 
   const targetEmail = app.primaryContact === "FATHER" ? app.fatherEmail
     : app.primaryContact === "OTHER" ? app.guardianOtherEmail

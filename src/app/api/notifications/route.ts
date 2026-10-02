@@ -49,7 +49,7 @@ export async function GET() {
       }),
       prisma.enrollmentApplication.groupBy({
         by: ["desiredGrade"],
-        where: { organizationId: orgId, status: "PENDING", waitlisted: true, desiredGrade: { not: null } },
+        where: { organizationId: orgId, status: { in: ["PENDING", "EVIDENCA"] }, waitlisted: true, desiredGrade: { not: null } },
         _count: true,
       }),
     ]);

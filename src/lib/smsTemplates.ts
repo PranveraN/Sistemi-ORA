@@ -59,6 +59,12 @@ export const SMS_TEMPLATES: Record<string, string> = {
   "GENERAL": `Përshëndetje, i nderuar prind, `,
 };
 
+/** Regjistrimet — SMS i konfirmimit te prindi (editueshëm para dërgimit). */
+export const ENROLLMENT_SMS = {
+  APPROVED: `I nderuar prind, aplikimi për {emri} u pranua. {emri} është regjistruar në klasën {klasa}. Mirë se vini! ${SIGN}`,
+  REJECTED: `I nderuar prind, ju njoftojmë se aplikimi për {emri} nuk u pranua këtë herë. Për më shumë informata kontaktoni shkollën. ${SIGN}`,
+} as const;
+
 /** Shabllonet e shpejta ekzistuese (butona) — mbeten të disponueshme. */
 export const QUICK_TEMPLATES: { label: string; text: string }[] = [
   { label: "Kujtesë borxhi", text: "Përshëndetje, I nderuar prind, Ju kujtojmë se {emri} ka ende borxh të papaguar. Ju lutem kontaktoni shkollën për rregullim. Faleminderit, Akademia Ora" },
