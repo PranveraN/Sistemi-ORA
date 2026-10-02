@@ -84,7 +84,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         // i shkruar me SQL të papërpunuar ruhet si TEXT në SQLite dhe s'krahasohet
         // saktë me filtra `gte`/`lte` sipas periudhës (shih PATCH më poshtë, që
         // e ka bërë gjithmonë kështu dhe funksionon si duhet).
-        ...(body.status === "INACTIVE" ? { inactiveDate: new Date() } : {}),
+        // Data e çaktivizimit vendoset VETËM në kalimin aktiv → joaktiv. Më parë
+        // mbishkruhej me datën e sotme sa herë ruhej formulari i një nxënësi
+        // tashmë joaktiv — kjo e zhvendoste gabimisht te karta "Largime/Transfere".
+        ...(body.status === "INACTIVE" && !(before?.status === "INACTIVE" && before?.inactiveDate) ? { inactiveDate: new Date() } : {}),
         ...(body.status === "ACTIVE" ? { inactiveDate: null } : {}),
       },
     });
@@ -162,6 +165,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     const before = await prisma.student.findUnique({ where: { id: parseInt(id) } });
+    // Ruaj datën origjinale të çaktivizimit nëse nxënësi ishte tashmë joaktiv
+    // (shih komentin te PUT më sipër).
+    if (data.status === "INACTIVE" && before?.status === "INACTIVE" && before.inactiveDate) {
+      delete data.inactiveDate;
+    }
     const student = await prisma.student.update({
       where: { id: parseInt(id) },
       data,
@@ -195,7 +203,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { searchParams } = new URL(req.url);
   const permanent = searchParams.get("permanent") === "true";
 
-  const existing = await prisma.student.findUnique({ where: { id: studentId }, select: { firstName: true, lastName: true } });
+  const existing = await prisma.student.findUnique({ where: { id: studentId }, select: { firstName: true, lastName: true, status: true, inactiveDate: true } });
   const studentName = existing ? `${existing.firstName} ${existing.lastName}` : `#${studentId}`;
 
   if (permanent) {
@@ -205,12 +213,16 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await prisma.student.delete({ where: { id: studentId } });
     await logAction(session, "DELETE", "Student", studentId, `Fshiu përgjithmonë nxënësin ${studentName} (bashkë me pagesat/faturat)`);
   } else {
+    // Nëse ishte tashmë joaktiv, data origjinale e çaktivizimit s'preket
+    const alreadyInactive = existing?.status === "INACTIVE" && !!existing.inactiveDate;
     await prisma.student.update({
       where: { id: studentId },
-      data: { status: "INACTIVE", inactiveDate: new Date() },
+      data: alreadyInactive ? { status: "INACTIVE" } : { status: "INACTIVE", inactiveDate: new Date() },
     });
     await logAction(session, "UPDATE", "Student", studentId, `Çaktivizoi nxënësin ${studentName}`);
-    await recordStudentEvent(session, { studentId, type: "CREGJISTRIM", title: "Çregjistruar (joaktiv)" });
+    if (!alreadyInactive) {
+      await recordStudentEvent(session, { studentId, type: "CREGJISTRIM", title: "Çregjistruar (joaktiv)" });
+    }
   }
 
   return NextResponse.json({ success: true });
