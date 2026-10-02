@@ -8,7 +8,7 @@ const HISTORY_GROUPS: Record<string, string[]> = {
   pagesat:     ["PAGESE"],
   kontrata:    ["KONTRATE"],
   sms:         ["SMS"],
-  ndryshime:   ["NDRYSHIM_KLASE", "ZBRITJE", "NDRYSHIM_TE_DHENASH"],
+  ndryshime:   ["NDRYSHIM_KLASE", "ZBRITJE", "NDRYSHIM_TE_DHENASH", "KUJDES_I_VECANTE"],
   regjistrimi: ["REGJISTRIM", "CREGJISTRIM"],
 };
 

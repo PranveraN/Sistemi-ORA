@@ -8,57 +8,35 @@ const CLASS_STRUCTURE = [
   "5A","5B","6A","6B","7A","7B","8A","8B","9A","9B",
 ];
 
+// "Konfigurim automatik (1A–9B)" — VERSION I SIGURT: krijon VETËM klasat që
+// mungojnë nga struktura standarde. S'fshin dhe s'ndryshon asnjë klasë
+// ekzistuese (ruhen mësuesit, kapacitetet, statusi aktiv/joaktiv dhe lidhjet
+// me nxënësit, aplikimet dhe kërkesat e materialeve). Versioni i mëparshëm i
+// fshinte TË GJITHA klasat dhe i rikrijonte, duke humbur këto të dhëna.
 export async function POST() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if ((session.user as { role?: string }).role === "PEDAGOGIA") {
     return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
   }
+  const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
-  // 1. Save existing student → class-name mapping before we reset
-  const existingStudents = await prisma.student.findMany({
-    select: { id: true, class: { select: { name: true } } },
-  });
+  const existing = await prisma.class.findMany({ where: { organizationId: orgId }, select: { name: true } });
+  const have = new Set(existing.map(c => c.name.trim().toUpperCase()));
+  const missing = CLASS_STRUCTURE.filter(n => !have.has(n));
 
-  // Map: studentId → oldClassName (e.g. "2A")
-  const oldMap = new Map<number, string>();
-  for (const s of existingStudents) {
-    if (s.class?.name) oldMap.set(s.id, s.class.name);
+  for (const name of missing) {
+    await prisma.class.create({ data: { name, level: `Klasa ${name[0]}`, organizationId: orgId } });
   }
 
-  // 2. Detach all students from classes (safe nullable update)
-  await prisma.student.updateMany({ data: { classId: null } });
-
-  // 3. Delete ALL existing classes
-  await prisma.class.deleteMany();
-
-  // 4. Create 18 proper classes
-  const newMap = new Map<string, number>(); // name → id
-  for (const name of CLASS_STRUCTURE) {
-    const level = `Klasa ${name[0]}`;
-    const cls = await prisma.class.create({ data: { name, level } });
-    newMap.set(name, cls.id);
+  if (missing.length) {
+    await logAction(session, "CREATE", "Class", null,
+      `Konfigurim automatik: u krijuan ${missing.length} klasa që mungonin (${missing.join(", ")})`);
   }
-
-  // 5. Re-assign students to their correct new class
-  let reassigned = 0;
-  let unassigned  = 0;
-  for (const [studentId, oldName] of oldMap) {
-    const newId = newMap.get(oldName);
-    if (newId) {
-      await prisma.student.update({ where: { id: studentId }, data: { classId: newId } });
-      reassigned++;
-    } else {
-      unassigned++;
-    }
-  }
-
-  await logAction(session, "DELETE", "Class", null,
-    `Rikrijoi strukturën e klasave (${CLASS_STRUCTURE.length} klasa), ${reassigned} nxënës u ricaktuan, ${unassigned + (existingStudents.length - oldMap.size)} mbetën pa klasë`);
 
   return NextResponse.json({
-    classesCreated: CLASS_STRUCTURE.length,
-    studentsReassigned: reassigned,
-    studentsUnassigned: unassigned + (existingStudents.length - oldMap.size),
+    classesCreated: missing.length,
+    created: missing,
+    alreadyExisting: CLASS_STRUCTURE.length - missing.length,
   });
 }

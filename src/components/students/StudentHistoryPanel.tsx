@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   X, Loader2, Wallet, FileSignature, MessageSquare, ArrowRightLeft, Percent,
-  PencilLine, UserPlus, UserMinus, History,
+  PencilLine, UserPlus, UserMinus, History, HeartHandshake,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
 
@@ -36,6 +36,7 @@ export const EVENT_META: Record<string, { label: string; icon: typeof Wallet; co
   NDRYSHIM_TE_DHENASH: { label: "Ndryshim të dhënash", icon: PencilLine,     color: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
   REGJISTRIM:          { label: "Regjistrim",         icon: UserPlus,        color: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" },
   CREGJISTRIM:         { label: "Çregjistrim",        icon: UserMinus,       color: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" },
+  KUJDES_I_VECANTE:    { label: "Kujdes i veçantë",   icon: HeartHandshake,  color: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400" },
 };
 
 // Paneli anësor i historikut të nxënësit — hapet nga e djathta (kolona

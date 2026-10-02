@@ -68,6 +68,30 @@ export async function POST(req: NextRequest) {
       const stillRunning = await tx.promotionRun.findFirst({ where: { toYearId } });
       if (stillRunning) throw new Error("ALREADY_RUN");
 
+      // Fotografia e klasave të vitit që mbyllet (mësuesi, kapaciteti, numri i
+      // nxënësve) — që viti i vjetër të mbetet i dukshëm te Klasat. Vetëm shtesë.
+      const closingYear = parseInt((fromYear?.label ?? "").match(/(\d{4})/)?.[1] ?? "") ||
+        ((parseInt(toYear.label.match(/(\d{4})/)?.[1] ?? "") || new Date().getFullYear()) - 1);
+      const countByClass = new Map<number, number>();
+      for (const s of activeStudents) if (s.classId) countByClass.set(s.classId, (countByClass.get(s.classId) ?? 0) + 1);
+      const alreadySnap = await tx.classYearSnapshot.count({ where: { organizationId: orgId, academicYear: closingYear } });
+      if (!alreadySnap) {
+        await tx.classYearSnapshot.createMany({
+          data: Array.from(classesById.values()).map(c => ({
+            organizationId: orgId,
+            schoolYearLabel: fromYear?.label ?? `${closingYear}-${closingYear + 1}`,
+            academicYear: closingYear,
+            classId: c.id,
+            className: c.name,
+            level: c.level,
+            teacher: c.teacher,
+            capacity: c.capacity,
+            active: c.active,
+            studentCount: countByClass.get(c.id) ?? 0,
+          })),
+        });
+      }
+
       const promotedOrRepeated = decisions.filter(d => d.outcome === "PROMOTED" || d.outcome === "REPEATED");
       const graduatedOrLeft = decisions.filter(d => d.outcome === "GRADUATED" || d.outcome === "LEFT");
 
@@ -104,9 +128,10 @@ export async function POST(req: NextRequest) {
         // (TypeScript `number` është vetëm gjatë kompilimit, jo e zbatuar në runtime).
         const ids = graduatedOrLeft.map(d => parseInt(String(d.studentId), 10)).filter(n => Number.isInteger(n));
         if (ids.length) {
-          await tx.$executeRawUnsafe(
-            `UPDATE Student SET inactiveDate = datetime('now') WHERE id IN (${ids.join(",")})`
-          );
+          // Përmes Prisma (jo SQL i papërpunuar me datetime('now')) — ai ruhej si
+          // TEXT dhe s'krahasohej saktë me filtrat sipas periudhës, ndaj të
+          // diplomuarit/larguarit mund të mos dilnin te "Lëvizjet".
+          await tx.student.updateMany({ where: { id: { in: ids } }, data: { inactiveDate: new Date() } });
         }
       }
 

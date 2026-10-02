@@ -71,20 +71,22 @@ export default function SmsPage() {
   const familyPhoneParam = searchParams.get("familyPhone") || "";
   // Nga faqja e Nxënësve ("Dërgo SMS" te zgjedhja në grup) — ID-të e nxënësve
   const studentsParam = searchParams.get("students") || "";
+  // Nga faqja e klasës ("Dërgo SMS klasës") — ID-të e klasave
+  const classesParam = searchParams.get("classes") || "";
   const preselected = !!(familyPhoneParam || studentsParam);
 
   /* ── Hapi 1: lloji ── */
-  const [type, setType] = useState<MessageType>(preselected ? "GENERAL" : "SHKOLLIMI");
+  const [type, setType] = useState<MessageType>(preselected || classesParam ? "GENERAL" : "SHKOLLIMI");
   const [year, setYear] = useState(DEFAULT_ACADEMIC_YEAR);
   const [period, setPeriod] = useState(currentFoodPeriod);
 
   /* ── Hapi 2: statusi ── */
-  const [statuses, setStatuses] = useState<MessageStatus[]>(defaultStatuses(preselected ? "GENERAL" : "SHKOLLIMI"));
+  const [statuses, setStatuses] = useState<MessageStatus[]>(defaultStatuses(preselected || classesParam ? "GENERAL" : "SHKOLLIMI"));
 
   /* ── Hapi 3: marrësit ── */
-  const [recipientMode, setRecipientMode] = useState<"all" | "classes" | "individual">(preselected ? "individual" : "all");
+  const [recipientMode, setRecipientMode] = useState<"all" | "classes" | "individual">(preselected ? "individual" : classesParam ? "classes" : "all");
   const [classes, setClasses] = useState<ClassOpt[]>([]);
-  const [selectedClassIds, setSelectedClassIds] = useState<number[]>([]);
+  const [selectedClassIds, setSelectedClassIds] = useState<number[]>(() => classesParam.split(",").map(Number).filter(n => n > 0));
   const [selectedStudents, setSelectedStudents] = useState<{ id: number; name: string; className: string | null }[]>([]);
   const [individualQuery, setIndividualQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);

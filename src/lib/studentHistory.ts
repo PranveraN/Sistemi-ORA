@@ -7,7 +7,7 @@ import { prisma } from "./prisma";
 
 export type StudentEventType =
   | "REGJISTRIM" | "PAGESE" | "KONTRATE" | "SMS"
-  | "NDRYSHIM_KLASE" | "ZBRITJE" | "NDRYSHIM_TE_DHENASH" | "CREGJISTRIM";
+  | "NDRYSHIM_KLASE" | "ZBRITJE" | "NDRYSHIM_TE_DHENASH" | "CREGJISTRIM" | "KUJDES_I_VECANTE";
 
 export const STUDENT_EVENT_LABELS: Record<StudentEventType, string> = {
   REGJISTRIM: "Regjistrim",
@@ -18,6 +18,7 @@ export const STUDENT_EVENT_LABELS: Record<StudentEventType, string> = {
   ZBRITJE: "Zbritje",
   NDRYSHIM_TE_DHENASH: "Ndryshim të dhënash",
   CREGJISTRIM: "Çregjistrim",
+  KUJDES_I_VECANTE: "Kujdes i veçantë",
 };
 
 export interface StudentEventInput {

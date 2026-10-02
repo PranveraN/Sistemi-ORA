@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAction } from "@/lib/audit";
 
 export async function PATCH(
   req: NextRequest,
@@ -40,8 +41,17 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  // Detach students first
-  await prisma.student.updateMany({ where: { classId: parseInt(id) }, data: { classId: null } });
-  await prisma.class.delete({ where: { id: parseInt(id) } });
+  const classId = parseInt(id);
+  // S'lejohet fshirja e një klase që ka nxënës (më parë nxënësit mbeteshin
+  // heshtazi pa klasë). Zhvendosi fillimisht ose çaktivizo klasën.
+  const studentCount = await prisma.student.count({ where: { classId } });
+  if (studentCount > 0) {
+    return NextResponse.json(
+      { error: `Klasa ka ${studentCount} nxënës — zhvendosi në klasë tjetër ose çaktivizo klasën në vend që ta fshish.` },
+      { status: 409 },
+    );
+  }
+  const cls = await prisma.class.delete({ where: { id: classId } });
+  await logAction(session, "DELETE", "Class", classId, `Fshiu klasën ${cls.name}`);
   return NextResponse.json({ success: true });
 }

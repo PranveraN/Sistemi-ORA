@@ -143,6 +143,7 @@ model Student {
   familyEmailLogs FamilyEmailLog[]
   documentEmailLogs DocumentEmailLog[]
   history        StudentHistory[]
+  specialCare    StudentSpecialCare[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1326,6 +1327,7 @@ model Staff {
   niveliShkollimit String?
   profesioni      String?
   pozita          String?
+  assistedStudents StudentSpecialCare[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -1425,4 +1427,48 @@ model StudentHistory {
   @@index([studentId, occurredAt])
   @@index([type])
   @@index([sourceKey])
+}
+
+// ── Kujdes i veçantë (të dhëna të NDJESHME) ───────────────
+// Lexohen/shkruhen VETËM përmes /api/special-care (leje në backend, shih
+// src/lib/specialCare.ts — Super Admin, Admin, Pedagogia). Historiku i
+// nxënësit regjistron ndryshimin, por KURRË përmbajtjen e shënimeve.
+model StudentSpecialCare {
+  id               Int       @id @default(autoincrement())
+  studentId        Int
+  student          Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  hasAssistant     Boolean   @default(false) // "Me asistent"
+  specialNeeds     Boolean   @default(false) // "Nevoja të veçanta"
+  note             String?   // shënim i shkurtër për mësuesin
+  iep              Boolean   @default(false) // Plan Edukativ Individual (PEI)
+  iepReviewDate    DateTime?
+  startDate        DateTime?
+  endDate          DateTime?
+  assistantStaffId Int?
+  assistant        Staff?    @relation(fields: [assistantStaffId], references: [id], onDelete: SetNull)
+  organizationId   Int       @default(1)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([studentId])
+  @@index([assistantStaffId])
+}
+
+// Fotografi e klasave për çdo vit shkollor (mësuesi, kapaciteti, numri i
+// nxënësve) — ruhet në kalimin e vitit, që vitet e kaluara të shihen te Klasat.
+model ClassYearSnapshot {
+  id              Int      @id @default(autoincrement())
+  organizationId  Int      @default(1)
+  schoolYearLabel String   // p.sh. "2025-2026"
+  academicYear    Int      // viti fillestar, p.sh. 2025
+  classId         Int?     // referencë e thjeshtë (klasa mund të fshihet më vonë)
+  className       String
+  level           String?
+  teacher         String?
+  capacity        Int?
+  active          Boolean  @default(true)
+  studentCount    Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([organizationId, academicYear])
 }

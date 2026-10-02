@@ -11,6 +11,7 @@ import NewStudentsCard, { type NewStudentRow } from "@/components/dashboard/NewS
 import DepartedStudentsCard, { type DepartedStudentRow } from "@/components/dashboard/DepartedStudentsCard";
 import GradeOneCard from "@/components/dashboard/GradeOneCard";
 import GradeNineLeaversCard, { type GradeNineLeaverRow } from "@/components/dashboard/GradeNineLeaversCard";
+import ClassChangesCard, { type ClassChangeRow } from "@/components/dashboard/ClassChangesCard";
 import { isGrade1 } from "@/lib/school-cycles";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 
@@ -29,6 +30,7 @@ export default function LevizjetPage() {
   const [data, setData] = useState<MovementsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [grade9, setGrade9] = useState<{ count: number; entries: GradeNineLeaverRow[] }>({ count: 0, entries: [] });
+  const [classChanges, setClassChanges] = useState<{ count: number; entries: ClassChangeRow[] }>({ count: 0, entries: [] });
 
   // Filtrim i thjeshtë — vetëm në pamje (client-side), periudha/viti vazhdon
   // ta kontrollojë selektori sipër (njësoj si Dashboard-i).
@@ -59,6 +61,14 @@ export default function LevizjetPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchGrade9(); }, [fetchGrade9]);
+
+  // Ndërrimet e klasës (nga historiku i nxënësit)
+  useEffect(() => {
+    fetch(`/api/movements/class-changes?year=${year}&yearType=${yearType}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setClassChanges(d); })
+      .catch(() => {});
+  }, [year, yearType]);
 
   const classes = useMemo(() => {
     if (!data) return [];
@@ -245,6 +255,9 @@ export default function LevizjetPage() {
           <GradeOneCard data={gradeOne} period={data.period.label} onChanged={fetchData} />
           <GradeNineLeaversCard data={grade9} period={data.period.label} year={year} yearType={yearType} onChanged={fetchGrade9} />
         </div>
+
+        {/* Ndërrime klase — zhvendosje mes klasave dhe kalimet e vitit */}
+        <ClassChangesCard data={classChanges} period={data.period.label} />
 
         {/* Bilanci i detajuar — ndan ardhjet/largimet sipas kategorisë */}
         <div className="card p-5">

@@ -1,476 +1,347 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Header from "@/components/layout/Header";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
+import Header from "@/components/layout/Header";
+import YearPicker from "@/components/dashboard/YearPicker";
+import { ACADEMIC_YEARS } from "@/lib/academicYear";
 import {
-  GraduationCap, Plus, Users, X, Save,
-  Settings2, CheckCircle, Loader2, Pencil, PowerOff,
+  Plus, X, Save, Settings2, CheckCircle, Loader2, LayoutGrid, Table2, GraduationCap,
+  Users, AlertTriangle, UserX, ArrowRightLeft, History, Info,
 } from "lucide-react";
-import { DEFAULT_CLASS_CAPACITY } from "@/lib/classCapacity";
+import ClassCard, { type OverviewClass } from "@/components/classes/ClassCard";
+import ClassesTable from "@/components/classes/ClassesTable";
+import { EditClassModal } from "@/components/classes/ClassMenu";
+import PromotionWizard from "@/components/classes/PromotionWizard";
+import { SpecialCareCard, AssistantsCard, SpecialCareForm, useSpecialCare } from "@/components/classes/SpecialCarePanel";
 
-interface Class {
-  id: number;
-  name: string;
-  level: string;
-  teacher: string | null;
-  capacity: number | null;
-  active: boolean;
-  _count: { students: number };
+interface Overview {
+  year: number;
+  current: number;
+  mode: "current" | "past" | "future";
+  label?: string;
+  debtVisible: boolean;
+  specialCareVisible: boolean;
+  unassigned?: number;
+  classes: OverviewClass[];
 }
 
-// Levels 1–9, each with A and B
-const LEVELS = Array.from({ length: 9 }, (_, i) => i + 1);
+const collator = new Intl.Collator("sq", { numeric: true, sensitivity: "base" });
 
 export default function ClassesPage() {
+  const sp = useSearchParams();
   const { data: session } = useSession();
-  // Pedagogia sheh vetëm klasat/numrin e nxënësve — pa krijim, edito apo qasje
-  // te lista e plotë e nxënësve (shih middleware.ts + Sidebar.tsx për pjesën
-  // tjetër të kufizimit të këtij roli).
-  const readOnly = (session?.user as { role?: string } | undefined)?.role === "PEDAGOGIA";
-  const [classes,  setClasses]  = useState<Class[]>([]);
-  const [loading,  setLoading]  = useState(true);
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  // Pedagogia: vetëm shikim (pa krijim/editim) — si më parë
+  const readOnlyRole = role === "PEDAGOGIA";
+  const canPromote = role === "SUPERADMIN" || role === "ADMIN";
+
+  const [year, setYear] = useState(parseInt(sp.get("y") || "") || 0);
+  const [data, setData] = useState<Overview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [view, setView] = useState<"cards" | "table">("cards");
+  const [showInactive, setShowInactive] = useState(false);
+  const [filter, setFilter] = useState<"" | "over" | "noTeacher">("");
+
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "", level: "", teacher: "" });
-  const [saving,   setSaving]   = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupResult, setSetupResult] = useState<{ classesCreated: number; created: string[]; alreadyExisting: number } | null>(null);
+  const [assignFor, setAssignFor] = useState<OverviewClass | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
+  const [assignAssistant, setAssignAssistant] = useState(false);
 
-  // Setup dialog
-  const [showSetup,   setShowSetup]   = useState(false);
-  const [setupBusy,   setSetupBusy]   = useState(false);
-  const [setupResult, setSetupResult] = useState<{ classesCreated: number; studentsReassigned: number; studentsUnassigned: number } | null>(null);
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      const res = await fetch(`/api/classes/overview${year ? `?year=${year}` : ""}`);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(d.error || "Ngarkimi i klasave dështoi."); return; }
+      setData(d);
+      if (!year) setYear(d.year);
+    } catch {
+      setError("Gabim rrjeti — provo përsëri.");
+    } finally {
+      setLoading(false);
+    }
+  }, [year]);
+  useEffect(() => { load(); }, [load]);
 
-  // Edit teacher inline
-  const [editId,      setEditId]      = useState<number | null>(null);
-  const [editTeacher, setEditTeacher] = useState("");
+  const effectiveYear = year || data?.year || 0;
+  const editable = data?.mode === "current" && !readOnlyRole;
+  const care = useSpecialCare(effectiveYear || 2026);
+  const showSidebar = !!data?.specialCareVisible && data.mode === "current" && care.allowed && !!care.data;
 
-  // Edit capacity inline
-  const [editCapId,  setEditCapId]  = useState<number | null>(null);
-  const [editCap,    setEditCap]    = useState("");
+  /* ── Numrat (vetëm klasat aktive) ── */
+  const classes = data?.classes ?? [];
+  const activeClasses = classes.filter(c => c.active);
+  const stats = {
+    active: activeClasses.length,
+    students: classes.reduce((s, c) => s + c.students, 0),
+    over: activeClasses.filter(c => c.students > c.effectiveCapacity).length,
+    noTeacher: activeClasses.filter(c => !c.teacher).length,
+  };
 
-  async function fetchClasses() {
-    setLoading(true);
-    const res = await fetch("/api/classes");
-    setClasses(await res.json());
-    setLoading(false);
-  }
+  const visible = useMemo(() => classes
+    .filter(c => showInactive || c.active)
+    .filter(c => filter === "over" ? c.students > c.effectiveCapacity : filter === "noTeacher" ? !c.teacher && c.active : true)
+    .sort((a, b) => collator.compare(a.name, b.name)), [classes, showInactive, filter]);
 
-  useEffect(() => { fetchClasses(); }, []);
+  // Grupimi sipas nivelit ("Klasa 1 · 45 nxënës")
+  const groups = useMemo(() => {
+    const m = new Map<string, OverviewClass[]>();
+    for (const c of visible) {
+      const lvl = c.name.match(/^\d+/)?.[0] ?? c.level;
+      if (!m.has(lvl)) m.set(lvl, []);
+      m.get(lvl)!.push(c);
+    }
+    return Array.from(m.entries()).sort((a, b) => collator.compare(a[0], b[0]));
+  }, [visible]);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const res = await fetch("/api/classes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    setSaving(false);
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      alert(d.error || "Shtimi dështoi.");
-      return;
-    }
-    setShowForm(false);
-    setForm({ name: "", level: "", teacher: "" });
-    fetchClasses();
+    try {
+      const res = await fetch("/api/classes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Shtimi dështoi."); return; }
+      setShowForm(false);
+      setForm({ name: "", level: "", teacher: "" });
+      load();
+    } catch { alert("Gabim rrjeti — provo përsëri."); }
+    finally { setSaving(false); }
   }
 
   async function handleSetup() {
     setSetupBusy(true);
-    const res = await fetch("/api/classes/setup", { method: "POST" });
-    const data = await res.json().catch(() => ({}));
-    setSetupBusy(false);
-    if (!res.ok) {
-      alert(data.error || "Krijimi automatik dështoi.");
-      return;
-    }
-    setSetupResult(data);
-    fetchClasses();
-  }
-
-  async function saveTeacher(id: number) {
-    const res = await fetch(`/api/classes/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teacher: editTeacher }),
-    });
-    if (!res.ok) {
+    try {
+      const res = await fetch("/api/classes/setup", { method: "POST" });
       const d = await res.json().catch(() => ({}));
-      alert(d.error || "Ruajtja dështoi.");
-      return;
-    }
-    setEditId(null);
-    fetchClasses();
+      if (!res.ok) { alert(d.error || "Konfigurimi automatik dështoi."); return; }
+      setSetupResult(d);
+      load();
+    } catch { alert("Gabim rrjeti — provo përsëri."); }
+    finally { setSetupBusy(false); }
   }
 
-  async function saveCapacity(id: number) {
-    const res = await fetch(`/api/classes/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ capacity: editCap }),
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      alert(d.error || "Ruajtja dështoi.");
-      return;
-    }
-    setEditCapId(null);
-    fetchClasses();
+  async function saveTeacher(v: string) {
+    if (!assignFor) return;
+    try {
+      const res = await fetch(`/api/classes/${assignFor.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teacher: v }) });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ruajtja dështoi."); return; }
+      setAssignFor(null);
+      load();
+    } catch { alert("Gabim rrjeti — provo përsëri."); }
   }
 
-  async function toggleActive(cls: Class) {
-    if (cls.active && !confirm(`T'a shënoj paralelen ${cls.name} si joaktive? Nuk do të numërohet më te kontrolli i vendeve/lista e pritjes te aplikimi publik.`)) return;
-    const res = await fetch(`/api/classes/${cls.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: !cls.active }),
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      alert(d.error || "Ndryshimi dështoi.");
-      return;
-    }
-    fetchClasses();
-  }
-
-  // Group classes by level number
-  const byLevel = new Map<number, Class[]>();
-  for (const cls of classes) {
-    const num = parseInt(cls.name);
-    if (!isNaN(num)) {
-      if (!byLevel.has(num)) byLevel.set(num, []);
-      byLevel.get(num)!.push(cls);
-    }
-  }
-  // Sort within level: A before B
-  byLevel.forEach(arr => arr.sort((a, b) => a.name.localeCompare(b.name)));
-
-  const totalStudents = classes.reduce((s, c) => s + c._count.students, 0);
+  const statCards = [
+    { key: "", label: "Klasa aktive", value: stats.active, icon: GraduationCap, tone: "text-primary-600 bg-primary-50 dark:bg-primary-900/30", valueTone: "text-slate-900 dark:text-white", clickable: false },
+    { key: "", label: "Nxënës gjithsej", value: stats.students, icon: Users, tone: "text-blue-600 bg-blue-50 dark:bg-blue-900/30", valueTone: "text-slate-900 dark:text-white", clickable: false },
+    { key: "over", label: "Klasa mbi kapacitet", value: stats.over, icon: AlertTriangle, tone: "text-red-600 bg-red-50 dark:bg-red-900/30", valueTone: "text-red-600", clickable: true },
+    { key: "noTeacher", label: "Klasa pa mësues", value: stats.noTeacher, icon: UserX, tone: "text-orange-600 bg-orange-50 dark:bg-orange-900/30", valueTone: "text-orange-600", clickable: true },
+  ] as const;
 
   return (
     <>
       <Header title="Klasat" />
-      <div className="p-6 space-y-5 animate-fade-in">
+      <div className="p-4 sm:p-6 space-y-4 animate-fade-in">
 
-        {/* Top bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-slate-500">
-              {classes.length} klasa &nbsp;·&nbsp; {totalStudents} nxënës gjithsej
-            </p>
-          </div>
-          {!readOnly && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => { setShowSetup(true); setSetupResult(null); }}
-                className="btn-secondary"
-              >
-                <Settings2 className="w-4 h-4" />
-                Konfigurim Automatik (1A–9B)
-              </button>
-              <button onClick={() => setShowForm(true)} className="btn-primary">
-                <Plus className="w-4 h-4" />
-                Shto Klasë
-              </button>
+        {/* ── 1. Koka ── */}
+        <div className="flex flex-wrap items-center gap-3 justify-between">
+          <YearPicker years={ACADEMIC_YEARS} year={effectiveYear} yearType="academic" onSelect={y => { setYear(y); setFilter(""); }} />
+          {!readOnlyRole && (
+            <div className="flex flex-wrap gap-2">
+              {canPromote && (
+                <button onClick={() => setShowWizard(true)} className="btn-secondary"><ArrowRightLeft className="w-4 h-4" /> Kalo në vitin e ri</button>
+              )}
+              <button onClick={() => { setSetupResult(null); setShowSetup(true); }} className="btn-secondary"><Settings2 className="w-4 h-4" /> Konfigurim automatik (1A–9B)</button>
+              <button onClick={() => setShowForm(true)} className="btn-primary"><Plus className="w-4 h-4" /> Shto klasë</button>
             </div>
           )}
         </div>
 
-        {/* ── Setup confirmation dialog ── */}
-        {showSetup && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-              {!setupResult ? (
-                <>
-                  <h3 className="font-bold text-slate-900 dark:text-white text-lg">Konfigurim Automatik i Klasave</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Ky veprim do të:
-                  </p>
-                  <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-1.5 list-none">
-                    {[
-                      "Fshijë të gjitha klasat ekzistuese",
-                      "Krijojë 18 klasa: 1A, 1B, 2A, 2B, ... 9A, 9B",
-                      "Ri-asignojë nxënësit në klasat e duhura automatikisht",
-                    ].map((t, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400 text-xs flex items-center justify-center flex-shrink-0 mt-0.5 font-bold">{i+1}</span>
-                        {t}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
-                    Nxënësit që kishin klasa të pavlefshme (p.sh. 1B, 2B kur nuk ekzistonin) do të mbeten pa klasë dhe duhen asignuar manualisht.
-                  </p>
-                  <div className="flex gap-3 pt-2">
-                    <button onClick={() => setShowSetup(false)} className="btn-secondary flex-1 justify-center">
-                      <X className="w-4 h-4" />Anulo
-                    </button>
-                    <button onClick={handleSetup} disabled={setupBusy} className="btn-primary flex-1 justify-center">
-                      {setupBusy
-                        ? <><Loader2 className="w-4 h-4 animate-spin" />Duke konfiguruar...</>
-                        : <><Settings2 className="w-4 h-4" />Konfigurim</>
-                      }
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex flex-col items-center text-center gap-3 py-2">
-                    <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                      <CheckCircle className="w-7 h-7 text-green-600" />
-                    </div>
-                    <h3 className="font-bold text-slate-900 dark:text-white text-lg">U krye me sukses!</h3>
-                    <div className="grid grid-cols-3 gap-3 w-full">
-                      <div className="p-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl">
-                        <p className="text-2xl font-bold text-primary-600">{setupResult.classesCreated}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Klasa u krijuan</p>
-                      </div>
-                      <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
-                        <p className="text-2xl font-bold text-green-600">{setupResult.studentsReassigned}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Nxënës u asignuan</p>
-                      </div>
-                      <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
-                        <p className="text-2xl font-bold text-amber-500">{setupResult.studentsUnassigned}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Pa klasë</p>
-                      </div>
-                    </div>
-                    {setupResult.studentsUnassigned > 0 && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
-                        {setupResult.studentsUnassigned} nxënës pa klasë — ri-importo listën ose asignoji manualisht.
-                      </p>
-                    )}
-                  </div>
-                  <button onClick={() => setShowSetup(false)} className="btn-primary w-full justify-center">
-                    <CheckCircle className="w-4 h-4" />Mbyll
-                  </button>
-                </>
-              )}
-            </div>
+        {data?.mode === "past" && (
+          <p className="text-sm px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 flex items-center gap-2">
+            <History className="w-4 h-4 text-slate-400" /> Viti {data.label ?? `${effectiveYear}-${effectiveYear + 1}`} — vetëm shikim (fotografia e ruajtur në kalimin e vitit).
+            {!classes.some(c => c.teacher) && classes.length > 0 && " Mësuesit s'janë ruajtur për këtë vit."}
+          </p>
+        )}
+        {data?.mode === "future" && (
+          <div className="card p-8 text-center space-y-3">
+            <p className="text-slate-500">Klasat e vitit {effectiveYear}–{effectiveYear + 1} ende s&apos;janë krijuar.</p>
+            {canPromote && <button onClick={() => setShowWizard(true)} className="btn-primary"><ArrowRightLeft className="w-4 h-4" /> Kalo në vitin e ri</button>}
           </div>
         )}
 
-        {/* ── Add class form ── */}
+        {/* Shto klasë */}
         {showForm && (
           <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="section-title">Klasë e Re</h3>
-              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-4 h-4" />
-              </button>
+              <h3 className="section-title">Klasë e re</h3>
+              <button onClick={() => setShowForm(false)} aria-label="Mbyll" className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
             </div>
             <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="form-label">Emri <span className="text-red-500">*</span></label>
-                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="form-input" placeholder="p.sh. 1A, 2B" required />
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="form-input" placeholder="p.sh. 1A, 2B" required />
               </div>
               <div>
                 <label className="form-label">Niveli <span className="text-red-500">*</span></label>
-                <input value={form.level} onChange={e => setForm(f => ({ ...f, level: e.target.value }))}
-                  className="form-input" placeholder="p.sh. Klasa 1" required />
+                <input value={form.level} onChange={e => setForm(f => ({ ...f, level: e.target.value }))} className="form-input" placeholder="p.sh. Klasa 1" required />
               </div>
               <div>
                 <label className="form-label">Mësuesi/ja</label>
-                <input value={form.teacher} onChange={e => setForm(f => ({ ...f, teacher: e.target.value }))}
-                  className="form-input" placeholder="Emri i mësuesit" />
+                <input value={form.teacher} onChange={e => setForm(f => ({ ...f, teacher: e.target.value }))} className="form-input" placeholder="Emri i mësuesit" />
               </div>
               <div className="md:col-span-3 flex justify-end gap-2">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">
-                  <X className="w-4 h-4" />Anulo
-                </button>
-                <button type="submit" disabled={saving} className="btn-primary">
-                  <Save className="w-4 h-4" />
-                  {saving ? "Duke ruajtur..." : "Ruaj"}
-                </button>
+                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary"><X className="w-4 h-4" />Anulo</button>
+                <button type="submit" disabled={saving} className="btn-primary"><Save className="w-4 h-4" />{saving ? "Duke ruajtur..." : "Ruaj"}</button>
               </div>
             </form>
           </div>
         )}
 
-        {/* ── Classes grid by level ── */}
-        {loading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
-          </div>
-        ) : classes.length === 0 ? (
-          <div className="card p-16 text-center">
-            <GraduationCap className="w-12 h-12 text-slate-200 dark:text-slate-700 mx-auto mb-3" />
-            <p className="text-slate-400 mb-4">Asnjë klasë e regjistruar</p>
-            <button onClick={() => { setShowSetup(true); setSetupResult(null); }} className="btn-primary mx-auto">
-              <Settings2 className="w-4 h-4" />
-              Konfigurim Automatik (1A–9B)
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {LEVELS.map(lvl => {
-              const lvlClasses = byLevel.get(lvl) || [];
-              if (lvlClasses.length === 0) return null;
-              return (
-                <div key={lvl}>
-                  {/* Level header */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-                      {lvl}
+        {data && data.mode !== "future" && (
+          <>
+            {/* ── 2. Kartat përmbledhëse ── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+              {statCards.map((c, i) => {
+                const Icon = c.icon;
+                const active = c.clickable && filter === c.key;
+                const inner = (
+                  <>
+                    <div className={`w-9 h-9 flex-shrink-0 rounded-lg flex items-center justify-center ${c.tone}`}><Icon className="w-4 h-4" /></div>
+                    <div className="min-w-0">
+                      <p className={`text-lg font-bold ${c.value > 0 ? c.valueTone : "text-slate-900 dark:text-white"}`}>{c.value}</p>
+                      <p className="text-xs text-slate-400 truncate">{c.label}</p>
                     </div>
-                    <h2 className="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
-                      Klasa {lvl}
-                    </h2>
-                    <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-                    <span className="text-xs text-slate-400">
-                      {lvlClasses.reduce((s, c) => s + c._count.students, 0)} nxënës
-                    </span>
-                  </div>
+                  </>
+                );
+                return c.clickable ? (
+                  <button key={i} type="button" aria-pressed={active} onClick={() => setFilter(f => (f === c.key ? "" : c.key))}
+                    className={`card p-3 sm:p-4 flex items-center gap-3 text-left border-2 transition-all ${active ? "border-primary-500 ring-2 ring-primary-100 dark:ring-primary-900/40" : "border-transparent hover:border-slate-200 dark:hover:border-slate-600"}`}>
+                    {inner}
+                  </button>
+                ) : (
+                  <div key={i} className="card p-3 sm:p-4 flex items-center gap-3 border-2 border-transparent">{inner}</div>
+                );
+              })}
+            </div>
 
-                  {/* A and B cards */}
-                  <div className="grid grid-cols-2 gap-4">
-                    {lvlClasses.map(cls => (
-                      <div key={cls.id} className={`card p-5 hover:shadow-md transition-shadow ${!cls.active ? "opacity-60" : ""}`}>
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="w-11 h-11 bg-primary-50 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
-                            <GraduationCap className="w-5 h-5 text-primary-600" />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {!cls.active && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-semibold">Joaktive</span>
-                            )}
-                            <span className="text-3xl font-black text-primary-600 dark:text-primary-400">{cls.name}</span>
-                          </div>
-                        </div>
-
-                        {/* Teacher */}
-                        {readOnly ? (
-                          <p className="text-xs">
-                            {cls.teacher
-                              ? <span className="text-slate-600 dark:text-slate-300">Mësuesi: {cls.teacher}</span>
-                              : <span className="italic text-slate-400">Pa mësues</span>}
-                          </p>
-                        ) : editId === cls.id ? (
-                          <div className="flex items-center gap-2 mt-1">
-                            <input
-                              value={editTeacher}
-                              onChange={e => setEditTeacher(e.target.value)}
-                              onKeyDown={e => { if (e.key === "Enter") saveTeacher(cls.id); if (e.key === "Escape") setEditId(null); }}
-                              className="form-input text-xs py-1 flex-1"
-                              placeholder="Emri i mësuesit..."
-                              autoFocus
-                            />
-                            <button onClick={() => saveTeacher(cls.id)} className="p-1.5 bg-green-500 text-white rounded-lg">
-                              <Save className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => setEditId(null)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => { setEditId(cls.id); setEditTeacher(cls.teacher || ""); }}
-                            className="flex items-center gap-1.5 w-full text-left group/teacher"
-                          >
-                            <p className="text-xs flex-1">
-                              {cls.teacher
-                                ? <span className="text-slate-600 dark:text-slate-300">Mësuesi: {cls.teacher}</span>
-                                : <span className="italic text-slate-400">Pa mësues — kliko për të shtuar</span>}
-                            </p>
-                            <Pencil className="w-3 h-3 text-slate-300 group-hover/teacher:text-primary-500 transition-colors flex-shrink-0" />
-                          </button>
-                        )}
-
-                        {/* Kapaciteti — përdoret VETËM te kontrolli i vendeve/lista e pritjes
-                            e aplikimit publik (/apliko); s'ndikon në regjistrimin manual të
-                            nxënësve nga administrata. Pa vlerë të caktuar = parazgjedhja e
-                            shkollës (shih DEFAULT_CLASS_CAPACITY te lib/classCapacity.ts). */}
-                        {readOnly ? (
-                          <p className="text-xs text-slate-400 mt-1">Kapaciteti: {cls.capacity ?? `${DEFAULT_CLASS_CAPACITY} (parazgjedhje)`}</p>
-                        ) : editCapId === cls.id ? (
-                          <div className="flex items-center gap-2 mt-1">
-                            <input
-                              type="number" min="0"
-                              value={editCap}
-                              onChange={e => setEditCap(e.target.value)}
-                              onKeyDown={e => { if (e.key === "Enter") saveCapacity(cls.id); if (e.key === "Escape") setEditCapId(null); }}
-                              className="form-input text-xs py-1 flex-1"
-                              placeholder={`${DEFAULT_CLASS_CAPACITY} (parazgjedhje)`}
-                              autoFocus
-                            />
-                            <button onClick={() => saveCapacity(cls.id)} className="p-1.5 bg-green-500 text-white rounded-lg">
-                              <Save className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => setEditCapId(null)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => { setEditCapId(cls.id); setEditCap(cls.capacity != null ? String(cls.capacity) : ""); }}
-                            className="flex items-center gap-1.5 w-full text-left group/cap mt-1"
-                          >
-                            <p className="text-xs flex-1">
-                              {cls.capacity != null
-                                ? <span className="text-slate-600 dark:text-slate-300">Kapaciteti: {cls.capacity}</span>
-                                : <span className="italic text-slate-400">Kapaciteti: {DEFAULT_CLASS_CAPACITY} (parazgjedhje) — kliko për ta ndryshuar</span>}
-                            </p>
-                            <Pencil className="w-3 h-3 text-slate-300 group-hover/cap:text-primary-500 transition-colors flex-shrink-0" />
-                          </button>
-                        )}
-
-                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
-                          <div className="flex items-center gap-1.5">
-                            <Users className="w-3.5 h-3.5 text-slate-400" />
-                            <span className={`text-sm font-semibold ${cls._count.students > 0 ? "text-slate-700 dark:text-slate-200" : "text-slate-300"}`}>
-                              {cls._count.students} nxënës
-                            </span>
-                          </div>
-                          {!readOnly && (
-                            <button
-                              onClick={() => toggleActive(cls)}
-                              title={cls.active ? "Shëno si joaktive" : "Shëno si aktive"}
-                              className={`text-xs flex items-center gap-1 ${cls.active ? "text-slate-400 hover:text-slate-600" : "text-primary-600 hover:text-primary-700"}`}
-                            >
-                              <PowerOff className="w-3.5 h-3.5" /> {cls.active ? "Joaktive" : "Aktive"}
-                            </button>
-                          )}
-                          {!readOnly && (
-                            <Link
-                              href={`/students?classId=${cls.id}`}
-                              className="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 hover:underline"
-                            >
-                              Shiko →
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Any classes not in 1-9 range */}
-            {classes.filter(c => isNaN(parseInt(c.name))).length > 0 && (
-              <div>
-                <div className="flex items-center gap-3 mb-3">
-                  <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wide">Të tjera</h2>
-                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {classes.filter(c => isNaN(parseInt(c.name))).map(cls => (
-                    <div key={cls.id} className="card p-4">
-                      <span className="text-xl font-bold text-primary-600">{cls.name}</span>
-                      <p className="text-xs text-slate-400 mt-1">{cls.teacher || "Pa mësues"}</p>
-                      <div className="flex items-center gap-1 mt-2">
-                        <Users className="w-3.5 h-3.5 text-slate-400" />
-                        <span className="text-sm text-slate-500">{cls._count.students}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            {/* ── 3. Kontrollet e pamjes ── */}
+            <div className="flex flex-wrap items-center gap-3 justify-between">
+              <div className="flex items-center rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600 text-sm font-medium">
+                {([["cards", "Karta", LayoutGrid], ["table", "Tabelë", Table2]] as const).map(([k, l, Icon]) => (
+                  <button key={k} onClick={() => setView(k)} aria-pressed={view === k}
+                    className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors ${view === k ? "bg-primary-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}>
+                    <Icon className="w-4 h-4" /> {l}
+                  </button>
+                ))}
               </div>
+              <div className="flex items-center gap-3">
+                {filter && (
+                  <button onClick={() => setFilter("")} className="text-xs text-primary-600 font-medium">
+                    Filtri: {filter === "over" ? "mbi kapacitet" : "pa mësues"} ✕
+                  </button>
+                )}
+                <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                  <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Shfaq klasat joaktive
+                </label>
+              </div>
+            </div>
+
+            {(data.unassigned ?? 0) > 0 && (
+              <p className="text-xs text-orange-600 flex items-center gap-1.5"><Info className="w-3.5 h-3.5" /> {data.unassigned} nxënës aktivë s&apos;kanë klasë të caktuar.</p>
             )}
-          </div>
+
+            {/* ── 4/5. Klasat + kolona anësore ── */}
+            <div className={`grid gap-4 ${showSidebar ? "lg:grid-cols-[1fr_340px]" : ""}`}>
+              <div className="space-y-5 min-w-0">
+                {loading ? (
+                  <p className="text-sm text-slate-400 text-center py-12">Duke ngarkuar...</p>
+                ) : error ? (
+                  <p className="text-sm text-red-500">{error}</p>
+                ) : visible.length === 0 ? (
+                  <div className="card p-10 text-center text-slate-400">
+                    <GraduationCap className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    {classes.length === 0 ? "Asnjë klasë — përdor \"Konfigurim automatik\" ose \"Shto klasë\"." : "Asnjë klasë s'përputhet me filtrin."}
+                  </div>
+                ) : view === "table" ? (
+                  <ClassesTable classes={visible} year={effectiveYear} readOnly={!editable} onChanged={() => { load(); care.reload(); }} />
+                ) : (
+                  groups.map(([lvl, list]) => (
+                    <section key={lvl}>
+                      <h3 className="text-sm font-semibold text-slate-500 mb-2">
+                        Klasa {lvl} · {list.reduce((s, c) => s + c.students, 0)} nxënës
+                      </h3>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {list.map(c => (
+                          <ClassCard key={c.id} cls={c} year={effectiveYear} readOnly={!editable}
+                            onChanged={() => { load(); care.reload(); }} onAssignTeacher={setAssignFor} />
+                        ))}
+                      </div>
+                    </section>
+                  ))
+                )}
+              </div>
+
+              {showSidebar && care.data && (
+                <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+                  <SpecialCareCard data={care.data} onChanged={() => { care.reload(); load(); }} />
+                  <AssistantsCard data={care.data} onAssign={() => setAssignAssistant(true)} />
+                </aside>
+              )}
+            </div>
+          </>
         )}
       </div>
+
+      {/* Konfigurim automatik — tani i sigurt (krijon vetëm klasat që mungojnë) */}
+      {showSetup && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            {!setupResult ? (
+              <>
+                <h3 className="font-bold text-slate-900 dark:text-white text-lg">Konfigurim automatik i klasave</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  Krijon klasat standarde 1A, 1B … 9A, 9B që <b>mungojnë</b>. Klasat ekzistuese, mësuesit, kapacitetet dhe nxënësit
+                  <b> nuk preken</b>.
+                </p>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setShowSetup(false)} className="btn-secondary flex-1 justify-center"><X className="w-4 h-4" />Anulo</button>
+                  <button onClick={handleSetup} disabled={setupBusy} className="btn-primary flex-1 justify-center">
+                    {setupBusy ? <><Loader2 className="w-4 h-4 animate-spin" />Duke konfiguruar...</> : <><Settings2 className="w-4 h-4" />Konfiguro</>}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex flex-col items-center text-center gap-3 py-2">
+                  <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center"><CheckCircle className="w-7 h-7 text-green-600" /></div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-lg">
+                    {setupResult.classesCreated ? `U krijuan ${setupResult.classesCreated} klasa` : "Të gjitha klasat ekzistonin tashmë"}
+                  </h3>
+                  {setupResult.created.length > 0 && <p className="text-sm text-slate-500">{setupResult.created.join(", ")}</p>}
+                </div>
+                <button onClick={() => setShowSetup(false)} className="btn-primary w-full justify-center"><CheckCircle className="w-4 h-4" />Mbyll</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {assignFor && (
+        <EditClassModal
+          cls={{ id: assignFor.id, name: assignFor.name, teacher: assignFor.teacher, capacity: assignFor.capacity, active: assignFor.active, students: assignFor.students }}
+          field="teacher" onClose={() => setAssignFor(null)} onSave={saveTeacher} />
+      )}
+      {showWizard && <PromotionWizard onClose={() => setShowWizard(false)} onDone={() => { load(); care.reload(); }} />}
+      {assignAssistant && (
+        <SpecialCareForm item={null} presetAssistant onClose={() => setAssignAssistant(false)} onSaved={() => { setAssignAssistant(false); care.reload(); load(); }} />
+      )}
     </>
   );
 }
