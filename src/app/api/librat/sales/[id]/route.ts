@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordPaymentEvent } from "@/lib/studentHistory";
 
 const s = (v: unknown) =>
   v != null && v !== "" ? `'${String(v).replace(/'/g, "''")}'` : "NULL";
@@ -60,6 +61,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await prisma.$executeRawUnsafe(
       `UPDATE BookSale SET paidAmount=${paid}, balance=${balance}, status=${s(status)}, updatedAt=datetime('now') WHERE id=${sid}`
     );
+    const owner = await prisma.bookSale.findUnique({ where: { id: sid }, select: { studentId: true } });
+    await recordPaymentEvent(session, { studentId: owner?.studentId, categoryName: "Librat e anglishtes", paidBefore: 0, paidAfter: parseFloat(addPayment), method: method || "CASH" });
   }
   return NextResponse.json({ ok: true });
 }

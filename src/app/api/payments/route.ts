@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recordPaymentEvent } from "@/lib/studentHistory";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -142,6 +143,11 @@ export async function POST(req: NextRequest) {
         },
       });
     }
+    await recordPaymentEvent(session, {
+      studentId: studentIdNum, categoryName: category?.name ?? "Pagesë",
+      paidBefore: 0, paidAfter: paidAmount, paidDate: payment.paidDate,
+      method: payment.method, paymentId: payment.id,
+    });
 
     // Profili i nxënësit (/students/[id]) është faqe serveri (Server Component)
     // që lexon pagesat direkt me Prisma — pa këtë, "Router Cache" i Next.js e

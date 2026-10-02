@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordPaymentEvent } from "@/lib/studentHistory";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -102,6 +103,11 @@ export async function POST(req: NextRequest) {
       await prisma.payment.create({ data });
       results.created++;
     }
+    await recordPaymentEvent(session, {
+      studentId: student.id, categoryName: category.name,
+      paidBefore: existing?.paidAmount ?? 0, paidAfter: paidAmount, paidDate: data.paidDate,
+      method: data.method, description: "Import ushqimi",
+    });
   }
 
   return NextResponse.json(results);

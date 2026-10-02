@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
+import { recordStudentEvent } from "@/lib/studentHistory";
 
 // Pranimi i një aplikimi — krijon Student-in real duke rimarrë të dhënat e
 // aplikimit (asnjë fushë s'rishkruhet manualisht nga administrata). Fushat pa
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   await logAction(session, "CREATE", "Student", student.id, `Krijoi nxënësin ${student.firstName} ${student.lastName} nga aplikimi ${app.referenceNumber ?? `#${app.id}`}`);
+  await recordStudentEvent(session, { studentId: student.id, type: "REGJISTRIM", title: "Regjistruar nga aplikimi online", description: `Aplikimi ${app.referenceNumber ?? `#${app.id}`}` });
 
   return NextResponse.json({ studentId: student.id });
 }

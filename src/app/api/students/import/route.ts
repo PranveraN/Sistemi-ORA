@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordStudentEvent } from "@/lib/studentHistory";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      await prisma.student.create({
+      const created = await prisma.student.create({
         data: {
           firstName:    String(row.firstName).trim(),
           lastName:     String(row.lastName).trim(),
@@ -140,6 +141,7 @@ export async function POST(req: NextRequest) {
           fatherEmail:  str(row.fatherEmail),
         },
       });
+      await recordStudentEvent(session, { studentId: created.id, type: "REGJISTRIM", title: "Regjistruar përmes importit të listës" });
 
       results.created++;
     } catch {

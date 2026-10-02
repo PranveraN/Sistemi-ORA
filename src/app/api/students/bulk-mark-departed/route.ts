@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
+import { recordStudentEvent } from "@/lib/studentHistory";
 
 interface Entry {
   id: number;
@@ -35,6 +36,10 @@ export async function POST(req: NextRequest) {
   );
 
   await logAction(session, "UPDATE", "Student", null, `Shënoi ${results.length} nxënës të larguar përmes "Ngjit Listë"`);
+  await recordStudentEvent(session, entries.map(e => ({
+    studentId: e.id, type: "CREGJISTRIM" as const, title: "Çregjistruar (larguar)",
+    description: [e.leaveReason, e.destinationSchool && `Shkolla: ${e.destinationSchool}`].filter(Boolean).join(" · ") || null,
+  })));
 
   return NextResponse.json({ ok: true, count: results.length });
 }

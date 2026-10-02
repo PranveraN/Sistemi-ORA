@@ -1,6 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
+import BackfillHistoryCard from "@/components/superadmin/BackfillHistoryCard";
 
 interface OrgUser {
   id: number;
@@ -258,6 +259,8 @@ export default function SuperAdminPage() {
             })}
           </div>
         </div>
+
+        <BackfillHistoryCard />
       </div>
     </div>
   );

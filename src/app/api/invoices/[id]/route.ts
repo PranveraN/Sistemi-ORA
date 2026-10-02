@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
+import { recordPaymentEvent } from "@/lib/studentHistory";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -83,6 +84,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         },
       });
     }
+    // Historiku — shuma që sapo u shënua e paguar
+    const before = invoice.payments.reduce((s, p) => s + p.paidAmount, 0);
+    const after = invoice.payments.length ? invoice.payments.reduce((s, p) => s + p.finalAmount, 0) : invoice.total;
+    await recordPaymentEvent(session, {
+      studentId: invoice.studentId, categoryName: "Faturë",
+      paidBefore: before, paidAfter: after, description: `Fatura ${invoice.number} u shënua e paguar`,
+    });
   }
 
   return NextResponse.json(invoice);

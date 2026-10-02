@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
+import { recordStudentChanges, recordStudentEvent } from "@/lib/studentHistory";
 
 function parseDate(val: unknown): Date | null {
   if (!val) return null;
@@ -48,9 +49,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   try {
     const body = await req.json();
+    // Gjendja PARA ndryshimit — për historikun e nxënësit (klasë, të dhëna, status)
+    const before = await prisma.student.findUnique({ where: { id: parseInt(id) }, include: { class: { select: { name: true } } } });
 
     const student = await prisma.student.update({
       where: { id: parseInt(id) },
+      include: { class: { select: { name: true } } },
       data: {
         firstName: body.firstName,
         lastName: body.lastName,
@@ -84,6 +88,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(body.status === "ACTIVE" ? { inactiveDate: null } : {}),
       },
     });
+
+    if (before) {
+      await recordStudentChanges(session, before, student, { before: before.class?.name ?? null, after: student.class?.name ?? null });
+    }
 
     const userId = parseInt((session?.user as { id?: string } | undefined)?.id ?? "0");
     if (userId > 0) {
@@ -153,10 +161,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ("hideFromDeparted" in body) data.hideFromDeparted = Boolean(body.hideFromDeparted);
 
   try {
+    const before = await prisma.student.findUnique({ where: { id: parseInt(id) } });
     const student = await prisma.student.update({
       where: { id: parseInt(id) },
       data,
     });
+    // Historiku — vetëm fushat që erdhën në këtë PATCH (zbritje, kontratë, status)
+    if (before) {
+      const after: Record<string, unknown> & { id: number } = { id: student.id };
+      for (const k of Object.keys(data)) after[k] = (student as Record<string, unknown>)[k];
+      await recordStudentChanges(session, before, after);
+    }
 
     await logAction(session, "UPDATE", "Student", student.id,
       `Ndryshoi kontratën/zbritjen/mënyrën e pagesës/shënimet për ${student.firstName} ${student.lastName}`);
@@ -195,6 +210,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       data: { status: "INACTIVE", inactiveDate: new Date() },
     });
     await logAction(session, "UPDATE", "Student", studentId, `Çaktivizoi nxënësin ${studentName}`);
+    await recordStudentEvent(session, { studentId, type: "CREGJISTRIM", title: "Çregjistruar (joaktiv)" });
   }
 
   return NextResponse.json({ success: true });

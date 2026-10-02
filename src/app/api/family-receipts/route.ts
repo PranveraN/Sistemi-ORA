@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordPaymentEvent } from "@/lib/studentHistory";
 import { logAction } from "@/lib/audit";
 
 async function generateDepositReceiptNumber(orgId: number): Promise<string> {
@@ -131,6 +132,12 @@ export async function POST(req: NextRequest) {
     }
     paymentIds.push(paymentId);
     totalAmount += paidAmount;
+    const cat = await prisma.paymentCategory.findUnique({ where: { id: child.categoryId }, select: { name: true } });
+    await recordPaymentEvent(session, {
+      studentId: child.studentId, categoryName: cat?.name ?? "Pagesë",
+      paidBefore: existing?.paidAmount ?? 0, paidAfter: paidAmount, paidDate: data.paidDate,
+      method: data.method, paymentId, description: `Fletëpagesë familjare ${familyReceiptNumber}`,
+    });
   }
 
   await prisma.familyReceipt.update({ where: { id: familyReceipt.id }, data: { totalAmount } });

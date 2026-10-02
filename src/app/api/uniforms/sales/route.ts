@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordPaymentEvent } from "@/lib/studentHistory";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
       },
       include: { items: true, payments: true },
     });
+    await recordPaymentEvent(session, { studentId: sale.studentId, categoryName: "Uniforma", paidBefore: 0, paidAfter: paid, paidDate: sale.saleDate, method: method || "CASH", description: "Borxh i regjistruar" });
     return NextResponse.json(sale, { status: 201 });
   }
 
@@ -143,6 +145,7 @@ export async function POST(req: NextRequest) {
       data: { stock: { decrement: item.quantity } },
     });
   }
+  await recordPaymentEvent(session, { studentId: sale.studentId, categoryName: "Uniforma", paidBefore: 0, paidAfter: paid, paidDate: sale.saleDate, method: method || "CASH", description: "Shitje uniforme" });
 
   return NextResponse.json(sale, { status: 201 });
 }

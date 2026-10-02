@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/sms";
 import { buildBookDebtMessage } from "@/lib/bookDebtSms";
+import { recordStudentEvent } from "@/lib/studentHistory";
 
 const s = (v: unknown) =>
   v != null && v !== "" ? `'${String(v).replace(/'/g, "''")}'` : "NULL";
@@ -54,6 +55,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await prisma.$executeRawUnsafe(
       `UPDATE BookSale SET sentSmsAt=datetime('now'), sentToPhone=${s(phone)}, updatedAt=datetime('now') WHERE id=${sid}`
     );
+    if (sale.studentId != null) {
+      await recordStudentEvent(session, {
+        studentId: Number(sale.studentId), type: "SMS", title: "SMS · Librat e anglishtes",
+        description: message, data: { phone, messageType: "LIBRAT" },
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

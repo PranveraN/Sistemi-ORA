@@ -7,6 +7,7 @@ import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/li
 import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote, MessageSquare, Send, Wand2, Camera, FileCheck2 } from "lucide-react";
 import { buildObligationMessage, buildSummaryMessage, type Obligation } from "@/lib/notificationTemplates";
 import { useModuleAccess } from "@/lib/useModuleAccess";
+import TimiInvestCard from "@/components/students/TimiInvestCard";
 
 interface Payment {
   id: number;
@@ -931,6 +932,13 @@ export default function StudentProfile({ student }: { student: Student }) {
           </div>
         </div>
       </div>
+
+      {/* Timi Invest — zhvendosur këtu nga kolona "Çmimi TI" e listës së Nxënësve */}
+      <TimiInvestCard student={{
+        id: student.id, firstName: student.firstName, lastName: student.lastName,
+        parentName: student.fatherName || student.motherName || student.parentName,
+        parentPhone: student.fatherPhone || student.motherPhone || student.parentPhone,
+      }} />
 
       {/* Shënime / Komente — hapësirë e dedikuar, editueshme direkt këtu */}
       <div className="card p-5 space-y-3">

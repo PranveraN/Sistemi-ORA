@@ -11,7 +11,7 @@ import {
   GraduationCap, Utensils, Shirt, BookMarked, BookOpen, Megaphone, ListChecks, Users,
 } from "lucide-react";
 import {
-  type MessageType, type MessageStatus, MESSAGE_TYPES, statusesForType, statusLabel,
+  type MessageType, type MessageStatus, MESSAGE_TYPES, statusesForType, statusLabel, STATUS_COLORS,
 } from "@/lib/smsStatus";
 import { templateFor, variablesForType, fillTemplate, QUICK_TEMPLATES } from "@/lib/smsTemplates";
 import { countSegments, stripAlbanianDiacritics } from "@/lib/smsSegments";
@@ -69,17 +69,20 @@ const chip = (active: boolean) =>
 export default function SmsPage() {
   const searchParams = useSearchParams();
   const familyPhoneParam = searchParams.get("familyPhone") || "";
+  // Nga faqja e Nxënësve ("Dërgo SMS" te zgjedhja në grup) — ID-të e nxënësve
+  const studentsParam = searchParams.get("students") || "";
+  const preselected = !!(familyPhoneParam || studentsParam);
 
   /* ── Hapi 1: lloji ── */
-  const [type, setType] = useState<MessageType>(familyPhoneParam ? "GENERAL" : "SHKOLLIMI");
+  const [type, setType] = useState<MessageType>(preselected ? "GENERAL" : "SHKOLLIMI");
   const [year, setYear] = useState(DEFAULT_ACADEMIC_YEAR);
   const [period, setPeriod] = useState(currentFoodPeriod);
 
   /* ── Hapi 2: statusi ── */
-  const [statuses, setStatuses] = useState<MessageStatus[]>(defaultStatuses(familyPhoneParam ? "GENERAL" : "SHKOLLIMI"));
+  const [statuses, setStatuses] = useState<MessageStatus[]>(defaultStatuses(preselected ? "GENERAL" : "SHKOLLIMI"));
 
   /* ── Hapi 3: marrësit ── */
-  const [recipientMode, setRecipientMode] = useState<"all" | "classes" | "individual">(familyPhoneParam ? "individual" : "all");
+  const [recipientMode, setRecipientMode] = useState<"all" | "classes" | "individual">(preselected ? "individual" : "all");
   const [classes, setClasses] = useState<ClassOpt[]>([]);
   const [selectedClassIds, setSelectedClassIds] = useState<number[]>([]);
   const [selectedStudents, setSelectedStudents] = useState<{ id: number; name: string; className: string | null }[]>([]);
@@ -149,6 +152,20 @@ export default function SmsPage() {
       })
       .catch(() => {});
   }, [familyPhoneParam]);
+
+  useEffect(() => {
+    if (!studentsParam) return;
+    const ids = studentsParam.split(",").map(Number).filter(n => n > 0).slice(0, 500);
+    if (!ids.length) return;
+    fetch(`/api/students/table?ids=${ids.join(",")}&limit=500`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        type R = { id: number; firstName: string; lastName: string; className: string | null };
+        const list: R[] = d?.rows ?? [];
+        setSelectedStudents(list.map(s => ({ id: s.id, name: `${s.firstName} ${s.lastName}`, className: s.className })));
+      })
+      .catch(() => {});
+  }, [studentsParam]);
 
   // Shablloni ngarkohet kur zgjidhet lloj + NJË status; me disa statuse
   // njëherësh teksti aktual mbetet i paprekur.
@@ -237,6 +254,7 @@ export default function SmsPage() {
         names: multi ? emri : `${g[0].firstName} ${g[0].lastName}`,
         classes: Array.from(new Set(g.map(s => s.className).filter(Boolean))).join(", "),
         studentId: g[0].id,
+        studentIds: g.map(s => s.id),
         statusLabel: type === "GENERAL" ? "—" : statusSet.map(s => statusLabel(type, s)).join(", "),
         paymentStatus: statusSet.length ? statusSet.join(",") : null,
         message: text,
@@ -369,6 +387,7 @@ export default function SmsPage() {
               <div className="flex flex-wrap gap-2">
                 {typeStatuses.map(s => (
                   <button key={s.key} type="button" onClick={() => toggleStatus(s.key)} className={chip(statuses.includes(s.key))}>
+                    <span className={`w-2 h-2 rounded-full ${STATUS_COLORS[s.key]?.dot ?? "bg-slate-400"}`} aria-hidden="true" />
                     {s.label}
                     <span className="text-xs px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">
                       {statusCounts[s.key] ?? 0}

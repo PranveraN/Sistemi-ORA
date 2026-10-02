@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordPaymentEvent } from "@/lib/studentHistory";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       where: { id: saleId },
       data: { paidAmount: totalPaid, balance, status },
     });
+    await recordPaymentEvent(session, { studentId: sale.studentId, categoryName: "Uniforma", paidBefore: 0, paidAfter: payment.amount, paidDate: payment.paidAt, method: payment.method });
   }
 
   return NextResponse.json(payment, { status: 201 });

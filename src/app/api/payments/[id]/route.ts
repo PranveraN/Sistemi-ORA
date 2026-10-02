@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
+import { recordPaymentEvent } from "@/lib/studentHistory";
 
 async function generateReceiptNumber(): Promise<string> {
   const year = new Date().getFullYear();
@@ -49,7 +50,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const year  = body.year  != null ? parseInt(body.year)  : dueDate.getFullYear();
 
   // Gjej rekordin ekzistues për të ruajtur receiptNumber nëse ka
-  const existing = await prisma.payment.findUnique({ where: { id: parseInt(id) }, select: { receiptNumber: true } });
+  const existing = await prisma.payment.findUnique({ where: { id: parseInt(id) }, select: { receiptNumber: true, paidAmount: true } });
   const needsReceipt = paidAmount > 0 && !existing?.receiptNumber;
   const receiptNumber = needsReceipt ? await generateReceiptNumber() : undefined;
 
@@ -78,6 +79,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   await logAction(session, "UPDATE", "Payment", payment.id,
     `Ndryshoi pagesën e ${payment.student.firstName} ${payment.student.lastName} (${payment.category.name}) — ${finalAmount}€`);
+  await recordPaymentEvent(session, {
+    studentId: payment.studentId, categoryName: payment.category.name,
+    paidBefore: existing?.paidAmount ?? 0, paidAfter: paidAmount, paidDate: payment.paidDate,
+    method: payment.method, paymentId: payment.id,
+  });
 
   // Shih komentin e njëjtë te POST /api/payments — pa këtë, profili i
   // nxënësit mund të mbetet me shumën e vjetër kur kthehesh atje me navigim

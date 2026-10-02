@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordPaymentEvent } from "@/lib/studentHistory";
 
 const s = (v: unknown) =>
   v != null && v !== "" ? `'${String(v).replace(/'/g, "''")}'` : "NULL";
@@ -121,6 +122,7 @@ export async function POST(req: NextRequest) {
       VALUES (${saleId}, ${paid}, ${s(method||"CASH")}, datetime('now'), datetime('now'))
     `);
   }
+  await recordPaymentEvent(session, { studentId: studentId ? Number(studentId) : null, categoryName: "Librat e anglishtes", paidBefore: 0, paidAfter: paid, method: method || "CASH", description: receiptNumber });
 
   return NextResponse.json({ id: saleId, receiptNumber }, { status: 201 });
 }

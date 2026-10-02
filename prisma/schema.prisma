@@ -67,6 +67,7 @@ model User {
   uploadedDocuments        SchoolDocument[]
   documentsSent            DocumentEmailLog[]
   familyEmailsSent         FamilyEmailLog[]
+  studentHistory           StudentHistory[]
 }
 
 model Class {
@@ -141,6 +142,7 @@ model Student {
   evidenca       StudentEvidenca[]
   familyEmailLogs FamilyEmailLog[]
   documentEmailLogs DocumentEmailLog[]
+  history        StudentHistory[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1398,4 +1400,29 @@ model LibriAme {
   levizjetFillore String? // JSON: page 2 Kl.1-5
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// ── Historiku i Nxënësit ──────────────────────────────────
+// Vijë kohore e ngjarjeve për një nxënës (paneli "Historiku" te faqja e
+// Nxënësve). Shkruhet VETËM përmes src/lib/studentHistory.ts (recordStudentEvent)
+// — një vend qendror, që s'e ndërpret kurrë veprimin kryesor nëse dështon.
+// `source = "backfill"` — ngjarje të rindërtuara nga të dhënat ekzistuese.
+model StudentHistory {
+  id          Int      @id @default(autoincrement())
+  studentId   Int
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type        String   // REGJISTRIM, PAGESE, KONTRATE, SMS, NDRYSHIM_KLASE, ZBRITJE, NDRYSHIM_TE_DHENASH, CREGJISTRIM
+  title       String   // p.sh. "Pagesë 500 €"
+  description String?
+  data        String?  // JSON: shuma, vlera e vjetër/e re, kategoria...
+  userId      Int?     // null = ngjarje e rindërtuar ose automatike
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  occurredAt  DateTime // data reale e ngjarjes
+  source      String   @default("auto") // auto | backfill
+  sourceKey   String?  // çelës unik për backfill (p.sh. "payment:123") — parandalon dyfishimin
+  createdAt   DateTime @default(now())
+
+  @@index([studentId, occurredAt])
+  @@index([type])
+  @@index([sourceKey])
 }

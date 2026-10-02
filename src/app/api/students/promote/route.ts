@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createManualBackup } from "@/lib/backup";
+import { recordStudentEvent, type StudentEventInput } from "@/lib/studentHistory";
 
 type Outcome = "PROMOTED" | "REPEATED" | "GRADUATED" | "LEFT";
 
@@ -180,6 +181,18 @@ export async function POST(req: NextRequest) {
         },
       });
     }
+
+    // Historiku — një ngjarje për çdo nxënës (pas transaksionit, s'e ndikon atë)
+    const label = `${fromYear?.label ?? "—"} → ${toYear.label}`;
+    await recordStudentEvent(session, decisions.map((d): StudentEventInput => {
+      const s = studentMap.get(d.studentId);
+      const from = s?.class?.name ?? "—";
+      if (d.outcome === "GRADUATED" || d.outcome === "LEFT") {
+        return { studentId: d.studentId, type: "CREGJISTRIM", title: d.outcome === "GRADUATED" ? "Diplomuar" : "Larguar", description: `Kalimi i vitit ${label}${d.note ? ` · ${d.note}` : ""}` };
+      }
+      const to = d.targetClassId ? (classesById.get(d.targetClassId)?.name ?? "—") : from;
+      return { studentId: d.studentId, type: "NDRYSHIM_KLASE", title: d.outcome === "REPEATED" ? `Përsërit klasën (${to})` : `Klasa: ${from} → ${to}`, description: `Kalimi i vitit ${label}`, data: { from, to, outcome: d.outcome } };
+    }));
 
     return NextResponse.json({
       promotionRunId: result.run.id,

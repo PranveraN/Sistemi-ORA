@@ -4,9 +4,10 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/sms";
 import { logAction } from "@/lib/audit";
-import { MESSAGE_TYPES } from "@/lib/smsStatus";
+import { MESSAGE_TYPES, statusLabel, type MessageType, type MessageStatus } from "@/lib/smsStatus";
+import { recordStudentEvent, type StudentEventInput } from "@/lib/studentHistory";
 
-interface RecipientInput { phone: string; name?: string; studentId?: number | string; message?: string; paymentStatus?: string }
+interface RecipientInput { phone: string; name?: string; studentId?: number | string; studentIds?: (number | string)[]; message?: string; paymentStatus?: string }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -95,6 +96,8 @@ export async function POST(req: NextRequest) {
   let sent = 0;
   let failed = 0;
   const errors: string[] = [];
+  const historyEvents: StudentEventInput[] = [];
+  const typeLabel = messageType ? (MESSAGE_TYPES.find(t => t.key === messageType)?.label ?? null) : null;
 
   for (const r of recipients) {
     const phone = String(r.phone).trim();
@@ -119,7 +122,27 @@ export async function POST(req: NextRequest) {
 
     if (result.ok) sent++;
     else { failed++; if (result.error && !errors.includes(result.error)) errors.push(result.error); }
+
+    // Historiku i nxënësit — për çdo fëmijë të përfshirë (edhe te "Një SMS për familje")
+    if (result.ok) {
+      const ids = Array.from(new Set(
+        (Array.isArray(r.studentIds) && r.studentIds.length ? r.studentIds : [r.studentId])
+          .map(x => parseInt(String(x ?? ""))).filter(n => n > 0)
+      ));
+      const st = r.paymentStatus && messageType
+        ? String(r.paymentStatus).split(",").map(x => statusLabel(messageType as MessageType, x as MessageStatus)).join(", ")
+        : null;
+      for (const sid of ids) {
+        historyEvents.push({
+          studentId: sid, type: "SMS",
+          title: typeLabel ? `SMS · ${typeLabel}` : "SMS te prindi",
+          description: personalizedMessage,
+          data: { phone, messageType, paymentStatus: r.paymentStatus ?? null, statusLabel: st },
+        });
+      }
+    }
   }
+  await recordStudentEvent(session, historyEvents);
 
   await logAction(session, "CREATE", "SmsMessage", null,
     `Dërgoi SMS te ${recipients.length} marrës (${sent} me sukses, ${failed} dështuan)`);

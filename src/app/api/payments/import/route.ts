@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordPaymentEvent } from "@/lib/studentHistory";
 
 export interface ImportPaymentRow {
   personalNumber?: string;
@@ -132,6 +133,11 @@ export async function POST(req: NextRequest) {
         await prisma.payment.create({ data });
         results.created++;
       }
+      await recordPaymentEvent(session, {
+        studentId: student.id, categoryName: category?.name ?? "Pagesë",
+        paidBefore: existing?.paidAmount ?? 0, paidAfter: paidAmount, paidDate,
+        method: data.method, description: "Import pagesash",
+      });
     } catch (err) {
       results.errors.push(`Gabim: ${row.firstName} ${row.lastName} — ${String(err)}`);
     }

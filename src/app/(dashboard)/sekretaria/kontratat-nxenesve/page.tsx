@@ -439,7 +439,18 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
       .catch(() => {});
   }, [student]);
 
+  // Historiku i nxënësit — kontrata s'ruhet në databazë (gjenerohet këtu),
+  // ndaj regjistrohet vetë fakti i gjenerimit. Best-effort: s'bllokon kurrë.
+  const logContract = (kind: string) => {
+    fetch(`/api/students/${student.id}/history`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "KONTRATE", title: `Kontratë e gjeneruar (${kind})` }),
+    }).catch(() => {});
+  };
+
   const handleExportPDF = async () => {
+    logContract("PDF");
     const element = document.getElementById("contract-content");
     if (!element) return;
     const html2canvas = (await import("html2canvas")).default;
@@ -465,6 +476,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
   };
 
   const handleExportWord = () => {
+    logContract("Word");
     const content = document.getElementById("contract-content")?.innerHTML;
     if (!content) return;
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>body{font-family:'Times New Roman',serif;font-size:10.5pt;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #000;padding:5px 8px;font-size:10.5pt;}input{border:none;border-bottom:1px solid #000;background:transparent;font-family:inherit;font-size:inherit;}.no-print{display:none!important;}</style></head><body>${content}</body></html>`;
@@ -478,6 +490,7 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
   };
 
   const handlePrint = () => {
+    logContract("printim");
     const content = document.getElementById("contract-content")?.innerHTML;
     if (!content) return;
     const w = window.open("", "_blank", "width=960,height=800");

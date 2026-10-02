@@ -41,6 +41,15 @@ export const SIMPLE_STATUSES: { key: SimpleStatus; label: string }[] = [
   { key: "UNPAID",  label: "Pa paguar" },
 ];
 
+/** Ngjyrat e statuseve — të përbashkëta për modulin SMS dhe faqen e Nxënësve. */
+export const STATUS_COLORS: Record<string, { chip: string; dot: string }> = {
+  PAID:        { chip: "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800", dot: "bg-green-500" },
+  PARTIAL:     { chip: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800", dot: "bg-orange-500" },
+  OVERDUE:     { chip: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800", dot: "bg-red-600" },
+  UNPAID:      { chip: "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800", dot: "bg-red-500" },
+  TIMI_INVEST: { chip: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800", dot: "bg-blue-500" },
+};
+
 export function statusesForType(type: MessageType): { key: MessageStatus; label: string }[] {
   if (type === "GENERAL") return [];
   return type === "SHKOLLIMI" ? TUITION_STATUSES : SIMPLE_STATUSES;

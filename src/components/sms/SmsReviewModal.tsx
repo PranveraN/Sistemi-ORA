@@ -13,6 +13,8 @@ export interface ReviewRow {
   names: string;
   classes: string;
   studentId: number;
+  /** Të gjithë fëmijët e përfshirë (për historikun e secilit) */
+  studentIds: number[];
   statusLabel: string;
   paymentStatus: string | null;
   message: string;
@@ -79,6 +81,7 @@ export default function SmsReviewModal({
             phone: r.phone,
             name: `${r.names} (prindi)`,
             studentId: r.studentId,
+            studentIds: r.studentIds,
             message: r.message,
             paymentStatus: r.paymentStatus,
           })),
