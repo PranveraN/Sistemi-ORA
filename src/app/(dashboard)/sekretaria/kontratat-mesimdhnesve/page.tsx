@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import Header from "@/components/layout/Header";
+import { logSekretariaDocument, loadSekretariaDocument } from "@/lib/sekretariaDocLog";
 import { Search, X, Printer, ChevronLeft, ChevronRight, FilePen, Clock, FileText } from "lucide-react";
 
 interface StaffMember {
@@ -88,7 +89,7 @@ const NR2_ITEMS = [
   "Kryen punë dhe detyra tjera të parapara me ligj dhe akte tjera normative të shkollës (kujdestaria e klasës, kujdestaria kryesore dhe ndihmëse e ditës, angazhime të tjera me kërkesë të drejtorisë së shkollës).",
 ];
 
-function ContractOrarPlote({ staff, onClose }: { staff: StaffMember; onClose: () => void }) {
+function ContractOrarPlote({ staff, onClose, initialData }: { staff: StaffMember; onClose: () => void; initialData?: Partial<ContractData> }) {
   const today = new Date();
   const todayFmt = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
 
@@ -104,6 +105,7 @@ function ContractOrarPlote({ staff, onClose }: { staff: StaffMember; onClose: ()
     nrLlogarise: staff.nrLlogarise || "",
     banka: staff.banka || "",
     dataKontrates: todayFmt,
+    ...initialData,
   });
 
   const set = (k: keyof ContractData) => (v: string) => setD(p => ({ ...p, [k]: v }));
@@ -124,6 +126,7 @@ function ContractOrarPlote({ staff, onClose }: { staff: StaffMember; onClose: ()
 </style></head><body>${content}</body></html>`);
     w.document.close();
     setTimeout(() => w.print(), 600);
+    logSekretariaDocument({ type: "KONTRATE_MESIMDHENES", staffId: staff.id, personName: staff.emri, data: { kind: "plote", ...d } });
   };
 
   return (
@@ -359,7 +362,7 @@ interface PartContractData {
   dataKontrates: string;
 }
 
-function ContractOrarPjesshme({ staff, onClose }: { staff: StaffMember; onClose: () => void }) {
+function ContractOrarPjesshme({ staff, onClose, initialData }: { staff: StaffMember; onClose: () => void; initialData?: Partial<PartContractData> }) {
   const today = new Date();
   const todayFmt = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
 
@@ -377,6 +380,7 @@ function ContractOrarPjesshme({ staff, onClose }: { staff: StaffMember; onClose:
     nrLlogarise: staff.nrLlogarise || "",
     banka: staff.banka || "",
     dataKontrates: todayFmt,
+    ...initialData,
   });
 
   const set = (k: keyof PartContractData) => (v: string) => setD(p => ({ ...p, [k]: v }));
@@ -398,6 +402,7 @@ function ContractOrarPjesshme({ staff, onClose }: { staff: StaffMember; onClose:
 </style></head><body>${content}</body></html>`);
     w.document.close();
     setTimeout(() => w.print(), 600);
+    logSekretariaDocument({ type: "KONTRATE_MESIMDHENES", staffId: staff.id, personName: staff.emri, data: { kind: "pjesshme", ...d } });
   };
 
   return (
@@ -625,6 +630,33 @@ export default function KontratetMesimdhnesve() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<StaffMember | null>(null);
   const [activeCard, setActiveCard] = useState<"plote" | "pjesshme" | null>(null);
+  const [initialData, setInitialData] = useState<Record<string, string> | undefined>(undefined);
+
+  // Nga paneli i Sekretarisë: ?staffId=X parazgjedh punonjësin; ?archiveId=Y rihap një kontratë të printuar
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const archiveId = p.get("archiveId");
+    const staffId = p.get("staffId");
+    const openStaff = async (id: number | string) => {
+      const r = await fetch(`/api/staff/${id}`).catch(() => null);
+      return r && r.ok ? (await r.json()) as StaffMember : null;
+    };
+    (async () => {
+      if (archiveId) {
+        const doc = await loadSekretariaDocument(archiveId);
+        if (!doc?.staffId) return;
+        const m = await openStaff(doc.staffId);
+        if (!m) return;
+        const { kind, ...rest } = doc.data as Record<string, string>;
+        setInitialData(rest);
+        setSelected(m);
+        setActiveCard(kind === "pjesshme" ? "pjesshme" : "plote");
+      } else if (staffId) {
+        const m = await openStaff(staffId);
+        if (m) setSelected(m);
+      }
+    })();
+  }, []);
   const limit = 20;
 
   const fetchStaff = useCallback(async () => {
@@ -786,11 +818,24 @@ export default function KontratetMesimdhnesve() {
         </div>
       </div>
 
+      {selected && !activeCard && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setSelected(null)}>
+          <div role="dialog" aria-modal="true" aria-label="Zgjidh llojin e kontratës" className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <p className="font-semibold text-slate-800 dark:text-white">Kontratë për {selected.emri}</p>
+            <p className="text-sm text-slate-500">Zgjidh llojin e kontratës:</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setActiveCard("plote")} className="btn-secondary justify-center text-sm"><FileText className="w-4 h-4" /> Orar i plotë</button>
+              <button onClick={() => setActiveCard("pjesshme")} className="btn-secondary justify-center text-sm"><Clock className="w-4 h-4" /> Orar i pjesshëm</button>
+            </div>
+            <button onClick={() => setSelected(null)} className="text-xs text-slate-400 hover:text-slate-600">Anulo</button>
+          </div>
+        </div>
+      )}
       {selected && activeCard === "plote" && (
-        <ContractOrarPlote staff={selected} onClose={() => setSelected(null)} />
+        <ContractOrarPlote staff={selected} initialData={initialData} onClose={() => { setSelected(null); setInitialData(undefined); }} />
       )}
       {selected && activeCard === "pjesshme" && (
-        <ContractOrarPjesshme staff={selected} onClose={() => setSelected(null)} />
+        <ContractOrarPjesshme staff={selected} initialData={initialData} onClose={() => { setSelected(null); setInitialData(undefined); }} />
       )}
     </>
   );

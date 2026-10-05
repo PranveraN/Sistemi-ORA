@@ -1355,6 +1355,9 @@ model Staff {
   niveliShkollimit String?
   profesioni      String?
   pozita          String?
+  // Data e mbarimit të kontratës (shtuar 2026-10 për panelin e Sekretarisë:
+  // "Skadojnë së shpejti / Të skaduara") — null = pa datë
+  contractEndDate DateTime?
   assistedStudents StudentSpecialCare[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1402,8 +1405,9 @@ model Hyra {
 
 model DocArchive {
   id          Int      @id @default(autoincrement())
-  type        String   // FLETEKALIM_CL, FLETEKALIM_CU, PASQYRE_CU, VERTETIM_CL
+  type        String   // FLETEKALIM_CL, FLETEKALIM_CU, PASQYRE_CU, VERTETIM_CL, VERTETIM_NXENES, VERTETIM_MESIMDHENES, VERTETIM_ASISTENTE, KONTRATE_NXENES, KONTRATE_MESIMDHENES
   studentId   Int?
+  staffId     Int?     // për dokumentet e stafit (vërtetim/kontratë) — atëherë studentName = emri i punonjësit
   studentName String
   className   String?
   data        String   // JSON: të gjitha fushat e modalit
@@ -1412,7 +1416,22 @@ model DocArchive {
 
   @@index([type])
   @@index([studentId])
+  @@index([staffId])
   @@index([createdAt])
+}
+
+// Mbyllja e Vitit — hapat që s'mund të llogariten nga të dhënat (p.sh. "Notat
+// përfundimtare të futura") shënohen me dorë nga paneli i Sekretarisë.
+model YearClosingCheck {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @default(1)
+  yearLabel      String   // viti që po mbyllet, p.sh. "2026-2027"
+  stepKey        String   // GRADES | DEBTS
+  doneById       Int?
+  doneByName     String?
+  doneAt         DateTime @default(now())
+
+  @@unique([organizationId, yearLabel, stepKey])
 }
 
 model LibriAme {

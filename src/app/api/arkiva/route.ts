@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   const [docs, total] = await Promise.all([
     prisma.docArchive.findMany({
       where,
-      select: { id: true, type: true, studentId: true, studentName: true, className: true, generatedBy: true, createdAt: true },
+      select: { id: true, type: true, studentId: true, staffId: true, studentName: true, className: true, generatedBy: true, createdAt: true },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * limit,
       take: limit,

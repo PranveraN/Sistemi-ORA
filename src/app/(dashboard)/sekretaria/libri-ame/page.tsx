@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Header from "@/components/layout/Header";
+import { LIBRI_AME_REQUIRED, missingLibriAmeFields } from "@/lib/sekretariaConstants";
 import {
   BookOpen, Search, ChevronLeft, ChevronRight, Save,
   Printer, Loader2, RotateCw, Check, Users,
@@ -178,6 +179,15 @@ export default function LibriAmePage() {
   const [grades15, setGrades15] = useState<Grades15>(defaultGrades15());
   const [move15, setMove15] = useState<Move15>(defaultMove15());
 
+  /* ── Nga paneli i Sekretarisë: ?studentId=X (hap nxënësin), ?filter=incomplete */
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("filter") === "incomplete") setIncompleteOnly(true);
+    const id = parseInt(p.get("studentId") || "");
+    if (id) setSelectedId(id);
+  }, []);
+
   /* ── Load students */
   useEffect(() => {
     fetch("/api/students?limit=500")
@@ -253,6 +263,8 @@ export default function LibriAmePage() {
 
   const filtered = students.filter(s =>
     `${s.firstName} ${s.lastName} ${s.diaryNumber||""}`.toLowerCase().includes(search.toLowerCase())
+    // ?filter=incomplete (nga paneli i Sekretarisë): nxënësit aktivë me fusha të detyrueshme që mungojnë
+    && (!incompleteOnly || ((s as unknown as { status?: string }).status === "ACTIVE" && missingLibriAmeFields(s as unknown as Record<string, unknown>).length > 0))
   );
 
   return (
@@ -307,6 +319,12 @@ export default function LibriAmePage() {
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Nxënësit</span>
                 <span className="ml-auto text-xs text-slate-400">{filtered.length}</span>
               </div>
+              {incompleteOnly && (
+                <div className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 text-[11px] text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2">
+                  <span>Me të dhëna që mungojnë ({LIBRI_AME_REQUIRED.map(f => f.label.toLowerCase()).join(", ")})</span>
+                  <button onClick={() => setIncompleteOnly(false)} className="underline shrink-0">Të gjithë</button>
+                </div>
+              )}
               <div className="overflow-y-auto max-h-[calc(100vh-220px)]">
                 {filtered.map(s => (
                   <button key={s.id} onClick={() => setSelectedId(s.id)}

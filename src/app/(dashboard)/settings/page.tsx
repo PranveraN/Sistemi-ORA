@@ -23,6 +23,7 @@ interface SchoolInfo {
   furnitoriOraPhone: string;
   enrollmentOpen: string;
   tuitionDueDate: string;
+  staffContractExpiryDays: string;
 }
 
 interface Category {
@@ -149,6 +150,7 @@ function SchoolSection() {
     furnitoriOraPhone: "",
     enrollmentOpen: "true",
     tuitionDueDate: "09-30",
+    staffContractExpiryDays: "30",
   });
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
@@ -289,6 +291,18 @@ function SchoolSection() {
           <p className="text-xs text-slate-400 mt-1">
             Formati MM-DD (p.sh. 09-30 = 30 Shtator). Pas kësaj date, nxënësit pa këste ose me plan fleksibël
             shfaqen si &quot;Me vonesë&quot; te Mesazhet SMS. Nuk ndikon pagesat dhe raportet.
+          </p>
+        </div>
+        <div>
+          <label className="form-label">Kontratat e stafit: paralajmëro sa ditë para mbarimit</label>
+          <input
+            type="number" min={1} max={365}
+            value={info.staffContractExpiryDays}
+            onChange={e => setInfo(s => ({ ...s, staffContractExpiryDays: e.target.value }))}
+            className="form-input"
+          />
+          <p className="text-xs text-slate-400 mt-1">
+            Te paneli i Sekretarisë, kontratat që mbarojnë brenda kësaj periudhe shfaqen si &quot;Skadojnë së shpejti&quot;.
           </p>
         </div>
       </div>

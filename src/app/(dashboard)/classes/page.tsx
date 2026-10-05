@@ -52,7 +52,8 @@ export default function ClassesPage() {
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupResult, setSetupResult] = useState<{ classesCreated: number; created: string[]; alreadyExisting: number } | null>(null);
   const [assignFor, setAssignFor] = useState<OverviewClass | null>(null);
-  const [showWizard, setShowWizard] = useState(false);
+  // ?wizard=1 — hapet direkt nga "Mbyllja e Vitit" te paneli i Sekretarisë
+  const [showWizard, setShowWizard] = useState(() => sp.get("wizard") === "1");
   const [assignAssistant, setAssignAssistant] = useState(false);
 
   const load = useCallback(async () => {

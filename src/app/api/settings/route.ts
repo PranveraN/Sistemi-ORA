@@ -21,6 +21,8 @@ const DEFAULTS: Record<string, string> = {
   // Kërkesat për materiale (shih src/lib/materialConfig.ts)
   materialAutoCreateItems: "false", // AUTO_CREATE_ITEMS — krijim automatik i artikujve të rinj
   materialRequestLeadDays: "3",     // sa ditë përpara duhet bërë një kërkesë "Normale"
+  // Paneli i Sekretarisë: sa ditë para mbarimit një kontratë stafi shfaqet "Skadon së shpejti"
+  staffContractExpiryDays: "30",
   // Regjistrimet (shih src/lib/enrollmentRules.ts)
   enrollmentEvidencaGrade1: "true",       // Klasa 1: evidenca e detyrueshme para pranimit
   enrollmentEvidencaOtherGrades: "false", // Klasat 2–9: evidenca e detyrueshme?

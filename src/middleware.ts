@@ -23,6 +23,7 @@ const API_MODULE_PREFIXES: { prefix: string; moduleKey: string }[] = [
   { prefix: "/api/material-requests",  moduleKey: "kerkesat" },
   // Stafi (paga, llogari bankare) — përdoret vetëm nga faqet e Sekretarisë
   { prefix: "/api/staff",              moduleKey: "sekretaria" },
+  { prefix: "/api/sekretaria",         moduleKey: "sekretaria" },
 ];
 
 // API-të e lejuara për rolin TEACHER (shih TeacherRequestsClient.tsx).

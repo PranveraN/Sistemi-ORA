@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import {
@@ -8,6 +8,11 @@ import {
   Printer, RotateCcw, X, ChevronRight,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { logSekretariaDocument, loadSekretariaDocument } from "@/lib/sekretariaDocLog";
+
+const ARCHIVE_TYPE: Record<CertTypeId, "VERTETIM_NXENES" | "VERTETIM_MESIMDHENES" | "VERTETIM_ASISTENTE"> = {
+  nxenes: "VERTETIM_NXENES", mesimdhenes: "VERTETIM_MESIMDHENES", asistente: "VERTETIM_ASISTENTE",
+};
 
 interface Student {
   id: number;
@@ -263,7 +268,52 @@ export default function Vertetime() {
   const handlePrint = () => {
     const w = window.open("", "_blank", "width=860,height=700");
     if (w) { w.document.write(buildPrintHtml(nr, certDate, body)); w.document.close(); }
+    // Arkivi (paneli i Sekretarisë: "Këtë muaj", "Dokumentet e fundit") — s'ndikon printimin
+    const p = persons.find(x => x.id === selId);
+    if (active && p) {
+      logSekretariaDocument({
+        type: ARCHIVE_TYPE[active.id],
+        ...(isStaff(p) ? { staffId: p.id, personName: p.emri } : { studentId: p.id, personName: `${p.firstName} ${p.lastName}`, className: p.class?.name ?? null }),
+        data: { certType: active.id, nr, certDate, body },
+      });
+    }
   };
+
+  // Nga paneli i Sekretarisë: ?type=nxenes|mesimdhenes|asistente (&studentId= / &staffId=) ose ?archiveId= (rihap)
+  const urlHandled = useRef(false);
+  useEffect(() => {
+    if (urlHandled.current || (!students.length && !staff.length)) return;
+    const p = new URLSearchParams(window.location.search);
+    const archiveId = p.get("archiveId");
+    const typeParam = p.get("type");
+    if (!archiveId && !typeParam) { urlHandled.current = true; return; }
+    if (!students.length || !staff.length) return; // prit të dy listat
+    urlHandled.current = true;
+    const select = (t: CertType, personId: number | null) => {
+      setActive(t);
+      setCertDate(todayFmt());
+      setNr("");
+      setSelId(personId);
+      const list: Person[] = t.personSource === "student" ? students : staff.filter(t.staffFilter ?? (() => true));
+      const person = list.find(x => x.id === personId);
+      setBody(person ? makeTemplate(t.id, person) : "");
+    };
+    if (archiveId) {
+      loadSekretariaDocument(archiveId).then(doc => {
+        const d = (doc?.data ?? {}) as { certType?: CertTypeId; nr?: string; certDate?: string; body?: string };
+        const t = CERT_TYPES.find(x => x.id === d.certType);
+        if (!doc || !t) return;
+        setActive(t);
+        setSelId(doc.studentId ?? doc.staffId ?? null);
+        setNr(d.nr ?? "");
+        setCertDate(d.certDate ?? todayFmt());
+        setBody(d.body ?? "");
+      });
+      return;
+    }
+    const t = CERT_TYPES.find(x => x.id === typeParam);
+    if (t) select(t, parseInt(p.get(t.personSource === "student" ? "studentId" : "staffId") || "") || null);
+  }, [students, staff]);
 
   // ── inline style constants ──────────────────────────────────────────────────
   const paper: React.CSSProperties = {

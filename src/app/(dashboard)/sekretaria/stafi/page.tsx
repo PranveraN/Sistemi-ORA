@@ -36,6 +36,7 @@ interface StaffMember {
   niveliShkollimit: string | null;
   profesioni: string | null;
   pozita: string | null;
+  contractEndDate: string | null;
 }
 
 const EMPTY: Omit<StaffMember, "id"> = {
@@ -45,7 +46,7 @@ const EMPTY: Omit<StaffMember, "id"> = {
   adresa: null, kodi: null, tipi: "Primar", status: "ACTIVE",
   dataLindjes: null, vendlindja: null, gjinia: null, shtetesia: null,
   email: null, dataFillimit: null, orari: null, niveliShkollimit: null,
-  profesioni: null, pozita: null,
+  profesioni: null, pozita: null, contractEndDate: null,
 };
 
 const TIPI_OPTIONS = ["", "Primar", "Sekondar", "Menaxhment"];
@@ -59,6 +60,16 @@ const TEMPLATE_HEADERS = [
   "Përzgjedhja e punëdhënësit Primar/Sekondar", "Orari", "Niveli i shkollimit",
   "Profesioni", "Pozita",
 ];
+
+/** Gjendja e kontratës sipas datës së mbarimit (i njëjti rregull si paneli i Sekretarisë). */
+function contractState(end: string | null, days: number): "expired" | "expiring" | null {
+  if (!end) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(end);
+  if (d < today) return "expired";
+  const limit = new Date(today); limit.setDate(today.getDate() + days);
+  return d <= limit ? "expiring" : null;
+}
 
 function tipiBadge(tipi: string | null) {
   if (tipi === "Menaxhment") return "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300";
@@ -99,6 +110,26 @@ export default function StafiPage() {
 
   useEffect(() => { load(); }, [search, tipiFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Parametrat nga paneli i Sekretarisë: ?new=1 (shto), ?staffId=X (profili), ?kontrata=expiring|expired
+  const [contractFilter, setContractFilter] = useState<"expiring" | "expired" | null>(null);
+  const [expiryDays, setExpiryDays] = useState(30);
+  const urlHandled = useRef(false);
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const k = p.get("kontrata");
+    if (k === "expiring" || k === "expired") {
+      setContractFilter(k);
+      fetch("/api/settings").then(r => r.json()).then(d => setExpiryDays(parseInt(d.staffContractExpiryDays) || 30)).catch(() => {});
+    }
+    if (p.get("new") === "1") { urlHandled.current = true; openAdd(); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (urlHandled.current || loading) return;
+    const id = parseInt(new URLSearchParams(window.location.search).get("staffId") || "");
+    const m = staff.find(s => s.id === id);
+    if (m) { urlHandled.current = true; openEdit(m); }
+  }, [staff, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const openAdd = () => { setForm(EMPTY); setModal("add"); };
   const openEdit = (m: StaffMember) => {
     setForm({
@@ -111,6 +142,7 @@ export default function StafiPage() {
       vendlindja: m.vendlindja, gjinia: m.gjinia, shtetesia: m.shtetesia,
       email: m.email,
       dataFillimit: m.dataFillimit ? m.dataFillimit.slice(0, 10) : null,
+      contractEndDate: m.contractEndDate ? m.contractEndDate.slice(0, 10) : null,
       orari: m.orari, niveliShkollimit: m.niveliShkollimit,
       profesioni: m.profesioni, pozita: m.pozita,
     });
@@ -167,8 +199,10 @@ export default function StafiPage() {
     }
   };
 
-  const menaxhment = staff.filter(s => s.tipi === "Menaxhment");
-  const mesimdhenes = staff.filter(s => s.tipi !== "Menaxhment");
+  // ?kontrata=expiring|expired (nga paneli i Sekretarisë) — vetëm filtër i listës
+  const visibleStaff = contractFilter ? staff.filter(s => contractState(s.contractEndDate, expiryDays) === contractFilter) : staff;
+  const menaxhment = visibleStaff.filter(s => s.tipi === "Menaxhment");
+  const mesimdhenes = visibleStaff.filter(s => s.tipi !== "Menaxhment");
 
   const downloadTemplate = () => {
     const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS]);
@@ -346,6 +380,12 @@ export default function StafiPage() {
           ))}
         </div>
 
+        {contractFilter && (
+          <div className="mb-4 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-sm text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2">
+            <span>Po shfaqen vetëm kontratat {contractFilter === "expired" ? "e skaduara" : `që skadojnë brenda ${expiryDays} ditëve`}.</span>
+            <button onClick={() => setContractFilter(null)} className="text-xs underline">Shfaq të gjithë</button>
+          </div>
+        )}
         {loading ? (
           <div className="flex justify-center py-16">
             <div className="animate-spin w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full" />
@@ -537,6 +577,10 @@ export default function StafiPage() {
                   <option>Nuk ka</option>
                   <option>Nuk eshte staf</option>
                 </select>
+              </div>
+              <div>
+                <label className="label">Data e Mbarimit të Kontratës</label>
+                <input type="date" className="input w-full" value={form.contractEndDate ?? ""} onChange={e => setForm(f => ({ ...f, contractEndDate: e.target.value || null }))} />
               </div>
               <div>
                 <label className="label">Tipi</label>

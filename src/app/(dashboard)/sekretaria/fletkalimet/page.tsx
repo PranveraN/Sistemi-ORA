@@ -1593,6 +1593,24 @@ export default function FletkaliметPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [archiveInitialData, setArchiveInitialData] = useState<any>(null);
 
+  // Nga paneli i Sekretarisë: ?studentId=X parazgjedh nxënësin (pastaj zgjidhet dokumenti)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const studentId = p.get("studentId");
+    if (!studentId || p.get("archiveId")) return;
+    fetch(`/api/students/${studentId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(s => {
+        if (!s?.id) return;
+        setSelectedStudent({
+          id: s.id, firstName: s.firstName, lastName: s.lastName, birthDate: s.birthDate ?? null,
+          personalNumber: s.personalNumber ?? null, class: s.class ? { name: s.class.name, level: s.class.level ?? "" } : null,
+          diaryNumber: s.diaryNumber ?? null,
+        });
+      })
+      .catch(() => {});
+  }, []);
+
   // Load archive entry from URL param ?archiveId=X
   useEffect(() => {
     const archiveId = new URLSearchParams(window.location.search).get("archiveId");
@@ -1704,6 +1722,12 @@ export default function FletkaliметPage() {
     <>
       <Header title="Fletëkalimet" backHref="/sekretaria" />
       <div className="p-6 animate-fade-in">
+        {selectedStudent && !activeDoc && (
+          <div className="mb-4 px-4 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-sm text-rose-800 dark:text-rose-300 flex items-center justify-between gap-2">
+            <span>Nxënësi: <b>{selectedStudent.firstName} {selectedStudent.lastName}</b>{selectedStudent.class ? ` (${selectedStudent.class.name})` : ""} — zgjidh dokumentin.</span>
+            <button onClick={() => setSelectedStudent(null)} className="text-xs underline">Hiq</button>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {CARDS.map(c => (
             c.active ? (

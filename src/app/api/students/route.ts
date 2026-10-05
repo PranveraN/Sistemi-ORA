@@ -90,6 +90,9 @@ export async function GET(req: NextRequest) {
   if (status) where.status = status;
   if (classId) where.classId = parseInt(classId);
   if (excludeId) where.NOT = { id: parseInt(excludeId) };
+  // Statusi i kontratës (Kontratat e Nxënësve / paneli i Sekretarisë): "Po" | "Nuk e ka kthy" | "Nuk ka" | "none"
+  const kontrataParam = searchParams.get("kontrata");
+  if (kontrataParam) where.kontrata = kontrataParam === "none" ? null : kontrataParam;
 
   // "Aktivë" — regjistruar/pjesë e shkollës GJATË periudhës së zgjedhur (jo
   // fusha e tanishme `status`, e cila s'pasqyron historikisht kush ishte aktiv

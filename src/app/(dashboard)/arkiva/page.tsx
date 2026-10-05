@@ -5,6 +5,7 @@ import { Archive, FileText, Receipt, BookOpen, Search, Trash2, ExternalLink, Ref
 import Link from "next/link";
 import { useModuleAccess } from "@/lib/useModuleAccess";
 import PaymentReceiptModal from "@/components/finance/PaymentReceiptModal";
+import { DOC_TYPES, reprintHref } from "@/lib/sekretariaConstants";
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -12,6 +13,7 @@ interface DocEntry {
   id: number;
   type: string;
   studentId: number | null;
+  staffId?: number | null;
   studentName: string;
   className: string | null;
   generatedBy: string | null;
@@ -46,6 +48,8 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   FLETEKALIM_CU: "Fletëkalim CU",
   PASQYRE_CU:    "Pasqyrë Notave CU",
   VERTETIM_CL:   "Vërtetim CL",
+  // Dokumentet e Sekretarisë (vërtetime/kontrata) — shih src/lib/sekretariaConstants.ts
+  ...Object.fromEntries(Object.entries(DOC_TYPES).filter(([k]) => !["FLETEKALIM_CL", "FLETEKALIM_CU", "PASQYRE_CU", "VERTETIM_CL"].includes(k)).map(([k, v]) => [k, v.label])),
 };
 
 const DOC_TYPE_COLORS: Record<string, string> = {
@@ -317,7 +321,7 @@ export default function ArkivaPage() {
                       <div className="flex items-center justify-end gap-2">
                         {canAccess("/sekretaria") && (
                           <Link
-                            href={`/sekretaria/fletkalimet?archiveId=${doc.id}`}
+                            href={reprintHref({ id: doc.id, type: doc.type, studentId: doc.studentId, staffId: doc.staffId ?? null })}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />

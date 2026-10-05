@@ -3,11 +3,14 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
+import { logSekretariaDocument } from "@/lib/sekretariaDocLog";
+import { STUDENT_CONTRACT_OPTIONS, STUDENT_CONTRACT_PENDING } from "@/lib/sekretariaConstants";
 import { Search, FileSignature, X, Printer, ChevronLeft, ChevronRight, Plus, FileDown, FileText } from "lucide-react";
 import React from "react";
 
 interface Student {
   id: number;
+  kontrata?: string | null; // statusi i kontratës: "Po" | "Nuk e ka kthy" | "Nuk ka"
   firstName: string;
   lastName: string;
   parentName: string;
@@ -286,7 +289,7 @@ function SiblingSearch({
   );
 }
 
-function ContractModal({ student, onClose }: { student: Student; onClose: () => void }) {
+function ContractModal({ student, onClose, onStatusChange }: { student: Student; onClose: () => void; onStatusChange?: (id: number, kontrata: string) => void }) {
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
@@ -447,6 +450,19 @@ function ContractModal({ student, onClose }: { student: Student; onClose: () => 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "KONTRATE", title: `Kontratë e gjeneruar (${kind})` }),
     }).catch(() => {});
+    // Arkivi (paneli i Sekretarisë → "Dokumentet e fundit")
+    logSekretariaDocument({
+      type: "KONTRATE_NXENES", studentId: student.id, personName: `${student.firstName} ${student.lastName}`,
+      className: student.class?.name ?? null, data: { kind },
+    });
+    // Kontrata e re pret nënshkrimin e prindit — vetëm kur s'ka ende status
+    if (!student.kontrata) {
+      fetch(`/api/students/${student.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kontrata: STUDENT_CONTRACT_PENDING }),
+      }).then(r => { if (r.ok) onStatusChange?.(student.id, STUDENT_CONTRACT_PENDING); }).catch(() => {});
+    }
   };
 
   const handleExportPDF = async () => {
@@ -980,7 +996,29 @@ export default function KontratetNxenesve() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Student | null>(null);
+  // Filtri i statusit — ?kontrata=pending vjen nga paneli i Sekretarisë ("Për sot")
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const k = searchParams.get("kontrata");
+    return k === "pending" ? STUDENT_CONTRACT_PENDING : k === "signed" ? "Po" : k === "none" ? "none" : "";
+  });
+  const [savingStatusId, setSavingStatusId] = useState<number | null>(null);
   const limit = 20;
+
+  const setStudentStatus = (id: number, kontrata: string) =>
+    setStudents(list => list.map(s => (s.id === id ? { ...s, kontrata } : s)));
+
+  async function changeStatus(s: Student, value: string) {
+    setSavingStatusId(s.id);
+    const prev = s.kontrata ?? null;
+    setStudentStatus(s.id, value);
+    const res = await fetch(`/api/students/${s.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kontrata: value || null }),
+    }).catch(() => null);
+    setSavingStatusId(null);
+    if (!res || !res.ok) { setStudentStatus(s.id, prev ?? ""); alert("Ruajtja e statusit dështoi."); }
+  }
 
   useEffect(() => {
     if (!studentIdParam) return;
@@ -993,6 +1031,7 @@ export default function KontratetNxenesve() {
   const fetchStudents = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ search, page: String(page), limit: String(limit), status: "ACTIVE" });
+    if (statusFilter) params.set("kontrata", statusFilter);
     const res = await fetch(`/api/students?${params}`);
     const data = await res.json();
     const sorted = (data.students || []).sort((a: Student, b: Student) =>
@@ -1002,7 +1041,7 @@ export default function KontratetNxenesve() {
     setStudents(sorted);
     setTotal(data.total || 0);
     setLoading(false);
-  }, [search, page]);
+  }, [search, page, statusFilter]);
 
   const _firstRender = useRef(true);
   useEffect(() => {
@@ -1018,13 +1057,18 @@ export default function KontratetNxenesve() {
     <>
       <Header title="Kontratat e Nxënësve" backHref="/sekretaria" />
       <div className="p-6 animate-fade-in">
-        <div className="card p-4 mb-4">
-          <div className="relative max-w-sm">
+        <div className="card p-4 mb-4 flex flex-wrap gap-3 items-center">
+          <div className="relative max-w-sm flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input type="text" placeholder="Kërko nxënës..." value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               className="input pl-9 w-full" />
           </div>
+          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} className="input w-auto" aria-label="Statusi i kontratës">
+            <option value="">Çdo status kontrate</option>
+            {STUDENT_CONTRACT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            <option value="none">Pa status</option>
+          </select>
         </div>
 
         <div className="card overflow-hidden">
@@ -1037,14 +1081,15 @@ export default function KontratetNxenesve() {
                   <th className="text-left px-4 py-3 font-medium text-slate-500 dark:text-slate-400">Klasa</th>
                   <th className="text-left px-4 py-3 font-medium text-slate-500 dark:text-slate-400">Prindi</th>
                   <th className="text-left px-4 py-3 font-medium text-slate-500 dark:text-slate-400">Telefoni</th>
+                  <th className="text-left px-4 py-3 font-medium text-slate-500 dark:text-slate-400">Statusi</th>
                   <th className="text-right px-4 py-3 font-medium text-slate-500 dark:text-slate-400">Veprime</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {loading ? (
-                  <tr><td colSpan={6} className="text-center py-12 text-slate-400">Duke ngarkuar...</td></tr>
+                  <tr><td colSpan={7} className="text-center py-12 text-slate-400">Duke ngarkuar...</td></tr>
                 ) : students.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-12 text-slate-400">Nuk u gjetën nxënës.</td></tr>
+                  <tr><td colSpan={7} className="text-center py-12 text-slate-400">Nuk u gjetën nxënës.</td></tr>
                 ) : students.map((s, i) => (
                   <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="px-4 py-3 text-slate-400 text-xs">{(page - 1) * limit + i + 1}</td>
@@ -1057,6 +1102,17 @@ export default function KontratetNxenesve() {
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{s.parentName || "—"}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{s.parentPhone || "—"}</td>
+                    <td className="px-4 py-3">
+                      <select value={s.kontrata ?? ""} disabled={savingStatusId === s.id} onChange={e => changeStatus(s, e.target.value)}
+                        aria-label={`Statusi i kontratës së ${s.firstName} ${s.lastName}`}
+                        className={`text-xs rounded-lg border px-2 py-1 bg-white dark:bg-slate-800 ${
+                          s.kontrata === "Po" ? "border-green-300 text-green-700 dark:text-green-400"
+                            : s.kontrata === STUDENT_CONTRACT_PENDING ? "border-amber-300 text-amber-700 dark:text-amber-400"
+                            : "border-slate-200 dark:border-slate-600 text-slate-500"}`}>
+                        <option value="">—</option>
+                        {STUDENT_CONTRACT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => setSelected(s)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg transition-colors">
@@ -1091,6 +1147,7 @@ export default function KontratetNxenesve() {
       {selected && (
         <ContractModal
           student={selected}
+          onStatusChange={setStudentStatus}
           onClose={() => {
             setSelected(null);
             if (studentIdParam) router.back();

@@ -7,6 +7,7 @@ export interface StaffFieldsInput {
   dataLindjes?: string | null; vendlindja?: string | null; gjinia?: string | null; shtetesia?: string | null;
   email?: string | null; dataFillimit?: string | null; orari?: string | null; niveliShkollimit?: string | null;
   profesioni?: string | null; pozita?: string | null;
+  contractEndDate?: string | null;
 }
 
 /** Ndërton objektin `data` për Staff.create/update — përdoret nga POST/PUT
@@ -39,6 +40,7 @@ export function buildStaffData(body: StaffFieldsInput) {
     niveliShkollimit: body.niveliShkollimit || null,
     profesioni:       body.profesioni       || null,
     pozita:           body.pozita           || null,
+    contractEndDate:  body.contractEndDate  ? new Date(body.contractEndDate)  : null,
   };
 }
 
