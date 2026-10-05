@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { computeTuitionMessageStatuses } from "@/lib/tuitionMessageStatus";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
 import { DEFAULT_ACADEMIC_YEAR } from "@/lib/academicYear";
 import {
   type MessageType, type MessageStatus, type StatusResult,
   PAYMENT_CATEGORY_FOR_TYPE, MESSAGE_TYPES,
-  getTuitionMessageStatus, getCategoryMessageStatus, getSalesMessageStatus,
-  tuitionDueDateFor, isValidPhone,
+  getCategoryMessageStatus, getSalesMessageStatus,
+  isValidPhone,
 } from "@/lib/smsStatus";
 
 // VETËM LEXIM — lista e marrësve të mundshëm për modulin e mesazheve, me
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
         periodWhere = { month: { in: bucket.months }, year: bucket.canonicalMonth >= 9 ? year : year + 1 };
       }
     }
-    const payments = category ? await prisma.payment.findMany({
+    const payments = category && type !== "SHKOLLIMI" ? await prisma.payment.findMany({
       where: {
         categoryId: category.id,
         studentId: { in: students.map(s => s.id) },
@@ -93,28 +94,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === "SHKOLLIMI") {
-      const [setting, tiRows] = await Promise.all([
-        prisma.setting.findUnique({ where: { key: "tuitionDueDate" } }),
-        prisma.timiInvestStudent.findMany({
-          where: { active: true },
-          select: { studentId: true, firstName: true, lastName: true },
-        }),
-      ]);
-      tuitionDueDate = tuitionDueDateFor(year, setting?.value);
-      // E njëjta lidhje TI si /api/category-payments: sipas studentId, ose sipas emrit
-      const tiIds = new Set(tiRows.filter(t => t.studentId).map(t => t.studentId as number));
-      const tiNames = new Set(tiRows.filter(t => !t.studentId)
-        .map(t => `${t.firstName.trim().toLowerCase()}|${t.lastName.trim().toLowerCase()}`));
-      const defaultAmount = category?.defaultAmount ?? 0;
-      for (const s of students) {
-        const isTi = tiIds.has(s.id) || tiNames.has(`${s.firstName.trim().toLowerCase()}|${s.lastName.trim().toLowerCase()}`);
-        results.set(s.id, getTuitionMessageStatus({
-          isTimiInvest: isTi,
-          installments: byStudent.get(s.id) ?? [],
-          expectedAmount: Math.round(defaultAmount * (1 - (s.discountPct ?? 0) / 100)),
-          tuitionDueDate,
-        }));
-      }
+      // E njëjta llogaritje përdoret edhe nga asistenti "Ora" (src/lib/tuitionMessageStatus.ts)
+      const r = await computeTuitionMessageStatuses(students, year);
+      tuitionDueDate = r.tuitionDueDate;
+      for (const [id, st] of r.statuses) results.set(id, st);
     } else {
       // Ushqimi / eShkollori — kush s'ka asnjë rresht s'e ka shërbimin (përjashtohet)
       for (const s of students) {

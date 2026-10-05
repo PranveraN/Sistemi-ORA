@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, FileText,
   GraduationCap, BarChart3, Settings, BookOpen,
   ChevronLeft, ChevronRight, UtensilsCrossed,
-  Shirt, BookMarked, NotebookPen, ClipboardList, Wallet, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, Truck, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip,
+  Shirt, BookMarked, NotebookPen, ClipboardList, Wallet, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, Truck, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -53,6 +53,7 @@ const navSections = [
       { href: "/sekretaria", icon: ClipboardList, label: "Administrata", roles: ["ADMIN", "SECRETARY"] as Role[] },
       { href: "/sms", icon: MessageSquare, label: "Mesazhe SMS", roles: ["ADMIN", "SECRETARY"] as Role[] },
       { href: "/dokumentet", icon: Paperclip, label: "Dokumentet", roles: ["ADMIN", "SECRETARY"] as Role[] },
+      { href: "/ora", icon: Sparkles, label: "Ora · Asistenti", roles: ["ADMIN"] as Role[] },
       { href: "/kerkesat",   icon: Package,        label: "Kërkesat",     roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/materiale",  icon: Boxes,          label: "Katalogu i Materialeve", roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/materiale/porosite", icon: Truck,  label: "Porositë e Materialeve", roles: ["ADMIN", "FINANCE"] as Role[] },
@@ -82,6 +83,8 @@ export default function Sidebar() {
   // listë e ngurtë rolesh që s'ishte kurrë e zbatuar në middleware/API).
   const allowedModules = (session?.user as { allowedModules?: string[] } | undefined)?.allowedModules ?? [];
   function itemVisible(href: string) {
+    // "Ora · Asistenti" — vetëm administratorët (nuk është modul i konfigurueshëm)
+    if (href === "/ora") return isSuperAdmin || role === "ADMIN";
     const mod = moduleForPath(href);
     return mod ? allowedModules.includes(mod.key) : true;
   }
@@ -90,6 +93,8 @@ export default function Sidebar() {
   // Numri i dukshëm te "Kërkesat" — kërkesa në pritje + aprovuara e padërguara,
   // që stafi ta shohë menjëherë pa hapur faqen (plotëson popup-in periodik).
   const [requestBadge, setRequestBadge] = useState(0);
+  // Artikuj të rinj për rishikim te "Katalogu i Materialeve"
+  const [reviewBadge, setReviewBadge] = useState(0);
   useEffect(() => {
     if (!isSuperAdmin && role !== "ADMIN" && role !== "FINANCE") return;
     let cancelled = false;
@@ -99,6 +104,7 @@ export default function Sidebar() {
         if (!res.ok || cancelled) return;
         const d = await res.json();
         setRequestBadge((d.pending ?? 0) + (d.approvedUnsent ?? 0));
+        setReviewBadge(d.forReview ?? 0);
       } catch { /* provohet përsëri në ciklin tjetër */ }
     }
     check();
@@ -160,7 +166,7 @@ export default function Sidebar() {
                 <ul className="space-y-0.5">
                   {visibleItems.map((item) => {
                     const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-                    const badge = item.href === "/kerkesat" ? requestBadge : 0;
+                    const badge = item.href === "/kerkesat" ? requestBadge : item.href === "/materiale" ? reviewBadge : 0;
                     return (
                       <li key={item.href}>
                         <Link

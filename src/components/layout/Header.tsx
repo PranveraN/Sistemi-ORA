@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSidebar } from "@/components/layout/SidebarContext";
 import { useModuleAccess } from "@/lib/useModuleAccess";
+import OraBar from "@/components/ora/OraBar";
 
 /* ── helpers ─────────────────────────────────────────────── */
 function getInitials(name?: string | null) {
@@ -458,6 +459,11 @@ export default function Header({ title, backHref }: { title?: string; backHref?:
             👁 Vetëm Shikim
           </span>
         )}
+      </div>
+
+      {/* Mes: "Pyet Orën ose kërko…" (Ctrl K) — shfaqet vetëm për rolet me qasje */}
+      <div className="flex-1 flex justify-end md:justify-center px-3 min-w-0">
+        <OraBar />
       </div>
 
       {/* Right */}

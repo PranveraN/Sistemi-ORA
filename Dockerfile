@@ -73,6 +73,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next          ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/public         ./public
 COPY --from=builder --chown=nextjs:nodejs /app/prisma         ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/scripts        ./scripts
+# Asistenti "Ora": udhëzimet (system-prompt.md) dhe testet e saktësisë
+COPY --from=builder --chown=nextjs:nodejs /app/ora            ./ora
 COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json  ./tsconfig.json
 

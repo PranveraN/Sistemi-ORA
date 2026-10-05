@@ -652,6 +652,9 @@ model MaterialRequest {
   classIdsJson   String?      // JSON [id] për "Disa klasa"
   deliveredAt    DateTime?    // "Dorëzuar" te mësuesi
   deliveredById  Int?
+  // Forma e re: "Shto foto ose link (opsionale)" për gjithë kërkesën
+  attachmentPath String?
+  productLink    String?
 
   items          MaterialRequestItem[]
   statusHistory  MaterialRequestStatusHistory[]
@@ -888,6 +891,8 @@ model Payment {
   updatedAt      DateTime         @updatedAt
 
   @@index([familyReceiptId])
+  @@index([studentId, categoryId])
+  @@index([organizationId, paidDate])
 }
 
 // Grupon disa pagesa (Payment) nga fëmijë të ndryshëm të së njëjtës familje, të regjistruara
@@ -1597,4 +1602,28 @@ model FamilyDocument {
   createdAt    DateTime @default(now())
 
   @@index([familyId])
+}
+
+// Asistenti "Ora" — regjistri i pyetjeve (pa përgjigjet e plota me të dhëna
+// personale; vetëm përmbledhja). Fshihet pas periudhës së ruajtjes (Cilësimet
+// → oraRetentionDays). Shih src/ora/.
+model OraQuery {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @default(1)
+  userId         Int?
+  role           String?
+  question       String
+  toolsJson      String?  // JSON: [{ name, input }] — veglat e thirrura me parametrat
+  status         String   // ANSWERED | UNANSWERED | CLARIFICATION | ERROR | DENIED
+  summary        String?  // p.sh. "count_students → 35"
+  durationMs     Int?
+  model          String?
+  inputTokens    Int?
+  outputTokens   Int?
+  rating         Int?     // 1 = 👍, -1 = 👎
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status])
 }
