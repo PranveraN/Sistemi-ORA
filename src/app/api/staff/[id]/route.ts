@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sessionHasModule } from "@/lib/specialCarePermissions";
-import { buildStaffData } from "@/lib/staffFields";
+import { buildStaffUpdateData } from "@/lib/staffFields";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -23,11 +23,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!sessionHasModule(session, "sekretaria")) return NextResponse.json({ error: "Nuk ke leje për këtë modul." }, { status: 403 });
 
   const { id } = await params;
-  const body = await req.json();
-  const member = await prisma.staff.update({
-    where: { id: Number(id) },
-    data: buildStaffData(body),
-  });
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Të dhëna të pavlefshme." }, { status: 400 });
+  }
+  // Përditëso vetëm fushat e dërguara — asnjë fushë s'fshihet sepse mungon
+  const data = buildStaffUpdateData(body);
+  if (!Object.keys(data).length) return NextResponse.json({ error: "Asnjë fushë për të ndryshuar." }, { status: 400 });
+  if ("emri" in data && !data.emri?.trim()) return NextResponse.json({ error: "Emri s'mund të jetë bosh." }, { status: 400 });
+
+  const existing = await prisma.staff.findUnique({ where: { id: Number(id) || 0 }, select: { id: true } });
+  if (!existing) return NextResponse.json({ error: "Punonjësi nuk u gjet" }, { status: 404 });
+
+  const member = await prisma.staff.update({ where: { id: existing.id }, data });
   return NextResponse.json(member);
 }
 

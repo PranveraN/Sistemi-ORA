@@ -154,7 +154,7 @@ export default function StafiPage() {
       const res = await fetch(`/api/staff/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...member, adresa: adresa || null }),
+        body: JSON.stringify({ adresa: adresa || null }),
       });
       if (!res.ok) {
         setStaff(prev => prev.map(s => s.id === id ? { ...s, adresa: prevAdresa } : s));

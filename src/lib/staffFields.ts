@@ -41,3 +41,13 @@ export function buildStaffData(body: StaffFieldsInput) {
     pozita:           body.pozita           || null,
   };
 }
+
+/** Për PUT /api/staff/[id]: VETËM fushat që janë dërguar në trup. Një fushë që
+ * mungon mbetet e paprekur (më parë bëhej null → një formular i paplotë fshinte
+ * pagën, llogarinë, kontratën...); një fushë e dërguar bosh e pastron vlerën. */
+export function buildStaffUpdateData(body: StaffFieldsInput) {
+  const full = buildStaffData(body);
+  return Object.fromEntries(
+    Object.entries(full).filter(([key]) => Object.prototype.hasOwnProperty.call(body, key))
+  ) as Partial<ReturnType<typeof buildStaffData>>;
+}
