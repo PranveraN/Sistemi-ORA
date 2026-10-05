@@ -142,7 +142,7 @@ export async function GET() {
       dueDate: r.createdAt.toISOString(),
       urgent: true,
       category: "MATERIAL",
-      link: "/kerkesat",
+      link: `/kerkesat?id=${r.id}`,
     })),
     ...lowStockMaterials.map((m) => ({
       id: `stock-${m.id}`,

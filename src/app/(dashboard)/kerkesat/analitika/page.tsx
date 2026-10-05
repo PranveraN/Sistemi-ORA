@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Header from "@/components/layout/Header";
+import MaterialsViewSwitch from "@/components/material-requests/admin/MaterialsViewSwitch";
 import { formatCurrency } from "@/lib/utils";
 import { REQUEST_STATUS_MAP } from "@/lib/materialConstants";
 import {
@@ -79,6 +80,7 @@ export default function KerkesatAnalitikaPage() {
     <>
       <Header title="Analitika e Materialeve" backHref="/kerkesat" />
       <div className="p-6 max-w-5xl mx-auto space-y-5 animate-fade-in">
+        <MaterialsViewSwitch />
         <div className="flex items-center justify-end">
           <button onClick={handleExport} className="btn-secondary text-sm">
             <Download className="w-4 h-4" />

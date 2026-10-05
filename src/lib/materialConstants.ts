@@ -31,19 +31,57 @@ export const PRIORITIES = [
 export const PRIORITY_MAP: Record<string, { label: string; color: string }> =
   Object.fromEntries(PRIORITIES.map(p => [p.value, { label: p.label, color: p.color }]));
 
-// Statuset e kërkesës (prind) të aktivizuara deri më tani — ORDER_PENDING/
-// ORDERED/RECEIVED/COMPLETED/DRAFT/CANCELLED rezervohen për fazat e Porosive/
-// Pranimit (6-7), s'përdoren ende.
+// Statuset e kërkesës (prind). PARTIALLY_APPROVED ruhet në bazë si më parë
+// (analitika/eksporti/email-et), por në faqen e administratës shfaqet nën
+// "Aprovuara" me etiketën "Pjesërisht". ORDERED/DELIVERED vendosen vetëm nga
+// src/lib/materialRequestStatus.ts (porosia e krijuar / e pranuar).
 export const REQUEST_STATUSES = [
   { value: "SUBMITTED",         label: "Në pritje",       color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
   { value: "UNDER_REVIEW",      label: "Në shqyrtim",     color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
   { value: "APPROVED",          label: "Aprovuar",        color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
   { value: "PARTIALLY_APPROVED",label: "Aprovuar Pjesërisht", color: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400" },
+  { value: "ORDERED",           label: "Porositur",       color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
+  { value: "DELIVERED",         label: "Dorëzuar",        color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
   { value: "REJECTED",          label: "Refuzuar",        color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
 ] as const;
 
 export const REQUEST_STATUS_MAP: Record<string, { label: string; color: string }> =
   Object.fromEntries(REQUEST_STATUSES.map(s => [s.value, { label: s.label, color: s.color }]));
+
+/** Kartat-taba të faqes së administratës, sipas rrjedhës së kërkesës. */
+export const REQUEST_STAGES = [
+  { key: "SUBMITTED",    label: "Në pritje",   statuses: ["SUBMITTED"] },
+  { key: "UNDER_REVIEW", label: "Në shqyrtim", statuses: ["UNDER_REVIEW"] },
+  { key: "APPROVED",     label: "Aprovuara",   statuses: ["APPROVED", "PARTIALLY_APPROVED"] },
+  { key: "ORDERED",      label: "Porositur",   statuses: ["ORDERED"] },
+  { key: "DELIVERED",    label: "Dorëzuar",    statuses: ["DELIVERED"] },
+  { key: "REJECTED",     label: "Refuzuara",   statuses: ["REJECTED"] },
+] as const;
+
+export function stageOf(status: string): string {
+  return REQUEST_STAGES.find(s => (s.statuses as readonly string[]).includes(status))?.key ?? status;
+}
+
+export interface PartialCheckItem {
+  status: string;
+  quantity: number;
+  approvedQuantity: number | null;
+  deliveredQuantity?: number;
+}
+
+/**
+ * Etiketa "Pjesërisht": aprovim i pjesshëm (artikuj të refuzuar ose sasi më e
+ * vogël), ose — te "Dorëzuar" — kur ka ardhur vetëm një pjesë e sasisë.
+ */
+export function isPartialRequest(status: string, items: PartialCheckItem[]): boolean {
+  if (status === "PARTIALLY_APPROVED") return true;
+  if (!["APPROVED", "ORDERED", "DELIVERED"].includes(status)) return false;
+  const partialApproval = items.some(it => it.status === "REJECTED" || (it.status === "APPROVED" && (it.approvedQuantity ?? 0) < it.quantity));
+  if (status === "DELIVERED") {
+    return partialApproval || items.some(it => it.status === "APPROVED" && (it.deliveredQuantity ?? 0) < (it.approvedQuantity ?? 0));
+  }
+  return partialApproval;
+}
 
 // Statusi i stokut — RED nën minimum (ose 0 kur s'ka minimum), YELLOW brenda
 // një "zone paralajmërimi" (1.5x minimumi), GREEN përndryshe.

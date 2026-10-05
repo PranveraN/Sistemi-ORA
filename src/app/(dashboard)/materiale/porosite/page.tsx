@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Header from "@/components/layout/Header";
+import MaterialsViewSwitch from "@/components/material-requests/admin/MaterialsViewSwitch";
 import { formatDate } from "@/lib/utils";
 import {
   Plus, X, Loader2, Package, Truck, CheckCircle, XCircle, Trash2,
@@ -295,6 +296,7 @@ export default function MaterialOrdersPage() {
     <>
       <Header title="Porositë e Materialeve" />
       <div className="p-6 max-w-5xl mx-auto space-y-5 animate-fade-in">
+        <MaterialsViewSwitch />
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-slate-500">
             {pendingItems.length > 0

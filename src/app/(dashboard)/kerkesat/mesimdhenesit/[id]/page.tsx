@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Header from "@/components/layout/Header";
+import MaterialsViewSwitch from "@/components/material-requests/admin/MaterialsViewSwitch";
 import { formatDate } from "@/lib/utils";
 import { exportMaterialRequestsExcel, type ExportableRequest } from "@/lib/materialRequestExport";
 import { REQUEST_STATUS_MAP } from "@/lib/materialConstants";
@@ -47,6 +48,7 @@ export default function TeacherFolderPage() {
     <>
       <Header title={teacherName} backHref="/kerkesat/mesimdhenesit" />
       <div className="p-6 max-w-3xl mx-auto space-y-4 animate-fade-in">
+        <MaterialsViewSwitch />
         <div className="flex items-center justify-end">
           <button onClick={handleExport} disabled={!requests.length} className="btn-secondary text-sm">
             <Download className="w-4 h-4" />

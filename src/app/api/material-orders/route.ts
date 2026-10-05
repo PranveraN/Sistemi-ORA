@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
+import { recomputeRequestStatuses, notifyStatusChanges } from "@/lib/materialRequestStatus";
 
 const ORDER_INCLUDE = {
   supplier: { select: { id: true, emri: true } },
@@ -139,22 +140,29 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  const order = await prisma.materialOrder.create({
-    data: {
-      organizationId: orgId,
-      orderNumber,
-      supplierId,
-      status: "PENDING",
-      expectedDeliveryDate: body.expectedDeliveryDate ? new Date(body.expectedDeliveryDate) : null,
-      notes: body.notes ? String(body.notes).trim() : null,
-      totalItems: lines.length,
-      totalQuantity,
-      estimatedCost,
-      createdById: userId,
-      items: { create: orderItemsData },
-    },
-    include: ORDER_INCLUDE,
+  const requestIds = [...new Set(requestItems.map(it => it.requestId))];
+  const { order, changes } = await prisma.$transaction(async (tx) => {
+    const order = await tx.materialOrder.create({
+      data: {
+        organizationId: orgId,
+        orderNumber,
+        supplierId,
+        status: "PENDING",
+        expectedDeliveryDate: body.expectedDeliveryDate ? new Date(body.expectedDeliveryDate) : null,
+        notes: body.notes ? String(body.notes).trim() : null,
+        totalItems: lines.length,
+        totalQuantity,
+        estimatedCost,
+        createdById: userId,
+        items: { create: orderItemsData },
+      },
+      include: ORDER_INCLUDE,
+    });
+    // Kërkesat përkatëse kalojnë në "Porositur"
+    const changes = await recomputeRequestStatuses(tx, requestIds, userId, `Porosia ${order.orderNumber}`);
+    return { order, changes };
   });
+  notifyStatusChanges(changes).catch(() => {});
 
   await logAction(session, "CREATE", "MaterialOrder", order.id,
     `Krijoi porosinë ${order.orderNumber}${order.supplier ? ` te ${order.supplier.emri}` : ""} — ${order.totalItems} artikuj, ${order.totalQuantity} copë`);

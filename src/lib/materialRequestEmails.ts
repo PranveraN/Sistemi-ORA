@@ -53,14 +53,16 @@ export async function sendSubmissionConfirmationEmail(request: EmailRequest) {
   await sendEmail(request.teacher.email, `Kërkesa jote për material u regjistrua`, html);
 }
 
-// Njofton mësimdhënësen për vendimin final (APPROVED/PARTIALLY_APPROVED/REJECTED)
-// — përfshin arsyen kur refuzohet.
+// Njofton mësimdhënësen për çdo ndryshim statusi (aprovuar, pjesërisht,
+// refuzuar, porositur, dorëzuar) — përfshin arsyen kur refuzohet.
 export async function sendDecisionEmail(request: EmailRequest, status: string, reviewNote: string | null) {
   if (!request.teacher.email) return;
   const statusLabel: Record<string, string> = {
     APPROVED: "Kërkesa u Aprovua",
     PARTIALLY_APPROVED: "Kërkesa u Aprovua Pjesërisht",
     REJECTED: "Kërkesa u Refuzua",
+    ORDERED: "Materialet e Kërkesës u Porositën",
+    DELIVERED: "Materialet e Kërkesës Arritën",
   };
   const title = statusLabel[status] ?? "Kërkesa u Përditësua";
 

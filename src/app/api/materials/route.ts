@@ -11,12 +11,14 @@ export async function GET(req: NextRequest) {
   const isManagement = role === "ADMIN" || role === "SUPERADMIN" || role === "FINANCE";
 
   const categoryIdParam = req.nextUrl.searchParams.get("categoryId");
+  const reviewParam = req.nextUrl.searchParams.get("reviewStatus"); // p.sh. "pending" — artikujt e rinj pa rishikuar
 
   const materials = await prisma.material.findMany({
     where: {
       organizationId: orgId,
       ...(isManagement ? {} : { active: true }),
       ...(categoryIdParam ? { categoryId: parseInt(categoryIdParam) } : {}),
+      ...(reviewParam ? { reviewStatus: reviewParam } : {}),
     },
     include: {
       category: { select: { id: true, name: true } },

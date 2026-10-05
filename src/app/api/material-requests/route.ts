@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { UNIT_VALUES } from "@/lib/materialConstants";
 import { sendSubmissionConfirmationEmail } from "@/lib/materialRequestEmails";
+import { ACTIVE_ORDER_LINK } from "@/lib/materialRequestStatus";
 
 const PRIORITY_VALUES = ["NORMAL", "IMPORTANT", "URGENT"];
 
@@ -13,8 +14,12 @@ const REQUEST_INCLUDE = {
   class: { select: { id: true, name: true } },
   items: {
     include: {
-      material: { select: { id: true, name: true, needsColor: true } },
+      material: { select: { id: true, name: true, needsColor: true, reviewStatus: true } },
       customCategory: { select: { id: true, name: true } },
+      orderLinks: {
+        where: ACTIVE_ORDER_LINK,
+        select: { quantityContributed: true, orderItem: { select: { order: { select: { id: true, orderNumber: true, status: true } } } } },
+      },
     },
     orderBy: { id: "asc" as const },
   },

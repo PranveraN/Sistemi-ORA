@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
+import MaterialsViewSwitch from "@/components/material-requests/admin/MaterialsViewSwitch";
 import { Folder, Clock, CheckCircle, XCircle } from "lucide-react";
 
 interface MaterialRequestRow {
@@ -56,6 +57,7 @@ export default function MesimdhenesitFolderPage() {
     <>
       <Header title="Mësimdhënësit" backHref="/kerkesat" />
       <div className="p-6 max-w-4xl mx-auto space-y-3 animate-fade-in">
+        <MaterialsViewSwitch />
         <p className="text-sm text-slate-400 mb-2">Historiku i kërkesave për secilën mësimdhënëse.</p>
 
         {loading ? (

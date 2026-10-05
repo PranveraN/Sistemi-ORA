@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { sendDecisionEmail } from "@/lib/materialRequestEmails";
+import { ACTIVE_ORDER_LINK, recomputeRequestStatuses, notifyStatusChanges } from "@/lib/materialRequestStatus";
 
 const REQUEST_INCLUDE = {
   teacher: { select: { name: true, email: true } },
@@ -17,16 +17,9 @@ const REQUEST_INCLUDE = {
   },
 } as const;
 
-// Statusi i kërkesës (prind) rrjedh nga statuset e artikujve, jo anasjelltas —
-// e vetmja "e vërtetë" mbahet te artikujt; ky funksion vetëm e përmbledh.
-function deriveParentStatus(items: { status: string; quantity: number; approvedQuantity: number | null }[]): string {
-  if (items.some(it => it.status === "PENDING")) return "UNDER_REVIEW";
-  const allApproved = items.every(it => it.status === "APPROVED" && it.approvedQuantity === it.quantity);
-  if (allApproved) return "APPROVED";
-  const allRejected = items.every(it => it.status === "REJECTED");
-  if (allRejected) return "REJECTED";
-  return "PARTIALLY_APPROVED";
-}
+// Statusi i kërkesës (prind) rrjedh nga artikujt — shih src/lib/materialRequestStatus.ts.
+
+const ITEM_STATUS_LABEL: Record<string, string> = { APPROVED: "përfshirë", REJECTED: "përjashtuar", PENDING: "në pritje" };
 
 // Detaj i plotë i një kërkese të vetme — përdoret nga Historiku (Faza 8) për
 // timeline-in e statuseve dhe gjurmimin e përmbushjes (porositur/pranuar).
@@ -85,12 +78,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const existing = await prisma.materialRequest.findFirst({
     where: { id: requestId, organizationId: orgId },
-    select: { status: true, items: { select: { id: true, quantity: true } } },
+    select: {
+      status: true,
+      items: {
+        select: {
+          id: true, quantity: true, status: true, approvedQuantity: true, isCustom: true, customItemName: true,
+          material: { select: { name: true } },
+          orderLinks: { where: ACTIVE_ORDER_LINK, select: { quantityContributed: true } },
+        },
+      },
+    },
   });
   if (!existing) return NextResponse.json({ error: "Kërkesa nuk u gjet" }, { status: 404 });
+  type ExistingItem = (typeof existing.items)[number];
+  const orderedOf = (it: ExistingItem) => it.orderLinks.reduce((s, l) => s + l.quantityContributed, 0);
+  const nameOf = (it: ExistingItem) => (it.isCustom ? it.customItemName : it.material?.name) ?? "Artikull";
 
   // ── Veprim i shpejtë: shëno "Në shqyrtim", pa prekur artikujt ──
+  // (edhe automatikisht kur administrata hap një kërkesë "Në pritje")
   if (body.action === "UNDER_REVIEW") {
+    if (existing.status !== "SUBMITTED") {
+      const current = await prisma.materialRequest.findUnique({ where: { id: requestId }, include: REQUEST_INCLUDE });
+      return NextResponse.json(current);
+    }
     const updated = await prisma.$transaction(async (tx) => {
       const req = await tx.materialRequest.update({
         where: { id: requestId },
@@ -109,6 +119,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (Array.isArray(body.items)) {
     const validItemIds = new Set(existing.items.map(it => it.id));
     const decisions: { id: number; status: string; approvedQuantity: number | null }[] = [];
+    const changeNotes: string[] = [];
 
     for (const raw of body.items) {
       const itemId = parseInt(String(raw.id));
@@ -116,13 +127,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const status = String(raw.status ?? "");
       if (status !== "APPROVED" && status !== "REJECTED" && status !== "PENDING") continue;
 
-      const itemQuantity = existing.items.find(it => it.id === itemId)!.quantity;
+      const cur = existing.items.find(it => it.id === itemId)!;
+      const itemQuantity = cur.quantity;
       let approvedQuantity: number | null = null;
       if (status === "APPROVED") {
         const requested = raw.approvedQuantity !== undefined && raw.approvedQuantity !== ""
           ? parseInt(String(raw.approvedQuantity))
           : itemQuantity;
         approvedQuantity = Math.min(Math.max(1, requested || itemQuantity), itemQuantity);
+      }
+
+      // Artikulli që është tashmë në porosi s'mund të përjashtohet ose të ulet nën sasinë e porositur
+      const ordered = orderedOf(cur);
+      if (ordered > 0 && (status !== "APPROVED" || (approvedQuantity ?? 0) < ordered)) {
+        return NextResponse.json(
+          { error: `"${nameOf(cur)}" është tashmë në porosi (${ordered}) — anuloje porosinë para se ta ulësh ose ta përjashtosh.` },
+          { status: 409 }
+        );
+      }
+
+      if (cur.status !== status) {
+        changeNotes.push(`${nameOf(cur)}: ${ITEM_STATUS_LABEL[status]}${status === "APPROVED" ? ` (${approvedQuantity})` : ""}`);
+      } else if (status === "APPROVED" && cur.approvedQuantity !== approvedQuantity) {
+        changeNotes.push(`${nameOf(cur)}: sasia ${cur.approvedQuantity ?? cur.quantity} → ${approvedQuantity}`);
       }
 
       decisions.push({ id: itemId, status, approvedQuantity });
@@ -132,51 +159,56 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "Asnjë vendim i vlefshëm" }, { status: 400 });
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const { updated, changes } = await prisma.$transaction(async (tx) => {
       for (const d of decisions) {
         await tx.materialRequestItem.update({
           where: { id: d.id },
           data: { status: d.status, approvedQuantity: d.approvedQuantity, approvalNote: reviewNote },
         });
       }
-
-      const allItems = await tx.materialRequestItem.findMany({
-        where: { requestId },
-        select: { status: true, quantity: true, approvedQuantity: true },
-      });
-      const parentStatus = deriveParentStatus(allItems);
-
-      const req = await tx.materialRequest.update({
+      await tx.materialRequest.update({
         where: { id: requestId },
-        data: { status: parentStatus, reviewNote, reviewedById: userId, reviewedAt: new Date() },
-        include: REQUEST_INCLUDE,
+        data: { reviewNote, reviewedById: userId, reviewedAt: new Date() },
       });
+      const changes = await recomputeRequestStatuses(tx, [requestId], userId, reviewNote);
 
-      if (parentStatus !== existing.status) {
+      // Ndryshimet e artikujve/sasive ruhen te historiku (data + përdoruesi) edhe kur statusi s'ndryshon
+      if (changeNotes.length) {
+        const now = (await tx.materialRequest.findUnique({ where: { id: requestId }, select: { status: true } }))!.status;
         await tx.materialRequestStatusHistory.create({
-          data: { requestId, fromStatus: existing.status, toStatus: parentStatus, changedById: userId, note: reviewNote },
+          data: { requestId, fromStatus: now, toStatus: now, changedById: userId, note: changeNotes.join("; ") },
         });
       }
 
-      return req;
+      const updated = await tx.materialRequest.findUnique({ where: { id: requestId }, include: REQUEST_INCLUDE });
+      return { updated, changes };
     });
 
-    sendDecisionEmail(updated, updated.status, reviewNote).catch(() => {});
+    notifyStatusChanges(changes, reviewNote).catch(() => {});
 
     return NextResponse.json(updated);
   }
 
-  // ── Vendim i tërë kërkesës (rrugë e shpejtë: "Aprovo të gjitha" / "Refuzo të gjitha") ──
+  // ── Vendim i tërë kërkesës (rrugë e shpejtë: "Aprovo të gjitha" / "Refuzo") ──
   const status = String(body.status ?? "");
   if (status !== "APPROVED" && status !== "REJECTED") {
     return NextResponse.json({ error: "Status i pavlefshëm" }, { status: 400 });
   }
+  if (status === "REJECTED" && !reviewNote) {
+    return NextResponse.json({ error: "Shkruaj arsyen e refuzimit — i dërgohet mësuesit." }, { status: 400 });
+  }
+  const orderedItems = existing.items.filter(it => orderedOf(it) > 0);
+  if (orderedItems.length) {
+    return NextResponse.json(
+      { error: `${orderedItems.length} artikuj janë tashmë në porosi — anuloje porosinë para se ta ndryshosh vendimin.` },
+      { status: 409 }
+    );
+  }
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const req = await tx.materialRequest.update({
+  const { updated, changes } = await prisma.$transaction(async (tx) => {
+    await tx.materialRequest.update({
       where: { id: requestId },
-      data: { status, reviewNote, reviewedById: userId, reviewedAt: new Date() },
-      include: REQUEST_INCLUDE,
+      data: { reviewNote, reviewedById: userId, reviewedAt: new Date() },
     });
 
     for (const item of existing.items) {
@@ -190,14 +222,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
 
-    await tx.materialRequestStatusHistory.create({
-      data: { requestId, fromStatus: existing.status, toStatus: status, changedById: userId, note: reviewNote },
-    });
-
-    return req;
+    const changes = await recomputeRequestStatuses(tx, [requestId], userId, reviewNote);
+    const updated = await tx.materialRequest.findUnique({ where: { id: requestId }, include: REQUEST_INCLUDE });
+    return { updated, changes };
   });
 
-  sendDecisionEmail(updated, status, reviewNote).catch(() => {});
+  notifyStatusChanges(changes, reviewNote).catch(() => {});
 
   return NextResponse.json(updated);
 }

@@ -745,6 +745,9 @@ model MaterialRequestItem {
   sourceText         String?          // pjesa e tekstit të mësuesit që e krijoi këtë rresht
   matchType          String?          // exact | alias | fuzzy | new | manual | ai | catalog (null = rresht i vjetër)
   confirmedByTeacher Boolean          @default(false)
+  // Sa ka ardhur nga porositë për këtë artikull (llogaritet nga pranimi i porosisë,
+  // shih src/lib/materialRequestStatus.ts) — bazë për statusin "Dorëzuar"
+  deliveredQuantity  Int              @default(0)
   orderLinks         MaterialOrderRequestItem[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt

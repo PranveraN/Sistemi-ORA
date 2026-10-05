@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
+import type { Prisma } from "@prisma/client";
+import { recomputeRequestStatuses, notifyStatusChanges } from "@/lib/materialRequestStatus";
+
+async function requestIdsOfOrder(tx: Prisma.TransactionClient, orderId: number): Promise<number[]> {
+  const links = await tx.materialOrderRequestItem.findMany({
+    where: { orderItem: { orderId } },
+    select: { requestItem: { select: { requestId: true } } },
+  });
+  return [...new Set(links.map(l => l.requestItem.requestId))];
+}
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   PENDING: ["ORDERED", "CANCELLED"],
@@ -31,7 +41,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!ALLOWED_TRANSITIONS[existing.status]?.includes(status)) {
       return NextResponse.json({ error: `S'mund të kalosh nga "${existing.status}" në "${status}"` }, { status: 400 });
     }
-    await prisma.materialOrder.update({ where: { id: orderId }, data: { status } });
+    const userId = Number((session.user as { id?: string }).id);
+    const changes = await prisma.$transaction(async (tx) => {
+      await tx.materialOrder.update({ where: { id: orderId }, data: { status } });
+      // Anulimi i kthen kërkesat përkatëse te "Aprovuara" (artikujt dalin sërish te "Për t'u porositur")
+      return status === "CANCELLED"
+        ? recomputeRequestStatuses(tx, await requestIdsOfOrder(tx, orderId), userId, `Porosia ${existing.orderNumber} u anulua`)
+        : [];
+    });
+    notifyStatusChanges(changes).catch(() => {});
     await logAction(session, "UPDATE", "MaterialOrder", orderId, `Ndryshoi statusin e porosisë ${existing.orderNumber} në ${status}`);
   } else {
     await prisma.materialOrder.update({
@@ -81,7 +99,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Vetëm porositë ende të pakonfirmuara (PENDING) mund të fshihen — anuloje në vend të kësaj." }, { status: 400 });
   }
 
-  await prisma.materialOrder.delete({ where: { id: orderId } });
+  const userId = Number((session.user as { id?: string }).id);
+  await prisma.$transaction(async (tx) => {
+    const requestIds = await requestIdsOfOrder(tx, orderId);
+    await tx.materialOrder.delete({ where: { id: orderId } });
+    await recomputeRequestStatuses(tx, requestIds, userId, `Porosia ${existing.orderNumber} u fshi`);
+  });
   await logAction(session, "DELETE", "MaterialOrder", orderId, `Fshiu porosinë ${existing.orderNumber}`);
 
   return NextResponse.json({ success: true });

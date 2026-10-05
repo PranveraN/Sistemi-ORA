@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
+import { recomputeRequestStatuses, notifyStatusChanges } from "@/lib/materialRequestStatus";
 
 interface ReceiveInput { orderItemId: number; quantity: number; note?: string }
 
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Asnjë sasi e vlefshme për t'u pranuar" }, { status: 400 });
   }
 
-  await prisma.$transaction(async (tx) => {
+  const changes = await prisma.$transaction(async (tx) => {
     for (const r of toReceive) {
       await tx.materialOrderItem.update({
         where: { id: r.orderItem.id },
@@ -86,7 +87,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         actualCost: Math.round(actualCost * 100) / 100,
       },
     });
+
+    // Kërkesat e lidhura kalojnë në "Dorëzuar" (pjesërisht kur ka ardhur vetëm një pjesë)
+    const links = await tx.materialOrderRequestItem.findMany({
+      where: { orderItem: { orderId } },
+      select: { requestItem: { select: { requestId: true } } },
+    });
+    return recomputeRequestStatuses(tx, links.map(l => l.requestItem.requestId), userId, `Pranim i porosisë ${order.orderNumber}`);
   });
+  notifyStatusChanges(changes).catch(() => {});
 
   await logAction(session, "UPDATE", "MaterialOrder", orderId,
     `Pranoi ${toReceive.length} rreshta të porosisë ${order.orderNumber} — ${toReceive.reduce((s, r) => s + r.quantity, 0)} copë, stoku u rrit`);

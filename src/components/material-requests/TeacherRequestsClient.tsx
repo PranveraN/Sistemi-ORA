@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Send, Loader2, Clock, CheckCircle, XCircle, Package, Plus, X, Folder,
-  ChevronDown, Search, Paperclip, Sparkles, RotateCcw, ArrowLeft, ArrowRight, History,
+  ChevronDown, Search, Paperclip, Sparkles, RotateCcw, ArrowLeft, ArrowRight, History, Truck, PackageCheck,
 } from "lucide-react";
 import { formatDate, formatDateTime, normalizeSearch } from "@/lib/utils";
-import { UNITS, COLORS, PRIORITIES, REQUEST_STATUS_MAP } from "@/lib/materialConstants";
+import { UNITS, COLORS, PRIORITIES, REQUEST_STATUS_MAP, isPartialRequest } from "@/lib/materialConstants";
 
 /* ─── Types ───────────────────────────────────────────────── */
 interface Material {
@@ -59,6 +59,8 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
   UNDER_REVIEW: <Clock className="w-3.5 h-3.5" />,
   APPROVED: <CheckCircle className="w-3.5 h-3.5" />,
   PARTIALLY_APPROVED: <CheckCircle className="w-3.5 h-3.5" />,
+  ORDERED: <Truck className="w-3.5 h-3.5" />,
+  DELIVERED: <PackageCheck className="w-3.5 h-3.5" />,
   REJECTED: <XCircle className="w-3.5 h-3.5" />,
 };
 const PENDING_STATUSES = new Set(["SUBMITTED", "UNDER_REVIEW"]);
@@ -582,6 +584,7 @@ export default function TeacherRequestsClient() {
                               <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${st.color}`}>
                                 {STATUS_ICON[r.status]}
                                 {st.label}
+                                {(r.status === "ORDERED" || r.status === "DELIVERED") && isPartialRequest(r.status, r.items) && <span className="font-normal">· pjesërisht</span>}
                               </span>
                             </div>
                             {!PENDING_STATUSES.has(r.status) && r.reviewNote && (
