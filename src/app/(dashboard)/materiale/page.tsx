@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Header from "@/components/layout/Header";
+import MaterialReviewSection from "@/components/materials/MaterialReviewSection";
 import {
   Plus, Pencil, Check, X, Trash2, Loader2, Package, Tags,
-  BookMarked, Boxes, EyeOff, Eye, Search, Gauge, ChevronDown, History, RefreshCw,
+  BookMarked, Boxes, EyeOff, Eye, Search, Gauge, ChevronDown, History, RefreshCw, Sparkles,
 } from "lucide-react";
 import { formatCurrency, formatDateTime, normalizeSearch } from "@/lib/utils";
 import { getStockStatus, STOCK_STATUS_STYLE } from "@/lib/materialConstants";
@@ -38,6 +39,7 @@ const TABS = [
   { key: "lendet",     label: "Lëndët",     icon: BookMarked },
   { key: "materialet", label: "Materialet", icon: Boxes },
   { key: "stoku",      label: "Stoku",      icon: Gauge },
+  { key: "rishikimi",  label: "Për rishikim", icon: Sparkles },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -45,11 +47,23 @@ type TabKey = (typeof TABS)[number]["key"];
 /* ═══════════════════════════════════════════════════════════ */
 export default function MaterialeKatalogPage() {
   const [tab, setTab] = useState<TabKey>("materialet");
+  // Artikujt e rinj nga teksti i mësuesve — ?review=pending (nga njoftimi) hap skedën
+  const [reviewCount, setReviewCount] = useState(0);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("review") === "pending") setTab("rishikimi");
+    fetch("/api/material-requests/reminder-counts").then(r => (r.ok ? r.json() : null)).then(d => setReviewCount(d?.forReview ?? 0)).catch(() => {});
+  }, []);
 
   return (
     <>
       <Header title="Katalogu i Materialeve" />
       <div className="p-6 max-w-4xl mx-auto space-y-5 animate-fade-in">
+        {reviewCount > 0 && tab !== "rishikimi" && (
+          <button onClick={() => setTab("rishikimi")} className="w-full text-left rounded-xl border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20 px-4 py-3 flex items-center gap-3">
+            <Sparkles className="w-5 h-5 text-primary-600 shrink-0" />
+            <span className="text-sm text-primary-800 dark:text-primary-200"><b>{reviewCount} artikuj të rinj për rishikim</b> nga kërkesat e mësuesve — rregullo emrin/kategorinë ose bashkoji me artikuj ekzistues →</span>
+          </button>
+        )}
         <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-fit flex-wrap">
           {TABS.map(t => {
             const Icon = t.icon;
@@ -65,6 +79,7 @@ export default function MaterialeKatalogPage() {
               >
                 <Icon className="w-4 h-4" />
                 {t.label}
+                {t.key === "rishikimi" && reviewCount > 0 && <span className="ml-1 px-1.5 rounded-full bg-primary-600 text-white text-[11px]">{reviewCount}</span>}
               </button>
             );
           })}
@@ -73,6 +88,7 @@ export default function MaterialeKatalogPage() {
         {tab === "kategorite" && <CategoriesSection />}
         {tab === "lendet"     && <SubjectsSection />}
         {tab === "materialet" && <MaterialsSection />}
+        {tab === "rishikimi"  && <MaterialReviewSection onChanged={setReviewCount} />}
         {tab === "stoku"      && <StockSection />}
       </div>
     </>

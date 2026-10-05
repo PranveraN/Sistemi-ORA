@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { countForReview } from "@/lib/materialRequestText";
 import { formatDate } from "@/lib/utils";
 import { getGradeNumber } from "@/lib/school-cycles";
 import { classHasRoom } from "@/lib/classCapacity";
@@ -36,6 +37,8 @@ export async function GET() {
       ])
     : [[], 0, []];
   const lowStockMaterials = materials.filter(m => m.currentStock <= m.minStock).slice(0, 10);
+  // Artikuj të rinj nga teksti i mësuesve që presin rishikim te Katalogu
+  const forReview = isManagement ? (await countForReview(orgId)).total : 0;
 
   // Vende të liruara për aplikimet në listë pritjeje (/apliko -> Regjistrimet)
   // — vetëm rolet me qasje te "Regjistrimet" (shih Sidebar.tsx); TEACHER/
@@ -144,6 +147,16 @@ export async function GET() {
       category: "MATERIAL",
       link: `/kerkesat?id=${r.id}`,
     })),
+    ...(forReview > 0 ? [{
+      id: `material-review-${forReview}`,
+      type: "material-request" as const,
+      title: `${forReview} artikuj të rinj për rishikim`,
+      body: "Nga kërkesat e mësuesve — rregullo emrin/kategorinë ose bashkoji me artikuj ekzistues.",
+      dueDate: null,
+      urgent: false,
+      category: "MATERIAL",
+      link: "/materiale?review=pending",
+    }] : []),
     ...lowStockMaterials.map((m) => ({
       id: `stock-${m.id}`,
       type: "low-stock" as const,
@@ -175,9 +188,10 @@ export async function GET() {
       newRequests: newRequestsCount,
       urgentRequests: urgentRequests.length,
       lowStock: lowStockMaterials.length,
+      forReview,
       recentPayments: recentPayments.length,
       waitlistOpenings: waitlistOpenings.length,
-      total: reminders.length + urgentTasks.length + overdue.length + urgentRequests.length + lowStockMaterials.length + waitlistOpenings.length,
+      total: reminders.length + urgentTasks.length + overdue.length + urgentRequests.length + lowStockMaterials.length + waitlistOpenings.length + (forReview > 0 ? 1 : 0),
     },
   });
 }

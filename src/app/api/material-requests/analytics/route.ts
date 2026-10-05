@@ -22,7 +22,7 @@ export async function GET() {
     }),
     prisma.materialRequestItem.findMany({
       where: { request: { organizationId: orgId } },
-      select: { isCustom: true, customItemName: true, quantity: true, materialId: true, material: { select: { name: true } } },
+      select: { isCustom: true, customItemName: true, quantity: true, materialId: true, matchType: true, material: { select: { name: true, reviewStatus: true } } },
     }),
     prisma.materialOrder.findMany({
       where: { organizationId: orgId, status: { not: "CANCELLED" } },
@@ -69,8 +69,13 @@ export async function GET() {
   // ── Top 10 materialet më të kërkuara ──
   const materialCounts = new Map<string, { name: string; requestCount: number; totalQuantity: number }>();
   for (const it of items) {
-    const key = it.isCustom ? `custom:${it.customItemName}` : `mat:${it.materialId}`;
-    const name = it.isCustom ? `${it.customItemName} (i veçantë)` : (it.material?.name ?? "—");
+    // Nga rreshtat e strukturuar (ID e artikullit) — pa dyfishime nga teksti.
+    // Teksti pa artikull (forma e re, AUTO_CREATE i fikur) → grupi "Në pritje të shqyrtimit".
+    const pendingText = it.isCustom && !it.materialId && it.matchType === "new";
+    const key = pendingText ? "pending-review" : it.isCustom ? `custom:${it.customItemName}` : `mat:${it.materialId}`;
+    const name = pendingText ? "Në pritje të shqyrtimit"
+      : it.isCustom ? `${it.customItemName} (i veçantë)`
+      : `${it.material?.name ?? "—"}${it.material?.reviewStatus === "pending" ? " (pa rishikuar)" : ""}`;
     const cur = materialCounts.get(key) ?? { name, requestCount: 0, totalQuantity: 0 };
     cur.requestCount++;
     cur.totalQuantity += it.quantity;

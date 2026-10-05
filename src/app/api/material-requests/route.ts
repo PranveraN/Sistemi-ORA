@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { UNIT_VALUES } from "@/lib/materialConstants";
 import { sendSubmissionConfirmationEmail } from "@/lib/materialRequestEmails";
+import { resolveTextItems, type IncomingTextItem } from "@/lib/materialRequestText";
+import { MATERIAL_SETTING_KEYS, parseAutoCreate } from "@/lib/materialConfig";
 import { ACTIVE_ORDER_LINK } from "@/lib/materialRequestStatus";
 
 const PRIORITY_VALUES = ["NORMAL", "IMPORTANT", "URGENT"];
@@ -79,6 +81,8 @@ export async function POST(req: NextRequest) {
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
   const body = await req.json();
+  // Forma e re e mësuesit (tekst i lirë / zgjedhje nga katalogu) — rruga e vjetër më poshtë mbetet e paprekur
+  if (body.mode === "TEXT" || body.mode === "CATALOG") return createFromNewForm(body, userId, orgId);
   const reason = String(body.reason ?? "").trim();
   const comment = body.comment ? String(body.comment).trim() : null;
   const priority = PRIORITY_VALUES.includes(String(body.priority)) ? String(body.priority) : "NORMAL";
@@ -192,4 +196,97 @@ export async function POST(req: NextRequest) {
   sendSubmissionConfirmationEmail(created).catch(() => {});
 
   return NextResponse.json(created, { status: 201 });
+}
+
+/* ─── Forma e re e mësuesit ─────────────────────────────────────────────── */
+
+interface NewFormBody {
+  mode: "TEXT" | "CATALOG";
+  originalText?: string;
+  items?: IncomingTextItem[];
+  classScope?: string;
+  classId?: number | string;
+  classIds?: (number | string)[];
+  subjectId?: number | string;
+  priority?: string;
+  urgencyReason?: string;
+  dateNeeded?: string;
+  attachmentPath?: string;
+  productLink?: string;
+  comment?: string;
+}
+
+async function createFromNewForm(body: NewFormBody, userId: number, orgId: number) {
+  const fail = (field: string, error: string) => NextResponse.json({ error, field }, { status: 400 });
+  const mode = body.mode;
+  const originalText = mode === "TEXT" ? String(body.originalText ?? "").trim().slice(0, 4000) : "";
+  if (mode === "TEXT" && originalText.length < 3) return fail("text", "Shkruaj çka të nevojitet.");
+
+  const priority = body.priority === "URGENT" ? "URGENT" : "NORMAL";
+  const urgencyReason = String(body.urgencyReason ?? "").trim().slice(0, 500);
+  if (priority === "URGENT" && urgencyReason.length < 3) return fail("urgencyReason", "Shkruaj shkurt arsyen e urgjencës.");
+
+  // Për klasën: një klasë / disa klasa / për mua
+  const classScope = ["CLASS", "MULTI", "SELF"].includes(String(body.classScope)) ? String(body.classScope) : "CLASS";
+  let classId: number | null = null;
+  let classIdsJson: string | null = null;
+  if (classScope === "CLASS") {
+    const c = await prisma.class.findFirst({ where: { id: parseInt(String(body.classId ?? "")) || 0, organizationId: orgId } });
+    if (!c) return fail("class", "Zgjidh klasën.");
+    classId = c.id;
+  } else if (classScope === "MULTI") {
+    const ids = (Array.isArray(body.classIds) ? body.classIds : []).map(x => parseInt(String(x))).filter(n => n > 0);
+    const found = await prisma.class.findMany({ where: { id: { in: ids }, organizationId: orgId }, select: { id: true } });
+    if (found.length < 2) return fail("class", "Zgjidh të paktën dy klasa.");
+    classIdsJson = JSON.stringify(found.map(c => c.id));
+  }
+
+  let subjectId: number | null = null;
+  if (body.subjectId) {
+    const s = await prisma.subject.findFirst({ where: { id: parseInt(String(body.subjectId)) || 0, organizationId: orgId } });
+    if (!s) return fail("subject", "Lënda e zgjedhur nuk ekziston.");
+    subjectId = s.id;
+  }
+  const dateNeeded = body.dateNeeded ? new Date(body.dateNeeded) : null;
+  if (dateNeeded && isNaN(dateNeeded.getTime())) return fail("dateNeeded", "Data nuk është e vlefshme.");
+
+  const rawItems: IncomingTextItem[] = Array.isArray(body.items) ? body.items.slice(0, 60) : [];
+  if (mode === "CATALOG" && !rawItems.some(i => parseInt(String(i.materialId ?? "")) > 0)) return fail("items", "Zgjidh të paktën një artikull nga katalogu.");
+
+  const autoCreate = parseAutoCreate((await prisma.setting.findUnique({ where: { key: MATERIAL_SETTING_KEYS.autoCreateItems } }))?.value);
+  const comment = body.comment ? String(body.comment).trim().slice(0, 1000) || null : null;
+  const productLink = body.productLink ? String(body.productLink).trim().slice(0, 500) || null : null;
+  const attachmentPath = body.attachmentPath ? String(body.attachmentPath).trim().slice(0, 200) || null : null;
+
+  let createdMaterials = 0;
+  const result = await prisma.$transaction(async (tx) => {
+    const request = await tx.materialRequest.create({
+      data: {
+        teacherId: userId, organizationId: orgId, status: "SUBMITTED", submittedAt: new Date(),
+        reason: mode === "TEXT" ? originalText.slice(0, 500) : (comment ?? "Kërkesë nga katalogu"),
+        comment, priority, dateNeeded, classId, subjectId, mode, classScope, classIdsJson,
+        originalText: mode === "TEXT" ? originalText : null,
+        urgencyReason: priority === "URGENT" ? urgencyReason : null,
+        attachmentPath, productLink,
+        statusHistory: { create: { fromStatus: null, toStatus: "SUBMITTED", changedById: userId } },
+      },
+    });
+    const items = mode === "TEXT"
+      ? rawItems
+      : rawItems.map(i => ({ materialId: i.materialId, quantity: i.quantity, unit: i.unit, matchType: "catalog" }));
+    const r = await resolveTextItems(tx, { orgId, userId, requestId: request.id, originalText, items, autoCreate });
+    if (r.error) throw new Error(`VALIDIM:${r.error}`);
+    if (!r.rows.length) throw new Error("VALIDIM:S'u gjet asnjë material në tekst — shkruaj p.sh. \"10 markera për tabelë\".");
+    createdMaterials = r.createdMaterials;
+    await tx.materialRequestItem.createMany({ data: r.rows.map(row => ({ ...row, requestId: request.id })) });
+    return tx.materialRequest.findUnique({ where: { id: request.id }, include: REQUEST_INCLUDE });
+  }).catch((e: unknown) => {
+    const msg = e instanceof Error && e.message.startsWith("VALIDIM:") ? e.message.slice(8) : null;
+    if (msg) return { validationError: msg } as const;
+    throw e;
+  });
+
+  if (result && "validationError" in result) return fail(mode === "TEXT" ? "text" : "items", result.validationError);
+  if (result) sendSubmissionConfirmationEmail(result).catch(() => {});
+  return NextResponse.json({ ...result, createdMaterials, autoCreate }, { status: 201 });
 }
