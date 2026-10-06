@@ -28,7 +28,7 @@ function PaymentForm() {
     discountType: "fixed",
     scholarship: "0",
     paidAmount: "",
-    method: "CASH",
+    method: "", // pa vlerë të paracaktuar — Cash ose Bankë
     dueDate: new Date().toISOString().split("T")[0],
     paidDate: new Date().toISOString().split("T")[0],
     month: String(new Date().getMonth() + 1),
@@ -64,6 +64,7 @@ function PaymentForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.method && parseFloat(form.paidAmount || "0") > 0) { setError("Zgjidhni mënyrën e pagesës (Cash ose Bankë)."); return; }
     setLoading(true);
     setError("");
 
@@ -248,10 +249,9 @@ function PaymentForm() {
               <div>
                 <label className="form-label">Mënyra e Pagesës</label>
                 <select value={form.method} onChange={e => set("method", e.target.value)} className="form-input">
+                  <option value="">— Zgjidh —</option>
                   <option value="CASH">Cash</option>
                   <option value="BANK">Bankë</option>
-                  <option value="CARD">Kartelë</option>
-                  <option value="ONLINE">Online</option>
                 </select>
               </div>
               <div>

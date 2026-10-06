@@ -30,12 +30,16 @@ export default function PaymentsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  // ?metoda=NONE vjen nga paralajmërimi "pagesa pa metodë" te dashboard-i
+  const [metoda, setMetoda] = useState("");
+  useEffect(() => { setMetoda(new URLSearchParams(window.location.search).get("metoda") ?? ""); }, []);
   const [page, setPage] = useState(1);
   const limit = 20;
 
   const fetch_ = useCallback(async (isFirst = false) => {
     if (isFirst) setLoading(true); else setRefreshing(true);
     const params = new URLSearchParams({ search, status, page: String(page), limit: String(limit) });
+    if (metoda) params.set("metoda", metoda);
     const res = await fetch(`/api/payments?${params}`);
     const data = await res.json();
     const sorted = (data.payments || []).sort((a: Payment, b: Payment) =>
@@ -46,7 +50,7 @@ export default function PaymentsPage() {
     setTotal(data.total);
     setLoading(false);
     setRefreshing(false);
-  }, [search, status, page]);
+  }, [search, status, metoda, page]);
 
   const _firstRender = useRef(true);
   useEffect(() => {
@@ -89,6 +93,17 @@ export default function PaymentsPage() {
               <option value="PARTIAL">Pjesërisht</option>
               <option value="PAID">Paguar</option>
               <option value="OVERDUE">Vonuar</option>
+            </select>
+            <select
+              value={metoda}
+              onChange={e => { setMetoda(e.target.value); setPage(1); }}
+              className="form-input w-40"
+              aria-label="Mënyra e pagesës"
+            >
+              <option value="">Çdo metodë</option>
+              <option value="CASH">Cash</option>
+              <option value="BANKE">Bankë</option>
+              <option value="NONE">Pa metodë</option>
             </select>
           </div>
           <Link href="/payments/new" className="btn-primary whitespace-nowrap">

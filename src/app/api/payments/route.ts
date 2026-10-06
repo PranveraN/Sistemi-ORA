@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
   const year = searchParams.get("year") || "";
   const categoryName = searchParams.get("categoryName") || "";
   const confirmedParam = searchParams.get("confirmed");
+  const metoda = searchParams.get("metoda") || ""; // CASH | BANKE | NONE
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "20");
 
@@ -37,6 +38,10 @@ export async function GET(req: NextRequest) {
   if (year) where.year = parseInt(year);
   if (categoryName) where.category = { name: categoryName };
   if (confirmedParam !== null) where.confirmed = confirmedParam === "true";
+  // "Pa metodë" = shumë e paguar pa Cash/Bankë — që administrata t'i klasifikojë
+  if (metoda === "NONE") { where.method = null; where.paidAmount = { gt: 0 }; }
+  else if (metoda === "BANKE") where.method = { in: ["BANK", "CARD", "ONLINE"] };
+  else if (metoda === "CASH") where.method = "CASH";
   if (search) {
     where.student = {
       OR: [

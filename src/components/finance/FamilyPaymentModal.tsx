@@ -49,7 +49,7 @@ export default function FamilyPaymentModal({ categoryId, categoryName, computeDe
   const parent   = selectedFamily?.parent ?? null;
   const children = selectedFamily?.children ?? [];
   const [rows, setRows] = useState<Record<number, RowState>>({});
-  const [method, setMethod] = useState("CASH");
+  const [method, setMethod] = useState(""); // pa vlerë të paracaktuar — Cash ose Bankë
   const [selMonth, setSelMonth] = useState(defaultMonth > 0 ? defaultMonth : (periodOptions?.[0]?.canonicalMonth ?? new Date().getMonth() + 1));
   const [dueDate, setDueDate] = useState(new Date().toISOString().split("T")[0]);
   const [saving, setSaving] = useState(false);
@@ -106,6 +106,7 @@ export default function FamilyPaymentModal({ categoryId, categoryName, computeDe
 
   async function handleSubmit() {
     if (checkedChildren.length < 2) return;
+    if (!method && total > 0) { setError("Zgjidhni mënyrën e pagesës (Cash ose Bankë)."); return; }
     setSaving(true);
     setError(null);
     const res = await fetch("/api/family-receipts", {
@@ -211,10 +212,9 @@ export default function FamilyPaymentModal({ categoryId, categoryName, computeDe
                 <div>
                   <label className="form-label">Mënyra</label>
                   <select value={method} onChange={e => setMethod(e.target.value)} className="form-input">
+                    <option value="">— Zgjidh —</option>
                     <option value="CASH">Cash</option>
                     <option value="BANK">Bankë</option>
-                    <option value="CARD">Kartelë</option>
-                    <option value="ONLINE">Online</option>
                   </select>
                 </div>
                 <div>

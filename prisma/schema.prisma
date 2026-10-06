@@ -1439,6 +1439,22 @@ model YearClosingCheck {
   @@unique([organizationId, yearLabel, stepKey])
 }
 
+// "Numëro arkën" (Dashboard → Pasqyra financiare e shkollimit): historiku i
+// numërimeve — sa u numërua fizikisht kundrejt "Në arkë" sipas sistemit.
+model CashCount {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @default(1)
+  yearLabel      String   // viti shkollor i pasqyrës, p.sh. "2026-2027"
+  countedAmount  Float    // shuma e numëruar
+  systemAmount   Float    // "Në arkë" sipas sistemit në atë moment
+  difference     Float    // countedAmount − systemAmount (negative = mungojnë)
+  userId         Int?
+  userName       String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
 model LibriAme {
   id            Int      @id @default(autoincrement())
   studentId     Int      @unique

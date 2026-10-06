@@ -3,13 +3,15 @@
 import { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/utils";
 import {
-  Wallet, TrendingUp, TrendingDown, Landmark, AlertCircle,
+  AlertCircle,
   AlertTriangle, Loader2, MessageSquare, PieChart as PieChartIcon,
   BarChart3, Receipt, ListChecks, Coins,
 } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import type { YearType } from "@/lib/academicYear";
 import TuitionGroupModal, { type TuitionGroupRow } from "./TuitionGroupModal";
+import ShkollimiCashFlow, { type LastCashCount } from "./ShkollimiCashFlow";
+import type { CashFlow } from "@/lib/cashFlow";
 
 interface Row extends TuitionGroupRow { className: string | null }
 interface Bucket { count: number; amount: number; paidAmount: number; students: Row[] }
@@ -21,6 +23,8 @@ interface Overview {
   priceGroups: PriceGroup[];
   incomeStatement: { tuitionIncome: number; otherIncome: number; totalIncome: number; expenseLines: { name: string; amount: number }[]; totalExpenses: number; profit: number };
   anomalies: { noPaymentNoTi: Bucket; missingPlan: Bucket; overpaid: Bucket; handoverGap: number };
+  cashFlow: CashFlow;
+  lastCashCount: LastCashCount | null;
 }
 
 const DONUT_COLORS = { full: "#10b981", partial: "#f59e0b", tiPartial: "#3b82f6", tiUnpaid: "#8b5cf6", zero: "#a855f7" };
@@ -77,27 +81,12 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
     text: `${anomalies.overpaid.count} nxënës kanë paguar më shumë se çmimi i caktuar.`,
     onOpen: () => setOpenBucket({ title: "Kanë Paguar Më Shumë se Çmimi", rows: anomalies.overpaid.students }),
   });
-  if (anomalies.handoverGap > 0.5) anomalyItems.push({
-    text: `Shuma e dorëzuar (${formatCurrency(kpi.handedOver)}) është më e vogël se totali i paguar (${formatCurrency(kpi.paid)}) — mungojnë ${formatCurrency(anomalies.handoverGap)}.`,
-  });
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-violet-600 flex items-center justify-center shadow-sm shadow-primary-500/30">
-          <Landmark className="w-4 h-4 text-white" />
-        </div>
-        <h2 className="section-title">Pasqyra Financiare e Shkollimit — {data.period.label}</h2>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <KpiCard icon={Wallet} tone="slate" label="Total i Pritur" value={kpi.expected} sub={`${kpi.totalStudents} nxënës`} />
-        <KpiCard icon={TrendingUp} tone="green" label="Total i Paguar" value={kpi.paid} sub={kpi.expected > 0 ? `${Math.round((kpi.paid / kpi.expected) * 100)}% e shumës` : ""} />
-        <KpiCard icon={TrendingDown} tone="orange" label="Shuma e Shpenzimeve" value={kpi.expenses} />
-        <KpiCard icon={Landmark} tone="violet" label="Shuma e Dorëzuar" value={kpi.handedOver} sub={kpi.paid > 0 ? `${Math.round((kpi.handedOver / kpi.paid) * 100)}% e paguarës` : ""} />
-        <KpiCard icon={AlertCircle} tone="red" label="Borxhi i Mbetur" value={kpi.debt} />
-      </div>
+      <ShkollimiCashFlow label={data.period.label} year={year} yearType={yearType}
+        expected={kpi.expected} totalStudents={kpi.totalStudents}
+        cashFlow={data.cashFlow} lastCashCount={data.lastCashCount} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Donut */}
@@ -272,26 +261,6 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
       {openBucket && (
         <TuitionGroupModal title={openBucket.title} rows={openBucket.rows} onClose={() => setOpenBucket(null)} />
       )}
-    </div>
-  );
-}
-
-function KpiCard({ icon: Icon, tone, label, value, sub }: { icon: React.ComponentType<{ className?: string }>; tone: "slate" | "green" | "orange" | "violet" | "red"; label: string; value: number; sub?: string }) {
-  const toneMap = {
-    slate: { bg: "bg-slate-50 dark:bg-slate-800/60", badge: "bg-slate-500", text: "text-slate-800 dark:text-white", ring: "ring-slate-200 dark:ring-slate-700" },
-    green: { bg: "bg-green-50 dark:bg-green-900/20", badge: "bg-green-500", text: "text-green-700 dark:text-green-300", ring: "ring-green-200 dark:ring-green-800" },
-    orange: { bg: "bg-orange-50 dark:bg-orange-900/20", badge: "bg-orange-500", text: "text-orange-700 dark:text-orange-300", ring: "ring-orange-200 dark:ring-orange-800" },
-    violet: { bg: "bg-violet-50 dark:bg-violet-900/20", badge: "bg-violet-500", text: "text-violet-700 dark:text-violet-300", ring: "ring-violet-200 dark:ring-violet-800" },
-    red: { bg: "bg-red-50 dark:bg-red-900/20", badge: "bg-red-500", text: "text-red-700 dark:text-red-300", ring: "ring-red-200 dark:ring-red-800" },
-  }[tone];
-  return (
-    <div className={`p-3.5 rounded-xl ${toneMap.bg} ring-1 ${toneMap.ring} transition-transform hover:-translate-y-0.5`}>
-      <div className={`w-8 h-8 rounded-full ${toneMap.badge} flex items-center justify-center shadow-sm mb-2`}>
-        <Icon className="w-4 h-4 text-white" />
-      </div>
-      <p className="text-xs text-slate-400 mb-0.5">{label}</p>
-      <p className={`text-lg font-bold ${toneMap.text}`}>{formatCurrency(value)}</p>
-      {sub && <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>}
     </div>
   );
 }

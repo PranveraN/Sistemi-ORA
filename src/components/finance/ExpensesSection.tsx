@@ -292,7 +292,7 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
                   {isHandover ? "Dorëzuar tek" : "Përshkrimi"}
                 </th>
                 <th className="table-header">Shuma</th>
-                <th className="table-header">Mënyra</th>
+                <th className="table-header">{isHandover ? "Mënyra" : "Paguar nga"}</th>
                 <th className="table-header">Referenca</th>
                 <th className="table-header text-right">Veprime</th>
               </tr>
@@ -323,7 +323,7 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
                     {formatCurrency(item.amount)}
                   </td>
                   <td className="table-cell text-sm text-slate-500 dark:text-slate-400">
-                    {item.method || "—"}
+                    {isHandover ? (item.method || "—") : item.method === "CASH" ? "Arka" : item.method ? "Banka" : "—"}
                   </td>
                   <td className="table-cell text-xs text-slate-400">
                     {item.reference || "—"}
@@ -383,7 +383,9 @@ function ExpenseModal({ type, categoryId, month, year, existing, onClose, onSave
   const [amount,      setAmount]      = useState(String(existing?.amount ?? ""));
   const [description, setDescription] = useState(existing?.description ?? "");
   const [recipient,   setRecipient]   = useState(existing?.recipient   ?? "");
-  const [method,      setMethod]      = useState(existing?.method      ?? "CASH");
+  // Shpenzimi: burimi i detyrueshëm, pa vlerë të paracaktuar (CASH = arka, BANK = banka).
+  // Dorëzimi: gjithmonë para cash nga arka.
+  const [method,      setMethod]      = useState(existing?.method      ?? (type === "HANDOVER" ? "CASH" : ""));
   const [reference,   setReference]   = useState(existing?.reference   ?? "");
   const [date, setDate] = useState(
     existing?.date
@@ -395,6 +397,8 @@ function ExpenseModal({ type, categoryId, month, year, existing, onClose, onSave
 
   async function handleSave() {
     if (!amount) return;
+    if (!isHandover && !method) { setError("Zgjidhni burimin e shpenzimit (Arka ose Banka)."); return; }
+    if (isHandover && !recipient.trim()) { setError("Shkruani personin që i pranoi paratë."); return; }
     setSaving(true);
     setError("");
     const payload = {
@@ -485,7 +489,7 @@ function ExpenseModal({ type, categoryId, month, year, existing, onClose, onSave
           {/* Description / Recipient */}
           {isHandover ? (
             <div>
-              <label className="form-label">Dorëzuar tek (personi/institucioni)</label>
+              <label className="form-label">Dorëzuar tek (personi që i pranoi) <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 value={recipient}
@@ -510,13 +514,27 @@ function ExpenseModal({ type, categoryId, month, year, existing, onClose, onSave
           {/* Method + Reference */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="form-label">Mënyra</label>
-              <select value={method} onChange={e => setMethod(e.target.value)} className="form-input">
-                <option value="CASH">Cash</option>
-                <option value="BANK">Bankë</option>
-                <option value="CARD">Kartelë</option>
-                <option value="ONLINE">Online</option>
-              </select>
+              {isHandover ? (
+                <>
+                  <label className="form-label">Mënyra</label>
+                  <select value={method} onChange={e => setMethod(e.target.value)} className="form-input">
+                    <option value="CASH">Cash</option>
+                    <option value="BANK">Bankë</option>
+                    <option value="CARD">Kartelë</option>
+                    <option value="ONLINE">Online</option>
+                  </select>
+                </>
+              ) : (
+                <>
+                  <label className="form-label">Paguar nga <span className="text-red-500">*</span></label>
+                  <select value={method} onChange={e => setMethod(e.target.value)} className={`form-input ${method ? "" : "text-slate-400"}`}>
+                    <option value="">— Zgjidh —</option>
+                    <option value="CASH">Arka (cash)</option>
+                    <option value="BANK">Banka</option>
+                    {(method === "CARD" || method === "ONLINE") && <option value={method}>{method === "CARD" ? "Kartelë" : "Online"}</option>}
+                  </select>
+                </>
+              )}
             </div>
             <div>
               <label className="form-label">Referenca / Nr. fature</label>

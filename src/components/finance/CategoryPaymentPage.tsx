@@ -103,6 +103,16 @@ interface Props {
 
 type Tab = "income" | "expense" | "handover";
 
+// Filtrat e veçantë të kolonës "Metoda"
+const METODA_BANKE = "__BANKE__"; // BANK + CARD + ONLINE (paraja hyn në llogari)
+const METODA_NONE = "__NONE__";   // pagesa me shumë të paguar, por pa metodë
+function metodaMatches(s: StudentRow, filter: string): boolean {
+  const list = s.installments.length ? s.installments : s.payment ? [s.payment] : [];
+  if (filter === METODA_NONE) return list.some(p => p.paidAmount > 0 && !p.method);
+  if (filter === METODA_BANKE) return list.some(p => p.method === "BANK" || p.method === "CARD" || p.method === "ONLINE");
+  return s.payment?.method === filter || s.installments.some(p => p.method === filter);
+}
+
 function exportStudentsExcel(
   students: StudentRow[],
   stats: Stats | null,
@@ -365,8 +375,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
       .filter(s => !colKlasa  || s.class?.name === colKlasa)
       .filter(s => !colCikli  || getCycle(s.class?.name) === colCikli)
       .filter(s => !colPlan   || s.paymentPlan === colPlan)
-      .filter(s => !colMetoda || s.payment?.method === colMetoda ||
-        s.installments.some(p => p.method === colMetoda))
+      .filter(s => !colMetoda || metodaMatches(s, colMetoda))
       .filter(s => {
         if (!colBorxhi) return true;
         const st = s.payment?.status || "PENDING";
@@ -376,6 +385,20 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
         return true;
       });
   }
+
+  // Lidhjet nga "Pasqyra financiare" e dashboard-it: ?tab=expense|handover,
+  // ?metoda=CASH|BANKE|NONE (BANKE = bankë/kartelë/online, NONE = paguar pa metodë), ?borxhi=DEBT
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const t = q.get("tab");
+    if (t === "expense" || t === "handover" || t === "income") setTab(t);
+    const m = q.get("metoda");
+    if (m) setColMetoda(m === "BANKE" ? METODA_BANKE : m === "NONE" ? METODA_NONE : m);
+    const b = q.get("borxhi");
+    if (b) setColBorxhi(b);
+    const y = parseInt(q.get("year") ?? "");
+    if (y > 0) setYear(y);
+  }, []);
 
   async function savePaymentPlan(studentId: number, plan: string) {
     const prevPlan = students.find(s => s.id === studentId)?.paymentPlan ?? null;
@@ -808,7 +831,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                   <button onClick={() => setColMetoda("")}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 transition-colors">
                     <X className="w-3 h-3" />
-                    {colMetoda === "CASH" ? "Cash" : colMetoda === "BANK" ? "Bankë" : colMetoda === "CARD" ? "Kartelë" : colMetoda}
+                    {colMetoda === METODA_NONE ? "Pa metodë" : colMetoda === METODA_BANKE ? "Bankë (të gjitha)" : colMetoda === "CASH" ? "Cash" : colMetoda === "BANK" ? "Bankë" : colMetoda === "CARD" ? "Kartelë" : colMetoda}
                   </button>
                 )}
                 {colBorxhi && (
@@ -956,6 +979,8 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                             title="Filtro sipas metodës"
                           >
                             <option value="">Të gjitha</option>
+                            <option value={METODA_BANKE}>Bankë (të gjitha)</option>
+                            <option value={METODA_NONE}>Pa metodë</option>
                             {uniqueMetoda.map(m => (
                               <option key={m} value={m}>
                                 {m === "CASH" ? "Cash" : m === "BANK" ? "Bankë" : m === "CARD" ? "Kartelë" : m === "ONLINE" ? "Online" : m}
@@ -1858,7 +1883,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   // ── Single mode extra state ──
   const [sForm, setSForm] = useState({
     paidAmount: String(singleExisting ? singleExisting.paidAmount : (existingTotalPaid > 0 ? existingTotalPaid : "")),
-    method:     singleExisting?.method            ?? "CASH",
+    method:     singleExisting?.method            ?? "",
     dueDate:    singleExisting?.dueDate
       ? new Date(singleExisting.dueDate).toISOString().split("T")[0]
       : `${year > 0 ? year : new Date().getFullYear()}-09-15`,
@@ -1876,7 +1901,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     paidAmount: String(k1Existing?.paidAmount ?? ""),
     paidDate:   k1Existing?.paidDate ? new Date(k1Existing.paidDate).toISOString().split("T")[0] : today,
     dueDate:    k1Existing?.dueDate  ? new Date(k1Existing.dueDate).toISOString().split("T")[0]  : `${year > 0 ? year : new Date().getFullYear()}-09-15`,
-    method:     k1Existing?.method   ?? "CASH",
+    method:     k1Existing?.method   ?? "",
   });
 
   const [k2Form, setK2Form] = useState({
@@ -1884,7 +1909,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     paidAmount: String(k2Existing?.paidAmount ?? ""),
     paidDate:   k2Existing?.paidDate ? new Date(k2Existing.paidDate).toISOString().split("T")[0] : today,
     dueDate:    k2Existing?.dueDate  ? new Date(k2Existing.dueDate).toISOString().split("T")[0]  : `${year > 0 ? year : new Date().getFullYear()}-11-30`,
-    method:     k2Existing?.method   ?? "CASH",
+    method:     k2Existing?.method   ?? "",
   });
 
   // Auto-update portion 2 when totalFinal or portion 1 changes
@@ -1934,7 +1959,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         paidAmount: ex ? String(ex.paidAmount)   : "0",
         paidDate:   ex?.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
         dueDate:    ex?.dueDate  ? new Date(ex.dueDate).toISOString().split("T")[0]  : defaultDueMonth(i),
-        method:     ex?.method   ?? "CASH",
+        method:     ex?.method   ?? "",
       };
     });
   });
@@ -1971,7 +1996,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         paidAmount: String(ex.paidAmount),
         paidDate:   ex.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
         dueDate:    new Date(ex.dueDate).toISOString().split("T")[0],
-        method:     ex.method ?? "CASH",
+        method:     ex.method ?? "",
       }));
     }
     // Migrim një-herësh: plane të krijuara PARA ristrukturimit (rreshta
@@ -1985,7 +2010,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         paidAmount: String(ex.paidAmount),
         paidDate:   ex.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
         dueDate:    new Date(ex.dueDate).toISOString().split("T")[0],
-        method:     ex.method ?? "CASH",
+        method:     ex.method ?? "",
       }));
     }
     // Duke ardhur nga një mënyrë tjetër (Pagesë e plotë / Dy Këste / Çdo Muaj) me
@@ -2001,10 +2026,10 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         paidAmount: String(ex.paidAmount),
         paidDate:   ex.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
         dueDate:    new Date(ex.dueDate).toISOString().split("T")[0],
-        method:     ex.method ?? "CASH",
+        method:     ex.method ?? "",
       }));
     }
-    return [{ id: null, portion: "", paidAmount: "0", paidDate: today, dueDate: today, method: "CASH" }];
+    return [{ id: null, portion: "", paidAmount: "0", paidDate: today, dueDate: today, method: "" }];
   });
 
   function setFlex(idx: number, field: string, val: string) {
@@ -2017,7 +2042,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     setFlexRows(f => f.map((r, i) => i === idx ? { ...r, portion: val, paidAmount: val } : r));
   }
   function addFlexRow() {
-    setFlexRows(f => [...f, { id: null, portion: "", paidAmount: "0", paidDate: today, dueDate: today, method: "CASH" }]);
+    setFlexRows(f => [...f, { id: null, portion: "", paidAmount: "0", paidDate: today, dueDate: today, method: "" }]);
   }
   async function removeFlexRow(idx: number) {
     const row = flexRows[idx];
@@ -2072,6 +2097,15 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   }
 
   async function handleSave(withPrint = false) {
+    const paidRows: { paid: string; method: string }[] =
+      mode === "single"  ? [{ paid: sForm.paidAmount, method: sForm.method }] :
+      mode === "two"     ? [{ paid: k1Form.paidAmount, method: k1Form.method }, { paid: k2Form.paidAmount, method: k2Form.method }] :
+      mode === "monthly" ? mForms.map(r => ({ paid: r.paidAmount, method: r.method })) :
+                           flexRows.map(r => ({ paid: r.paidAmount, method: r.method }));
+    if (paidRows.some(r => (parseFloat(r.paid || "0") || 0) > 0 && !r.method)) {
+      setSaveError("Zgjidhni mënyrën e pagesës (Cash ose Bankë) për çdo shumë të paguar.");
+      return;
+    }
     setSaving(true);
     setSaveError("");
     let receiptPaymentId: number | undefined;
@@ -2496,12 +2530,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                 </div>
                 <div>
                   <label className="form-label">Mënyra</label>
-                  <select value={sForm.method} onChange={e => setS("method", e.target.value)} className="form-input">
-                    <option value="CASH">Cash</option>
-                    <option value="BANK">Bankë</option>
-                    <option value="CARD">Kartelë</option>
-                    <option value="ONLINE">Online</option>
-                  </select>
+                  <MethodSelect value={sForm.method} onChange={v => setS("method", v)} className="form-input" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -2580,12 +2609,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                   </div>
                   <div>
                     <label className="form-label">Mënyra</label>
-                    <select value={k1Form.method} onChange={e => setK1("method", e.target.value)} className="form-input">
-                      <option value="CASH">Cash</option>
-                      <option value="BANK">Bankë</option>
-                      <option value="CARD">Kartelë</option>
-                      <option value="ONLINE">Online</option>
-                    </select>
+                    <MethodSelect value={k1Form.method} onChange={v => setK1("method", v)} className="form-input" />
                   </div>
                   {portion1 > 0 && k1Paid < portion1 && (
                     <button
@@ -2636,12 +2660,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                   </div>
                   <div>
                     <label className="form-label">Mënyra</label>
-                    <select value={k2Form.method} onChange={e => setK2("method", e.target.value)} className="form-input">
-                      <option value="CASH">Cash</option>
-                      <option value="BANK">Bankë</option>
-                      <option value="CARD">Kartelë</option>
-                      <option value="ONLINE">Online</option>
-                    </select>
+                    <MethodSelect value={k2Form.method} onChange={v => setK2("method", v)} className="form-input" />
                   </div>
                   {portion2 > 0 && k2Paid < portion2 && (
                     <button
@@ -2724,13 +2743,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                                 className="form-input py-1 w-20 text-xs text-right" placeholder="0" />
                             </td>
                             <td className="py-1.5 pr-2">
-                              <select value={mf.method} onChange={e => setM(i, "method", e.target.value)}
-                                className="form-input py-1 text-xs">
-                                <option value="CASH">Cash</option>
-                                <option value="BANK">Bankë</option>
-                                <option value="CARD">Kartelë</option>
-                                <option value="ONLINE">Online</option>
-                              </select>
+                              <MethodSelect value={mf.method} onChange={v => setM(i, "method", v)} className="form-input py-1 text-xs" />
                             </td>
                             <td className={`py-1.5 pr-2 font-medium whitespace-nowrap ${st.color}`}>{st.label}</td>
                             <td className="py-1.5">
@@ -2818,13 +2831,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                             className="form-input py-1 text-xs" />
                         </td>
                         <td className="py-1.5 pr-2">
-                          <select value={fr.method} onChange={e => setFlex(i, "method", e.target.value)}
-                            className="form-input py-1 text-xs">
-                            <option value="CASH">Cash</option>
-                            <option value="BANK">Bankë</option>
-                            <option value="CARD">Kartelë</option>
-                            <option value="ONLINE">Online</option>
-                          </select>
+                          <MethodSelect value={fr.method} onChange={v => setFlex(i, "method", v)} className="form-input py-1 text-xs" />
                         </td>
                         <td className="py-1.5">
                           <button onClick={() => removeFlexRow(i)} disabled={saving}
@@ -3029,5 +3036,20 @@ function SchoolFeeCalculatorModal({ student, categoryDefaultAmount, onClose, onA
         </div>
       </div>
     </div>
+  );
+}
+
+// Mënyra e pagesës — pa vlerë të paracaktuar; Cash ose Bankë. Vlerat e vjetra
+// (Kartelë/Online) shfaqen vetëm kur pagesa ekzistuese i ka, që të mos humbin.
+function MethodSelect({ value, onChange, className }: { value: string; onChange: (v: string) => void; className: string }) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)} aria-label="Mënyra e pagesës"
+      className={`${className} ${value ? "" : "text-slate-400"}`}>
+      <option value="">— Zgjidh —</option>
+      <option value="CASH">Cash</option>
+      <option value="BANK">Bankë</option>
+      {value === "CARD" && <option value="CARD">Kartelë</option>}
+      {value === "ONLINE" && <option value="ONLINE">Online</option>}
+    </select>
   );
 }
