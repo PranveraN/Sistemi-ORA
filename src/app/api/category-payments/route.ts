@@ -5,6 +5,8 @@ import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 import { computeTiExpectedPrice } from "@/lib/timiInvestPricing";
 import { expensePeriodWhere } from "@/lib/expensePeriod";
 import type { YearType } from "@/lib/academicYear";
+import { loadShkollimiExpenses } from "@/lib/shkollimiExpenses";
+import { paymentChannel } from "@/lib/cashFlow";
 
 type PrismaPayment = {
   id: number;
@@ -229,6 +231,20 @@ export async function GET(req: NextRequest) {
   const totalRevenue = activeStudents.reduce(
     (sum, s) => sum + s.payments.reduce((ps, p) => ps + (categoryName === "Shkollimi" && !p.confirmed ? 0 : p.paidAmount), 0), 0
   );
+  // Shkollimi: arka e saktë — të hyrat sipas metodës (Cash / Bankë / pa metodë) dhe
+  // shpenzimet e modulit "Shpenzimet" (vetëm të paguarat; Cash → nga arka). E
+  // njëjta formulë si dashboard-i ("Ku janë paratë e paguara").
+  let cashRevenue = 0, bankRevenue = 0, noMethodRevenue = 0;
+  let shk: Awaited<ReturnType<typeof loadShkollimiExpenses>>["totals"] | null = null;
+  if (categoryName === "Shkollimi") {
+    for (const s of activeStudents) for (const p of s.payments) {
+      if (!p.confirmed || p.paidAmount <= 0) continue;
+      const ch = paymentChannel(p.method);
+      if (ch === "cash") cashRevenue += p.paidAmount; else if (ch === "banke") bankRevenue += p.paidAmount; else noMethodRevenue += p.paidAmount;
+    }
+    shk = (await loadShkollimiExpenses(category.id, month ?? 0, year ?? 0, yearType)).totals;
+  }
+
   const totalDebt = activeStudents.reduce((sum, s) => {
     const agg = aggregatePayment(s.payments as PrismaPayment[]);
     if (agg) return sum + (agg.balance || 0);
@@ -287,8 +303,16 @@ export async function GET(req: NextRequest) {
       totalRevenue,
       totalDebt,
       handedOver,
-      totalExpenses,
+      totalExpenses: shk ? shk.cash : totalExpenses,
       totalInvestments,
+      ...(shk ? {
+        cashBox: {
+          cash: Math.round(cashRevenue * 100) / 100,
+          bank: Math.round(bankRevenue * 100) / 100,
+          noMethod: Math.round(noMethodRevenue * 100) / 100,
+          expensesCash: shk.cash, expensesBank: shk.bank, expensesUnpaid: shk.unpaid,
+        },
+      } : {}),
     },
   });
 }

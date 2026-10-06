@@ -25,6 +25,7 @@ import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
 import PaymentReceiptModal from "./PaymentReceiptModal";
 import ExpensesSection from "./ExpensesSection";
+import ShkollimiExpensesSection from "./ShkollimiExpensesSection";
 import OldDebtImportModal from "./OldDebtImportModal";
 import FamilyPaymentModal from "./FamilyPaymentModal";
 import FamilyReceiptPrintModal from "./FamilyReceiptPrintModal";
@@ -81,6 +82,8 @@ interface Stats {
   handedOver: number;
   totalExpenses: number;
   totalInvestments: number;
+  // Vetëm Shkollimi: arka e saktë (shih /api/category-payments)
+  cashBox?: { cash: number; bank: number; noMethod: number; expensesCash: number; expensesBank: number; expensesUnpaid: number };
 }
 
 interface Category {
@@ -723,7 +726,9 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
               </div>
             )}
 
-            {stats && (() => {
+            {stats?.cashBox && <ShkollimiCashBox stats={stats} cashBox={stats.cashBox} onShowExpenses={() => setTab("expense")} />}
+
+            {stats && !stats.cashBox && (() => {
               // Mbetja e vërtetë në arkë — nga sa u mor, hiqet jo vetëm ç'u dorëzua,
               // por edhe ç'u shpenzua dhe ç'u investua direkt nga paraja e arkës
               // (Investimet s'kanë kategori pagese, ndaj janë gjithmonë shkollore,
@@ -1322,8 +1327,9 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           </>
         )}
 
-        {tab === "expense" && (
-          <ExpensesSection categoryId={category?.id ?? null} type="EXPENSE" month={month} year={resolvedYear} yearType={yearType} />
+        {tab === "expense" && (categoryName === "Shkollimi"
+          ? <ShkollimiExpensesSection categoryId={category?.id ?? null} month={month} year={resolvedYear} yearType={yearType} />
+          : <ExpensesSection categoryId={category?.id ?? null} type="EXPENSE" month={month} year={resolvedYear} yearType={yearType} />
         )}
 
         {tab === "handover" && (
@@ -3051,5 +3057,46 @@ function MethodSelect({ value, onChange, className }: { value: string; onChange:
       {value === "CARD" && <option value="CARD">Kartelë</option>}
       {value === "ONLINE" && <option value="ONLINE">Online</option>}
     </select>
+  );
+}
+
+// Pasqyra e Arkës e Shkollimit — e njëjta formulë si dashboard-i:
+// Në arkë = të hyrat Cash − shpenzimet e paguara me Cash − dorëzimet.
+// Paratë me Bankë s'kalojnë nga arka; shpenzimet e papaguara s'llogariten.
+function ShkollimiCashBox({ stats, cashBox: c, onShowExpenses }: {
+  stats: Stats; cashBox: NonNullable<Stats["cashBox"]>; onShowExpenses: () => void;
+}) {
+  const inBox = Math.round((c.cash - c.expensesCash - stats.handedOver) * 100) / 100;
+  const items: { label: string; value: number; sub?: string; tone: string; onClick?: () => void }[] = [
+    { label: "Sa kam marrë (Paguar)", value: stats.totalRevenue, sub: `Cash ${formatCurrency(c.cash)} · Bankë ${formatCurrency(c.bank)}`, tone: "text-green-600 dark:text-green-400" },
+    { label: "Në bankë", value: c.bank, sub: "hyrë direkt në llogari", tone: "text-blue-700 dark:text-blue-300" },
+    { label: "Sa kam dorëzuar", value: stats.handedOver, sub: "nga cash", tone: "text-violet-700 dark:text-violet-300" },
+    { label: "Shpenzuar nga arka", value: c.expensesCash, sub: c.expensesBank > 0 ? `+ ${formatCurrency(c.expensesBank)} nga banka` : "shpenzimet e paguara cash", tone: "text-orange-600 dark:text-orange-400", onClick: onShowExpenses },
+    { label: "Sa kam në arkë", value: inBox, sub: inBox < 0 ? "⚠ Më shumë dalje se hyrje cash" : "cash − shpenzime cash − dorëzime", tone: inBox < 0 ? "text-red-600 dark:text-red-400" : "text-teal-700 dark:text-teal-300" },
+  ];
+  return (
+    <div className="card p-4 border-2 border-primary-100 dark:border-primary-900/40 space-y-3">
+      <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Pasqyra e Arkës</p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        {items.map(it => {
+          const body = (
+            <>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{it.label}</p>
+              <p className={`text-lg font-bold ${it.tone}`}>{formatCurrency(it.value)}</p>
+              {it.sub && <p className="text-[11px] text-slate-500 dark:text-slate-400">{it.sub}</p>}
+            </>
+          );
+          return it.onClick
+            ? <button key={it.label} type="button" onClick={it.onClick} className="text-left rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 -m-1 p-1">{body}</button>
+            : <div key={it.label}>{body}</div>;
+        })}
+      </div>
+      {c.noMethod > 0 && (
+        <p className="text-xs text-amber-700 dark:text-amber-400">⚠ {formatCurrency(c.noMethod)} pagesa pa metodë (Cash/Bankë) — nuk llogariten në arkë derisa të klasifikohen (filtri &quot;Pa metodë&quot; te kolona Metoda).</p>
+      )}
+      {c.expensesUnpaid > 0 && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">{formatCurrency(c.expensesUnpaid)} shpenzime të papaguara (borxh te furnitorët) — s&apos;llogariten derisa të paguhen.</p>
+      )}
+    </div>
   );
 }
