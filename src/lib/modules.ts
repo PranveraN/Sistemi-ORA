@@ -25,7 +25,7 @@ export const MODULES: ModuleDef[] = [
   { key: "payments",        label: "Pagesat (listë e përgjithshme)", pathPrefixes: ["/payments"] },
   { key: "invoices",        label: "Faturat",                   pathPrefixes: ["/invoices"] },
   { key: "faturat-rregullta", label: "Faturat e Rregullta",     pathPrefixes: ["/faturat-rregullta"] },
-  { key: "kerkesat",        label: "Kërkesat për Materiale",     pathPrefixes: ["/kerkesat"] },
+  { key: "kerkesat",        label: "Kërkesat për Materiale",     pathPrefixes: ["/materialet", "/kerkesat"] },
   { key: "materiale",       label: "Materialet (Inventari)",    pathPrefixes: ["/materiale"] },
   { key: "sms",             label: "SMS",                       pathPrefixes: ["/sms"] },
   { key: "classes",         label: "Klasat",                    pathPrefixes: ["/classes"] },

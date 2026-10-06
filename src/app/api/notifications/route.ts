@@ -145,7 +145,7 @@ export async function GET() {
       dueDate: r.createdAt.toISOString(),
       urgent: true,
       category: "MATERIAL",
-      link: `/kerkesat?id=${r.id}`,
+      link: `/materialet/kerkesat/${r.id}`,
     })),
     ...(forReview > 0 ? [{
       id: `material-review-${forReview}`,

@@ -13,7 +13,7 @@ const itemHref = (it: OraAnswer["items"][number]) => {
     case "family": return `/families/${it.id}`;
     case "staff": return `/sekretaria/stafi?staffId=${it.id}`;
     case "class": return `/classes/${it.id}`;
-    case "request": return `/kerkesat?id=${it.id}&s=ALL`;
+    case "request": return `/materialet/kerkesat/${it.id}`;
     case "application": return `/regjistrimet?tab=ALL&q=${encodeURIComponent(it.title)}`;
     default: return "#";
   }

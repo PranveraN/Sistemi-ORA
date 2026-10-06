@@ -73,7 +73,7 @@ export default function MaterialRequestReminder() {
             </button>
           </div>
           <Link
-            href="/kerkesat"
+            href="/materialet/kerkesat"
             onClick={() => setShowPending(false)}
             className="mt-3 inline-flex items-center justify-center w-full btn-primary text-sm"
           >
@@ -99,7 +99,7 @@ export default function MaterialRequestReminder() {
             </button>
           </div>
           <Link
-            href="/kerkesat"
+            href="/materialet/kerkesat"
             onClick={() => setShowUnsent(false)}
             className="mt-3 inline-flex items-center justify-center w-full btn-primary text-sm"
           >

@@ -317,7 +317,7 @@ export const requestsSummary: OraTool = {
         breakdown: st === "ALL" ? byStage.map(b => ({ label: b.label, value: String(b.count) })) : [],
         items: list.slice(0, 50).map(r => ({ type: "request" as const, id: r.id, title: r.teacher.name, subtitle: `${r._count.items} artikuj · ${r.createdAt.toISOString().slice(0, 10)}`, badge: r.priority === "URGENT" ? "Urgjente" : undefined })),
         total_items: list.length,
-        actions: [{ type: "open_list", label: "Hap Kërkesat", params: { href: `/kerkesat?s=${st}` }, module: "kerkesat" }],
+        actions: [{ type: "open_list", label: "Hap Kërkesat", params: { href: `/materialet/kerkesat?s=${st}` }, module: "kerkesat" }],
         source: `Kërkesat e materialeve${stLabel ? ` · ${stLabel}` : ""}${tq ? ` · mësuesi: ${input.teacher_query}` : ""}`,
         fallbackAnswer: `${list.length} kërkesa materialesh${stLabel ? ` ${stLabel}` : ""}${tq ? ` nga ${input.teacher_query}` : ""}.`,
       },

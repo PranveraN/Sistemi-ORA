@@ -1,18 +1,12 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { Suspense } from "react";
-import Header from "@/components/layout/Header";
-import RequestsBoard from "@/components/material-requests/admin/RequestsBoard";
-
-// "Materialet" — kërkesat e mësuesve: kartat sipas rrjedhës, lista, detajet dhe
-// lista "Për t'u porositur". Shih src/components/material-requests/admin/.
-export default function KerkesatPage() {
-  return (
-    <>
-      <Header title="Materialet" />
-      <Suspense fallback={<p className="p-6 text-sm text-slate-400">Duke ngarkuar...</p>}>
-        <RequestsBoard />
-      </Suspense>
-    </>
-  );
+// Kërkesat u bashkuan te "Materialet" — lidhjet e vjetra (/kerkesat?id=…&s=…) ridrejtohen.
+export default async function KerkesatPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const sp = await searchParams;
+  const qs = new URLSearchParams();
+  if (sp.s && sp.s !== "ALL") qs.set("s", sp.s);
+  if (sp.q) qs.set("q", sp.q);
+  if (sp.t) qs.set("t", sp.t);
+  const id = parseInt(sp.id ?? "") || null;
+  redirect(`/materialet/kerkesat${id ? `/${id}` : ""}${qs.size ? `?${qs}` : ""}`);
 }

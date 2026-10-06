@@ -1,113 +1,114 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requestStatusKey, type StatusKey } from "@/lib/materialStatusUi";
 
-const MONTH_NAMES = ["Jan", "Shk", "Mar", "Pri", "Maj", "Qer", "Kor", "Gus", "Sht", "Tet", "Nën", "Dhj"];
+// Analitika e Materialeve për periudhën e zgjedhur:
+//   ?period=month (ky muaj) | year (ky vit shkollor) | custom&from=YYYY-MM-DD&to=YYYY-MM-DD
+// Kohët kthehen në milisekonda (formatohen te klienti); shpenzimi = null kur
+// asnjë rresht porosie s'ka çmim (që të mos shfaqet "0,00 €" i rremë).
 
-export async function GET() {
+const SCHOOL_MONTHS = [
+  { m: 8, label: "Sht" }, { m: 9, label: "Tet" }, { m: 10, label: "Nën" }, { m: 11, label: "Dhj" },
+  { m: 0, label: "Jan" }, { m: 1, label: "Shk" }, { m: 2, label: "Mar" }, { m: 3, label: "Pri" },
+  { m: 4, label: "Maj" }, { m: 5, label: "Qer" },
+];
+
+function schoolYearStart(d: Date) { return d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1; }
+
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const role = (session.user as { role?: string }).role;
   if (role !== "ADMIN" && role !== "SUPERADMIN" && role !== "FINANCE") {
     return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
   }
-
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
 
-  const [requests, items, orders] = await Promise.all([
+  const sp = req.nextUrl.searchParams;
+  const period = sp.get("period") === "year" ? "year" : sp.get("period") === "custom" ? "custom" : "month";
+  const now = new Date();
+  let from: Date, to: Date;
+  if (period === "year") {
+    const y = schoolYearStart(now);
+    from = new Date(y, 8, 1); to = new Date(y + 1, 8, 1);
+  } else if (period === "custom") {
+    const f = sp.get("from") ? new Date(`${sp.get("from")}T00:00:00`) : null;
+    const t = sp.get("to") ? new Date(`${sp.get("to")}T00:00:00`) : null;
+    if (!f || !t || isNaN(f.getTime()) || isNaN(t.getTime()) || f > t) {
+      return NextResponse.json({ error: "Zgjidhni periudhën (nga – deri)." }, { status: 400 });
+    }
+    from = f; to = new Date(t.getTime() + 86_400_000);
+  } else {
+    from = new Date(now.getFullYear(), now.getMonth(), 1); to = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  }
+
+  const sy = schoolYearStart(period === "custom" ? new Date(to.getTime() - 1) : now);
+  const syFrom = new Date(sy, 8, 1), syTo = new Date(sy + 1, 8, 1);
+  const sent = (r: { submittedAt: Date | null; createdAt: Date }) => r.submittedAt ?? r.createdAt;
+
+  const [requests, orders] = await Promise.all([
     prisma.materialRequest.findMany({
-      where: { organizationId: orgId },
-      select: { id: true, status: true, createdAt: true, submittedAt: true, reviewedAt: true, teacherId: true, teacher: { select: { name: true } } },
-    }),
-    prisma.materialRequestItem.findMany({
-      where: { request: { organizationId: orgId } },
-      select: { isCustom: true, customItemName: true, quantity: true, materialId: true, matchType: true, material: { select: { name: true, reviewStatus: true } } },
+      where: { organizationId: orgId, OR: [{ submittedAt: { gte: new Date(Math.min(from.getTime(), syFrom.getTime())), lt: new Date(Math.max(to.getTime(), syTo.getTime())) } }, { submittedAt: null }] },
+      select: {
+        id: true, status: true, createdAt: true, submittedAt: true, reviewedAt: true, deliveredAt: true,
+        teacherId: true, teacher: { select: { name: true } },
+        items: { select: { isCustom: true, customItemName: true, quantity: true, unit: true, materialId: true, material: { select: { name: true } } } },
+      },
     }),
     prisma.materialOrder.findMany({
-      where: { organizationId: orgId, status: { not: "CANCELLED" } },
-      select: {
-        estimatedCost: true, actualCost: true, status: true,
-        items: { select: { unitPrice: true, receivedQuantity: true, materialId: true, material: { select: { category: { select: { name: true } } } } } },
-      },
+      where: { organizationId: orgId, status: { not: "CANCELLED" }, orderDate: { gte: from, lt: to } },
+      select: { items: { select: { unitPrice: true, quantity: true, receivedQuantity: true } } },
     }),
   ]);
 
-  // ── Statistika bazë ──
-  const totalRequests = requests.length;
-  const totalItems = items.length;
-  const totalSpend = Math.round(orders.reduce((s, o) => s + o.actualCost, 0) * 100) / 100;
-  const pipelineSpend = Math.round(orders.filter(o => o.status !== "RECEIVED").reduce((s, o) => s + o.estimatedCost, 0) * 100) / 100;
+  const inPeriod = requests.filter(r => { const d = sent(r); return d >= from && d < to; });
+  const allItems = inPeriod.flatMap(r => r.items);
 
-  const decided = requests.filter(r => r.reviewedAt && r.submittedAt);
-  const avgApprovalHours = decided.length
-    ? Math.round(
-        (decided.reduce((s, r) => s + (new Date(r.reviewedAt!).getTime() - new Date(r.submittedAt!).getTime()), 0) / decided.length) / 3_600_000 * 10
-      ) / 10
+  const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((s, x) => s + x, 0) / xs.length) : null);
+  const decisionMs = avg(inPeriod.filter(r => r.reviewedAt && !["SUBMITTED", "UNDER_REVIEW"].includes(r.status))
+    .map(r => r.reviewedAt!.getTime() - sent(r).getTime()).filter(x => x >= 0));
+  const deliveryMs = avg(inPeriod.filter(r => r.deliveredAt).map(r => r.deliveredAt!.getTime() - sent(r).getTime()).filter(x => x >= 0));
+
+  // Shpenzimi: vetëm rreshtat me çmim (sasia e pranuar, ose e porositur kur s'ka ardhur ende)
+  const priced = orders.flatMap(o => o.items).filter(it => it.unitPrice !== null && it.unitPrice > 0);
+  const spend = priced.length
+    ? Math.round(priced.reduce((s, it) => s + it.unitPrice! * (it.receivedQuantity || it.quantity), 0) * 100) / 100
     : null;
 
-  // ── Shpërndarja sipas statusit ──
-  const statusCounts = new Map<string, number>();
-  for (const r of requests) statusCounts.set(r.status, (statusCounts.get(r.status) ?? 0) + 1);
-  const statusBreakdown = [...statusCounts.entries()].map(([status, count]) => ({ status, count }));
+  const statusCounts: Record<StatusKey, number> = { SUBMITTED: 0, UNDER_REVIEW: 0, APPROVED: 0, ORDERED: 0, DELIVERED: 0, REJECTED: 0, CANCELLED: 0 };
+  for (const r of inPeriod) statusCounts[requestStatusKey(r.status)]++;
 
-  // ── Kërkesat sipas muajit (12 muajt e fundit, përfshirë muajt me 0) ──
-  const now = new Date();
-  const monthBuckets: { key: string; label: string; count: number }[] = [];
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    monthBuckets.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: MONTH_NAMES[d.getMonth()], count: 0 });
-  }
-  const bucketByKey = new Map(monthBuckets.map(b => [b.key, b]));
-  for (const r of requests) {
-    const d = new Date(r.createdAt);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const bucket = bucketByKey.get(key);
-    if (bucket) bucket.count++;
-  }
+  const monthly = SCHOOL_MONTHS.map(({ m, label }) => {
+    const year = m >= 8 ? sy : sy + 1;
+    const count = requests.filter(r => { const d = sent(r); return d.getFullYear() === year && d.getMonth() === m; }).length;
+    return { label, count };
+  });
 
-  // ── Top 10 materialet më të kërkuara ──
-  const materialCounts = new Map<string, { name: string; requestCount: number; totalQuantity: number }>();
-  for (const it of items) {
-    // Nga rreshtat e strukturuar (ID e artikullit) — pa dyfishime nga teksti.
-    // Teksti pa artikull (forma e re, AUTO_CREATE i fikur) → grupi "Në pritje të shqyrtimit".
-    const pendingText = it.isCustom && !it.materialId && it.matchType === "new";
-    const key = pendingText ? "pending-review" : it.isCustom ? `custom:${it.customItemName}` : `mat:${it.materialId}`;
-    const name = pendingText ? "Në pritje të shqyrtimit"
-      : it.isCustom ? `${it.customItemName} (i veçantë)`
-      : `${it.material?.name ?? "—"}${it.material?.reviewStatus === "pending" ? " (pa rishikuar)" : ""}`;
-    const cur = materialCounts.get(key) ?? { name, requestCount: 0, totalQuantity: 0 };
-    cur.requestCount++;
-    cur.totalQuantity += it.quantity;
-    materialCounts.set(key, cur);
+  const mat = new Map<string, { name: string; unit: string; quantity: number; requests: number }>();
+  for (const it of allItems) {
+    const name = (it.isCustom ? it.customItemName : it.material?.name) ?? "Artikull";
+    const key = `${it.materialId ?? `c:${name.toLowerCase()}`}|${it.unit}`;
+    const cur = mat.get(key) ?? { name, unit: it.unit, quantity: 0, requests: 0 };
+    cur.quantity += it.quantity; cur.requests++;
+    mat.set(key, cur);
   }
-  const topMaterials = [...materialCounts.values()].sort((a, b) => b.requestCount - a.requestCount).slice(0, 10);
+  const topMaterials = [...mat.values()].sort((a, b) => b.requests - a.requests || b.quantity - a.quantity).slice(0, 10);
 
-  // ── Shpenzimi sipas kategorisë (bazuar te sasia e pranuar × çmimi/njësi) ──
-  const categorySpend = new Map<string, number>();
-  for (const o of orders) {
-    for (const it of o.items) {
-      if (!it.materialId || !it.unitPrice || !it.receivedQuantity) continue;
-      const cat = it.material?.category.name ?? "Pa kategori";
-      categorySpend.set(cat, (categorySpend.get(cat) ?? 0) + it.unitPrice * it.receivedQuantity);
-    }
+  const tea = new Map<number, { id: number; name: string; count: number }>();
+  for (const r of inPeriod) {
+    const cur = tea.get(r.teacherId) ?? { id: r.teacherId, name: r.teacher.name, count: 0 };
+    cur.count++; tea.set(r.teacherId, cur);
   }
-  const categorySpendList = [...categorySpend.entries()]
-    .map(([category, spend]) => ({ category, spend: Math.round(spend * 100) / 100 }))
-    .sort((a, b) => b.spend - a.spend);
-
-  // ── Top mësimdhënëset sipas numrit të kërkesave ──
-  const teacherCounts = new Map<number, { name: string; count: number }>();
-  for (const r of requests) {
-    const cur = teacherCounts.get(r.teacherId) ?? { name: r.teacher.name, count: 0 };
-    cur.count++;
-    teacherCounts.set(r.teacherId, cur);
-  }
-  const topTeachers = [...teacherCounts.values()].sort((a, b) => b.count - a.count).slice(0, 10);
+  const topTeachers = [...tea.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 10);
 
   return NextResponse.json({
-    totalRequests, totalItems, totalSpend, pipelineSpend, avgApprovalHours,
-    statusBreakdown, monthlyRequests: monthBuckets,
-    topMaterials, categorySpend: categorySpendList, topTeachers,
+    period, from: from.toISOString(), to: new Date(to.getTime() - 1).toISOString(),
+    schoolYear: `${sy}–${sy + 1}`,
+    requests: inPeriod.length,
+    items: allItems.length,
+    quantity: allItems.reduce((s, it) => s + it.quantity, 0),
+    decisionMs, deliveryMs, spend,
+    statusCounts, monthly, topMaterials, topTeachers,
   });
 }

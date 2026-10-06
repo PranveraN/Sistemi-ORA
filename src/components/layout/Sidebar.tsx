@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, FileText,
   GraduationCap, BarChart3, Settings, BookOpen,
   ChevronLeft, ChevronRight, UtensilsCrossed,
-  Shirt, BookMarked, NotebookPen, ClipboardList, Wallet, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, Truck, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip, Sparkles,
+  Shirt, BookMarked, NotebookPen, ClipboardList, Wallet, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -54,9 +54,8 @@ const navSections = [
       { href: "/sms", icon: MessageSquare, label: "Mesazhe SMS", roles: ["ADMIN", "SECRETARY"] as Role[] },
       { href: "/dokumentet", icon: Paperclip, label: "Dokumentet", roles: ["ADMIN", "SECRETARY"] as Role[] },
       { href: "/ora", icon: Sparkles, label: "Ora · Asistenti", roles: ["ADMIN"] as Role[] },
-      { href: "/kerkesat",   icon: Package,        label: "Kërkesat",     roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/materialet", icon: Package,        label: "Materialet",   roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/materiale",  icon: Boxes,          label: "Katalogu i Materialeve", roles: ["ADMIN", "FINANCE"] as Role[] },
-      { href: "/materiale/porosite", icon: Truck,  label: "Porositë e Materialeve", roles: ["ADMIN", "FINANCE"] as Role[] },
     ],
   },
   {
@@ -166,7 +165,7 @@ export default function Sidebar() {
                 <ul className="space-y-0.5">
                   {visibleItems.map((item) => {
                     const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-                    const badge = item.href === "/kerkesat" ? requestBadge : item.href === "/materiale" ? reviewBadge : 0;
+                    const badge = item.href === "/materialet" ? requestBadge : item.href === "/materiale" ? reviewBadge : 0;
                     return (
                       <li key={item.href}>
                         <Link

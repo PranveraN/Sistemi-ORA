@@ -56,11 +56,11 @@ function deadline(dateNeeded: string | null, leadDays: number): { text: string; 
   return { text: `Nevojitet për ${days} ditë`, cls: days <= Math.max(leadDays, 3) ? "text-orange-700 dark:text-orange-400" : "text-slate-500 dark:text-slate-400" };
 }
 
-export default function OrderQueue({ pending, newItemsCount, dueSoon, shortNotice, leadDays, canAct, onOrdered }: {
+export default function OrderQueue({ pending, newItemsCount, dueSoon, overdue, leadDays, canAct, onOrdered }: {
   pending: PendingItem[];
   newItemsCount: number;
   dueSoon: number;
-  shortNotice: number;
+  overdue: number;
   leadDays: number;
   canAct: boolean;
   onOrdered: () => void;
@@ -213,13 +213,14 @@ export default function OrderQueue({ pending, newItemsCount, dueSoon, shortNotic
         </Link>
       )}
 
-      <div className="card p-4">
-        <h3 className="font-semibold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-2">
-          <CalendarClock className="w-4 h-4 text-primary-500" /> Afatet
+      <section className="card p-4 space-y-2" aria-labelledby="oq-deadlines">
+        <h3 id="oq-deadlines" className="font-extrabold text-[15px] text-slate-900 dark:text-white flex items-center gap-2">
+          <CalendarClock className="w-4 h-4 text-primary-600" aria-hidden /> Afatet
         </h3>
-        <p className="text-sm text-slate-600 dark:text-slate-300"><b>{dueSoon}</b> kërkesa duhen brenda {leadDays} ditëve</p>
-        <p className="text-sm text-slate-600 dark:text-slate-300"><b>{shortNotice}</b> të dërguara me më pak se {leadDays} ditë afat</p>
-      </div>
+        <p className="flex justify-between text-sm text-slate-700 dark:text-slate-200"><span>Me afat brenda {leadDays} ditëve</span><b>{dueSoon}</b></p>
+        <p className="flex justify-between text-sm text-slate-700 dark:text-slate-200"><span>Afati ka kaluar</span><b className={overdue > 0 ? "text-red-700 dark:text-red-400" : ""}>{overdue}</b></p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Kërkesat e dorëzuara nuk llogariten.</p>
+      </section>
 
       {preview && supplier && (
         <OrderPreviewModal
@@ -229,7 +230,7 @@ export default function OrderQueue({ pending, newItemsCount, dueSoon, shortNotic
           onClose={() => setPreview(null)}
           onSent={() => {
             setUnselected(new Set()); setQty({});
-            setNotice(`Porosia u dërgua te ${supplier.name}. Shiko te "Porositë".`);
+            setNotice(`Porosia u dërgua te ${supplier.name}. Shiko te tab-i "Porositë".`);
             onOrdered();
           }}
         />

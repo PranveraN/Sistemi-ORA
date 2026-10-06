@@ -5,6 +5,7 @@ import { Clock, Plus, Minus, Trash2, LayoutGrid, X, ChevronDown, Check, Loader2 
 import type { CatalogEntry } from "@/lib/materialMatcher";
 import { parseItemInput, rankCatalog, isStrongMatch, type RankedEntry } from "@/lib/teacherItemInput";
 import { normalizeSearch } from "@/lib/utils";
+import { requestStatusUi } from "@/lib/materialStatusUi";
 
 // Faqja e mësuesit për kërkesat e materialeve: "Kërkesë e re" (artikujt + lënda
 // + arsyeja) dhe "Kërkesat e mia". Statusin e ndryshon vetëm administrata.
@@ -21,18 +22,7 @@ interface RequestRow {
 }
 type SuggestOpt = { type: "cat"; r: RankedEntry } | { type: "free" };
 
-// Të njëjtat statuse si te administrata: Në pritje → Në shqyrtim → Aprovuar → Porositur → Dorëzuar, ose Refuzuar
-const TEACHER_STATUS: Record<string, { label: string; cls: string }> = {
-  pending: { label: "Në pritje", cls: "bg-blue-50 text-blue-900 dark:bg-blue-950/50 dark:text-blue-200" },
-  review: { label: "Në shqyrtim", cls: "bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200" },
-  approved: { label: "Aprovuar", cls: "bg-teal-50 text-teal-900 dark:bg-teal-950/50 dark:text-teal-200" },
-  ordered: { label: "Porositur", cls: "bg-violet-100 text-violet-900 dark:bg-violet-950/60 dark:text-violet-200" },
-  delivered: { label: "Dorëzuar", cls: "bg-green-50 text-green-900 dark:bg-green-950/50 dark:text-green-200" },
-  rejected: { label: "Refuzuar", cls: "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300" },
-};
-const statusKey = (s: string) =>
-  s === "REJECTED" ? "rejected" : s === "DELIVERED" ? "delivered" : s === "ORDERED" ? "ordered"
-    : s === "APPROVED" || s === "PARTIALLY_APPROVED" ? "approved" : s === "UNDER_REVIEW" ? "review" : "pending";
+// Statusi me të njëjtën fjalë dhe ngjyrë si te administrata (src/lib/materialStatusUi.ts)
 
 const MONTHS = ["janar", "shkurt", "mars", "prill", "maj", "qershor", "korrik", "gusht", "shtator", "tetor", "nëntor", "dhjetor"];
 function fmtWhen(iso: string): string {
@@ -374,7 +364,7 @@ export default function TeacherRequestsClient() {
         ) : (
           <div className="flex flex-col gap-2.5">
             {requests.map(r => {
-              const st = TEACHER_STATUS[statusKey(r.status)];
+              const st = requestStatusUi(r.status);
               const open = openIds.has(r.id);
               const n = r.items.length;
               return (
@@ -385,7 +375,7 @@ export default function TeacherRequestsClient() {
                       <span className="block font-bold text-slate-900 dark:text-white">{r.subject?.name ?? "Pa lëndë"} – {n} {n === 1 ? "artikull" : "artikuj"}</span>
                       <span className="block text-[13px] text-slate-600 dark:text-slate-300 mt-0.5">{fmtWhen(r.createdAt)}</span>
                     </span>
-                    <span className={`row-start-2 min-[620px]:row-start-1 min-[620px]:col-start-2 justify-self-start text-[12.5px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap ${st.cls}`}>{st.label}</span>
+                    <span className={`row-start-2 min-[620px]:row-start-1 min-[620px]:col-start-2 justify-self-start text-[12.5px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap ${st.badge}`}>{st.label}</span>
                     <ChevronDown className={`row-start-1 col-start-2 min-[620px]:col-start-3 w-[18px] h-[18px] text-slate-600 dark:text-slate-300 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
                   </button>
                   {open && (

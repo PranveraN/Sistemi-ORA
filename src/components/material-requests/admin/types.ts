@@ -1,5 +1,6 @@
 import type { ExportableRequest } from "@/lib/materialRequestExport";
 import { isTooSoon } from "@/lib/materialConfig";
+import { hasLiveDeadline } from "@/lib/materialStatusUi";
 
 export interface OrderLinkRow {
   quantityContributed: number;
@@ -38,6 +39,8 @@ export interface MaterialRequestRow extends Omit<ExportableRequest, "items"> {
   urgencyReason: string | null;
   items: RequestItemRow[];
   sentSmsAt: string | null;
+  reviewedAt?: string | null;
+  deliveredAt?: string | null;
   sentToPhone: string | null;
 }
 
@@ -94,18 +97,20 @@ export function isShortNotice(r: MaterialRequestRow, leadDays: number): boolean 
   return isTooSoon(r.dateNeeded, leadDays, new Date(sentDate(r)));
 }
 
-/** Urgjentet së pari, pastaj afati më i afërt, pastaj më të rejat. */
+/** Të hapurat sipër (urgjentet, pastaj afati më i afërt); të dorëzuarat/refuzuarat poshtë, më të rejat së pari. */
 export function compareRequests(a: MaterialRequestRow, b: MaterialRequestRow): number {
-  const ua = a.priority === "URGENT" ? 0 : 1, ub = b.priority === "URGENT" ? 0 : 1;
+  const oa = hasLiveDeadline(a.status) ? 0 : 1, ob = hasLiveDeadline(b.status) ? 0 : 1;
+  if (oa !== ob) return oa - ob;
+  const ua = a.priority === "URGENT" && !oa ? 0 : 1, ub = b.priority === "URGENT" && !ob ? 0 : 1;
   if (ua !== ub) return ua - ub;
-  const da = a.dateNeeded ? new Date(a.dateNeeded).getTime() : Infinity;
-  const db = b.dateNeeded ? new Date(b.dateNeeded).getTime() : Infinity;
+  const da = a.dateNeeded && !oa ? new Date(a.dateNeeded).getTime() : Infinity;
+  const db = b.dateNeeded && !ob ? new Date(b.dateNeeded).getTime() : Infinity;
   if (da !== db) return da - db;
   return new Date(sentDate(b)).getTime() - new Date(sentDate(a)).getTime();
 }
 
-/** Një rresht nga teksti i kërkesës (teksti i lirë, ose artikujt për kërkesat e vjetra). */
+/** Artikujt e kërkesës në një rresht ("Llastik ×3, Bllok memo ×1"); teksti i lirë vetëm kur s'ka artikuj. */
 export function requestSnippet(r: MaterialRequestRow): string {
-  if (r.originalText?.trim()) return r.originalText.trim().replace(/\s+/g, " ");
+  if (!r.items.length && r.originalText?.trim()) return r.originalText.trim().replace(/\s+/g, " ");
   return r.items.map(it => `${itemName(it)} ×${it.quantity}`).join(", ");
 }
