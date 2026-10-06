@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   // Forma e re e mësuesit (tekst i lirë / zgjedhje nga katalogu) — rruga e vjetër më poshtë mbetet e paprekur
+  if (body.mode === "LIST") return createFromList(body, userId, orgId);
   if (body.mode === "TEXT" || body.mode === "CATALOG") return createFromNewForm(body, userId, orgId);
   const reason = String(body.reason ?? "").trim();
   const comment = body.comment ? String(body.comment).trim() : null;
@@ -289,4 +290,57 @@ async function createFromNewForm(body: NewFormBody, userId: number, orgId: numbe
   if (result && "validationError" in result) return fail(mode === "TEXT" ? "text" : "items", result.validationError);
   if (result) sendSubmissionConfirmationEmail(result).catch(() => {});
   return NextResponse.json({ ...result, createdMaterials, autoCreate }, { status: 201 });
+}
+
+/* ─── Faqja e mësuesit (lista e artikujve + lënda + arsyeja) ─────────────── */
+
+interface ListBody {
+  subjectId?: number | string;
+  reason?: string;
+  items?: { materialId?: number | string | null; name?: string; quantity?: number | string; unit?: string | null }[];
+}
+
+// Njësitë e lexuara te forma ("pako", "rrotull", "set") → njësitë e sistemit
+const LIST_UNIT: Record<string, string> = { kuti: "kuti", pako: "paketë", "copë": "copë", rrotull: "top", set: "grup" };
+
+async function createFromList(body: ListBody, userId: number, orgId: number) {
+  const fail = (field: string, error: string) => NextResponse.json({ error, field }, { status: 400 });
+  const raw = Array.isArray(body.items) ? body.items.slice(0, 60) : [];
+  if (!raw.length) return fail("items", "Shtoni të paktën një artikull.");
+  const subject = await prisma.subject.findFirst({ where: { id: parseInt(String(body.subjectId ?? "")) || 0, organizationId: orgId } });
+  if (!subject) return fail("subject", "Zgjidhni lëndën.");
+  const reason = String(body.reason ?? "").trim().slice(0, 1000);
+  if (!reason) return fail("reason", "Shkruani arsyen e kërkesës.");
+
+  const autoCreate = parseAutoCreate((await prisma.setting.findUnique({ where: { key: MATERIAL_SETTING_KEYS.autoCreateItems } }))?.value);
+  const items: IncomingTextItem[] = raw.map(i => ({
+    materialId: i.materialId ?? null,
+    quantity: i.quantity,
+    unit: i.unit ? LIST_UNIT[String(i.unit)] ?? String(i.unit) : undefined,
+    matchType: "catalog",
+    newName: String(i.name ?? "").trim(),
+  }));
+
+  const result = await prisma.$transaction(async (tx) => {
+    const request = await tx.materialRequest.create({
+      data: {
+        teacherId: userId, organizationId: orgId, status: "SUBMITTED", submittedAt: new Date(),
+        reason, subjectId: subject.id, priority: "NORMAL", mode: "LIST",
+        statusHistory: { create: { fromStatus: null, toStatus: "SUBMITTED", changedById: userId } },
+      },
+    });
+    // Artikujt jashtë katalogut: tekst për shqyrtim (ose "Pa rishikuar" me AUTO_CREATE) — dallohen te paneli i administratës
+    const r = await resolveTextItems(tx, { orgId, userId, requestId: request.id, originalText: "", items, autoCreate });
+    if (r.error) throw new Error(`VALIDIM:${r.error}`);
+    if (!r.rows.length) throw new Error("VALIDIM:Shtoni të paktën një artikull.");
+    await tx.materialRequestItem.createMany({ data: r.rows.map(row => ({ ...row, requestId: request.id })) });
+    return tx.materialRequest.findUnique({ where: { id: request.id }, include: REQUEST_INCLUDE });
+  }).catch((e: unknown) => {
+    if (e instanceof Error && e.message.startsWith("VALIDIM:")) return { validationError: e.message.slice(8) } as const;
+    throw e;
+  });
+
+  if (result && "validationError" in result) return fail("items", result.validationError);
+  if (result) sendSubmissionConfirmationEmail(result).catch(() => {});
+  return NextResponse.json(result, { status: 201 });
 }

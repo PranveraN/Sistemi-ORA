@@ -11,7 +11,7 @@ export default async function TeacherHomePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col items-center p-4">
-      <div className="w-full max-w-2xl">
+      <div className="w-full max-w-[780px]">
         <div className="flex items-center justify-between py-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
@@ -19,7 +19,7 @@ export default async function TeacherHomePage() {
             </div>
             <div>
               <p className="font-bold text-slate-900 dark:text-white text-sm leading-tight">Akademia Ora</p>
-              <p className="text-xs text-slate-400 leading-tight">Kërkesa për Material Didaktik</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-tight">Kërkesa për Material Didaktik</p>
             </div>
           </div>
           <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
@@ -31,7 +31,7 @@ export default async function TeacherHomePage() {
         </div>
 
         <div className="mb-5">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Mirë se erdhe, {name}!</h1>
+          <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900 dark:text-white">Mirë se erdhe, {name}!</h1>
         </div>
 
         <TeacherRequestsClient />

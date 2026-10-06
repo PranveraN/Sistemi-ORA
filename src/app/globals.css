@@ -135,4 +135,23 @@
     from { transform: translateX(100%); }
     to { transform: translateX(0); }
   }
+
+  /* Theksimi i shkurtër i rreshtit të sapo shtuar (faqja e mësuesit) */
+  .animate-ora-flash {
+    animation: oraFlash 1.2s ease-out;
+  }
+
+  @keyframes oraFlash {
+    from { background-color: rgb(237 233 254); }
+    to { background-color: transparent; }
+  }
+
+  .dark .animate-ora-flash {
+    animation-name: oraFlashDark;
+  }
+
+  @keyframes oraFlashDark {
+    from { background-color: rgb(76 29 149 / 0.45); }
+    to { background-color: transparent; }
+  }
 }
