@@ -1672,3 +1672,50 @@ model MaterialOrderDispatch {
   @@index([organizationId, createdAt])
   @@index([orderId])
 }
+
+// Lirimi nga pagesa (Eshkollori → "Liro nga pagesa"): falas plotësisht ose
+// zbritje në %. Vlen nga `fromYear` (viti fillestar akademik) deri `untilYear`
+// (null = "Deri sa ta ndryshoj"). Anulimi s'e fshin — mbetet në histori.
+model FeeExemption {
+  id             Int       @id @default(autoincrement())
+  organizationId Int       @default(1)
+  studentId      Int
+  categoryId     Int
+  type           String    // FULL | PARTIAL
+  percent        Float?    // vetëm PARTIAL
+  reason         String    // SOCIAL | STAFF_CHILD | SIBLINGS | SCHOLARSHIP | OTHER
+  reasonText     String?   // teksti kur reason = OTHER
+  fromYear       Int
+  untilYear      Int?
+  createdById    Int
+  createdByName  String?
+  createdAt      DateTime  @default(now())
+  cancelledAt    DateTime?
+  cancelledById  Int?
+  cancelledByName String?
+  cancelReason   String?
+
+  @@index([studentId, categoryId])
+}
+
+// Historiku i ndryshimeve të detyrimeve (Eshkollori): shuma, lirimi, borxhi i
+// vjetër (shtim/ndryshim/falje/fshirje) dhe pagesat — vlera e vjetër, e reja,
+// arsyeja, kush dhe kur.
+model FeeChangeLog {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @default(1)
+  studentId      Int
+  categoryId     Int
+  year           Int?     // viti fillestar akademik që prek
+  action         String   // PAYMENT | AMOUNT | EXEMPT | EXEMPT_CANCEL | OLD_DEBT_ADD | OLD_DEBT_EDIT | OLD_DEBT_FORGIVE | OLD_DEBT_VOID
+  oldValue       Float?
+  newValue       Float?
+  reason         String?
+  detail         String?
+  refId          Int?     // Payment/FeeExemption përkatës
+  userId         Int
+  userName       String?
+  createdAt      DateTime @default(now())
+
+  @@index([studentId, categoryId, createdAt])
+}

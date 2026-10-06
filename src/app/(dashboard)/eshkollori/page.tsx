@@ -1,16 +1,7 @@
-import CategoryPaymentPage from "@/components/finance/CategoryPaymentPage";
-import { BookMarked } from "lucide-react";
+import EshkolloriPage from "@/components/eshkollori/EshkolloriPage";
 
-export default function EshkolloriPage() {
-  return (
-    <CategoryPaymentPage
-      categoryName="Platforma Digjitale"
-      title="Eshkollori"
-      icon={<BookMarked className="w-5 h-5" />}
-      color="teal"
-      isMonthly={false}
-      singlePaymentOnly={true}
-      allowOldDebtImport={true}
-    />
-  );
+// Eshkollori: "Të hyra" (detyrimi vjetor, lirimet, borxhi i vjetër), "Shpenzime"
+// dhe "Dorëzim parash". Qasja kontrollohet nga moduli "eshkollori" (middleware + API).
+export default function Page() {
+  return <EshkolloriPage />;
 }

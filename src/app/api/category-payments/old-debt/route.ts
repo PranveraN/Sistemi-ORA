@@ -39,7 +39,8 @@ export async function POST(req: NextRequest) {
 
     try {
       const existing = await prisma.payment.findFirst({
-        where: { studentId: row.studentId, categoryId, description: "BORXH_VJETER" },
+        // Një rresht për vit; borxhi i falur / i fshirë (Eshkollori) s'mbishkruhet kurrë
+        where: { studentId: row.studentId, categoryId, description: "BORXH_VJETER", year, status: { notIn: ["FORGIVEN", "VOID"] } },
       });
 
       const data = {
