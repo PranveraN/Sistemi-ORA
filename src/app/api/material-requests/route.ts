@@ -6,6 +6,7 @@ import { sendSubmissionConfirmationEmail } from "@/lib/materialRequestEmails";
 import { resolveTextItems, type IncomingTextItem } from "@/lib/materialRequestText";
 import { MATERIAL_SETTING_KEYS, parseAutoCreate } from "@/lib/materialConfig";
 import { ACTIVE_ORDER_LINK } from "@/lib/materialRequestStatus";
+import { toTeacherView } from "@/lib/materialRequestTeacherView";
 
 const PRIORITY_VALUES = ["NORMAL", "IMPORTANT", "URGENT"];
 
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(requests);
+  return NextResponse.json(isManagement ? requests : requests.map(toTeacherView));
 }
 
 interface IncomingItem {
@@ -196,7 +197,7 @@ export async function POST(req: NextRequest) {
   // ta bëjë dështim vetë krijimin e kërkesës, tashmë të ruajtur në bazë.
   sendSubmissionConfirmationEmail(created).catch(() => {});
 
-  return NextResponse.json(created, { status: 201 });
+  return NextResponse.json(toTeacherView(created), { status: 201 });
 }
 
 /* ─── Forma e re e mësuesit ─────────────────────────────────────────────── */
@@ -289,7 +290,7 @@ async function createFromNewForm(body: NewFormBody, userId: number, orgId: numbe
 
   if (result && "validationError" in result) return fail(mode === "TEXT" ? "text" : "items", result.validationError);
   if (result) sendSubmissionConfirmationEmail(result).catch(() => {});
-  return NextResponse.json({ ...result, createdMaterials, autoCreate }, { status: 201 });
+  return NextResponse.json({ ...toTeacherView(result), createdMaterials, autoCreate }, { status: 201 });
 }
 
 /* ─── Faqja e mësuesit (lista e artikujve + lënda + arsyeja) ─────────────── */
@@ -342,5 +343,5 @@ async function createFromList(body: ListBody, userId: number, orgId: number) {
 
   if (result && "validationError" in result) return fail("items", result.validationError);
   if (result) sendSubmissionConfirmationEmail(result).catch(() => {});
-  return NextResponse.json(result, { status: 201 });
+  return NextResponse.json(toTeacherView(result), { status: 201 });
 }

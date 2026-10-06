@@ -21,11 +21,12 @@ export async function GET() {
     where: {
       status: "APPROVED",
       approvedQuantity: { gt: 0 },
-      request: { organizationId: orgId },
+      // Vetëm kërkesat e vendosura (Aprovuar; Porositur për mbetjet) — kurrë "Në pritje"/"Në shqyrtim"
+      request: { organizationId: orgId, status: { in: ["APPROVED", "PARTIALLY_APPROVED", "ORDERED"] } },
     },
     include: {
       material: { select: { id: true, name: true, defaultUnit: true, supplierId: true } },
-      request: { select: { id: true, priority: true, teacher: { select: { name: true } } } },
+      request: { select: { id: true, priority: true, dateNeeded: true, class: { select: { name: true } }, teacher: { select: { name: true } } } },
       orderLinks: {
         where: { orderItem: { order: { status: { not: "CANCELLED" } } } },
         select: { quantityContributed: true },
@@ -42,6 +43,8 @@ export async function GET() {
         requestItemId: it.id,
         requestId: it.request.id,
         teacherName: it.request.teacher.name,
+        className: it.request.class?.name ?? null,
+        dateNeeded: it.request.dateNeeded,
         priority: it.request.priority,
         isCustom: it.isCustom,
         materialId: it.materialId,

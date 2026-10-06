@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Minus, Plus, XCircle, ShoppingCart, MoreHorizontal, Send, MessageSquare, Trash2, Loader2, X,
+  Minus, Plus, XCircle, ShoppingCart, MoreHorizontal, Trash2, Loader2,
   AlertTriangle, Clock, Paperclip, Link as LinkIcon, History, Save,
 } from "lucide-react";
 import { formatDate, formatDateTime } from "@/lib/utils";
@@ -58,12 +58,10 @@ function HighlightedText({ text, items }: { text: string; items: RequestItemRow[
   );
 }
 
-export default function RequestDetail({ request, leadDays, canAct, supplierEmail, supplierPhone, onUpdated, onDeleted }: {
+export default function RequestDetail({ request, leadDays, canAct, onUpdated, onDeleted }: {
   request: MaterialRequestRow;
   leadDays: number;
   canAct: boolean;
-  supplierEmail: string;
-  supplierPhone: string;
   onUpdated: () => void;
   onDeleted: () => void;
 }) {
@@ -85,8 +83,6 @@ export default function RequestDetail({ request, leadDays, canAct, supplierEmail
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [sendMode, setSendMode] = useState<"email" | "sms" | null>(null);
-  const [sendTo, setSendTo] = useState("");
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -162,20 +158,10 @@ export default function RequestDetail({ request, leadDays, canAct, supplierEmail
     if (ok) onDeleted();
   }
 
-  async function send() {
-    if (!sendMode || !sendTo.trim()) { setError(sendMode === "sms" ? "Shkruaj numrin e telefonit." : "Shkruaj email-in."); return; }
-    const ok = await call(`/api/material-requests/${r.id}/${sendMode === "sms" ? "send-sms" : "send"}`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(sendMode === "sms" ? { phone: sendTo.trim() } : { email: sendTo.trim() }),
-    }, "Dërgimi dështoi.");
-    if (ok) { setSendMode(null); onUpdated(); }
-  }
-
   const st = REQUEST_STATUS_MAP[r.status] ?? { label: r.status, color: "bg-slate-100 text-slate-600" };
   const partial = isPartialRequest(r.status, r.items);
   const dl = deadlineBadge(r.dateNeeded);
   const pr = PRIORITY_MAP[r.priority ?? "NORMAL"] ?? PRIORITY_MAP.NORMAL;
-  const canSend = r.items.some(it => it.status === "APPROVED");
 
   return (
     <div className="card p-5 space-y-5">
@@ -201,14 +187,6 @@ export default function RequestDetail({ request, leadDays, canAct, supplierEmail
           </button>
           {menuOpen && (
             <div role="menu" className="absolute right-0 z-20 mt-1 w-60 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg py-1">
-              <button role="menuitem" disabled={!canSend || !canAct} onClick={() => { setMenuOpen(false); setSendTo(supplierEmail); setSendMode("email"); setError(""); }}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 disabled:opacity-40">
-                <Send className="w-4 h-4" /> {r.sentAt ? "Ridërgo te FurnitoriOra" : "Dërgo te FurnitoriOra"}
-              </button>
-              <button role="menuitem" disabled={!canSend || !canAct} onClick={() => { setMenuOpen(false); setSendTo(supplierPhone); setSendMode("sms"); setError(""); }}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 disabled:opacity-40">
-                <MessageSquare className="w-4 h-4" /> {r.sentSmsAt ? "Ridërgo me SMS" : "Dërgo me SMS"}
-              </button>
               <button role="menuitem" disabled={anyOrdered || !canAct} onClick={remove}
                 className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 disabled:opacity-40"
                 title={anyOrdered ? "Kërkesa ka artikuj në porosi — s'mund të fshihet" : undefined}>
@@ -366,27 +344,6 @@ export default function RequestDetail({ request, leadDays, canAct, supplierEmail
         )}
       </section>
 
-      {/* ── Dërgimi te FurnitoriOra (email / SMS) ── */}
-      {sendMode && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !busy && setSendMode(null)}>
-          <div role="dialog" aria-modal="true" aria-label="Dërgo te FurnitoriOra" className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
-              <h3 className="font-bold text-slate-900 dark:text-white">{sendMode === "sms" ? "Dërgo me SMS te FurnitoriOra" : "Dërgo te FurnitoriOra"}</h3>
-              <button onClick={() => setSendMode(null)} aria-label="Mbyll" className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="p-5 space-y-3">
-              <label className="form-label" htmlFor="send-to">{sendMode === "sms" ? "Numri i telefonit i marrësit" : "Email-i i marrësit"}</label>
-              <input id="send-to" type={sendMode === "sms" ? "tel" : "email"} autoFocus value={sendTo} onChange={e => setSendTo(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && send()} className="form-input" placeholder={sendMode === "sms" ? "044 XXX XXX" : "furnitori@example.com"} />
-              {error && <p className="text-sm text-red-500">{error}</p>}
-            </div>
-            <div className="flex justify-end gap-2 p-5 pt-0">
-              <button onClick={() => setSendMode(null)} disabled={busy} className="btn-secondary">Anulo</button>
-              <button onClick={send} disabled={busy} className="btn-primary">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Dërgo</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

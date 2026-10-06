@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_ORDER_LINK, recomputeRequestStatuses, notifyStatusChanges } from "@/lib/materialRequestStatus";
+import { toTeacherView } from "@/lib/materialRequestTeacherView";
 
 const REQUEST_INCLUDE = {
   teacher: { select: { name: true, email: true } },
@@ -56,7 +57,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   });
 
   if (!request) return NextResponse.json({ error: "Kërkesa nuk u gjet" }, { status: 404 });
-  return NextResponse.json(request);
+  return NextResponse.json(isManagement ? request : toTeacherView(request));
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

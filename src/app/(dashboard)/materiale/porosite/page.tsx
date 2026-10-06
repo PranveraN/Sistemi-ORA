@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Header from "@/components/layout/Header";
 import MaterialsViewSwitch from "@/components/material-requests/admin/MaterialsViewSwitch";
+import OrderPreviewModal, { type OrderLine, type SupplierInfo } from "@/components/material-requests/admin/OrderPreviewModal";
 import { formatDate } from "@/lib/utils";
 import {
   Plus, X, Loader2, Package, Truck, CheckCircle, XCircle, Trash2,
-  Search, ClipboardList,
+  Search, ClipboardList, Send, PackageCheck,
 } from "lucide-react";
 
 /* ─── Types ───────────────────────────────────────────────── */
@@ -55,6 +56,20 @@ interface Order {
   actualCost: number;
   createdBy: { name: string };
   items: OrderItem[];
+  dispatches?: Dispatch[];
+}
+
+// Dërgimet te FurnitoriOra (SMS/email) — më i fundit i pari
+interface Dispatch {
+  id: number; channels: string; createdAt: string; sentByName: string | null;
+  smsStatus: string | null; smsError: string | null; emailStatus: string | null; emailError: string | null;
+}
+
+function dispatchSummary(d: Dispatch): { text: string; ok: boolean } {
+  const parts: string[] = [];
+  if (d.smsStatus) parts.push(d.smsStatus === "SENT" ? "SMS ✓" : `SMS ✗ (${d.smsError ?? "dështoi"})`);
+  if (d.emailStatus) parts.push(d.emailStatus === "SENT" ? "Email ✓" : `Email ✗ (${d.emailError ?? "dështoi"})`);
+  return { text: parts.join(" · "), ok: d.smsStatus !== "FAILED" && d.emailStatus !== "FAILED" };
 }
 
 interface Sipartner { id: number; emri: string }
@@ -62,8 +77,8 @@ interface Sipartner { id: number; emri: string }
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   PENDING:  { label: "Në përgatitje", color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
   ORDERED:  { label: "Porositur",     color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
-  PARTIALLY_RECEIVED: { label: "Pranuar Pjesërisht", color: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400" },
-  RECEIVED: { label: "Mbërriti",      color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+  PARTIALLY_RECEIVED: { label: "Dorëzuar pjesërisht", color: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400" },
+  RECEIVED: { label: "Dorëzuar",      color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
   CANCELLED:{ label: "Anuluar",       color: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400" },
 };
 
@@ -101,6 +116,12 @@ export default function MaterialOrdersPage() {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [supplier, setSupplier] = useState<SupplierInfo | null>(null);
+  const [resend, setResend] = useState<Order | null>(null);
+
+  useEffect(() => {
+    fetch("/api/material-orders/supplier").then(r => (r.ok ? r.json() : null)).then(setSupplier).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -261,6 +282,27 @@ export default function MaterialOrdersPage() {
     load();
   }
 
+  // "Shëno si të dorëzuar" — pranon gjithë sasinë e mbetur; artikujt/kërkesat kalojnë në "Dorëzuar"
+  async function markDelivered(o: Order) {
+    const items = o.items.map(it => ({ orderItemId: it.id, quantity: it.quantity - it.receivedQuantity })).filter(it => it.quantity > 0);
+    if (!items.length) return;
+    if (!confirm(`Shëno porosinë ${o.orderNumber} si të dorëzuar? Mësueset do ta shohin statusin "Dorëzuar".`)) return;
+    setActingId(o.id);
+    const res = await fetch(`/api/material-orders/${o.id}/receive`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }),
+    });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Gabim"); }
+    setActingId(null);
+    load();
+  }
+
+  function resendLines(o: Order): OrderLine[] {
+    return o.items.map(it => ({
+      key: String(it.id), name: `${it.material?.name || it.customItemName || "Artikull"}${it.color ? ` (${it.color})` : ""}`,
+      quantity: it.quantity, unit: it.unit, materialId: it.materialId, customItemName: it.customItemName, color: it.color, requestItemIds: [],
+    }));
+  }
+
   function openReceive(o: Order) {
     const qty: Record<number, string> = {};
     for (const it of o.items) {
@@ -358,9 +400,22 @@ export default function MaterialOrdersPage() {
                   </div>
 
                   {o.notes && <p className="text-xs text-slate-400 mt-2 italic">{o.notes}</p>}
+                  {!!o.dispatches?.length && (
+                    <ul className="mt-2 space-y-0.5">
+                      {o.dispatches.map(d => {
+                        const sum = dispatchSummary(d);
+                        return (
+                          <li key={d.id} className={`text-xs ${sum.ok ? "text-slate-500 dark:text-slate-400" : "text-amber-700 dark:text-amber-400"}`}>
+                            <Send className="w-3 h-3 inline -mt-0.5 mr-1" aria-hidden />
+                            Dërguar {formatDate(d.createdAt)} {new Date(d.createdAt).toLocaleTimeString("sq-AL", { hour: "2-digit", minute: "2-digit" })}{d.sentByName ? ` nga ${d.sentByName}` : ""} · {sum.text}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
 
                   {receivingId !== o.id && (
-                    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                    <div className="flex items-center flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
                       {o.status === "PENDING" && (
                         <>
                           <button onClick={() => transitionOrder(o.id, "ORDERED")} disabled={actingId === o.id} className="btn-primary text-sm">
@@ -374,9 +429,17 @@ export default function MaterialOrdersPage() {
                       )}
                       {(o.status === "ORDERED" || o.status === "PARTIALLY_RECEIVED") && (
                         <>
-                          <button onClick={() => openReceive(o)} className="btn-primary text-sm">
-                            <Package className="w-4 h-4" /> Prano
+                          <button onClick={() => markDelivered(o)} disabled={actingId === o.id} className="btn-primary text-sm">
+                            {actingId === o.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageCheck className="w-4 h-4" />} Shëno si të dorëzuar
                           </button>
+                          <button onClick={() => openReceive(o)} className="btn-secondary text-sm" title="Për dorëzim të pjesshëm">
+                            <Package className="w-4 h-4" /> Prano pjesërisht
+                          </button>
+                          {supplier && (supplier.email || supplier.phone) && (
+                            <button onClick={() => setResend(o)} className="btn-secondary text-sm" title="Kur furnitori s'e ka marrë porosinë">
+                              <Send className="w-4 h-4" /> Dërgo përsëri
+                            </button>
+                          )}
                           {o.status === "ORDERED" && (
                             <button onClick={() => transitionOrder(o.id, "CANCELLED")} disabled={actingId === o.id} className="btn-secondary text-sm text-red-600">
                               <XCircle className="w-4 h-4" /> Anulo
@@ -429,6 +492,17 @@ export default function MaterialOrdersPage() {
           </div>
         )}
       </div>
+
+      {resend && supplier && (
+        <OrderPreviewModal
+          lines={resendLines(resend)}
+          supplier={supplier}
+          channels={{ sms: !!supplier.phone, email: !!supplier.email }}
+          orderId={resend.id}
+          onClose={() => setResend(null)}
+          onSent={load}
+        />
+      )}
 
       {showBuilder && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !saving && setShowBuilder(false)}>

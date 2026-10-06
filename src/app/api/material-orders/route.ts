@@ -41,8 +41,14 @@ export async function GET(req: NextRequest) {
     include: ORDER_INCLUDE,
     orderBy: { orderDate: "desc" },
   });
+  // Dërgimet te furnitori (SMS/email) për secilën porosi — më i fundit i pari
+  const dispatches = await prisma.materialOrderDispatch.findMany({
+    where: { organizationId: orgId, orderId: { in: orders.map(o => o.id) } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, orderId: true, channels: true, smsStatus: true, smsError: true, emailStatus: true, emailError: true, toEmail: true, toPhone: true, sentByName: true, createdAt: true, smsText: true, emailSubject: true },
+  });
 
-  return NextResponse.json(orders);
+  return NextResponse.json(orders.map(o => ({ ...o, dispatches: dispatches.filter(d => d.orderId === o.id) })));
 }
 
 interface LineContribution { requestItemId: number; quantity: number }

@@ -31,8 +31,6 @@ export default function RequestsBoard() {
   const [subjects, setSubjects] = useState<Opt[]>([]);
   const [classes, setClasses] = useState<Opt[]>([]);
   const [leadDays, setLeadDays] = useState(3);
-  const [supplierEmail, setSupplierEmail] = useState("");
-  const [supplierPhone, setSupplierPhone] = useState("");
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -72,8 +70,6 @@ export default function RequestsBoard() {
       if (st.ok) {
         const d = await st.json();
         setLeadDays(parseLeadDays(d.materialRequestLeadDays));
-        setSupplierEmail(d.furnitoriOraEmail || "");
-        setSupplierPhone(d.furnitoriOraPhone || "");
       }
     }).catch(() => {});
   }, []);
@@ -231,7 +227,7 @@ export default function RequestsBoard() {
       )}
 
       {/* ── Tri kolona: lista · detajet · veprimet ── */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(260px,320px)_1fr] xl:grid-cols-[minmax(260px,320px)_1fr_minmax(240px,290px)] items-start">
+      <div className="grid gap-4 lg:grid-cols-[minmax(260px,320px)_1fr] xl:grid-cols-[minmax(240px,300px)_1fr_minmax(330px,400px)] items-start">
         <div className={selected ? "hidden lg:block" : ""}>
           <RequestList rows={visible} selectedId={selectedId} onSelect={id => setParams({ id: String(id) })} search={search} onSearch={setSearch} loading={loading} />
         </div>
@@ -241,7 +237,6 @@ export default function RequestsBoard() {
               <button onClick={() => setParams({ id: null })} className="lg:hidden mb-2 text-sm text-slate-500 hover:text-primary-600 inline-flex items-center gap-1"><ArrowLeft className="w-4 h-4" /> Kthehu te lista</button>
               <RequestDetail
                 request={selected} leadDays={leadDays} canAct={canAct}
-                supplierEmail={supplierEmail} supplierPhone={supplierPhone}
                 onUpdated={load}
                 onDeleted={() => { setParams({ id: null }); load(); }}
               />

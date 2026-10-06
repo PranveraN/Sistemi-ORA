@@ -11,7 +11,7 @@ function getClient(): Resend | null {
 
 export interface EmailAttachment { filename: string; content: Buffer }
 
-export async function sendEmail(to: string, subject: string, html: string, attachments?: EmailAttachment[]): Promise<{ ok: boolean; error?: string }> {
+export async function sendEmail(to: string, subject: string, html: string, attachments?: EmailAttachment[], options?: { replyTo?: string }): Promise<{ ok: boolean; error?: string }> {
   const client = getClient();
   if (!client) {
     console.warn(`[email] RESEND_API_KEY mungon — s'u dërgua email te ${to}: "${subject}"`);
@@ -25,6 +25,7 @@ export async function sendEmail(to: string, subject: string, html: string, attac
   try {
     const { error } = await client.emails.send({
       from: FROM, to, subject, html,
+      ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
       ...(attachments?.length ? { attachments: attachments.map(a => ({ filename: a.filename, content: a.content })) } : {}),
     });
     if (error) return { ok: false, error: error.message };

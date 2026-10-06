@@ -1643,3 +1643,32 @@ model OraQuery {
   @@index([userId, createdAt])
   @@index([status])
 }
+
+// Regjistri i dërgimit të porosive te furnitori (SMS / email) nga paneli
+// "Për t'u porositur" — çfarë u dërgua, kujt, nga kush dhe rezultati i çdo kanali.
+// orderId = porosia (MaterialOrder) e krijuar; null kur asnjë kanal s'pati sukses.
+model MaterialOrderDispatch {
+  id           Int      @id @default(autoincrement())
+  organizationId Int    @default(1)
+  orderId      Int?
+  supplierName String
+  toEmail      String?
+  toPhone      String?
+  replyTo      String?
+  channels     String   // "SMS", "EMAIL" ose "SMS,EMAIL"
+  smsText      String?
+  emailSubject String?
+  emailHtml    String?
+  itemsJson    String   // [{ name, quantity, unit }]
+  smsStatus    String?  // SENT | FAILED (null = kanali s'u zgjodh)
+  smsError     String?
+  emailStatus  String?
+  emailError   String?
+  sentById     Int
+  sentByName   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([orderId])
+}

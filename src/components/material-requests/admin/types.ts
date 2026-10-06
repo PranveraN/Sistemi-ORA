@@ -45,6 +45,8 @@ export interface PendingItem {
   requestItemId: number;
   requestId: number;
   teacherName: string;
+  className?: string | null;
+  dateNeeded?: string | null;
   priority: string | null;
   isCustom: boolean;
   materialId: number | null;
