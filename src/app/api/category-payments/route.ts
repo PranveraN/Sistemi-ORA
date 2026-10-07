@@ -3,9 +3,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 import { computeTiExpectedPrice } from "@/lib/timiInvestPricing";
-import { expensePeriodWhere } from "@/lib/expensePeriod";
+import { expensePeriodWhere, expensePeriodWhereByDate } from "@/lib/expensePeriod";
 import type { YearType } from "@/lib/academicYear";
-import { loadShkollimiExpenses, loadOtherCashIncome } from "@/lib/shkollimiExpenses";
+import { loadShkollimiExpenses, loadOtherCashIncome, loadCashInvestments } from "@/lib/shkollimiExpenses";
 import { paymentChannel } from "@/lib/cashFlow";
 
 type PrismaPayment = {
@@ -177,7 +177,7 @@ export async function GET(req: NextRequest) {
       where: {
         categoryId: category.id,
         type: "HANDOVER",
-        ...expensePeriodWhere(month ?? 0, year ?? 0, yearType),
+        ...(categoryName === "Shkollimi" ? expensePeriodWhereByDate : expensePeriodWhere)(month ?? 0, year ?? 0, yearType),
       },
       _sum: { amount: true },
     }),
@@ -187,7 +187,7 @@ export async function GET(req: NextRequest) {
       where: {
         categoryId: category.id,
         type: "EXPENSE",
-        ...expensePeriodWhere(month ?? 0, year ?? 0, yearType),
+        ...(categoryName === "Shkollimi" ? expensePeriodWhereByDate : expensePeriodWhere)(month ?? 0, year ?? 0, yearType),
       },
       _sum: { amount: true },
     }),
@@ -236,7 +236,7 @@ export async function GET(req: NextRequest) {
   // njëjta formulë si dashboard-i ("Ku janë paratë e paguara").
   let cashRevenue = 0, bankRevenue = 0, noMethodRevenue = 0;
   let shk: Awaited<ReturnType<typeof loadShkollimiExpenses>>["totals"] | null = null;
-  let otherCash = 0;
+  let otherCash = 0, investmentsCash = 0;
   if (categoryName === "Shkollimi") {
     for (const s of activeStudents) for (const p of s.payments) {
       if (!p.confirmed || p.paidAmount <= 0) continue;
@@ -245,6 +245,7 @@ export async function GET(req: NextRequest) {
     }
     shk = (await loadShkollimiExpenses(category.id, month ?? 0, year ?? 0, yearType)).totals;
     otherCash = (await loadOtherCashIncome(month ?? 0, year ?? 0, yearType)).cash;
+    investmentsCash = (await loadCashInvestments(month ?? 0, year ?? 0, yearType)).cash;
   }
 
   const totalDebt = activeStudents.reduce((sum, s) => {
@@ -313,7 +314,7 @@ export async function GET(req: NextRequest) {
           bank: Math.round(bankRevenue * 100) / 100,
           noMethod: Math.round(noMethodRevenue * 100) / 100,
           expensesCash: shk.cash, expensesBank: shk.bank, expensesUnpaid: shk.unpaid,
-          otherCash, expensesUshqimi: shk.ushqimi, legacyPending: shk.legacyPending,
+          otherCash, investmentsCash, expensesUshqimi: shk.ushqimi, legacyPending: shk.legacyPending,
         },
       } : {}),
     },

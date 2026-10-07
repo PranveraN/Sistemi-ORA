@@ -83,7 +83,7 @@ interface Stats {
   totalExpenses: number;
   totalInvestments: number;
   // Vetëm Shkollimi: arka e saktë (shih /api/category-payments)
-  cashBox?: { cash: number; bank: number; noMethod: number; expensesCash: number; expensesBank: number; expensesUnpaid: number; otherCash: number; expensesUshqimi: number; legacyPending: number };
+  cashBox?: { cash: number; bank: number; noMethod: number; expensesCash: number; expensesBank: number; expensesUnpaid: number; otherCash: number; investmentsCash: number; expensesUshqimi: number; legacyPending: number };
 }
 
 interface Category {
@@ -3061,23 +3061,26 @@ function MethodSelect({ value, onChange, className }: { value: string; onChange:
 }
 
 // Pasqyra e Arkës e Shkollimit — e njëjta formulë si dashboard-i:
-// Në arkë = të hyrat Cash + të hyrat tjera Cash − shpenzimet e paguara me Cash − dorëzimet.
+// Në arkë = të hyrat Cash + të hyrat tjera Cash − shpenzimet e paguara me Cash − investimet Cash − dorëzimet.
 // Paratë me Bankë s'kalojnë nga arka; shpenzimet e papaguara s'llogariten.
 function ShkollimiCashBox({ stats, cashBox: c, onShowExpenses }: {
   stats: Stats; cashBox: NonNullable<Stats["cashBox"]>; onShowExpenses: () => void;
 }) {
-  const inBox = Math.round((c.cash + c.otherCash - c.expensesCash - stats.handedOver) * 100) / 100;
+  const inBox = Math.round((c.cash + c.otherCash - c.expensesCash - c.investmentsCash - stats.handedOver) * 100) / 100;
+  const cashIn = c.cash + c.otherCash;
+  const cashOut = stats.handedOver + c.expensesCash + c.investmentsCash;
   const items: { label: string; value: number; sub?: string; tone: string; onClick?: () => void }[] = [
     { label: "Sa kam marrë (Paguar)", value: stats.totalRevenue, sub: `Cash ${formatCurrency(c.cash)} · Bankë ${formatCurrency(c.bank)}${c.otherCash > 0 ? ` · + ${formatCurrency(c.otherCash)} të hyra tjera cash` : ""}`, tone: "text-green-600 dark:text-green-400" },
     { label: "Në bankë", value: c.bank, sub: "hyrë direkt në llogari", tone: "text-blue-700 dark:text-blue-300" },
     { label: "Sa kam dorëzuar", value: stats.handedOver, sub: "nga cash", tone: "text-violet-700 dark:text-violet-300" },
     { label: "Shpenzuar nga arka", value: c.expensesCash, sub: c.expensesBank > 0 ? `+ ${formatCurrency(c.expensesBank)} nga banka` : "shpenzimet e paguara cash", tone: "text-orange-600 dark:text-orange-400", onClick: onShowExpenses },
-    { label: "Sa kam në arkë", value: inBox, sub: inBox < 0 ? "⚠ Më shumë dalje se hyrje cash" : "cash + të hyra tjera cash − shpenzime cash − dorëzime", tone: inBox < 0 ? "text-red-600 dark:text-red-400" : "text-teal-700 dark:text-teal-300" },
+    { label: "Investime nga arka", value: c.investmentsCash, sub: "investimet e paguara cash", tone: "text-yellow-700 dark:text-yellow-400" },
+    { label: "Sa kam në arkë", value: inBox, sub: inBox < 0 ? "⚠ Më shumë dalje se hyrje cash" : "hyrje cash − shpenzime − investime − dorëzime", tone: inBox < 0 ? "text-red-600 dark:text-red-400" : "text-teal-700 dark:text-teal-300" },
   ];
   return (
     <div className="card p-4 border-2 border-primary-100 dark:border-primary-900/40 space-y-3">
       <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Pasqyra e Arkës</p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {items.map(it => {
           const body = (
             <>
@@ -3091,6 +3094,12 @@ function ShkollimiCashBox({ stats, cashBox: c, onShowExpenses }: {
             : <div key={it.label}>{body}</div>;
         })}
       </div>
+      {inBox < 0 && (
+        <div role="note" className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs text-red-900 dark:text-red-200 space-y-1">
+          <p className="font-bold">Arka del negative: janë regjistruar {formatCurrency(cashOut - cashIn)} më shumë dalje cash sesa hyrje cash.</p>
+          <p>Hyrje cash: {formatCurrency(cashIn)} · Dalje cash: {formatCurrency(cashOut)} (dorëzime + shpenzime + investime). Zakonisht: pagesa cash të shënuara si Bankë ose pa metodë, pagesa nga nxënës të larguar ose të pakonfirmuara, ose dorëzime që përfshijnë para të vitit të kaluar.</p>
+        </div>
+      )}
       {c.noMethod > 0 && (
         <p className="text-xs text-amber-700 dark:text-amber-400">⚠ {formatCurrency(c.noMethod)} pagesa pa metodë (Cash/Bankë) — nuk llogariten në arkë derisa të klasifikohen (filtri &quot;Pa metodë&quot; te kolona Metoda).</p>
       )}

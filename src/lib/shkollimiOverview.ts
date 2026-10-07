@@ -2,9 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { getDateRange, getAcademicMonths, type YearType } from "@/lib/academicYear";
 import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 import { computeTiExpectedPrice } from "@/lib/timiInvestPricing";
-import { expensePeriodWhere } from "@/lib/expensePeriod";
+import { expensePeriodWhereByDate } from "@/lib/expensePeriod";
 import { computeCashFlow, paymentChannel, toCents } from "@/lib/cashFlow";
-import { loadShkollimiExpenses, loadOtherCashIncome } from "@/lib/shkollimiExpenses";
+import { loadShkollimiExpenses, loadOtherCashIncome, loadCashInvestments } from "@/lib/shkollimiExpenses";
 
 interface Row { studentId: number; name: string; className: string | null; phone: string; amount: number }
 
@@ -36,7 +36,7 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
   if (yearType === "academic") hyraWhere.OR = months.map(m => ({ muaj: m.calMonth, vit: m.calYear }));
   else { hyraWhere.vit = year; }
 
-  const [activeStudents, tuitionRows, timiInvestLinks, handoverAgg, hyraAgg, shkExpenses, otherCashIncome, lastCount] = await Promise.all([
+  const [activeStudents, tuitionRows, timiInvestLinks, handoverAgg, hyraAgg, shkExpenses, otherCashIncome, cashInvestments, lastCount] = await Promise.all([
     // Vetëm nxënësit REALISHT aktivë TANI (status="ACTIVE") — jo "aktivë
     // gjatë periudhës" (që përfshinte edhe dikë të larguar tashmë këtë vit).
     // I njëjti rregull si "Nxënës Aktivë"/"Nxënës Aktualë" te /api/dashboard
@@ -75,7 +75,7 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
       where: {
         categoryId: shkollimiCategory.id,
         type: "HANDOVER",
-        ...expensePeriodWhere(0, year, yearType),
+        ...expensePeriodWhereByDate(0, year, yearType),
       },
       _sum: { amount: true },
     }),
@@ -85,6 +85,7 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
     // si "Pasqyra e Arkës" te faqja e Shkollimit (src/lib/shkollimiExpenses.ts).
     loadShkollimiExpenses(shkollimiCategory.id, 0, year, yearType),
     loadOtherCashIncome(0, year, yearType),
+    loadCashInvestments(0, year, yearType),
     prisma.cashCount.findFirst({ where: { organizationId: orgId, yearLabel: label }, orderBy: { createdAt: "desc" } }),
   ]);
 
@@ -206,6 +207,7 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
     cashCents: cashC, bankCents: bankC, noMethodCents: noMethodC, noMethodCount,
     expensesCashCents: expensesCashC, handedOverCents: toCents(handedOver),
     otherCashCents: toCents(otherCashIncome.cash),
+    investmentsCashCents: toCents(cashInvestments.cash),
   });
 
   return {

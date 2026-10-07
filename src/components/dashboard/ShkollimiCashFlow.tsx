@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Landmark, CheckCircle2, AlertTriangle, X, Loader2 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { CashFlow } from "@/lib/cashFlow";
@@ -12,7 +13,7 @@ import type { YearType } from "@/lib/academicYear";
 // "Ku janë paratë e paguara" + "Numëro arkën". Të dhënat vijnë nga
 // /api/dashboard/shkollimi-financiare (llogaritur në server, në cent).
 
-const C = { cash: "#0F766E", bank: "#1D4ED8", handed: "#7C3AED", spent: "#C2410C" };
+const C = { cash: "#0F766E", bank: "#1D4ED8", handed: "#7C3AED", spent: "#C2410C", invest: "#A16207" };
 const num = (v: number) => new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
 export interface LastCashCount { at: string; counted: number; system: number; difference: number; userName: string | null }
@@ -29,6 +30,8 @@ interface Props {
 
 export default function ShkollimiCashFlow({ label, year, yearType, expected, totalStudents, cashFlow: f, lastCashCount }: Props) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const isSuperAdmin = (session?.user as { role?: string } | undefined)?.role === "SUPERADMIN";
   const [countOpen, setCountOpen] = useState(false);
   const [lastCount, setLastCount] = useState<LastCashCount | null>(lastCashCount);
   useEffect(() => setLastCount(lastCashCount), [lastCashCount]);
@@ -38,7 +41,10 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
   const debt = Math.max(0, Math.round((expected - f.paid) * 100) / 100);
   const pct = (v: number) => (expected > 0 ? Math.round((v / expected) * 100) : 0);
   const share = (v: number, of: number) => (of > 0 ? `${Math.max(0, (v / of) * 100)}%` : "0%");
-  const segTotal = f.bank + f.handedOver + f.expensesCash + Math.max(0, f.inCashBox);
+  const segTotal = f.bank + f.handedOver + f.expensesCash + f.investmentsCash + Math.max(0, f.inCashBox);
+  // Sa më shumë dalje cash janë regjistruar sesa hyrje cash (kur "Në arkë" del negative)
+  const cashIn = f.cash + f.otherCash;
+  const cashOut = f.handedOver + f.expensesCash + f.investmentsCash;
 
   return (
     <div className="space-y-4">
@@ -105,14 +111,15 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
           <Link href="/hyrat" className="hover:underline">+ Të hyra tjera cash <b className="text-slate-900 dark:text-white">{formatCurrency(f.otherCash)}</b></Link>
         </div>
         <div className="flex h-3 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700 gap-px" role="img"
-          aria-label={`Në bankë ${formatCurrency(f.bank)}, Dorëzuar ${formatCurrency(f.handedOver)}, Shpenzuar nga arka ${formatCurrency(f.expensesCash)}, Në arkë ${formatCurrency(f.inCashBox)}`}>
+          aria-label={`Në bankë ${formatCurrency(f.bank)}, Dorëzuar ${formatCurrency(f.handedOver)}, Shpenzuar nga arka ${formatCurrency(f.expensesCash)}, Investime nga arka ${formatCurrency(f.investmentsCash)}, Në arkë ${formatCurrency(f.inCashBox)}`}>
           <span style={{ width: share(f.bank, segTotal), background: C.bank }} />
           <span style={{ width: share(f.handedOver, segTotal), background: C.handed }} />
           <span style={{ width: share(f.expensesCash, segTotal), background: C.spent }} />
+          <span style={{ width: share(f.investmentsCash, segTotal), background: C.invest }} />
           <span style={{ width: share(Math.max(0, f.inCashBox), segTotal), background: C.cash }} />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-3 mt-3">
           <CardLink href={href("metoda=BANKE")}>
             <Legend color={C.bank} label="Në bankë" />
             <p className="text-[22px] leading-tight font-extrabold text-slate-900 dark:text-white mt-1">{formatCurrency(f.bank)}</p>
@@ -127,6 +134,11 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
             <Legend color={C.spent} label="Shpenzuar nga arka" />
             <p className="text-[22px] leading-tight font-extrabold text-slate-900 dark:text-white mt-1">{formatCurrency(f.expensesCash)}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Shpenzime të paguara cash</p>
+          </CardLink>
+          <CardLink href="/investime">
+            <Legend color={C.invest} label="Investime nga arka" />
+            <p className="text-[22px] leading-tight font-extrabold text-slate-900 dark:text-white mt-1">{formatCurrency(f.investmentsCash)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Investime të paguara cash</p>
           </CardLink>
           {/* Në arkë — e theksuar; karta hap pagesat cash, butoni numërimin */}
           <div role="link" tabIndex={0}
@@ -147,11 +159,23 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
           </div>
         </div>
 
+        {f.inCashBox < 0 && (
+          <div role="note" className="mt-3 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm text-red-900 dark:text-red-200 space-y-1.5">
+            <p className="flex items-start gap-2 font-bold">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
+              Arka del negative: janë regjistruar {formatCurrency(cashOut - cashIn)} më shumë dalje cash sesa hyrje cash.
+            </p>
+            <p className="text-[13px]">Hyrje cash: {formatCurrency(cashIn)} (pagesat cash + të hyrat tjera cash) · Dalje cash: {formatCurrency(cashOut)} (dorëzime + shpenzime cash + investime cash).</p>
+            <p className="text-[13px]">Para që hynë cash por s&apos;janë regjistruar si të tilla — zakonisht: pagesa cash të shënuara si Bankë ose pa metodë, pagesa nga nxënës të larguar ose të pakonfirmuara, ose dorëzime që përfshijnë para të vitit të kaluar.</p>
+            {isSuperAdmin && <Link href="/superadmin/auditimi-shpenzimeve#arka" className="inline-block text-[13px] font-bold underline">Shiko diagnostikimin me shifra →</Link>}
+          </div>
+        )}
+
         {f.balanced ? (
           <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/30 px-4 py-2.5 text-sm text-green-800 dark:text-green-300">
             <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden />
             <b>Bilanci përputhet:</b>
-            <span>{num(f.bank)} + {num(f.handedOver)} + {num(f.expensesCash)} + {num(f.inCashBox)} = {num(f.total)} €</span>
+            <span>{num(f.bank)} + {num(f.handedOver)} + {num(f.expensesCash)} + {num(f.investmentsCash)} + {num(f.inCashBox)} = {num(f.total)} €</span>
           </div>
         ) : (
           <Link href={href("metoda=NONE")}

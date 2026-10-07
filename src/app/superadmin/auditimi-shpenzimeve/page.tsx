@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Printer } from "lucide-react";
 import type { ExpenseAudit } from "@/lib/expenseAudit";
+import CashDiagnosisSection from "./CashDiagnosisSection";
 
 // Auditimi i shpenzimeve të Shkollimit (Faza 1) — vetëm lexim. Rezultati
 // përdoret për vendimet para migrimit (asgjë s'ndryshohet nga kjo faqe).
@@ -41,6 +42,8 @@ export default function ExpenseAuditPage() {
           </div>
         ))}
       </section>
+
+      <CashDiagnosisSection />
 
       <Summary title="1. Përmbledhja e gjetjeve" items={[
         `Libri A (moduli "Shpenzimet"): ${a.bookA.total.count} shpenzime, ${eur(a.bookA.total.total)}.`,

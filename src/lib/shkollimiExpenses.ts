@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { expensePeriodWhere } from "@/lib/expensePeriod";
+import { expensePeriodWhereByDate } from "@/lib/expensePeriod";
 import type { YearType } from "@/lib/academicYear";
 
 // Shpenzimet e Shkollimit — një libër i vetëm: tabela Shpenzim (Shkollimi →
@@ -65,7 +65,7 @@ export async function loadShkollimiExpenses(categoryId: number | null, month: nu
       orderBy: { data: "desc" },
     }),
     categoryId
-      ? prisma.expense.findMany({ where: { categoryId, type: "EXPENSE", migratedToShpenzimId: null, ...expensePeriodWhere(month, year, yearType) }, orderBy: { date: "desc" } })
+      ? prisma.expense.findMany({ where: { categoryId, type: "EXPENSE", migratedToShpenzimId: null, ...expensePeriodWhereByDate(month, year, yearType) }, orderBy: { date: "desc" } })
       : Promise.resolve([]),
   ]);
 
@@ -96,6 +96,15 @@ export async function loadShkollimiExpenses(categoryId: number | null, month: nu
     count: rows.filter(r => r.scope === "SHKOLLIMI").length, legacyPending: legacy.length,
   };
   return { rows, totals };
+}
+
+/** Investimet (moduli "Investimet") të paguara me Cash — dalin nga arka e Shkollimit; me Bankë jo. */
+export async function loadCashInvestments(month: number, year: number, yearType: YearType): Promise<{ cash: number; bank: number }> {
+  const range = shkollimiPeriodRange(month, year, yearType);
+  const rows = await prisma.investim.groupBy({ by: ["metoda"], where: range ? { data: range } : {}, _sum: { vlera: true } });
+  let cash = 0, bank = 0;
+  for (const g of rows) { if (g.metoda === "CASH") cash += g._sum.vlera ?? 0; else bank += g._sum.vlera ?? 0; }
+  return { cash: r2(cash), bank: r2(bank) };
 }
 
 /** Të hyrat tjera (moduli "Të Hyra Tjera") me kategorinë SHKOLLIMI dhe metodë Cash — hyjnë në arkë. */

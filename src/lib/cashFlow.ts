@@ -20,6 +20,7 @@ export interface CashFlowInput {
   expensesCashCents: number;  // shpenzimet e paguara nga arka
   handedOverCents: number;    // dorëzimet (vetëm nga cash)
   otherCashCents?: number;    // të hyrat tjera cash (kategoria SHKOLLIMI) — hyjnë në arkë
+  investmentsCashCents?: number; // investimet e paguara me cash — dalin nga arka
 }
 
 export interface CashFlow {
@@ -30,6 +31,7 @@ export interface CashFlow {
   bank: number;
   noMethod: { count: number; amount: number };
   expensesCash: number;
+  investmentsCash: number;
   handedOver: number;
   inCashBox: number;          // cash + të hyrat tjera cash − shpenzimeArka − dorëzuar
   handedOverPct: number;      // dorëzuar ÷ (cash − shpenzimeArka), 0–100
@@ -39,10 +41,11 @@ export interface CashFlow {
 
 export function computeCashFlow(i: CashFlowInput): CashFlow {
   const otherC = i.otherCashCents ?? 0;
+  const invC = i.investmentsCashCents ?? 0;
   const paidC = i.cashCents + i.bankCents + i.noMethodCents;
-  const inBoxC = i.cashCents + otherC - i.expensesCashCents - i.handedOverCents;
-  const base = i.cashCents + otherC - i.expensesCashCents;
-  const partsC = i.bankCents + i.handedOverCents + i.expensesCashCents + inBoxC;
+  const inBoxC = i.cashCents + otherC - i.expensesCashCents - invC - i.handedOverCents;
+  const base = i.cashCents + otherC - i.expensesCashCents - invC;
+  const partsC = i.bankCents + i.handedOverCents + i.expensesCashCents + invC + inBoxC;
   const diffC = paidC + otherC - partsC;
   return {
     paid: fromCents(paidC),
@@ -52,6 +55,7 @@ export function computeCashFlow(i: CashFlowInput): CashFlow {
     bank: fromCents(i.bankCents),
     noMethod: { count: i.noMethodCount, amount: fromCents(i.noMethodCents) },
     expensesCash: fromCents(i.expensesCashCents),
+    investmentsCash: fromCents(invC),
     handedOver: fromCents(i.handedOverCents),
     inCashBox: fromCents(inBoxC),
     handedOverPct: base > 0 ? Math.round((i.handedOverCents / base) * 100) : 0,

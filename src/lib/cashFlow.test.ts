@@ -42,6 +42,12 @@ assert.equal(f6.total, f0.paid + 250);
 assert.equal(f6.paid, f0.paid, "Paguar = vetëm pagesat e nxënësve");
 assert.ok(f6.balanced);
 
+// Investim 300 € me cash: Në arkë −300, bilanci përputhet (me bankë s'futet këtu)
+const f7 = computeCashFlow({ ...base, investmentsCashCents: 30000 });
+assert.equal(f7.inCashBox, Math.round((f0.inCashBox - 300) * 100) / 100);
+assert.equal(f7.investmentsCash, 300);
+assert.ok(f7.balanced);
+
 // Rrumbullakimi: 0,1 + 0,2 në cent
 assert.ok(computeCashFlow({ cashCents: toCents(0.1) + toCents(0.2), bankCents: 0, noMethodCents: 0, noMethodCount: 0, expensesCashCents: 0, handedOverCents: toCents(0.3) }).inCashBox === 0);
 

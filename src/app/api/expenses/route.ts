@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { expensePeriodWhere } from "@/lib/expensePeriod";
+import { expensePeriodWhere, expensePeriodWhereByDate } from "@/lib/expensePeriod";
 import type { YearType } from "@/lib/academicYear";
 
 export async function GET(req: NextRequest) {
@@ -15,11 +15,14 @@ export async function GET(req: NextRequest) {
   const year  = parseInt(searchParams.get("year")  || "0");
   const yearType = (searchParams.get("yearType") || "calendar") as YearType;
 
+  // Shkollimi: rreshtat pa muaj vendosen sipas datës reale (që s'numërohen në dy vite)
+  const cat = categoryId ? await prisma.paymentCategory.findUnique({ where: { id: categoryId }, select: { name: true } }) : null;
+  const period = cat?.name === "Shkollimi" ? expensePeriodWhereByDate : expensePeriodWhere;
   const expenses = await prisma.expense.findMany({
     where: {
       categoryId,
       type,
-      ...expensePeriodWhere(month, year, yearType),
+      ...period(month, year, yearType),
     },
     orderBy: { date: "desc" },
   });

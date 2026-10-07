@@ -29,3 +29,28 @@ export function expensePeriodWhere(month: number, year: number, yearType: YearTy
   }
   return {};
 }
+
+/**
+ * Si expensePeriodWhere, por rreshtat pa muaj (month = null, të importuar dikur)
+ * vendosen në periudhë sipas DATËS së tyre reale — jo sipas vitit të shkruar.
+ * Me versionin e mësipërm, një dorëzim i janarit 2026 pa muaj numërohej
+ * njëkohësisht te 2025–2026 DHE te 2026–2027 (dy herë). Përdoret për Shkollimin;
+ * Ushqimi vazhdon me filtrin e vjetër (s'preket).
+ */
+export function expensePeriodWhereByDate(month: number, year: number, yearType: YearType): Record<string, unknown> {
+  if (month > 0 && year > 0) {
+    return { OR: [{ month, year }, { month: null, date: { gte: new Date(year, month - 1, 1), lt: new Date(year, month, 1) } }] };
+  }
+  if (month > 0) return { month };
+  if (year > 0) {
+    if (yearType === "academic") {
+      return { OR: [
+        { month: { gte: 9 }, year },
+        { month: { lte: 8 }, year: year + 1 },
+        { month: null, date: { gte: new Date(year, 8, 1), lt: new Date(year + 1, 8, 1) } },
+      ] };
+    }
+    return { OR: [{ month: { not: null }, year }, { month: null, date: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) } }] };
+  }
+  return {};
+}
