@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import { formatDateTime } from "@/lib/utils";
-import { History, Loader2, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { History, Loader2, ChevronLeft, ChevronRight, X, Download } from "lucide-react";
+import { exportToExcel, xlDate } from "@/lib/exportExcel";
 
 interface LogEntry {
   id: number;
@@ -55,6 +56,27 @@ export default function HistorikuPage() {
   const [page, setPage] = useState(1);
   const limit = 30;
 
+  async function exportAll() {
+    const params = new URLSearchParams({ page: "1", limit: "100000" });
+    if (userId) params.set("userId", userId);
+    if (entity) params.set("entity", entity);
+    if (action) params.set("action", action);
+    if (from)   params.set("from", from);
+    if (to)     params.set("to", to);
+    const res = await fetch(`/api/audit-log?${params}`);
+    if (!res.ok) { alert("Eksporti dështoi."); return; }
+    const all: LogEntry[] = (await res.json()).logs || [];
+    exportToExcel<LogEntry>("Historiku", [
+      { header: "Data", value: l => xlDate(l.createdAt) },
+      { header: "Ora", value: l => new Date(l.createdAt).toLocaleTimeString("sq-AL", { hour: "2-digit", minute: "2-digit" }) },
+      { header: "Përdoruesi", value: l => l.user?.name ?? "" },
+      { header: "Veprimi", value: l => ACTION_LABELS[l.action] ?? l.action },
+      { header: "Objekti", value: l => l.entity },
+      { header: "ID", value: l => l.entityId ?? "" },
+      { header: "Detajet", value: l => l.details ?? "", width: 70 },
+    ], all, "Historiku");
+  }
+
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -94,6 +116,9 @@ export default function HistorikuPage() {
 
         {/* Filters */}
         <div className="card p-4 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={exportAll} disabled={!total} className="btn-secondary text-sm order-last ml-auto" title="Eksporto të gjitha veprimet sipas filtrave">
+            <Download className="w-4 h-4" /> Eksporto Excel
+          </button>
           <select value={userId} onChange={e => setUserId(e.target.value)} className="form-input w-44">
             <option value="">Të gjithë përdoruesit</option>
             {users.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}

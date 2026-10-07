@@ -7,6 +7,8 @@ import {
   Paperclip, Plus, Download, Send, Trash2, FileText, Image as ImageIcon,
   FileType2, X, Search, GraduationCap, Loader2, Check,
 } from "lucide-react";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import { xlDate } from "@/lib/exportExcel";
 
 interface DocRow {
   id: number; title: string; description: string | null; category: string | null;
@@ -68,9 +70,20 @@ export default function DokumentetPage() {
             </h1>
             <p className="text-sm text-slate-400 mt-0.5">Katalogë, broshura, rregullore dhe dokumente të tjera të shkollës — të ngarkueshme dhe të dërgueshme me email</p>
           </div>
-          <button onClick={() => setUploadOpen(true)} className="btn-primary">
-            <Plus className="w-4 h-4" /> Ngarko Dokument
-          </button>
+          <div className="flex gap-2">
+            <ExportExcelButton<DocRow> fileName="Dokumentet" rows={filtered} columns={[
+              { header: "Titulli", value: d => d.title, width: 30 },
+              { header: "Kategoria", value: d => d.category ?? "" },
+              { header: "Përshkrimi", value: d => d.description ?? "", width: 30 },
+              { header: "Skedari", value: d => d.originalFileName, width: 28 },
+              { header: "Madhësia (KB)", value: d => Math.round(d.size / 1024) },
+              { header: "Ngarkuar nga", value: d => d.uploadedBy.name },
+              { header: "Data", value: d => xlDate(d.createdAt) },
+            ]} />
+            <button onClick={() => setUploadOpen(true)} className="btn-primary">
+              <Plus className="w-4 h-4" /> Ngarko Dokument
+            </button>
+          </div>
         </div>
 
         {categories.length > 0 && (

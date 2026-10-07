@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDateTime, normalizeSearch } from "@/lib/utils";
 import { getStockStatus, STOCK_STATUS_STYLE } from "@/lib/materialConstants";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
 
 /* ─── Types ───────────────────────────────────────────────── */
 interface MaterialCategoryRow {
@@ -552,6 +553,16 @@ function MaterialsSection() {
             {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             Rifresko Katalogun
           </button>
+          <ExportExcelButton<MaterialRow> fileName="Katalogu-i-materialeve" rows={filteredMaterials} columns={[
+            { header: "Materiali", value: m => m.name, width: 34 },
+            { header: "Kategoria", value: m => m.category.name, width: 22 },
+            { header: "Njësia", value: m => m.defaultUnit },
+            { header: "SKU", value: m => m.sku ?? "" },
+            { header: "Çmimi (€)", value: m => m.defaultPrice ?? "" },
+            { header: "Furnitori", value: m => m.supplier?.emri ?? "", width: 22 },
+            { header: "Aktiv", value: m => (m.active ? "Po" : "Jo") },
+            { header: "Përshkrimi", value: m => m.description ?? "", width: 30 },
+          ]} />
           <button onClick={openAdd} disabled={!categories.length} className="btn-primary text-sm">
             <Plus className="w-4 h-4" />
             Shto Material

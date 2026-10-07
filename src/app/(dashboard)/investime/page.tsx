@@ -5,8 +5,8 @@ import Header from "@/components/layout/Header";
 import { formatCurrency } from "@/lib/utils";
 import {
   TrendingUp, Plus, Pencil, Trash2, X, Search,
-  ChevronLeft, ChevronRight, Building2, Clock, Filter,
-} from "lucide-react";
+  ChevronLeft, ChevronRight, Building2, Clock, Filter, Download } from "lucide-react";
+import { exportToExcel, xlDate } from "@/lib/exportExcel";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -235,6 +235,23 @@ export default function InvestimetPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  async function exportAll() {
+    const q = new URLSearchParams({ page: "1", limit: "100000", search: debouncedSearch, tipi: tipiFilter, metoda: metodaFilter, from: fromDate, to: toDate });
+    const res = await fetch(`/api/investime?${q}`);
+    if (!res.ok) { alert("Eksporti dështoi."); return; }
+    const all: Investim[] = (await res.json()).investime || [];
+    exportToExcel<Investim>("Investimet", [
+      { header: "Data", value: i => xlDate(i.data) },
+      { header: "Lloji", value: i => TIPI_LABELS[i.tipi] ?? i.tipi, width: 22 },
+      { header: "Përshkrimi", value: i => i.pershkrim, width: 34 },
+      { header: "Kategoria", value: i => i.kategoria ?? "" },
+      { header: "Metoda", value: i => (i.metoda === "CASH" ? "Cash" : i.metoda === "BANK" ? "Bankë" : i.metoda) },
+      { header: "Dokumenti", value: i => i.dokumenti ?? "" },
+      { header: "Regjistruar nga", value: i => i.regjistruarNga ?? "" },
+      { header: "Vlera (€)", value: i => i.vlera },
+    ], all, "Investimet");
+  }
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     const q = new URLSearchParams({
@@ -351,9 +368,12 @@ export default function InvestimetPage() {
             <input type="date" value={toDate}   onChange={e => { setToDate(e.target.value);   setPage(1); }} className="input w-36 text-sm" />
           </div>
 
+          <button type="button" onClick={exportAll} disabled={!total} className="btn-secondary ml-auto flex items-center gap-2" title="Eksporto të gjitha investimet sipas filtrave">
+            <Download className="w-4 h-4" /> Eksporto Excel
+          </button>
           <button
             onClick={() => { setEditItem(null); setShowModal(true); }}
-            className="btn-primary ml-auto flex items-center gap-2"
+            className="btn-primary flex items-center gap-2"
           >
             <Plus className="w-4 h-4" /> Regjistro Investim
           </button>

@@ -15,6 +15,7 @@ import ClassesTable from "@/components/classes/ClassesTable";
 import { EditClassModal } from "@/components/classes/ClassMenu";
 import PromotionWizard from "@/components/classes/PromotionWizard";
 import { SpecialCareCard, AssistantsCard, SpecialCareForm, useSpecialCare } from "@/components/classes/SpecialCarePanel";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
 
 interface Overview {
   year: number;
@@ -162,6 +163,15 @@ export default function ClassesPage() {
               <button onClick={() => setShowForm(true)} className="btn-primary"><Plus className="w-4 h-4" /> Shto klasë</button>
             </div>
           )}
+          <ExportExcelButton<OverviewClass> fileName={`Klasat-${effectiveYear}-${effectiveYear + 1}`} rows={visible} columns={[
+            { header: "Klasa", value: c => c.name },
+            { header: "Niveli", value: c => c.level },
+            { header: "Mësuesi kujdestar", value: c => c.teacher ?? "", width: 24 },
+            { header: "Nxënës", value: c => c.students },
+            { header: "Kapaciteti", value: c => c.effectiveCapacity },
+            { header: "Borxhi (€)", value: c => (data?.debtVisible ? c.debt : "") },
+            { header: "Aktive", value: c => (c.active ? "Po" : "Jo") },
+          ]} />
         </div>
 
         {data?.mode === "past" && (

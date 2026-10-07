@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import { Plus, Trash2, Printer, ArrowRightLeft, X } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import { xlDate } from "@/lib/exportExcel";
 
 interface Category { id: number; name: string; }
 interface Handover {
@@ -161,6 +163,15 @@ export default function DorezimetPage() {
             <option value="">Të gjitha kategoritë</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+          <ExportExcelButton<Handover> fileName="Dorezimet" rows={handovers} columns={[
+            { header: "Data", value: h => xlDate(h.handoverAt) },
+            { header: "Kategoria", value: h => h.category?.name ?? "Të përgjithshme" },
+            { header: "Dorëzuar tek", value: h => h.recipient ?? "", width: 24 },
+            { header: "Përshkrimi", value: h => h.description ?? "", width: 30 },
+            { header: "Mënyra", value: h => METHOD_LABEL[h.method] ?? h.method },
+            { header: "Referenca", value: h => h.reference ?? "" },
+            { header: "Shuma (€)", value: h => h.amount },
+          ]} />
           <button onClick={() => { setForm(f => ({ ...f, categoryId: categoryFilter })); setShowModal(true); }} className="btn-primary">
             <Plus className="w-4 h-4" /> Regjistro Dorëzim
           </button>

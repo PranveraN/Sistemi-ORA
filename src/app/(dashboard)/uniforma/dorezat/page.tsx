@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, Trash2, Printer, ArrowRightLeft, X, ArrowLeft } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import { xlDate } from "@/lib/exportExcel";
 
 interface Handover {
   id: number;
@@ -131,9 +133,19 @@ export default function DorezatPage() {
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Dorëzimet e Fitimit</h1>
             <p className="text-sm text-slate-400 mt-0.5">Regjistrimi i parave të dorëzuara</p>
           </div>
-          <button onClick={() => setShowModal(true)} className="btn-primary">
-            <Plus className="w-4 h-4" /> Regjistro Dorëzim
-          </button>
+          <div className="flex gap-2">
+            <ExportExcelButton<Handover> fileName="Dorezimet-e-uniformave" rows={handovers} columns={[
+              { header: "Data", value: h => xlDate(h.handoverAt) },
+              { header: "Dorëzuar tek", value: h => h.recipient ?? "", width: 24 },
+              { header: "Përshkrimi", value: h => h.description ?? "", width: 30 },
+              { header: "Mënyra", value: h => METHOD_LABEL[h.method] ?? h.method },
+              { header: "Referenca", value: h => h.reference ?? "" },
+              { header: "Shuma (€)", value: h => h.amount },
+            ]} />
+            <button onClick={() => setShowModal(true)} className="btn-primary">
+              <Plus className="w-4 h-4" /> Regjistro Dorëzim
+            </button>
+          </div>
         </div>
       </div>
 

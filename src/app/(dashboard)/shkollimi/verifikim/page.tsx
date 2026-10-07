@@ -5,6 +5,8 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { AlertTriangle, Check, ArrowLeft, Loader2 } from "lucide-react";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import { xlDate } from "@/lib/exportExcel";
 
 interface PaymentRow {
   id: number;
@@ -69,9 +71,21 @@ export default function ShkollimiVerifikimPage() {
           <Link href="/shkollimi" className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 flex items-center gap-1 mb-2">
             <ArrowLeft className="w-3.5 h-3.5" /> Kthehu te Shkollimi
           </Link>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-amber-500" /> Pagesa për Verifikim
-          </h1>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" /> Pagesa për Verifikim
+            </h1>
+            <ExportExcelButton<PaymentRow> fileName="Pagesa-per-verifikim" rows={rows ?? []} columns={[
+              { header: "Nxënësi", value: r => `${r.student.firstName} ${r.student.lastName}`, width: 26 },
+              { header: "Muaji", value: r => (r.month ? `${r.month}/${r.year ?? ""}` : r.year ?? "") },
+              { header: "Shuma", value: r => r.finalAmount },
+              { header: "Paguar", value: r => r.paidAmount },
+              { header: "Data e pagesës", value: r => xlDate(r.paidDate) },
+              { header: "Metoda", value: r => r.method ?? "" },
+              { header: "TIMI Invest", value: r => (tiStudentIds.has(r.student.id) ? "Po" : "") },
+              { header: "Përshkrimi", value: r => r.description ?? "" },
+            ]} />
+          </div>
           <p className="text-sm text-slate-400 mt-0.5">
             Këto pagesa Shkollimi ende s&apos;llogariten si &quot;Të Hyra&quot; reale — vijnë nga import me shumicë ose janë të lidhura me TIMI Invest.
             Verifikojini dhe klikoni &quot;Konfirmo&quot; vetëm pasi të jeni siguruar që paraja është marrë realisht nga shkolla.

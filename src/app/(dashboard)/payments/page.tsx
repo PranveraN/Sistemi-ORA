@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
-import { Plus, Search, ChevronLeft, ChevronRight, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import { Plus, Search, ChevronLeft, ChevronRight, AlertCircle, CheckCircle, Clock, Download } from "lucide-react";
+import { exportToExcel, xlDate } from "@/lib/exportExcel";
 
 interface Payment {
   id: number;
@@ -35,6 +36,28 @@ export default function PaymentsPage() {
   useEffect(() => { setMetoda(new URLSearchParams(window.location.search).get("metoda") ?? ""); }, []);
   const [page, setPage] = useState(1);
   const limit = 20;
+
+  // Eksporti: të gjitha pagesat sipas filtrave aktivë (jo vetëm 20 të faqes)
+  async function exportAll() {
+    const params = new URLSearchParams({ search, status, page: "1", limit: "100000" });
+    if (metoda) params.set("metoda", metoda);
+    const res = await fetch(`/api/payments?${params}`);
+    if (!res.ok) { alert("Eksporti dështoi."); return; }
+    const all: Payment[] = (await res.json()).payments || [];
+    const method = (m: string | null) => m === "CASH" ? "Cash" : m === "BANK" ? "Bankë" : m === "CARD" ? "Kartelë" : m === "ONLINE" ? "Online" : "";
+    exportToExcel<Payment>("Pagesat", [
+      { header: "Nxënësi", value: p => `${p.student.firstName} ${p.student.lastName}`, width: 26 },
+      { header: "Kategoria", value: p => p.category.name, width: 18 },
+      { header: "Muaji", value: p => (p.month ? `${MONTHS[p.month - 1]} ${p.year ?? ""}` : p.year ?? "") },
+      { header: "Shuma", value: p => p.finalAmount },
+      { header: "Paguar", value: p => p.paidAmount },
+      { header: "Borxhi", value: p => p.balance },
+      { header: "Statusi", value: p => getStatusLabel(p.status) },
+      { header: "Metoda", value: p => method(p.method) },
+      { header: "Afati", value: p => xlDate(p.dueDate) },
+      { header: "Data e pagesës", value: p => xlDate(p.paidDate) },
+    ], all, "Pagesat");
+  }
 
   const fetch_ = useCallback(async (isFirst = false) => {
     if (isFirst) setLoading(true); else setRefreshing(true);
@@ -106,6 +129,9 @@ export default function PaymentsPage() {
               <option value="NONE">Pa metodë</option>
             </select>
           </div>
+          <button type="button" onClick={exportAll} disabled={!total} className="btn-secondary whitespace-nowrap" title="Eksporto të gjitha pagesat sipas filtrave (jo vetëm këtë faqe)">
+            <Download className="w-4 h-4" /> Eksporto Excel
+          </button>
           <Link href="/payments/new" className="btn-primary whitespace-nowrap">
             <Plus className="w-4 h-4" />
             Pagesë e Re

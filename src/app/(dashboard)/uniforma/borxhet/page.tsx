@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import NotificationPreviewModal, { type NotificationRecipient } from "@/components/notifications/NotificationPreviewModal";
 import { buildObligationMessage, type Obligation } from "@/lib/notificationTemplates";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import { xlDate } from "@/lib/exportExcel";
 
 interface StudentOpt {
   id: number; firstName: string; lastName: string;
@@ -147,9 +149,22 @@ export default function UniformaBorxhetPage() {
             <h1 className="page-title">Borxhet e Uniformave</h1>
             <p className="text-sm text-slate-400 mt-0.5">Nxënës/klientë me borxh të mbetur — përfshirë borxhet e importuara nga vite të mëparshme</p>
           </div>
-          <button onClick={() => setAddOpen(true)} className="btn-primary">
-            <Plus className="w-4 h-4" /> Shto Borxh
-          </button>
+          <div className="flex gap-2">
+            <ExportExcelButton<DebtRow> fileName="Borxhet-e-uniformave" rows={filteredRows} columns={[
+              { header: "Nxënësi / Klienti", value: r => (r.student ? `${r.student.firstName} ${r.student.lastName}` : r.customerName), width: 26 },
+              { header: "Klasa", value: r => r.student?.class?.name ?? "" },
+              { header: "Telefoni", value: r => debtPhone(r) ?? "" },
+              { header: "Data", value: r => xlDate(r.saleDate) },
+              { header: "Artikujt", value: r => r.itemsSummary ?? "", width: 30 },
+              { header: "Totali (€)", value: r => r.totalAmount },
+              { header: "Paguar (€)", value: r => r.paidAmount },
+              { header: "Borxhi (€)", value: r => r.balance },
+              { header: "Shënime", value: r => r.notes ?? "", width: 30 },
+            ]} />
+            <button onClick={() => setAddOpen(true)} className="btn-primary">
+              <Plus className="w-4 h-4" /> Shto Borxh
+            </button>
+          </div>
         </div>
 
         <div className="card p-5 flex items-center gap-4">

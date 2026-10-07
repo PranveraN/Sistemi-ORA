@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, Trash2, X, Check, AlertTriangle, ArrowLeft } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
 
 interface Product {
   id: number;
@@ -149,6 +150,16 @@ export default function ProduktetPage() {
               {seeding ? "Duke shtuar..." : "Shto produktet fillestare"}
             </button>
           )}
+          <ExportExcelButton<Product> fileName="Produktet-e-uniformave" rows={products} columns={[
+            { header: "Produkti", value: p => p.name, width: 26 },
+            { header: "Përshkrimi", value: p => p.description ?? "", width: 26 },
+            { header: "Çmimi i blerjes (€)", value: p => p.buyPrice },
+            { header: "Çmimi i shitjes (€)", value: p => p.sellPrice },
+            { header: "Stoku", value: p => p.stock },
+            { header: "Alarmi i stokut", value: p => p.stockAlert },
+            { header: "Shitur (rreshta)", value: p => p._count?.saleItems ?? "" },
+            { header: "Aktiv", value: p => (p.active ? "Po" : "Jo") },
+          ]} />
           <button onClick={() => setShowAdd(true)} className="btn-primary">
             <Plus className="w-4 h-4" /> Shto Produkt të Ri
           </button>

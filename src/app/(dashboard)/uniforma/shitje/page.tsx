@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { ShoppingBag, Plus, Search, Eye, Trash2, Filter, ChevronLeft, ChevronRight, ArrowLeft, Users, X, Loader2, CheckCircle } from "lucide-react";
+import { ShoppingBag, Plus, Search, Eye, Trash2, Filter, ChevronLeft, ChevronRight, ArrowLeft, Users, X, Loader2, CheckCircle, Download } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import FamilyReceiptPrintModal from "@/components/finance/FamilyReceiptPrintModal";
+import { exportToExcel, xlDate } from "@/lib/exportExcel";
 
 interface Sale {
   id: number;
@@ -117,6 +118,28 @@ export default function ShitjetPage() {
 
   const pages = Math.ceil(total / limit);
 
+  async function exportAll() {
+    const params = new URLSearchParams({ page: "1", limit: "100000" });
+    if (search) params.set("search", search);
+    if (status) params.set("status", status);
+    const res = await fetch(`/api/uniforms/sales?${params}`);
+    if (!res.ok) { alert("Eksporti dështoi."); return; }
+    const all: Sale[] = (await res.json()).sales || [];
+    exportToExcel<Sale>("Shitjet-e-uniformave", [
+      { header: "Data", value: s => xlDate(s.saleDate) },
+      { header: "Klienti", value: s => s.customerName, width: 26 },
+      { header: "Telefoni", value: s => s.customerPhone ?? "" },
+      { header: "Artikuj", value: s => s._count.items },
+      { header: "Totali (€)", value: s => s.totalAmount },
+      { header: "Paguar (€)", value: s => s.paidAmount },
+      { header: "Borxhi (€)", value: s => s.balance },
+      { header: "Kosto (€)", value: s => s.totalCost },
+      { header: "Fitimi (€)", value: s => s.profit },
+      { header: "Statusi", value: s => STATUS_MAP[s.status]?.label ?? s.status },
+      { header: "Shënime", value: s => s.notes ?? "", width: 30 },
+    ], all, "Shitjet");
+  }
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center gap-3">
@@ -128,9 +151,14 @@ export default function ShitjetPage() {
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Shitjet</h1>
             <p className="text-sm text-slate-400 mt-0.5">{total} shitje gjithsej</p>
           </div>
-          <Link href="/uniforma/shitje/new" className="btn-primary">
-          <Plus className="w-4 h-4" /> Shitje e Re
-          </Link>
+          <div className="flex gap-2">
+            <button type="button" onClick={exportAll} disabled={!total} className="btn-secondary" title="Eksporto të gjitha shitjet sipas filtrave">
+              <Download className="w-4 h-4" /> Eksporto Excel
+            </button>
+            <Link href="/uniforma/shitje/new" className="btn-primary">
+            <Plus className="w-4 h-4" /> Shitje e Re
+            </Link>
+          </div>
         </div>
       </div>
 

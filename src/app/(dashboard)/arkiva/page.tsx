@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Archive, FileText, Receipt, BookOpen, Search, Trash2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { Archive, FileText, Receipt, BookOpen, Search, Trash2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, Eye, Download } from "lucide-react";
 import Link from "next/link";
 import { useModuleAccess } from "@/lib/useModuleAccess";
 import PaymentReceiptModal from "@/components/finance/PaymentReceiptModal";
 import { DOC_TYPES, reprintHref } from "@/lib/sekretariaConstants";
+import { exportToExcel, xlDate } from "@/lib/exportExcel";
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -117,6 +118,43 @@ export default function ArkivaPage() {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
     return () => clearTimeout(t);
   }, [search]);
+
+  // ── Eksporti i skedës aktive (të gjitha rreshtat sipas kërkimit/filtrit) ──
+  async function exportTab() {
+    const q = new URLSearchParams({ page: "1", limit: "100000", search: debouncedSearch });
+    if (tab === "docs") {
+      if (docTypeFilter) q.set("type", docTypeFilter);
+      const all: DocEntry[] = (await (await fetch(`/api/arkiva?${q}`)).json()).docs || [];
+      exportToExcel<DocEntry>("Arkiva-dokumentet", [
+        { header: "Data", value: d => xlDate(d.createdAt) },
+        { header: "Dokumenti", value: d => DOC_TYPE_LABELS[d.type] ?? d.type, width: 26 },
+        { header: "Personi", value: d => d.studentName, width: 26 },
+        { header: "Klasa", value: d => d.className ?? "" },
+        { header: "Krijuar nga", value: d => d.generatedBy ?? "" },
+      ], all, "Dokumentet");
+    } else if (tab === "invoices") {
+      const all: InvoiceEntry[] = (await (await fetch(`/api/arkiva/invoices?${q}`)).json()).invoices || [];
+      exportToExcel<InvoiceEntry>("Arkiva-faturat", [
+        { header: "Data", value: i => xlDate(i.createdAt) },
+        { header: "Numri", value: i => i.number },
+        { header: "Lloji", value: i => INV_TYPE_LABELS[i.type] ?? i.type },
+        { header: "Nxënësi", value: i => i.studentName, width: 26 },
+        { header: "Klasa", value: i => i.className ?? "" },
+        { header: "Statusi", value: i => i.status },
+        { header: "Totali (€)", value: i => i.total },
+      ], all, "Faturat");
+    } else {
+      const all: ReceiptEntry[] = (await (await fetch(`/api/arkiva/receipts?${q}`)).json()).receipts || [];
+      exportToExcel<ReceiptEntry>("Arkiva-deshmite", [
+        { header: "Data e pagesës", value: r => xlDate(r.paidDate) },
+        { header: "Nr. i dëshmisë", value: r => r.receiptNumber },
+        { header: "Nxënësi", value: r => r.studentName, width: 26 },
+        { header: "Kategoria", value: r => r.categoryName },
+        { header: "Metoda", value: r => (r.method === "CASH" ? "Cash" : r.method === "BANK" ? "Bankë" : r.method ?? "") },
+        { header: "Shuma (€)", value: r => r.amount },
+      ], all, "Deshmite");
+    }
+  }
 
   // ── Fetch Docs ──
   const fetchDocs = useCallback(async () => {
@@ -271,6 +309,9 @@ export default function ArkivaPage() {
           title="Rifresko"
         >
           <RefreshCw className="w-4 h-4" />
+        </button>
+        <button type="button" onClick={exportTab} className="btn-secondary text-sm" title="Eksporto skedën aktive (të gjitha sipas kërkimit)">
+          <Download className="w-4 h-4" /> Eksporto Excel
         </button>
       </div>
 

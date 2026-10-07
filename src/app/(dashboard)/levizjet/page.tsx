@@ -14,6 +14,8 @@ import GradeNineLeaversCard, { type GradeNineLeaverRow } from "@/components/dash
 import ClassChangesCard, { type ClassChangeRow } from "@/components/dashboard/ClassChangesCard";
 import { isGrade1 } from "@/lib/school-cycles";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import { xlDate } from "@/lib/exportExcel";
 
 // Vetëm nxjerrim fushat që na duhen këtu nga /api/dashboard — e njëjta API si
 // Dashboard-i, pa krijuar endpoint të dytë për të njëjtat të dhëna.
@@ -23,6 +25,8 @@ interface MovementsData {
   newStudents: { count: number; students: NewStudentRow[] };
   departedStudents: { count: number; students: DepartedStudentRow[] };
 }
+
+interface MovementExportRow { lloji: string; emri: string; klasa: string | null; data: string; detaje: string }
 
 export default function LevizjetPage() {
   const [yearType, setYearType] = useState<YearType>("academic");
@@ -151,6 +155,16 @@ export default function LevizjetPage() {
             <span className="text-slate-600 dark:text-slate-300 font-medium">Lëvizjet e Nxënësve</span>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <ExportExcelButton<MovementExportRow> fileName={`Levizjet-${data?.period.label ?? year}`} sheet="Lëvizjet" rows={[
+              ...(typeFilter !== "departed" ? [...filteredNew.students, ...gradeOne.students].map(s => ({ lloji: isGrade1(s.className) ? "I ri (Klasa 1)" : "I ri", emri: `${s.firstName} ${s.lastName}`, klasa: s.className, data: s.enrollDate, detaje: [s.previousSchool, s.originCountry].filter(Boolean).join(" · ") })) : []),
+              ...(typeFilter !== "new" ? filteredDeparted.students.map(s => ({ lloji: "I larguar", emri: `${s.firstName} ${s.lastName}`, klasa: s.className, data: s.inactiveDate, detaje: [s.leaveReason, s.destinationSchool].filter(Boolean).join(" · ") })) : []),
+            ]} columns={[
+              { header: "Lloji", value: r => r.lloji },
+              { header: "Nxënësi", value: r => r.emri, width: 26 },
+              { header: "Klasa", value: r => r.klasa ?? "" },
+              { header: "Data", value: r => xlDate(r.data) },
+              { header: "Detaje", value: r => r.detaje, width: 40 },
+            ]} />
             <div className="flex items-center rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600 text-sm font-medium">
               {([["calendar", "📅 Kalendarik"], ["academic", "🎓 Akademik"]] as [YearType, string][]).map(([yt, lbl]) => (
                 <button key={yt} onClick={() => switchYearType(yt)}

@@ -16,6 +16,8 @@ import {
 import { templateFor, variablesForType, fillTemplate, QUICK_TEMPLATES } from "@/lib/smsTemplates";
 import { countSegments, stripAlbanianDiacritics } from "@/lib/smsSegments";
 import SmsReviewModal, { type ReviewRow, type SkippedRow } from "@/components/sms/SmsReviewModal";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import { xlDate } from "@/lib/exportExcel";
 
 interface ClassOpt { id: number; name: string; level: string }
 
@@ -569,6 +571,18 @@ export default function SmsPage() {
           <div className="flex items-center gap-2 p-5 border-b border-slate-100 dark:border-slate-700">
             <History className="w-4 h-4 text-primary-500" />
             <h2 className="section-title">Historiku i Mesazheve</h2>
+            <span className="ml-auto">
+              <ExportExcelButton<SmsLogRow> fileName="Historiku-SMS" className="btn-secondary text-xs" rows={filteredHistory.flatMap(g => g.rows)} columns={[
+                { header: "Data", value: r => xlDate(r.createdAt) },
+                { header: "Ora", value: r => new Date(r.createdAt).toLocaleTimeString("sq-AL", { hour: "2-digit", minute: "2-digit" }) },
+                { header: "Marrësi", value: r => r.recipientName ?? "", width: 26 },
+                { header: "Telefoni", value: r => r.recipientPhone },
+                { header: "Statusi", value: r => (r.status === "SENT" ? "Dërguar" : r.status === "FAILED" ? "Dështoi" : r.status) },
+                { header: "Gabimi", value: r => r.errorMessage ?? "", width: 24 },
+                { header: "Dërguar nga", value: r => r.sentBy.name },
+                { header: "Mesazhi", value: r => r.message, width: 60 },
+              ]} />
+            </span>
           </div>
           {!loadingHistory && groupedHistory.length > 0 && (
             <div className="px-5 pt-4 pb-1 space-y-2">
