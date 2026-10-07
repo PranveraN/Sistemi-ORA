@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
 
   const all = await prisma.shpenzim.findMany({
     where: {
+      deletedAt: null,
       data: {
         gte: new Date(year, 0, 1),
         lte: new Date(year, 11, 31, 23, 59, 59),

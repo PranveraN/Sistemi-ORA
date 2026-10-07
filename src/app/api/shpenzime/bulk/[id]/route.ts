@@ -38,6 +38,12 @@ export async function POST(
     await prisma.$transaction(async tx => {
       if (bulkAction.action === "DELETE") {
         for (const row of rows) {
+          // Fshirje logjike → thjesht rikthehet; rreshtat e fshirë fizikisht më parë rikrijohen si dikur
+          const exists = await tx.shpenzim.findUnique({ where: { id: row.id }, select: { id: true } });
+          if (exists) {
+            await tx.shpenzim.update({ where: { id: row.id }, data: { deletedAt: null, deletedById: null, deletedByName: null } });
+            continue;
+          }
           await tx.shpenzim.create({
             data: {
               id: row.id,

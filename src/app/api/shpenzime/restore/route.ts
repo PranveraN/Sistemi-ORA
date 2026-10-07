@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
 
   const allKategori = await prisma.shpenzimKategori.findMany();
   const affected = await prisma.shpenzim.findMany({
-    where: { kategoriId: kategoriGabuarRow.id },
+    where: { kategoriId: kategoriGabuarRow.id, deletedAt: null },
     orderBy: { data: "asc" },
   });
 

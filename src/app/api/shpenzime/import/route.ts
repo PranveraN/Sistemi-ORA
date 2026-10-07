@@ -251,7 +251,7 @@ async function importBudgetFormat(raw: unknown[][], year: number, onlyMonth: num
       const endOfMonth   = new Date(year, month,     0, 23, 59, 59);
 
       const dup = await prisma.shpenzim.findFirst({
-        where: { kategoriId: kategori.id, lloji, data: { gte: startOfMonth, lte: endOfMonth } },
+        where: { kategoriId: kategori.id, lloji, deletedAt: null, data: { gte: startOfMonth, lte: endOfMonth } },
       });
       if (dup) { skipped++; continue; }
 

@@ -27,6 +27,7 @@ interface BilanciData {
   totalShpenzim: number;
   totalInvKapital: number; totalInvPerkohshem: number;
   totalBalanca: number;
+  borxheFurnitore?: number; // shpenzime të papaguara — s'hyjnë te shpenzimet derisa të paguhen
 }
 
 export default function BilanciPage() {
@@ -239,9 +240,12 @@ export default function BilanciPage() {
                   <div className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
                     <TrendingDown className="w-4 h-4 text-red-500" />
                   </div>
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-tight">Shpenzime Totale</p>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-tight">Shpenzime Totale (të paguara)</p>
                 </div>
                 <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(data.totalShpenzim)}</p>
+                {(data.borxheFurnitore ?? 0) > 0 && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Borxhe te furnitorët: <b className="text-slate-700 dark:text-slate-200">{formatCurrency(data.borxheFurnitore ?? 0)}</b> (pa paguar, s'llogariten)</p>
+                )}
               </div>
 
               {/* Investime Kapitale */}

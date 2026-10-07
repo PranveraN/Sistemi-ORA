@@ -145,19 +145,21 @@ export async function GET(req: NextRequest) {
     return { month: MONTHS[m.calMonth - 1], ...entry };
   });
 
-  // ── Dorëzimet (brenda periudhës) ──
-  const [handoverGroups, handoverList] = await Promise.all([
-    prisma.paymentHandover.groupBy({
+  // ── Dorëzimet (brenda periudhës) — nga i njëjti libër si arka: skeda "Dorëzim parash"
+  // e çdo kategorie (Expense, type HANDOVER), jo nga faqja e vjetër "Dorëzimet".
+  const [handoverGroups, handoverRows] = await Promise.all([
+    prisma.expense.groupBy({
       by: ["categoryId"],
-      where: { organizationId: orgId, handoverAt: { gte: start, lte: end } },
+      where: { type: "HANDOVER", date: { gte: start, lte: end } },
       _sum: { amount: true },
     }),
-    prisma.paymentHandover.findMany({
-      where: { organizationId: orgId, handoverAt: { gte: start, lte: end } },
+    prisma.expense.findMany({
+      where: { type: "HANDOVER", date: { gte: start, lte: end } },
       include: { category: { select: { name: true } } },
-      orderBy: { handoverAt: "desc" },
+      orderBy: { date: "desc" },
     }),
   ]);
+  const handoverList = handoverRows.map(h => ({ id: h.id, category: h.category, amount: h.amount, method: h.method, recipient: h.recipient, handoverAt: h.date }));
   const categoryNameById = new Map(categories.map(c => [c.id, c.name]));
   const handoversByCategory = handoverGroups.map(g => ({
     categoryId: g.categoryId,
@@ -166,15 +168,15 @@ export async function GET(req: NextRequest) {
   }));
   const totalHandedOverPeriod = handoversByCategory.reduce((s, h) => s + h.amount, 0);
 
-  // ── Shpenzimet sipas llojit (brenda periudhës) — Shpenzim s'ka organizationId (global, si gjetkë në app) ──
+  // ── Shpenzimet sipas llojit (brenda periudhës) — vetëm të paguarat dhe jo të fshira (si arka/Bilanci) ──
   const [expenseGroups, expenseList] = await Promise.all([
     prisma.shpenzim.groupBy({
       by: ["lloji"],
-      where: { data: { gte: start, lte: end } },
+      where: { deletedAt: null, paguar: true, data: { gte: start, lte: end } },
       _sum: { shuma: true },
     }),
     prisma.shpenzim.findMany({
-      where: { data: { gte: start, lte: end } },
+      where: { deletedAt: null, paguar: true, data: { gte: start, lte: end } },
       include: { kategori: { select: { emri: true } } },
       orderBy: { data: "desc" },
       take: 300,

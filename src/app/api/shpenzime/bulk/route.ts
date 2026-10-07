@@ -54,7 +54,8 @@ export async function POST(req: NextRequest) {
       });
 
       if (isDelete) {
-        await tx.shpenzim.deleteMany({ where: { id: { in: ids } } });
+        // Fshirje logjike — rreshtat mbeten në databazë
+        await tx.shpenzim.updateMany({ where: { id: { in: ids } }, data: { deletedAt: new Date(), deletedById: userId || null, deletedByName: (session.user as { name?: string | null }).name ?? null } });
       } else {
         await tx.shpenzim.updateMany({ where: { id: { in: ids } }, data: body.patch });
       }

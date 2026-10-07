@@ -3,15 +3,15 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
 
-type KategoriRow = { id: number; emri: string; ngjyra: string | null; ikona: string | null; createdAt: string };
+type KategoriRow = { id: number; emri: string; ngjyra: string | null; ikona: string | null; fusha: string; createdAt: string };
 
 export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const rows = await prisma.$queryRawUnsafe<KategoriRow[]>(
-    `SELECT k.id, k.emri, k.ngjyra, k.ikona, k.createdAt,
-            (SELECT COUNT(*) FROM Shpenzim s WHERE s.kategoriId = k.id) as _count
+    `SELECT k.id, k.emri, k.ngjyra, k.ikona, k.fusha, k.createdAt,
+            (SELECT COUNT(*) FROM Shpenzim s WHERE s.kategoriId = k.id AND s.deletedAt IS NULL) as _count
      FROM ShpenzimKategori k ORDER BY k.emri ASC`
   );
   const result = rows.map((r: KategoriRow & { _count?: number }) => ({
@@ -47,6 +47,12 @@ export async function PUT(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "ID mungon" }, { status: 400 });
 
   const body = await req.json();
+  // Vetëm ndryshimi i fushës (Shkollimi / Ushqimi) — kategoritë e Ushqimit s'zbriten nga arka e Shkollimit
+  if (body.fusha === "SHKOLLIMI" || body.fusha === "USHQIMI") {
+    const k = await prisma.shpenzimKategori.update({ where: { id }, data: { fusha: body.fusha } });
+    await logAction(session, "UPDATE", "ShpenzimKategori", id, `Kategoria "${k.emri}" → ${body.fusha === "USHQIMI" ? "Ushqimi" : "Shkollimi"}`);
+    if (body.emri === undefined) return NextResponse.json(k);
+  }
   await prisma.$executeRawUnsafe(
     `UPDATE ShpenzimKategori SET emri=?, ngjyra=?, ikona=? WHERE id=?`,
     body.emri, body.ngjyra || null, body.ikona || null, id

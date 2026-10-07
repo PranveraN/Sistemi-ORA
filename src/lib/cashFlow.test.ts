@@ -35,6 +35,13 @@ const f5 = computeCashFlow({ ...base, noMethodCents: 12345, noMethodCount: 2 });
 assert.ok(!f5.balanced);
 assert.equal(f5.difference, 123.45);
 
+// Të hyrat tjera cash: rrisin arkën dhe totalin, bilanci përputhet
+const f6 = computeCashFlow({ ...base, otherCashCents: 25000 });
+assert.equal(f6.inCashBox, Math.round((f0.inCashBox + 250) * 100) / 100);
+assert.equal(f6.total, f0.paid + 250);
+assert.equal(f6.paid, f0.paid, "Paguar = vetëm pagesat e nxënësve");
+assert.ok(f6.balanced);
+
 // Rrumbullakimi: 0,1 + 0,2 në cent
 assert.ok(computeCashFlow({ cashCents: toCents(0.1) + toCents(0.2), bankCents: 0, noMethodCents: 0, noMethodCount: 0, expensesCashCents: 0, handedOverCents: toCents(0.3) }).inCashBox === 0);
 

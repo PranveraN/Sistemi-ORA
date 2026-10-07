@@ -19,29 +19,35 @@ export interface CashFlowInput {
   noMethodCount: number;
   expensesCashCents: number;  // shpenzimet e paguara nga arka
   handedOverCents: number;    // dorëzimet (vetëm nga cash)
+  otherCashCents?: number;    // të hyrat tjera cash (kategoria SHKOLLIMI) — hyjnë në arkë
 }
 
 export interface CashFlow {
   paid: number;               // cash + banke + pa metodë (= "Paguar")
+  otherCash: number;          // të hyrat tjera cash
+  total: number;              // paguar + të hyrat tjera cash (= "Gjithsej")
   cash: number;
   bank: number;
   noMethod: { count: number; amount: number };
   expensesCash: number;
   handedOver: number;
-  inCashBox: number;          // cash − shpenzimeArka − dorëzuar
+  inCashBox: number;          // cash + të hyrat tjera cash − shpenzimeArka − dorëzuar
   handedOverPct: number;      // dorëzuar ÷ (cash − shpenzimeArka), 0–100
-  balanced: boolean;          // banke + dorëzuar + shpenzimeArka + neArke === paguar
-  difference: number;         // paguar − (shuma e katër pjesëve)
+  balanced: boolean;          // banke + dorëzuar + shpenzimeArka + neArke === paguar + të hyrat tjera cash
+  difference: number;         // gjithsej − (shuma e katër pjesëve)
 }
 
 export function computeCashFlow(i: CashFlowInput): CashFlow {
+  const otherC = i.otherCashCents ?? 0;
   const paidC = i.cashCents + i.bankCents + i.noMethodCents;
-  const inBoxC = i.cashCents - i.expensesCashCents - i.handedOverCents;
-  const base = i.cashCents - i.expensesCashCents;
+  const inBoxC = i.cashCents + otherC - i.expensesCashCents - i.handedOverCents;
+  const base = i.cashCents + otherC - i.expensesCashCents;
   const partsC = i.bankCents + i.handedOverCents + i.expensesCashCents + inBoxC;
-  const diffC = paidC - partsC;
+  const diffC = paidC + otherC - partsC;
   return {
     paid: fromCents(paidC),
+    otherCash: fromCents(otherC),
+    total: fromCents(paidC + otherC),
     cash: fromCents(i.cashCents),
     bank: fromCents(i.bankCents),
     noMethod: { count: i.noMethodCount, amount: fromCents(i.noMethodCents) },

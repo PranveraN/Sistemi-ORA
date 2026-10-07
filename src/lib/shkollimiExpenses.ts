@@ -2,14 +2,19 @@ import { prisma } from "@/lib/prisma";
 import { expensePeriodWhere } from "@/lib/expensePeriod";
 import type { YearType } from "@/lib/academicYear";
 
-// Shpenzimet e Shkollimit = shpenzimet e modulit "Shpenzimet" (tabela Shpenzim)
-// + ato të regjistruara më parë direkt te skeda "Shpenzime" e Shkollimit
-// (Expense, type EXPENSE) — që asgjë të mos humbasë. Ushqimi s'preket.
+// Shpenzimet e Shkollimit — një libër i vetëm: tabela Shpenzim (Shkollimi →
+// Shpenzime). Deri sa të bëhet migrimi, përfshihen edhe rreshtat e vjetër të
+// skedës (Expense, type EXPENSE) që s'janë bartur ende. Ushqimi s'preket.
 //
-// Rregulli i arkës (i njëjtë kudo — faqja e Shkollimit dhe dashboard-i):
-//   • i paguar me Cash (ose pa metodë)  → "Shpenzuar nga arka" (zbritet nga arka)
+// Rregullat (të njëjta kudo — faqja e Shkollimit, dashboard-i, Bilanci):
+//   • të fshirat (fshirje logjike) s'shfaqen e s'llogariten
+//   • kategoritë me fushë "USHQIMI" s'zbriten nga arka e Shkollimit
+//   • i paguar me Cash (ose pa metodë) → "Shpenzuar nga arka"
 //   • i paguar me Bankë/Kartelë         → nga banka (s'prek arkën)
-//   • i papaguar (borxh te furnitori)   → s'llogaritet si i shpenzuar
+//   • i papaguar                        → borxh te furnitori, s'llogaritet
+
+/** Filtri bazë i Shpenzim-it: vetëm rreshtat aktivë (jo të fshirë logjikisht). */
+export const ACTIVE_SHPENZIM = { deletedAt: null } as const;
 
 export interface ShkollimiExpenseRow {
   key: string;
@@ -18,6 +23,8 @@ export interface ShkollimiExpenseRow {
   date: string;
   description: string | null;
   category: string | null;
+  categoryId: number | null;
+  scope: "SHKOLLIMI" | "USHQIMI";
   supplier: string | null;
   amount: number;
   method: string | null;
@@ -26,11 +33,13 @@ export interface ShkollimiExpenseRow {
 }
 
 export interface ShkollimiExpenseTotals {
-  paid: number;        // gjithsej të paguara
+  paid: number;        // gjithsej të paguara (Shkollimi)
   cash: number;        // nga arka
   bank: number;        // nga banka
-  unpaid: number;      // borxh (pa paguar)
+  unpaid: number;      // borxh te furnitorët
   count: number;
+  ushqimi: number;     // kategoritë e Ushqimit (s'llogariten këtu)
+  legacyPending: number; // rreshta të skedës së vjetër ende pa u migruar
 }
 
 /** Periudha si te faqja: muaj (kalendarik i vitit të dhënë), vit akademik (Sht–Gus), vit kalendarik, ose të gjitha. */
@@ -44,39 +53,64 @@ export function shkollimiPeriodRange(month: number, year: number, yearType: Year
   return null;
 }
 
-const isCash = (m: string | null | undefined) => !m || m === "CASH";
+export const isCashMethod = (m: string | null | undefined) => !m || m === "CASH";
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 export async function loadShkollimiExpenses(categoryId: number | null, month: number, year: number, yearType: YearType) {
   const range = shkollimiPeriodRange(month, year, yearType);
   const [shp, legacy] = await Promise.all([
     prisma.shpenzim.findMany({
-      where: range ? { data: range } : {},
-      include: { kategori: { select: { emri: true } } },
+      where: { ...ACTIVE_SHPENZIM, ...(range ? { data: range } : {}) },
+      include: { kategori: { select: { id: true, emri: true, fusha: true } } },
       orderBy: { data: "desc" },
     }),
     categoryId
-      ? prisma.expense.findMany({ where: { categoryId, type: "EXPENSE", ...expensePeriodWhere(month, year, yearType) }, orderBy: { date: "desc" } })
+      ? prisma.expense.findMany({ where: { categoryId, type: "EXPENSE", migratedToShpenzimId: null, ...expensePeriodWhere(month, year, yearType) }, orderBy: { date: "desc" } })
       : Promise.resolve([]),
   ]);
 
   const rows: ShkollimiExpenseRow[] = [
     ...shp.map(s => ({
       key: `S${s.id}`, source: "SHPENZIM" as const, id: s.id, date: s.data.toISOString(),
-      description: s.pershkrim, category: s.kategori?.emri ?? null, supplier: s.emriBiznesit || s.marres || null,
+      description: s.pershkrim, category: s.kategori?.emri ?? null, categoryId: s.kategori?.id ?? null,
+      scope: (s.kategori?.fusha === "USHQIMI" ? "USHQIMI" : "SHKOLLIMI") as "SHKOLLIMI" | "USHQIMI",
+      supplier: s.emriBiznesit || s.marres || null,
       amount: s.shuma, method: s.metoda, paid: s.paguar, reference: s.nrFature || s.referenca || null,
     })),
     ...legacy.map(e => ({
       key: `E${e.id}`, source: "EXPENSE" as const, id: e.id, date: e.date.toISOString(),
-      description: e.description, category: null, supplier: e.recipient, amount: e.amount, method: e.method, paid: true, reference: e.reference,
+      description: e.description, category: null, categoryId: null, scope: "SHKOLLIMI" as const,
+      supplier: e.recipient, amount: e.amount, method: e.method, paid: true, reference: e.reference,
     })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
-  const totals: ShkollimiExpenseTotals = { paid: 0, cash: 0, bank: 0, unpaid: 0, count: rows.length };
+  const t = { paid: 0, cash: 0, bank: 0, unpaid: 0, ushqimi: 0 };
   for (const r of rows) {
-    if (!r.paid) { totals.unpaid += r.amount; continue; }
-    totals.paid += r.amount;
-    if (isCash(r.method)) totals.cash += r.amount; else totals.bank += r.amount;
+    if (r.scope === "USHQIMI") { t.ushqimi += r.amount; continue; }
+    if (!r.paid) { t.unpaid += r.amount; continue; }
+    t.paid += r.amount;
+    if (isCashMethod(r.method)) t.cash += r.amount; else t.bank += r.amount;
   }
-  return { rows, totals: { paid: r2(totals.paid), cash: r2(totals.cash), bank: r2(totals.bank), unpaid: r2(totals.unpaid), count: totals.count } };
+  const totals: ShkollimiExpenseTotals = {
+    paid: r2(t.paid), cash: r2(t.cash), bank: r2(t.bank), unpaid: r2(t.unpaid), ushqimi: r2(t.ushqimi),
+    count: rows.filter(r => r.scope === "SHKOLLIMI").length, legacyPending: legacy.length,
+  };
+  return { rows, totals };
+}
+
+/** Të hyrat tjera (moduli "Të Hyra Tjera") me kategorinë SHKOLLIMI dhe metodë Cash — hyjnë në arkë. */
+export async function loadOtherCashIncome(month: number, year: number, yearType: YearType): Promise<{ cash: number; bank: number }> {
+  const where: Record<string, unknown> = { kategoria: "SHKOLLIMI" };
+  if (month > 0 && year > 0) { where.muaj = month; where.vit = year; }
+  else if (year > 0) {
+    if (yearType === "academic") where.OR = [{ muaj: { gte: 9 }, vit: year }, { muaj: { lte: 8 }, vit: year + 1 }];
+    else where.vit = year;
+  }
+  const rows = await prisma.hyra.groupBy({ by: ["metoda"], where, _sum: { shuma: true } });
+  let cash = 0, bank = 0;
+  for (const g of rows) {
+    if (g.metoda === "CASH") cash += g._sum.shuma ?? 0;
+    else if (g.metoda) bank += g._sum.shuma ?? 0;
+  }
+  return { cash: r2(cash), bank: r2(bank) };
 }

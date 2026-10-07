@@ -8,9 +8,9 @@ import { DEFAULT_ALLOWED, CONFIGURABLE_ROLES } from "@/lib/modules";
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 /** Data si ditë kalendarike, e qëndrueshme ndaj orës së ruajtur (23:00Z / 00:00Z). */
-const dayKey = (d: Date) => new Date(d.getTime() + 12 * 3600_000).toISOString().slice(0, 10);
+export const dayKey = (d: Date) => new Date(d.getTime() + 12 * 3600_000).toISOString().slice(0, 10);
 const academicYear = (day: string) => { const y = +day.slice(0, 4), m = +day.slice(5, 7); return m >= 9 ? `${y}–${y + 1}` : `${y - 1}–${y}`; };
-const norm = (s: string | null | undefined) => (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+export const norm = (s: string | null | undefined) => (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 const isCash = (m: string | null | undefined) => !m || m === "CASH";
 
 interface Row { book: "A" | "B"; id: number; day: string; amount: number; method: string | null; paid: boolean; description: string | null; category: string | null; supplier: string | null }
@@ -39,15 +39,15 @@ function byMonth(rows: Row[]): { months: MonthBucket[]; years: (MonthBucket & { 
 }
 
 /** Fjalë që mund të tregojnë shpenzim ushqimi (vetëm për kontroll me sy, jo vendim automatik). */
-const FOOD_WORDS = ["ushqim", "drek", "mengjes", "kuzhin", "mish", "buke", "qumesht", "fruta", "perime", "pule", "djath", "vez", "oriz", "makarona", "vaj ", "sheqer", "kafe", "pije", "leng", "uje ", "market", "restorant", "pica", "pizza", "catering", "kuzhinier"];
+export const FOOD_WORDS = ["ushqim", "drek", "mengjes", "kuzhin", "mish", "buke", "qumesht", "fruta", "perime", "pule", "djath", "vez", "oriz", "makarona", "vaj ", "sheqer", "kafe", "pije", "leng", "uje ", "market ", "supermarket", "restorant", "pica", "pizza", "catering", "kuzhinier"];
 
 export async function runExpenseAudit() {
   const shkollimi = await prisma.paymentCategory.findMany({ where: { name: "Shkollimi" }, select: { id: true } });
   const shkIds = shkollimi.map(c => c.id);
 
   const [shp, legacy, handoverExp, paymentHandovers, investime, hyrat, perms, usersByRole, categories, otherCatExpenses] = await Promise.all([
-    prisma.shpenzim.findMany({ include: { kategori: { select: { emri: true } } } }),
-    prisma.expense.findMany({ where: { categoryId: { in: shkIds }, type: "EXPENSE" } }),
+    prisma.shpenzim.findMany({ where: { deletedAt: null }, include: { kategori: { select: { emri: true } } } }),
+    prisma.expense.findMany({ where: { categoryId: { in: shkIds }, type: "EXPENSE", migratedToShpenzimId: null } }),
     prisma.expense.findMany({ where: { type: "HANDOVER" }, include: { category: { select: { name: true } } } }),
     prisma.paymentHandover.findMany({ include: { category: { select: { name: true } } } }),
     prisma.investim.findMany(),

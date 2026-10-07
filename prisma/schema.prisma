@@ -534,6 +534,8 @@ model Expense {
   reference   String?
   month       Int?
   year        Int?
+  // Shpenzimet e Shkollimit u bartën te tabela Shpenzim — rreshti mbetet (arkiv), me lidhje te i riu
+  migratedToShpenzimId Int?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 }
@@ -558,6 +560,8 @@ model ShpenzimKategori {
   emri      String
   ngjyra    String?    // hex color, p.sh. "#ef4444"
   ikona     String?    // emoji ose emër ikone
+  // SHKOLLIMI (parazgjedhje) | USHQIMI — kategoritë e ushqimit s'zbriten nga arka e Shkollimit
+  fusha     String     @default("SHKOLLIMI")
   shpenzime Shpenzim[]
   createdAt DateTime   @default(now())
 }
@@ -578,11 +582,19 @@ model Shpenzim {
   nrFature     String?          // numri i faturës
   emriBiznesit String?          // emri i biznesit/furnitorit
   nrFiskal     String?          // numri fiskal i biznesit
+  // Fshirje logjike: rreshti s'fshihet kurrë nga databaza, vetëm fshihet nga listat/totalet
+  deletedAt     DateTime?
+  deletedById   Int?
+  deletedByName String?
+  // Migrimi nga skeda e vjetër "Shpenzime" e Shkollimit (Expense) — siguron që s'krijohen dyfishime
+  migratedFromExpenseId Int?
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
   @@index([kategoriId])
   @@index([data])
+  @@index([deletedAt])
+  @@index([migratedFromExpenseId])
 }
 
 // Historik i veprimeve masive (bulk) mbi Shpenzim — lejon "Zhbëj" kur një

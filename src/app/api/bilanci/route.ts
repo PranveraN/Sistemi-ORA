@@ -61,9 +61,10 @@ export async function GET(req: NextRequest) {
         })
       : Promise.resolve([]),
 
+    // Vetëm shpenzimet aktive (jo të fshira logjikisht); të papaguarat ndahen si "Borxhe te furnitorët"
     prisma.shpenzim.findMany({
-      where: { data: { gte: start, lte: end } },
-      select: { shuma: true, data: true },
+      where: { deletedAt: null, data: { gte: start, lte: end } },
+      select: { shuma: true, data: true, paguar: true },
     }),
 
     prisma.$queryRawUnsafe<{ vlera: number; tipi: string; data: string }[]>(
@@ -96,7 +97,9 @@ export async function GET(req: NextRequest) {
     }
     hyraShkMap[k] = (hyraShkMap[k] ?? 0) + p.paidAmount;
   }
+  let borxheFurnitore = 0;
   for (const s of shpenzimetRaw) {
+    if (!s.paguar) { borxheFurnitore += s.shuma; continue; } // s'llogaritet derisa të paguhet
     const d = new Date(s.data);
     const k = key(d.getMonth() + 1, d.getFullYear());
     shpenzimMap[k] = (shpenzimMap[k] ?? 0) + s.shuma;
@@ -137,5 +140,6 @@ export async function GET(req: NextRequest) {
     totalShpenzim,
     totalInvKapital, totalInvPerkohshem,
     totalBalanca,
+    borxheFurnitore: Math.round(borxheFurnitore * 100) / 100,
   });
 }

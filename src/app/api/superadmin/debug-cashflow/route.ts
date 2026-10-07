@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const [expenseGroups, expenseLatest, shpenzimPeriod, shpenzimAll, shpenzimLatest, investimPeriod, overview] = await Promise.all([
     prisma.expense.groupBy({ by: ["categoryId", "type", "method", "year", "month"], _sum: { amount: true }, _count: true }),
     prisma.expense.findMany({ orderBy: { id: "desc" }, take: 15, select: { id: true, categoryId: true, type: true, amount: true, method: true, date: true, month: true, year: true, description: true, recipient: true } }),
-    prisma.shpenzim.groupBy({ by: ["metoda", "lloji", "paguar"], where: { data: { gte: from, lt: to } }, _sum: { shuma: true }, _count: true }),
+    prisma.shpenzim.groupBy({ by: ["metoda", "lloji", "paguar"], where: { deletedAt: null, data: { gte: from, lt: to } }, _sum: { shuma: true }, _count: true }),
     prisma.shpenzim.aggregate({ _sum: { shuma: true }, _count: true, _min: { data: true }, _max: { data: true } }),
     prisma.shpenzim.findMany({ orderBy: { id: "desc" }, take: 10, select: { id: true, data: true, shuma: true, metoda: true, lloji: true, paguar: true, pershkrim: true, kategori: { select: { emri: true } } } }),
     prisma.investim.groupBy({ by: ["metoda"], where: { data: { gte: from, lt: to } }, _sum: { vlera: true }, _count: true }),

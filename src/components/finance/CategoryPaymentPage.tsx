@@ -25,7 +25,7 @@ import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
 import PaymentReceiptModal from "./PaymentReceiptModal";
 import ExpensesSection from "./ExpensesSection";
-import ShkollimiExpensesSection from "./ShkollimiExpensesSection";
+import ShpenzimeModule from "@/components/shpenzime/ShpenzimeModule";
 import OldDebtImportModal from "./OldDebtImportModal";
 import FamilyPaymentModal from "./FamilyPaymentModal";
 import FamilyReceiptPrintModal from "./FamilyReceiptPrintModal";
@@ -83,7 +83,7 @@ interface Stats {
   totalExpenses: number;
   totalInvestments: number;
   // Vetëm Shkollimi: arka e saktë (shih /api/category-payments)
-  cashBox?: { cash: number; bank: number; noMethod: number; expensesCash: number; expensesBank: number; expensesUnpaid: number };
+  cashBox?: { cash: number; bank: number; noMethod: number; expensesCash: number; expensesBank: number; expensesUnpaid: number; otherCash: number; expensesUshqimi: number; legacyPending: number };
 }
 
 interface Category {
@@ -1328,7 +1328,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
         )}
 
         {tab === "expense" && (categoryName === "Shkollimi"
-          ? <ShkollimiExpensesSection categoryId={category?.id ?? null} month={month} year={resolvedYear} yearType={yearType} />
+          ? <ShpenzimeModule embedded month={month} year={resolvedYear} yearType={yearType} />
           : <ExpensesSection categoryId={category?.id ?? null} type="EXPENSE" month={month} year={resolvedYear} yearType={yearType} />
         )}
 
@@ -3061,18 +3061,18 @@ function MethodSelect({ value, onChange, className }: { value: string; onChange:
 }
 
 // Pasqyra e Arkës e Shkollimit — e njëjta formulë si dashboard-i:
-// Në arkë = të hyrat Cash − shpenzimet e paguara me Cash − dorëzimet.
+// Në arkë = të hyrat Cash + të hyrat tjera Cash − shpenzimet e paguara me Cash − dorëzimet.
 // Paratë me Bankë s'kalojnë nga arka; shpenzimet e papaguara s'llogariten.
 function ShkollimiCashBox({ stats, cashBox: c, onShowExpenses }: {
   stats: Stats; cashBox: NonNullable<Stats["cashBox"]>; onShowExpenses: () => void;
 }) {
-  const inBox = Math.round((c.cash - c.expensesCash - stats.handedOver) * 100) / 100;
+  const inBox = Math.round((c.cash + c.otherCash - c.expensesCash - stats.handedOver) * 100) / 100;
   const items: { label: string; value: number; sub?: string; tone: string; onClick?: () => void }[] = [
-    { label: "Sa kam marrë (Paguar)", value: stats.totalRevenue, sub: `Cash ${formatCurrency(c.cash)} · Bankë ${formatCurrency(c.bank)}`, tone: "text-green-600 dark:text-green-400" },
+    { label: "Sa kam marrë (Paguar)", value: stats.totalRevenue, sub: `Cash ${formatCurrency(c.cash)} · Bankë ${formatCurrency(c.bank)}${c.otherCash > 0 ? ` · + ${formatCurrency(c.otherCash)} të hyra tjera cash` : ""}`, tone: "text-green-600 dark:text-green-400" },
     { label: "Në bankë", value: c.bank, sub: "hyrë direkt në llogari", tone: "text-blue-700 dark:text-blue-300" },
     { label: "Sa kam dorëzuar", value: stats.handedOver, sub: "nga cash", tone: "text-violet-700 dark:text-violet-300" },
     { label: "Shpenzuar nga arka", value: c.expensesCash, sub: c.expensesBank > 0 ? `+ ${formatCurrency(c.expensesBank)} nga banka` : "shpenzimet e paguara cash", tone: "text-orange-600 dark:text-orange-400", onClick: onShowExpenses },
-    { label: "Sa kam në arkë", value: inBox, sub: inBox < 0 ? "⚠ Më shumë dalje se hyrje cash" : "cash − shpenzime cash − dorëzime", tone: inBox < 0 ? "text-red-600 dark:text-red-400" : "text-teal-700 dark:text-teal-300" },
+    { label: "Sa kam në arkë", value: inBox, sub: inBox < 0 ? "⚠ Më shumë dalje se hyrje cash" : "cash + të hyra tjera cash − shpenzime cash − dorëzime", tone: inBox < 0 ? "text-red-600 dark:text-red-400" : "text-teal-700 dark:text-teal-300" },
   ];
   return (
     <div className="card p-4 border-2 border-primary-100 dark:border-primary-900/40 space-y-3">

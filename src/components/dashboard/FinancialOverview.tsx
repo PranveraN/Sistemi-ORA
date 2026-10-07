@@ -190,8 +190,8 @@ export default function FinancialOverview({ yearType, year }: { yearType: YearTy
           <h2 className="section-title">Pasqyrë Financiare</h2>
           <p className="text-xs text-slate-400 mt-0.5">{periodLabel}</p>
         </div>
-        {canAccess("/dorezimet") && (
-          <Link href="/dorezimet" className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium inline-flex items-center gap-1">
+        {canAccess("/shkollimi") && (
+          <Link href="/shkollimi?tab=handover" className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium inline-flex items-center gap-1">
             Dorëzimet <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         )}
@@ -384,7 +384,7 @@ export default function FinancialOverview({ yearType, year }: { yearType: YearTy
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                 {handoverRows.length === 0 && (
                   <tr><td colSpan={5} className="text-center py-8 text-slate-400 text-sm">
-                    Asnjë dorëzim i regjistruar këtë periudhë{canAccess("/dorezimet") && <> — <Link href="/dorezimet" className="text-primary-600 hover:underline">regjistro një</Link></>}
+                    Asnjë dorëzim i regjistruar këtë periudhë{canAccess("/shkollimi") && <> — <Link href="/shkollimi?tab=handover" className="text-primary-600 hover:underline">regjistro një</Link></>}
                   </td></tr>
                 )}
                 {handoverRows.map(h => (

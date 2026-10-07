@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
       where: {
         OR: [{ emriBiznesit: { contains: q } }, { nrFiskal: { contains: q } }],
         NOT: { emriBiznesit: null },
+        deletedAt: null,
       },
       select: { emriBiznesit: true, nrFiskal: true },
       take: 50,

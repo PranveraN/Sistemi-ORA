@@ -90,6 +90,20 @@ export function getBackupFilePath(filename: string): string | null {
   return fs.existsSync(full) ? full : null;
 }
 
+/**
+ * Backup me emër të veçantë para një veprimi të madh (p.sh. migrimi i shpenzimeve).
+ * S'fshihet nga pastrimi automatik (30 ditë) — ruhet derisa ta fshijë dikush me dorë.
+ * Kthen emrin dhe shtegun e plotë (në server: /data/backups/...).
+ */
+export async function createNamedBackup(label: string): Promise<{ filename: string; path: string }> {
+  const now = new Date();
+  const stamp = `${todayStamp(now)}_${now.toISOString().slice(11, 19).replace(/:/g, "")}`;
+  const filename = `akademia-ora-${label.replace(/[^a-z0-9-]/gi, "-")}-${stamp}.db`;
+  const dest = path.join(getBackupDir(), filename);
+  await vacuumInto(dest);
+  return { filename, path: dest };
+}
+
 let schedulerStarted = false;
 
 /** Niset një herë kur nis serveri: backup i menjëhershëm nëse mungon, pastaj kontroll çdo orë. */

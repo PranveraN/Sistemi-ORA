@@ -6,7 +6,7 @@ import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/li
 import {
   Users, CreditCard, TrendingUp, AlertCircle,
   Clock, FileText, History, Receipt,
-  TrendingDown, UserPlus, CalendarClock, Wallet,
+  TrendingDown, UserPlus, CalendarClock,
   ArrowRightLeft, ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
@@ -148,7 +148,6 @@ export default function DashboardPage() {
               { icon: Receipt,    label: "Faturat e Rregullta",       color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/30", href: "/faturat-rregullta" },
               // TIMI Invest ka API-n e vet të kufizuar te moduli "investime" (shih middleware.ts)
               ...(timiInvestEnabled && canAccess("/investime") ? [{ icon: CreditCard, label: "TIMI INVEST", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/30", onClick: () => setShowTimiInvest(true) }] : []),
-              { icon: Wallet,     label: "Shpenzimet",                color: "text-red-600 dark:text-red-400",         bg: "bg-red-50 dark:bg-red-900/30",         href: "/shpenzime" },
             ].filter(a => !a.href || canAccess(a.href)).map((a, i) => {
               const Icon = a.icon;
               const content = (

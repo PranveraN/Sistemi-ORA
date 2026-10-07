@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     : { NOT: { emriBiznesit: null } };
 
   const rows = await prisma.shpenzim.findMany({
-    where,
+    where: { ...where, deletedAt: null },
     select: { emriBiznesit: true, nrFiskal: true },
     orderBy: { createdAt: "desc" },
     take: 200,
