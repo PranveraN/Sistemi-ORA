@@ -90,6 +90,8 @@ async function importListFormat(raw: unknown[][], headers: string[]): Promise<Ne
   const iLloji   = colIdx(headers, "lloji", "type");
   const iPersh   = colIdx(headers, "pershkrim", "pershkrimi", "description");
   const iDocType = colIdx(headers, "lloji dokumentit", "doctype");
+  // Opsionale: data e shkruar në faturë/kupon (kolona "Data e faturës")
+  const iDataDok = headers.findIndex(h => /data e (fatur|kupon|dokument)/i.test(String(h ?? "")));
 
   if (iData < 0 || iKat < 0 || iShuma < 0) {
     return NextResponse.json({ error: "Kolona të detyrueshme mungojnë: Data, Kategoria, Shuma" }, { status: 400 });
@@ -126,6 +128,13 @@ async function importListFormat(raw: unknown[][], headers: string[]): Promise<Ne
       allKategori.push(kategori);
     }
 
+    let dataDokumentit: Date | null = null;
+    if (iDataDok >= 0 && row[iDataDok] !== undefined && row[iDataDok] !== null && row[iDataDok] !== "") {
+      const v = row[iDataDok];
+      if (typeof v === "number") { const d = XLSX.SSF.parse_date_code(v) as { y: number; m: number; d: number }; dataDokumentit = new Date(d.y, d.m - 1, d.d); }
+      else { const d = new Date(String(v).replace(/\//g, "-")); dataDokumentit = isNaN(d.getTime()) ? null : d; }
+    }
+
     const metodaRaw = strVal(row, iMetoda)?.toUpperCase() || "CASH";
     const metoda    = ["CASH","BANK","CARD","ONLINE"].includes(metodaRaw) ? metodaRaw : "CASH";
     const llojiRaw  = strVal(row, iLloji)?.toUpperCase() || "ZYRE";
@@ -146,6 +155,7 @@ async function importListFormat(raw: unknown[][], headers: string[]): Promise<Ne
           nrFiskal:     strVal(row, iFiskal),
           nrFature:     strVal(row, iFature),
           emriBiznesit: strVal(row, iEmri),
+          dataDokumentit,
         },
       });
       created++;

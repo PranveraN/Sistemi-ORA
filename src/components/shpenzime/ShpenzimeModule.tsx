@@ -32,6 +32,8 @@ interface Shpenzim {
   emriBiznesit: string | null;
   nrFiskal: string | null;
   kategori: Kategori;
+  dataDokumentit?: string | null;
+  createdAt?: string;
   deletedAt?: string | null;
   deletedByName?: string | null;
 }
@@ -123,7 +125,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
   const [form, setForm] = useState({
     kategoriId: "", shuma: "", pershkrim: "", marres: "",
     data: now.toISOString().split("T")[0], metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true,
-    nrFature: "", emriBiznesit: "", nrFiskal: "",
+    nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "",
   });
   const [sipartnerSuggestions, setSipartnerSuggestions] = useState<Sipartner[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -318,7 +320,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
 
   function openNew() {
     setEditId(null);
-    setForm({ kategoriId: kategorite[0]?.id ? String(kategorite[0].id) : "", shuma: "", pershkrim: "", marres: "", data: now.toISOString().split("T")[0], metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true, nrFature: "", emriBiznesit: "", nrFiskal: "" });
+    setForm({ kategoriId: kategorite[0]?.id ? String(kategorite[0].id) : "", shuma: "", pershkrim: "", marres: "", data: now.toISOString().split("T")[0], metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true, nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "" });
     setSipartnerSuggestions([]);
     setShowSuggestions(false);
     setShowModal(true);
@@ -333,6 +335,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
       metoda: s.metoda || "CASH", referenca: s.referenca || "",
       docType: s.docType || "KUPON", lloji: s.lloji || "ZYRE", paguar: s.paguar,
       nrFature: s.nrFature || "", emriBiznesit: s.emriBiznesit || "", nrFiskal: s.nrFiskal || "",
+      dataDokumentit: s.dataDokumentit ? new Date(s.dataDokumentit).toISOString().split("T")[0] : "",
     });
     setSipartnerSuggestions([]);
     setShowSuggestions(false);
@@ -628,7 +631,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
       kategoriId: String(cellModal.kategoriId), shuma: "", pershkrim: "", marres: "",
       data: new Date(cellModal.year, cellModal.month - 1, 1).toISOString().split("T")[0],
       metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true,
-      nrFature: "", emriBiznesit: "", nrFiskal: "",
+      nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "",
     });
     setSipartnerSuggestions([]);
     setShowSuggestions(false);
@@ -697,10 +700,10 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
   }
 
   function downloadFatureTemplate() {
-    const headers = [["Data", "Kategoria", "Nr. Fiskal", "Nr. i Faturës", "Emri Biznesit", "Shuma (€)", "Metoda", "Lloji", "Përshkrimi"]];
+    const headers = [["Data", "Kategoria", "Nr. Fiskal", "Nr. i Faturës", "Emri Biznesit", "Shuma (€)", "Metoda", "Lloji", "Përshkrimi", "Data e faturës (opsionale)"]];
     const example = [
-      ["15/04/2026", "Pagat", "811234567", "F-2026-001", "Kompania ABC", "1500", "CASH", "ZYRE", "Pagat Prill"],
-      ["15/04/2026", "Qiraja", "", "F-2026-002", "Pronari XY", "2000", "BANK", "BANKE", "Qiraja Prill"],
+      ["15/04/2026", "Pagat", "811234567", "F-2026-001", "Kompania ABC", "1500", "CASH", "ZYRE", "Pagat Prill", "12/04/2026"],
+      ["15/04/2026", "Qiraja", "", "F-2026-002", "Pronari XY", "2000", "BANK", "BANKE", "Qiraja Prill", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet([...headers, ...example]);
     ws["!cols"] = [{ wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 20 }];
@@ -709,14 +712,56 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
     XLSX.writeFile(wb, "Template-Faturat-Shpenzime.xlsx");
   }
 
+  // Eksporti i listës siç shfaqet (me filtrat aktivë)
+  function exportListaExcel() {
+    if (!shpenzimeFiltruara.length) { alert("Lista është bosh për filtrat e zgjedhur."); return; }
+    const rows = shpenzimeFiltruara.map(s => [
+      s.dataDokumentit ? formatDate(s.dataDokumentit) : "", formatDate(s.data), s.kategori?.emri || "",
+      s.kategori?.fusha === "USHQIMI" ? "Ushqimi" : "Shkollimi", s.pershkrim || "", s.marres || "",
+      s.lloji === "BANKE" ? "Bankë" : "Zyrë", s.docType === "FATURE" ? "Faturë" : s.docType === "KUPON" ? "Kupon" : (s.docType || ""),
+      s.emriBiznesit || "", s.nrFiskal || "", s.nrFature || "", s.referenca || "",
+      s.paguar === false ? "" : (!s.metoda || s.metoda === "CASH") ? "Arka" : "Banka",
+      s.paguar === false ? "Pa paguar" : "Paguar", s.shuma,
+      ...(showDeleted ? [s.deletedAt ? formatDate(s.deletedAt) : "", s.deletedByName || ""] : []),
+    ]);
+    const head = ["Data e faturës/kuponit", "Regjistruar", "Kategoria", "Fusha", "Përshkrimi", "Marrësi", "Lloji", "Dokumenti", "Biznesi", "Nr. Fiskal", "Nr. i Faturës", "Referenca", "Paguar nga", "Statusi", "Shuma (€)",
+      ...(showDeleted ? ["Fshirë më", "Fshirë nga"] : [])];
+    const ws = XLSX.utils.aoa_to_sheet([head, ...rows, [], ["", "", "", "", "", "", "", "", "", "", "", "", "", "TOTALI", totalFiltered]]);
+    ws["!cols"] = head.map((h, i) => ({ wch: i === 4 ? 30 : i === 8 ? 24 : 14 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, showDeleted ? "Te-fshirat" : "Shpenzimet");
+    const period = month > 0 ? `${month}-${year}` : yearType === "academic" ? `${year}-${year + 1}` : String(year);
+    XLSX.writeFile(wb, `Shpenzimet-${period}.xlsx`);
+  }
+
+  function exportZBExcel() {
+    if (!zbData.length) { alert("Raporti është bosh."); return; }
+    const m = Array.from({ length: 12 }, (_, i) => i + 1);
+    const head = ["Kategoria", ...m.flatMap(i => [`${MONTHS[i - 1]} Zyrë`, `${MONTHS[i - 1]} Bankë`]), "Total Zyrë", "Total Bankë", "Totali"];
+    const rows = zbData.map(r => [r.kategoria, ...m.flatMap(i => [r.zyre[i] ?? 0, r.banke[i] ?? 0]), r.totalZ, r.totalB, r.totalZ + r.totalB]);
+    const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Raport Z-B");
+    XLSX.writeFile(wb, `Raport-Zyre-Banke-${zbYear}.xlsx`);
+  }
+
+  function exportPartnersExcel() {
+    if (!partners.length) { alert("Nuk ka partnerë."); return; }
+    const ws = XLSX.utils.aoa_to_sheet([["Emri", "Nr. Fiskal", "Adresa", "Telefoni", "Email"], ...partners.map(p => [p.emri, p.nrFiskal || "", p.adresa || "", p.telefoni || "", p.email || ""])]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Partneret");
+    XLSX.writeFile(wb, "Partneret-e-Biznesit.xlsx");
+  }
+
   function exportFatureExcel() {
     const fatura = shpenzime.filter(s => s.docType === "FATURE");
     if (fatura.length === 0) {
       alert("Nuk ka shpenzime të llojit Faturë për periudhën e zgjedhur.");
       return;
     }
-    const headers = ["Data", "Emërtimi", "Kategoria", "Nr. Fiskal", "Nr. i Faturës", "Shuma (€)"];
+    const headers = ["Data e faturës", "Regjistruar", "Emërtimi", "Kategoria", "Nr. Fiskal", "Nr. i Faturës", "Shuma (€)"];
     const rows = fatura.map(s => [
+      s.dataDokumentit ? formatDate(s.dataDokumentit) : "",
       formatDate(s.data),
       s.emriBiznesit || s.pershkrim || "—",
       s.kategori?.emri || "—",
@@ -725,7 +770,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
       s.shuma,
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws["!cols"] = [{ wch: 13 }, { wch: 30 }, { wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 12 }];
+    ws["!cols"] = [{ wch: 13 }, { wch: 13 }, { wch: 30 }, { wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 12 }];
     const wb = XLSX.utils.book_new();
     const muajiLabel = month === 0 ? "gjitha" : `${month}-${year}`;
     XLSX.utils.book_append_sheet(wb, ws, "Faturat");
@@ -938,6 +983,9 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700">
                 <h3 className="font-semibold text-slate-800 dark:text-white text-sm">Lista e Shpenzimeve</h3>
                 <div className="flex items-center gap-2">
+                  <button onClick={exportListaExcel} className="btn-secondary text-sm" title="Eksporto listën siç shfaqet (me filtrat aktivë)">
+                    <Download className="w-4 h-4" /> Eksporto Excel
+                  </button>
                   <button onClick={exportFatureExcel} className="btn-secondary text-sm" title="Exporto vetëm faturat e rregullta si Excel">
                     <Download className="w-4 h-4" /> Faturat Excel
                   </button>
@@ -1051,7 +1099,8 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                           onChange={toggleSelectAll}
                         />
                       </th>
-                      <th className="table-header">Data</th>
+                      <th className="table-header">Data e faturës / kuponit</th>
+                      <th className="table-header">Regjistruar</th>
                       <th className="table-header">Kategoria</th>
                       <th className="table-header">Përshkrimi</th>
                       <th className="table-header">Marrësi</th>
@@ -1064,9 +1113,9 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                     {loading ? (
-                      <tr><td colSpan={10} className="table-cell text-center py-10 text-slate-400">Duke ngarkuar...</td></tr>
+                      <tr><td colSpan={11} className="table-cell text-center py-10 text-slate-400">Duke ngarkuar...</td></tr>
                     ) : shpenzimeFiltruara.length === 0 ? (
-                      <tr><td colSpan={10} className="table-cell text-center py-10 text-slate-400">Nuk ka shpenzime për këtë periudhë</td></tr>
+                      <tr><td colSpan={11} className="table-cell text-center py-10 text-slate-400">Nuk ka shpenzime për këtë periudhë</td></tr>
                     ) : shpenzimeFiltruara.map(s => (
                       <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${selectedSh.has(s.id) ? "bg-primary-50/60 dark:bg-primary-900/10" : ""}`}>
                         <td className="table-cell w-8">
@@ -1076,7 +1125,10 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                             onChange={() => toggleSelectSh(s.id)}
                           />
                         </td>
-                        <td className="table-cell text-slate-500 text-xs">
+                        <td className="table-cell text-slate-700 dark:text-slate-200 text-xs whitespace-nowrap">
+                          {s.dataDokumentit ? formatDate(s.dataDokumentit) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="table-cell text-slate-500 text-xs whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             <Calendar className="w-3 h-3" />
                             {formatDate(s.data)}
@@ -1150,7 +1202,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                   {shpenzime.length > 0 && (
                     <tfoot className="bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700">
                       <tr>
-                        <td colSpan={6} className="table-cell font-semibold text-slate-700 dark:text-slate-200">TOTALI</td>
+                        <td colSpan={7} className="table-cell font-semibold text-slate-700 dark:text-slate-200">TOTALI</td>
                         <td colSpan={2} className="table-cell text-right font-bold text-red-600 dark:text-red-400 text-base">{formatCurrency(totalFiltered)}</td>
                         <td colSpan={2} />
                       </tr>
@@ -1300,6 +1352,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700">
               <div className="flex items-center gap-3 flex-wrap">
                 <h3 className="font-semibold text-slate-800 dark:text-white text-sm">🏢🏦 Raport Zyre / Bankë</h3>
+                <button onClick={exportZBExcel} disabled={!zbData.length || zbLoading} className="btn-secondary text-xs flex items-center gap-1.5"><Download className="w-3.5 h-3.5" /> Eksporto Excel</button>
                 <div className="flex gap-1">
                   {ZB_YEARS.map(y => (
                     <button key={y} onClick={() => setZbYear(y)}
@@ -1540,11 +1593,17 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                 </div>
               </div>
 
-              {/* 2. Data + Metoda */}
+              {/* 2. Datat + Metoda */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="form-label">Data</label>
-                  <input type="date" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} className="form-input" />
+                  <label className="form-label" htmlFor="sh-data-dok">Data e faturës / kuponit</label>
+                  <input id="sh-data-dok" type="date" value={form.dataDokumentit} onChange={e => setForm(f => ({ ...f, dataDokumentit: e.target.value }))} className="form-input" />
+                  <p className="text-[11px] text-slate-400 mt-0.5">Data e shkruar në dokument</p>
+                </div>
+                <div>
+                  <label className="form-label" htmlFor="sh-data-reg">Data e regjistrimit (pagesës)</label>
+                  <input id="sh-data-reg" type="date" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} className="form-input" />
+                  <p className="text-[11px] text-slate-400 mt-0.5">Kjo data përcakton muajin dhe arkën</p>
                 </div>
                 <div>
                   <label className="form-label">Metoda</label>
@@ -1763,6 +1822,11 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
               {/* ── TAB: LISTA ── */}
               {partnerTab === "lista" && (
                 <div>
+                  {partners.length > 0 && (
+                    <div className="flex justify-end mb-2">
+                      <button onClick={exportPartnersExcel} className="btn-secondary text-xs flex items-center gap-1.5"><Download className="w-3.5 h-3.5" /> Eksporto Excel</button>
+                    </div>
+                  )}
                   {partnerLoading ? (
                     <div className="py-12 text-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></div>
                   ) : partners.length === 0 ? (

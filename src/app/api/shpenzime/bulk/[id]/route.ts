@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 interface ShpenzimSnapshot {
+  dataDokumentit?: string | null;
   id: number;
   kategoriId: number;
   shuma: number;
@@ -60,6 +61,7 @@ export async function POST(
               nrFature: row.nrFature,
               emriBiznesit: row.emriBiznesit,
               nrFiskal: row.nrFiskal,
+              dataDokumentit: row.dataDokumentit ? new Date(row.dataDokumentit) : null,
               createdAt: new Date(row.createdAt),
             },
           });

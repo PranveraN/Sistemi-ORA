@@ -582,6 +582,7 @@ model Shpenzim {
   nrFature     String?          // numri i faturës
   emriBiznesit String?          // emri i biznesit/furnitorit
   nrFiskal     String?          // numri fiskal i biznesit
+  dataDokumentit DateTime?      // data e shkruar në faturë/kupon (`data` = data e regjistrimit/pagesës)
   // Fshirje logjike: rreshti s'fshihet kurrë nga databaza, vetëm fshihet nga listat/totalet
   deletedAt     DateTime?
   deletedById   Int?

@@ -32,6 +32,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       nrFature:     body.nrFature     ?? null,
       emriBiznesit: body.emriBiznesit ?? null,
       nrFiskal:     body.nrFiskal     ?? null,
+      ...(body.dataDokumentit !== undefined ? { dataDokumentit: body.dataDokumentit ? new Date(body.dataDokumentit) : null } : {}),
       ...(body.paguar !== undefined ? { paguar: body.paguar !== false } : {}),
     },
   });

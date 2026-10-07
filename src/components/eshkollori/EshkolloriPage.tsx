@@ -127,8 +127,8 @@ export default function EshkolloriPage() {
           </div>
         </div>
 
-        {tab === "expense" && <ExpensesSection categoryId={data?.category.id ?? null} type="EXPENSE" month={0} year={year} yearType="academic" />}
-        {tab === "handover" && <ExpensesSection categoryId={data?.category.id ?? null} type="HANDOVER" month={0} year={year} yearType="academic" />}
+        {tab === "expense" && <ExpensesSection categoryId={data?.category.id ?? null} type="EXPENSE" month={0} year={year} yearType="academic" exportable />}
+        {tab === "handover" && <ExpensesSection categoryId={data?.category.id ?? null} type="HANDOVER" month={0} year={year} yearType="academic" exportable />}
 
         {tab === "income" && (
           loadError ? <div className="card p-8 text-center text-sm text-red-600">{loadError}</div>

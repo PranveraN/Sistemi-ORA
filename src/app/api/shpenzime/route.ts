@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
       nrFature:     body.nrFature     || null,
       emriBiznesit: body.emriBiznesit || null,
       nrFiskal:     body.nrFiskal     || null,
+      dataDokumentit: body.dataDokumentit ? new Date(body.dataDokumentit) : null,
     },
     include: { kategori: true },
   });

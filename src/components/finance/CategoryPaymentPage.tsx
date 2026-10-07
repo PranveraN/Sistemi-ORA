@@ -1329,11 +1329,11 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
 
         {tab === "expense" && (categoryName === "Shkollimi"
           ? <ShpenzimeModule embedded month={month} year={resolvedYear} yearType={yearType} />
-          : <ExpensesSection categoryId={category?.id ?? null} type="EXPENSE" month={month} year={resolvedYear} yearType={yearType} />
+          : <ExpensesSection categoryId={category?.id ?? null} type="EXPENSE" month={month} year={resolvedYear} yearType={yearType} exportable={categoryName !== "Ushqimi"} />
         )}
 
         {tab === "handover" && (
-          <ExpensesSection categoryId={category?.id ?? null} type="HANDOVER" month={month} year={resolvedYear} yearType={yearType} />
+          <ExpensesSection categoryId={category?.id ?? null} type="HANDOVER" month={month} year={resolvedYear} yearType={yearType} exportable={categoryName !== "Ushqimi"} />
         )}
       </div>
 

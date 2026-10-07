@@ -22,9 +22,11 @@ interface Props {
   month: number;
   year: number;
   yearType?: "academic" | "calendar";
+  /** Shfaq "Eksporto Excel" (Shkollimi, Eshkollori; Ushqimi mbetet si ishte). */
+  exportable?: boolean;
 }
 
-export default function ExpensesSection({ categoryId, type, month, year, yearType = "calendar" }: Props) {
+export default function ExpensesSection({ categoryId, type, month, year, yearType = "calendar", exportable = false }: Props) {
   const [items, setItems]       = useState<Expense[]>([]);
   const [loading, setLoading]   = useState(true);
   const [modal, setModal]       = useState(false);
@@ -81,6 +83,24 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
   function openAdd()             { setEditItem(null); setModal(true); }
   function openEdit(e: Expense)  { setEditItem(e);    setModal(true); }
   async function afterSave()     { setModal(false); await fetchItems(); }
+
+  function exportList() {
+    if (!items.length) return;
+    const head = isHandover
+      ? ["Data", "Dorëzuar tek", "Mënyra", "Referenca", "Shuma (€)"]
+      : ["Data", "Përshkrimi", "Paguar nga", "Referenca", "Shuma (€)"];
+    const rows = items.map(it => [
+      formatDate(it.date), (isHandover ? it.recipient : it.description) || "",
+      isHandover ? (it.method || "") : (!it.method || it.method === "CASH" ? "Arka" : "Banka"),
+      it.reference || "", it.amount,
+    ]);
+    const total = items.reduce((s, it) => s + it.amount, 0);
+    const ws = XLSX.utils.aoa_to_sheet([head, ...rows, [], ["", "", "", "TOTALI", total]]);
+    ws["!cols"] = [{ wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 16 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, isHandover ? "Dorezimet" : "Shpenzimet");
+    XLSX.writeFile(wb, `${isHandover ? "Dorezimet" : "Shpenzimet"}-${periodLabel.replace(/[\s,]+/g, "-")}.xlsx`);
+  }
 
   function downloadTemplate() {
     const headers = isHandover
@@ -236,6 +256,12 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
             : `${items.length} regjistrime`}
         </p>
         <div className="flex items-center gap-2">
+          {exportable && (
+            <button onClick={exportList} disabled={!items.length} className="btn-secondary text-xs">
+              <Download className="w-3.5 h-3.5" />
+              Eksporto Excel
+            </button>
+          )}
           <button onClick={downloadTemplate} className="btn-secondary text-xs">
             <Download className="w-3.5 h-3.5" />
             Template Excel
