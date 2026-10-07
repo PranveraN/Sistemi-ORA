@@ -1,25 +1,31 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import Header from "@/components/layout/Header";
-import { Plus, Trash2, Printer, ArrowRightLeft, X } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { Printer, ArrowRightLeft, Info, Loader2 } from "lucide-react";
+import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
+import { ACADEMIC_YEARS, DEFAULT_ACADEMIC_YEAR } from "@/lib/academicYear";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import { xlDate } from "@/lib/exportExcel";
 
-interface Category { id: number; name: string; }
+// "Dorëzimet" — pasqyrë VETËM PËR SHIKIM e të gjitha dorëzimeve (Shkollimi,
+// Ushqimi, Eshkollori…). Dorëzimet regjistrohen vetëm te skeda "Dorëzim parash"
+// e çdo kategorie — që të llogariten në arkë dhe të mos regjistrohen dy herë.
+
+interface Category { id: number; name: string }
+interface Row {
+  id: number; source: "TAB" | "OLD"; date: string; categoryId: number | null; categoryName: string;
+  amount: number; recipient: string | null; description: string | null; method: string | null; reference: string | null;
+}
+// Forma që përdor dëshmia e printimit
 interface Handover {
-  id: number;
-  amount: number;
-  description: string | null;
-  recipient: string | null;
-  method: string;
-  reference: string | null;
-  handoverAt: string;
-  category: Category | null;
+  id: number; amount: number; description: string | null; recipient: string | null;
+  method: string; reference: string | null; handoverAt: string; category: { id: number; name: string } | null;
 }
 
 const METHOD_LABEL: Record<string, string> = { CASH: "Cash", BANK: "Bankë / Transfer", CARD: "Kartë", ONLINE: "Online" };
+const TAB_LINK: Record<string, string> = { Shkollimi: "/shkollimi?tab=handover", Ushqimi: "/ushqimi", "Platforma Digjitale": "/eshkollori" };
 
 function printHandoverReceipt(h: Handover) {
   const win = window.open("", "_blank", "width=400,height=600");
@@ -65,278 +71,151 @@ ${h.description ? `<div class="row"><span class="label">Shënim:</span><span>${h
   setTimeout(() => { win.focus(); win.print(); }, 300);
 }
 
+const toHandover = (r: Row): Handover => ({
+  id: r.id, amount: r.amount, description: r.description, recipient: r.recipient, method: r.method ?? "CASH",
+  reference: r.reference, handoverAt: r.date, category: r.categoryId ? { id: r.categoryId, name: r.categoryName } : null,
+});
+
 export default function DorezimetPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [handovers, setHandovers] = useState<Handover[]>([]);
+  const [year, setYear] = useState(DEFAULT_ACADEMIC_YEAR);
+  const [month, setMonth] = useState(0);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [legacy, setLegacy] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({
-    categoryId: "", amount: "", description: "", recipient: "", method: "CASH", reference: "",
-    handoverAt: new Date().toISOString().split("T")[0],
-  });
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     fetch("/api/categories").then(r => r.json()).then(setCategories).catch(() => {});
   }, []);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    const p = new URLSearchParams();
+  useEffect(() => {
+    setLoading(true); setError("");
+    const p = new URLSearchParams({ year: String(year), yearType: "academic" });
     if (categoryFilter) p.set("categoryId", categoryFilter);
-    fetch(`/api/payment-handovers?${p}`)
-      .then(r => r.json())
-      .then(setHandovers)
+    // Muaji brenda vitit akademik: Shtator–Dhjetor = viti fillestar, Janar–Gusht = viti tjetër
+    if (month > 0) { p.set("month", String(month)); p.set("year", String(month >= 9 ? year : year + 1)); p.set("yearType", "calendar"); }
+    fetch(`/api/handovers?${p}`)
+      .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Gabim"); setRows(d.rows); setLegacy(d.legacy); })
+      .catch(e => setError(e instanceof Error ? e.message : "Dorëzimet s'u ngarkuan."))
       .finally(() => setLoading(false));
-  }, [categoryFilter]);
+  }, [categoryFilter, year, month]);
 
-  useEffect(() => { load(); }, [load]);
+  const total = rows.reduce((s, r) => s + r.amount, 0);
+  const byCategory = useMemo(() => {
+    const m = new Map<string, { name: string; total: number; count: number }>();
+    for (const r of rows) { const c = m.get(r.categoryName) ?? { name: r.categoryName, total: 0, count: 0 }; c.total += r.amount; c.count++; m.set(r.categoryName, c); }
+    return [...m.values()].sort((a, b) => b.total - a.total);
+  }, [rows]);
+  const periodLabel = `${month > 0 ? `${MONTHS[month - 1]} ` : ""}${year}–${year + 1}`;
 
-  const save = async () => {
-    setSaving(true);
-    setError("");
-    try {
-      const res = await fetch("/api/payment-handovers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          categoryId: form.categoryId || null,
-          amount: parseFloat(form.amount),
-          description: form.description.trim() || null,
-          recipient: form.recipient.trim() || null,
-          method: form.method,
-          reference: form.reference.trim() || null,
-          handoverAt: form.handoverAt,
-        }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        setError(d.error || `Ruajtja dështoi (gabim ${res.status})`);
-        setSaving(false);
-        return;
-      }
-    } catch {
-      setError("Gabim rrjeti — provo përsëri.");
-      setSaving(false);
-      return;
-    }
-    setSaving(false);
-    setShowModal(false);
-    setForm({ categoryId: "", amount: "", description: "", recipient: "", method: "CASH", reference: "", handoverAt: new Date().toISOString().split("T")[0] });
-    load();
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteId) return;
-    setDeleteError("");
-    try {
-      const res = await fetch(`/api/payment-handovers/${deleteId}`, { method: "DELETE" });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        setDeleteError(d.error || `Fshirja dështoi (gabim ${res.status})`);
-        return;
-      }
-    } catch {
-      setDeleteError("Gabim rrjeti — provo përsëri.");
-      return;
-    }
-    setDeleteId(null);
-    load();
-  };
-
-  const totalHandedOver = handovers.reduce((s, h) => s + h.amount, 0);
+  const columns = [
+    { header: "Data", value: (r: Row) => xlDate(r.date) },
+    { header: "Kategoria", value: (r: Row) => r.categoryName },
+    { header: "Dorëzuar tek", value: (r: Row) => r.recipient ?? "", width: 24 },
+    { header: "Mënyra", value: (r: Row) => (r.method ? METHOD_LABEL[r.method] ?? r.method : "") },
+    { header: "Referenca", value: (r: Row) => r.reference ?? "" },
+    { header: "Shënim", value: (r: Row) => r.description ?? "", width: 30 },
+    { header: "Shuma (€)", value: (r: Row) => r.amount },
+  ];
 
   return (
     <>
       <Header title="Dorëzimet" />
-      <div className="p-4 sm:p-6 space-y-6 animate-fade-in">
+      <div className="p-4 sm:p-6 space-y-5 animate-fade-in">
         <div className="flex flex-wrap items-center gap-3">
           <div>
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white">Dorëzim Parash</h1>
-            <p className="text-sm text-slate-400 mt-0.5">Shkollimi, Ushqimi, Eshkollori dhe kategoritë e tjera</p>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <ArrowRightLeft className="w-5 h-5 text-primary-500" /> Dorëzimet — të gjitha kategoritë
+            </h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Vetëm për shikim · {periodLabel}</p>
           </div>
-          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="form-input w-48 ml-auto">
-            <option value="">Të gjitha kategoritë</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <ExportExcelButton<Handover> fileName="Dorezimet" rows={handovers} columns={[
-            { header: "Data", value: h => xlDate(h.handoverAt) },
-            { header: "Kategoria", value: h => h.category?.name ?? "Të përgjithshme" },
-            { header: "Dorëzuar tek", value: h => h.recipient ?? "", width: 24 },
-            { header: "Përshkrimi", value: h => h.description ?? "", width: 30 },
-            { header: "Mënyra", value: h => METHOD_LABEL[h.method] ?? h.method },
-            { header: "Referenca", value: h => h.reference ?? "" },
-            { header: "Shuma (€)", value: h => h.amount },
-          ]} />
-          <button onClick={() => { setForm(f => ({ ...f, categoryId: categoryFilter })); setShowModal(true); }} className="btn-primary">
-            <Plus className="w-4 h-4" /> Regjistro Dorëzim
-          </button>
-        </div>
-
-        {/* Summary */}
-        <div className="card p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-green-50 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-            <ArrowRightLeft className="w-6 h-6 text-green-600" />
-          </div>
-          <div>
-            <p className="text-xs text-slate-400">Gjithsej i dorëzuar{categoryFilter ? ` — ${categories.find(c => String(c.id) === categoryFilter)?.name ?? ""}` : ""}</p>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(totalHandedOver)}</p>
-          </div>
-          <div className="ml-auto text-right">
-            <p className="text-xs text-slate-400">Rekordet</p>
-            <p className="text-lg font-bold text-slate-700 dark:text-slate-200">{handovers.length}</p>
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
+            <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="form-input w-48" aria-label="Kategoria">
+              <option value="">Të gjitha kategoritë</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="form-input w-36" aria-label="Muaji">
+              <option value={0}>Të gjithë muajt</option>
+              {[9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8].map(m => <option key={m} value={m}>{MONTHS[m - 1]}</option>)}
+            </select>
+            <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-32" aria-label="Viti shkollor">
+              {ACADEMIC_YEARS.map(y => <option key={y} value={y}>{y}–{y + 1}</option>)}
+            </select>
+            <ExportExcelButton<Row> fileName={`Dorezimet-${periodLabel}`} rows={rows} columns={columns} />
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <div className="animate-spin w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full" />
+        <p className="flex items-start gap-2 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 px-4 py-2.5 text-sm text-blue-900 dark:text-blue-200">
+          <Info className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+          <span>
+            Dorëzimet regjistrohen te skeda <b>&quot;Dorëzim parash&quot;</b> e çdo kategorie:{" "}
+            <Link href="/shkollimi?tab=handover" className="underline font-semibold">Shkollimi</Link>,{" "}
+            <Link href="/ushqimi" className="underline font-semibold">Ushqimi</Link>,{" "}
+            <Link href="/eshkollori" className="underline font-semibold">Eshkollori</Link>. Këtu shihen të gjitha bashkë.
+          </span>
+        </p>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="card p-4">
+            <p className="text-xs text-slate-500 dark:text-slate-400">Gjithsej i dorëzuar</p>
+            <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(total)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{rows.length} dorëzime</p>
           </div>
-        ) : (
-          <div className="card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-700">
-                    {["Data", "Kategoria", "Shuma", "Mënyra", "Marrësi", "Referenca", "Shënim", ""].map(h => (
-                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                    ))}
+          {byCategory.map(c => (
+            <div key={c.name} className="card p-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400">{c.name}</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white">{formatCurrency(c.total)}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{c.count} dorëzime</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[820px] text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60">
+                <th className="px-4 py-2.5">Data</th><th className="px-4 py-2.5">Kategoria</th><th className="px-4 py-2.5 text-right">Shuma</th>
+                <th className="px-4 py-2.5">Mënyra</th><th className="px-4 py-2.5">Dorëzuar tek</th><th className="px-4 py-2.5">Referenca</th>
+                <th className="px-4 py-2.5">Shënim</th><th className="px-4 py-2.5"><span className="sr-only">Printo</span></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+              {error ? <tr><td colSpan={8} className="px-4 py-10 text-center text-red-600">{error}</td></tr>
+                : loading ? <tr><td colSpan={8} className="px-4 py-10 text-center"><Loader2 className="w-5 h-5 animate-spin inline text-primary-400" /></td></tr>
+                : rows.length === 0 ? <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500">Nuk ka dorëzime për {periodLabel}.</td></tr>
+                : rows.map(r => (
+                  <tr key={`${r.source}${r.id}`} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                    <td className="px-4 py-2.5 whitespace-nowrap">{formatDate(r.date)}</td>
+                    <td className="px-4 py-2.5">
+                      {TAB_LINK[r.categoryName]
+                        ? <Link href={TAB_LINK[r.categoryName]} className="text-primary-700 dark:text-primary-300 hover:underline">{r.categoryName}</Link>
+                        : r.categoryName}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">{formatCurrency(r.amount)}</td>
+                    <td className="px-4 py-2.5">{r.method ? METHOD_LABEL[r.method] ?? r.method : "—"}</td>
+                    <td className="px-4 py-2.5">{r.recipient ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500">{r.reference ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500">{r.description ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button type="button" onClick={() => printHandoverReceipt(toHandover(r))} aria-label="Printo dëshminë e dorëzimit"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"><Printer className="w-4 h-4" /></button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {handovers.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center">
-                        <ArrowRightLeft className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                        <p className="text-slate-400">Nuk ka dorëzime të regjistruara</p>
-                      </td>
-                    </tr>
-                  )}
-                  {handovers.map(h => (
-                    <tr key={h.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDate(h.handoverAt)}</td>
-                      <td className="px-4 py-3">
-                        {h.category ? (
-                          <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-2 py-0.5 rounded text-xs font-medium">{h.category.name}</span>
-                        ) : (
-                          <span className="text-slate-400 text-xs">Të përgjithshme</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-bold text-green-600 whitespace-nowrap">{formatCurrency(h.amount)}</td>
-                      <td className="px-4 py-3">
-                        <span className="badge bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                          {METHOD_LABEL[h.method] ?? h.method}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{h.recipient ?? "—"}</td>
-                      <td className="px-4 py-3 text-slate-400 font-mono text-xs">{h.reference ?? "—"}</td>
-                      <td className="px-4 py-3 text-slate-400 max-w-[160px] truncate">{h.description ?? "—"}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => printHandoverReceipt(h)}
-                            className="p-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-500 transition-colors"
-                            title="Printo dëshmi">
-                            <Printer className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setDeleteId(h.id)}
-                            className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/30 text-red-400 transition-colors">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+                ))}
+            </tbody>
+          </table>
+        </div>
 
-        {/* Add modal */}
-        {showModal && (
-          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md">
-              <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
-                <h2 className="font-semibold text-slate-900 dark:text-white">Regjistro Dorëzim</h2>
-                <button onClick={() => setShowModal(false)} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800">
-                  <X className="w-5 h-5 text-slate-400" />
-                </button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="form-label">Kategoria</label>
-                  <select className="form-input" value={form.categoryId} onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}>
-                    <option value="">Të përgjithshme (jo e lidhur me një kategori)</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="form-label">Shuma (€) *</label>
-                    <input className="form-input" type="number" step="0.01" placeholder="0.00" value={form.amount}
-                      onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="form-label">Data</label>
-                    <input className="form-input" type="date" value={form.handoverAt}
-                      onChange={e => setForm(f => ({ ...f, handoverAt: e.target.value }))} />
-                  </div>
-                </div>
-                <div>
-                  <label className="form-label">Mënyra</label>
-                  <select className="form-input" value={form.method} onChange={e => setForm(f => ({ ...f, method: e.target.value }))}>
-                    <option value="CASH">Cash</option>
-                    <option value="BANK">Bankë / Transfer</option>
-                    <option value="CARD">Kartë</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label">Marrësi</label>
-                  <input className="form-input" placeholder="p.sh. Drejtori" value={form.recipient}
-                    onChange={e => setForm(f => ({ ...f, recipient: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="form-label">Referenca / Nr. fature</label>
-                  <input className="form-input" placeholder="opsional" value={form.reference}
-                    onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="form-label">Shënim</label>
-                  <textarea className="form-input resize-none" rows={2} placeholder="opsional" value={form.description}
-                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-                </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
-              </div>
-              <div className="flex gap-3 p-6 pt-0">
-                <button onClick={() => { setShowModal(false); setError(""); }} className="btn-secondary flex-1">Anulo</button>
-                <button onClick={save} disabled={saving || !form.amount} className="btn-primary flex-1">
-                  {saving ? "Duke ruajtur..." : "Ruaj"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Delete confirm */}
-        {deleteId && (
-          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
-              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
-                <Trash2 className="w-6 h-6 text-red-500" />
-              </div>
-              <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Fshi dorëzimin?</h3>
-              <p className="text-sm text-slate-400 mb-6">Ky veprim nuk mund të kthehet.</p>
-              {deleteError && <p className="text-sm text-red-500 mb-4">{deleteError}</p>}
-              <div className="flex gap-3">
-                <button onClick={() => { setDeleteId(null); setDeleteError(""); }} className="btn-secondary flex-1">Anulo</button>
-                <button onClick={confirmDelete} className="btn-danger flex-1">Fshi</button>
-              </div>
-            </div>
-          </div>
+        {legacy.length > 0 && (
+          <section className="card p-4 space-y-2">
+            <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200">Dorëzime të regjistruara dikur te kjo faqe ({legacy.length})</h2>
+            <p className="text-xs text-slate-500">Këto s&apos;llogariten në arkë. Nëse janë dorëzime të vërteta, regjistrojini te skeda &quot;Dorëzim parash&quot; e kategorisë përkatëse.</p>
+            <ul className="text-sm divide-y divide-slate-100 dark:divide-slate-700">
+              {legacy.map(r => <li key={`O${r.id}`} className="py-1.5 flex justify-between gap-3"><span>{formatDate(r.date)} · {r.categoryName} · {r.recipient ?? "—"}</span><b>{formatCurrency(r.amount)}</b></li>)}
+            </ul>
+          </section>
         )}
       </div>
     </>
