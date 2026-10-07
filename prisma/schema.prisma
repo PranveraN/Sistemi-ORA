@@ -1732,3 +1732,21 @@ model FeeChangeLog {
 
   @@index([studentId, categoryId, createdAt])
 }
+
+// Shënim i nxënësit për një modul dhe vit shkollor (p.sh. Ushqimi → "Zbritje e
+// paparashikueshme"): administrata i zgjedh me dorë; shfaqet si etiketë me ngjyrë
+// dhe përdor ditët e kolonës "Zbritje e paparashikueshme" te pagesat e reja.
+model StudentTag {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @default(1)
+  studentId      Int
+  module         String   // USHQIMI
+  schoolYear     Int      // viti fillestar akademik, p.sh. 2026 = 2026–2027
+  label          String
+  createdById    Int?
+  createdByName  String?
+  createdAt      DateTime @default(now())
+
+  @@unique([studentId, module, schoolYear])
+  @@index([module, schoolYear])
+}

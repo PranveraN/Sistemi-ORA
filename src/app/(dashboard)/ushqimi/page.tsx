@@ -379,15 +379,29 @@ export default function UshqimiPage() {
   const [loading, setLoading]   = useState(true);
   const [badgePdfLoading, setBadgePdfLoading] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Rreshtat e zgjedhur ruhen edhe kur ndërrohet filtri i klasës — që të zgjidhen
+  // nxënës nga klasa të ndryshme (p.sh. bexhe për një nga 1A, një nga 4B, një nga 7A)
+  const [selectedRows, setSelectedRows] = useState<Map<number, StudentRow>>(new Map());
   const [notifyRecipients, setNotifyRecipients] = useState<NotificationRecipient[] | null>(null);
 
-  function toggleSelect(id: number) {
+  function toggleSelect(row: StudentRow) {
+    const id = row.id;
     setSelected(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+    setSelectedRows(prev => {
+      const next = new Map(prev);
+      next.has(id) ? next.delete(id) : next.set(id, row);
+      return next;
+    });
   }
+  function clearSelection() { setSelected(new Set()); setSelectedRows(new Map()); }
+
+  // Shënimi i nxënësve (p.sh. "Zbritje e paparashikueshme") për vitin e zgjedhur
+  const [tags, setTags] = useState<Map<number, string>>(new Map());
+  const [tagBusy, setTagBusy] = useState(false);
 
   useEffect(() => {
     fetch("/api/classes").then(r => r.json()).then((data: Class[]) => {
@@ -413,6 +427,10 @@ export default function UshqimiPage() {
   const [workingDays,   setWorkingDays]   = useState(20);
   const [monthsPerYear, setMonthsPerYear] = useState(10);
   const [periods,       setPeriods]       = useState<Period[]>(DEFAULT_PERIODS);
+  // Ditët e ruajtura për vitin e zgjedhur (për të ditur nëse ka ndryshime pa ruajtur)
+  const [periodsSaved,  setPeriodsSaved]  = useState<string>(JSON.stringify(DEFAULT_PERIODS));
+  const [periodsFromYear, setPeriodsFromYear] = useState<boolean>(false);
+  const [savingPeriods, setSavingPeriods] = useState(false);
   const [showCalc,      setShowCalc]      = useState(true);
   const [showManual,    setShowManual]    = useState(false);
 
@@ -424,6 +442,52 @@ export default function UshqimiPage() {
       if (!isNaN(v1) && v1 > 0) { setPrice2MealsG1(v1); setPrice2MealsG1Saved(v1); }
     });
   }, []);
+
+  // Ditët e Kalkulatorit ruhen për çdo vit shkollor; viti pa ditë të ruajtura nis nga parazgjedhja
+  useEffect(() => {
+    if (!year) return;
+    let cancelled = false;
+    fetch(`/api/ushqimi/periods?year=${year}`).then(r => (r.ok ? r.json() : null)).then(d => {
+      if (cancelled) return;
+      const p: Period[] = Array.isArray(d?.periods) && d.periods.length === DEFAULT_PERIODS.length ? d.periods : DEFAULT_PERIODS;
+      setPeriods(p); setPeriodsSaved(JSON.stringify(p)); setPeriodsFromYear(Array.isArray(d?.periods));
+    }).catch(() => {});
+    fetch(`/api/ushqimi/tags?year=${year}`).then(r => (r.ok ? r.json() : [])).then((rows: { studentId: number; label: string }[]) => {
+      if (!cancelled) setTags(new Map(rows.map(t => [t.studentId, t.label])));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [year]);
+
+  async function handleSavePeriods() {
+    setSavingPeriods(true);
+    const res = await fetch("/api/ushqimi/periods", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year, periods }) });
+    setSavingPeriods(false);
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ruajtja dështoi."); return; }
+    setPeriodsSaved(JSON.stringify(periods)); setPeriodsFromYear(true);
+  }
+
+  async function applyTag(ids: number[]) {
+    const label = window.prompt("Teksti i shënimit për nxënësit e zgjedhur:", "Zbritje e paparashikueshme");
+    if (!label || !label.trim()) return;
+    setTagBusy(true);
+    const res = await fetch("/api/ushqimi/tags", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year, studentIds: ids, label: label.trim() }) });
+    setTagBusy(false);
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ruajtja dështoi."); return; }
+    setTags(prev => { const n = new Map(prev); ids.forEach(id => n.set(id, label.trim())); return n; });
+  }
+  async function removeTag(ids: number[]) {
+    if (!confirm(`Hiq shënimin për ${ids.length} nxënës?`)) return;
+    setTagBusy(true);
+    const res = await fetch("/api/ushqimi/tags", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year, studentIds: ids }) });
+    setTagBusy(false);
+    if (!res.ok) { alert("Heqja dështoi."); return; }
+    setTags(prev => { const n = new Map(prev); ids.forEach(id => n.delete(id)); return n; });
+  }
+  // Për nxënësit e shënuar: ditët e kolonës "Zbritje e paparashikueshme" (kur janë > 0)
+  function periodsFor(studentId: number): Period[] {
+    if (!tags.has(studentId)) return periods;
+    return periods.map(p => (p.zbritjeDays > 0 ? { ...p, days: p.zbritjeDays } : p));
+  }
 
   async function handleSavePrice2Meals() {
     setSavingPrice(true);
@@ -1010,6 +1074,19 @@ export default function UshqimiPage() {
                 </div>
               </div>
 
+              {/* Ruajtja e ditëve për vitin */}
+              <div className="px-5 pb-2 flex flex-wrap items-center gap-3 text-xs">
+                <span className="text-slate-500 dark:text-slate-400">
+                  Ditët për vitin <b>{year > 0 ? `${year}–${year + 1}` : "—"}</b>{periodsFromYear ? " (të ruajtura)" : " (parazgjedhje — s'janë ruajtur ende për këtë vit)"}
+                </span>
+                {year > 0 && (JSON.stringify(periods) !== periodsSaved || !periodsFromYear) && (
+                  <button onClick={handleSavePeriods} disabled={savingPeriods} className="btn-primary text-xs">
+                    <Save className="w-3.5 h-3.5" /> {savingPeriods ? "Duke ruajtur..." : `Ruaj ditët për ${year}–${year + 1}`}
+                  </button>
+                )}
+                <span className="text-slate-400">Kolona &quot;Zbritje e paparashikueshme&quot; përdoret për nxënësit e shënuar me të.</span>
+              </div>
+
               {/* Periods table */}
               <div className="overflow-x-auto px-5 pb-4">
                 <table className="w-full text-sm border-collapse">
@@ -1022,7 +1099,7 @@ export default function UshqimiPage() {
                       <th className="px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 text-center">Vetëm Mengjesi</th>
                       <th className="px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 text-center">Vetëm Dreka</th>
                       <th className="px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 text-center">Klasa e parë</th>
-                      <th className="px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 text-center">Zbritje e paparishikueshme</th>
+                      <th className="px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 text-center">Zbritje e paparashikueshme</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1288,17 +1365,35 @@ export default function UshqimiPage() {
         </div>
 
         {selected.size > 0 && (
-          <div className="card p-3 flex items-center gap-3 bg-primary-50 dark:bg-primary-900/10 border-primary-200 dark:border-primary-800">
-            <span className="text-sm text-primary-700 dark:text-primary-300 font-medium">{selected.size} nxënës të zgjedhur</span>
-            <button
-              onClick={() => generateNotificationsFor(displayed.filter(s => selected.has(s.id)))}
-              className="btn-secondary text-sm ml-auto"
-            >
-              <Send className="w-4 h-4" /> Gjenero njoftime për të zgjedhurit ({selected.size})
-            </button>
-            <button onClick={() => setSelected(new Set())} className="text-slate-400 hover:text-slate-600">
-              <X className="w-4 h-4" />
-            </button>
+          <div className="card p-3 flex flex-wrap items-center gap-2 bg-primary-50 dark:bg-primary-900/10 border-primary-200 dark:border-primary-800">
+            <span className="text-sm text-primary-700 dark:text-primary-300 font-medium">
+              {selected.size} nxënës të zgjedhur
+              {new Set([...selectedRows.values()].map(r => r.class?.name ?? "")).size > 1 && <span className="font-normal text-xs"> (nga klasa të ndryshme)</span>}
+            </span>
+            <div className="flex flex-wrap gap-2 ml-auto">
+              <button onClick={() => printClassBadges([...selectedRows.values()], "Të zgjedhurit")} className="btn-secondary text-sm">
+                <IdCard className="w-4 h-4" /> Printo bexhet ({selected.size})
+              </button>
+              <button onClick={async () => { setBadgePdfLoading(true); try { await downloadClassBadgesPDF([...selectedRows.values()], "te-zgjedhurit"); } finally { setBadgePdfLoading(false); } }}
+                disabled={badgePdfLoading} className="btn-secondary text-sm">
+                {badgePdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} PDF bexhet
+              </button>
+              <button onClick={() => applyTag([...selected])} disabled={tagBusy || !year} className="btn-secondary text-sm" title="Shëno nxënësit e zgjedhur për këtë vit (p.sh. Zbritje e paparashikueshme)">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" aria-hidden /> Shëno
+              </button>
+              {[...selected].some(id => tags.has(id)) && (
+                <button onClick={() => removeTag([...selected].filter(id => tags.has(id)))} disabled={tagBusy} className="btn-secondary text-sm">Hiq shënimin</button>
+              )}
+              <button
+                onClick={() => generateNotificationsFor([...selectedRows.values()])}
+                className="btn-secondary text-sm"
+              >
+                <Send className="w-4 h-4" /> Gjenero njoftime ({selected.size})
+              </button>
+              <button onClick={clearSelection} className="text-slate-400 hover:text-slate-600" aria-label="Pastro zgjedhjen">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -1340,7 +1435,7 @@ export default function UshqimiPage() {
                   return (
                     <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${anyOverdue ? "bg-red-50/40 dark:bg-red-900/10" : ""}`}>
                       <td className="table-cell">
-                        <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} className="rounded accent-primary-600" />
+                        <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s)} className="rounded accent-primary-600" aria-label={`Zgjidh ${s.firstName} ${s.lastName}`} />
                       </td>
                       <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                       <td className="table-cell">
@@ -1349,6 +1444,11 @@ export default function UshqimiPage() {
                         </Link>
                         {s.parentName && (
                           <span className="text-xs text-slate-400 font-normal"> ({s.parentName})</span>
+                        )}
+                        {tags.has(s.id) && (
+                          <span className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title="Përdor ditët e kolonës 'Zbritje e paparashikueshme'">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden />{tags.get(s.id)}
+                          </span>
                         )}
                       </td>
                       <td className="table-cell">
@@ -1475,7 +1575,8 @@ export default function UshqimiPage() {
           month={payModal.month} year={periodCalYear(payModal.month)}
           prices={calcPrices(priceRateForClass(payModal.student.class?.name), workingDays, monthsPerYear)}
           workingDays={workingDays}
-          periods={periods}
+          periods={periodsFor(payModal.student.id)}
+          tagLabel={tags.get(payModal.student.id)}
           periodCalYear={periodCalYear}
           overrideAmount={calcAmount}
           onClose={() => { setPayModal(null); setCalcAmount(undefined); }}
@@ -1490,7 +1591,7 @@ export default function UshqimiPage() {
         <UshqimiCalcModal
           student={calcModal}
           price2Meals={priceRateForClass(calcModal.class?.name)}
-          periods={periods}
+          periods={periodsFor(calcModal.id)}
           onClose={() => setCalcModal(null)}
           onApply={(s, amount, canonicalMonth) => {
             setCalcModal(null);
@@ -1538,7 +1639,7 @@ export default function UshqimiPage() {
         <NotificationPreviewModal
           recipients={notifyRecipients}
           onClose={() => setNotifyRecipients(null)}
-          onSent={() => setSelected(new Set())}
+          onSent={clearSelection}
         />
       )}
       {familyModalOpen && categoryId && (
@@ -1571,8 +1672,9 @@ export default function UshqimiPage() {
 /* ═══════════════════════════════════════════════════════ */
 /*  Payment Modal — specialized for meals                 */
 /* ═══════════════════════════════════════════════════════ */
-function UshqimiPayModal({ student, existingPayment, month, year, prices, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount }: {
+function UshqimiPayModal({ student, existingPayment, month, year, prices, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount, tagLabel }: {
   student: StudentRow; existingPayment: Payment | null; month: number; year: number;
+  tagLabel?: string;
   prices: Record<string, number>; workingDays: number; periods: Period[];
   periodCalYear: (canonicalMonth: number) => number;
   overrideAmount?: number;
@@ -1885,6 +1987,11 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
               {student.class && <span> • Klasa {student.class.name}</span>}
               {" • "}{periodLabel} {year}
             </p>
+            {tagLabel && (
+              <p className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden />{tagLabel} — ditët merren nga kolona përkatëse
+              </p>
+            )}
           </div>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
