@@ -9,9 +9,10 @@ import { paymentChannel } from "@/lib/cashFlow";
 // riprodhojnë saktë kartat ekzistuese, e treta është përkufizimi i Pranverës
 // (2026-10-08) për të ardhmen, i ndarë sipas statusit.
 //
-//  A. "Borxhe Shkollimi" (karta lart, /api/dashboard): nxënësit aktivë GJATË vitit
-//     (edhe të larguarit) + kushdo me rreshta; borxhi për nxënës = max(0, detyrimi −
-//     çdo pagesë, edhe e pakonfirmuar); mbipagesat s'zbriten.
+//  A. "Borxhe Shkollimi" (karta lart, /api/dashboard): kushdo me rreshta (edhe të
+//     larguarit) + aktivët TANI pa plan pagese (çmimi standard / TIMI Invest); borxhi
+//     për nxënës = max(0, detyrimi − çdo pagesë, edhe e pakonfirmuar); mbipagesat
+//     s'zbriten. (Deri 2026-10-08 karta u vinte borxh edhe të larguarve pa plan.)
 //  B. "Borxhi i mbetur" (Pasqyra, shkollimiOverview): vetëm statusi ACTIVE tani;
 //     Totali i pritur − Paguar (vetëm i konfirmuar), për të gjithë bashkë.
 //  C. Përkufizimi i ri: për çdo nxënës (min 0), vetëm pagesa të KONFIRMUARA,
@@ -71,10 +72,10 @@ export async function computeTuitionFigures(db: PrismaClient, orgId: number, yea
     aDebt += aggregatePaymentTotals(rs).balance;
     aPaid += rs.filter(r => r.confirmed).reduce((s, r) => s + r.paidAmount, 0);
   }
-  for (const [sid, t] of tiById) if (!byStudent.has(sid)) aDebt += Math.round(computeTiExpectedPrice(t));
+  for (const [sid, t] of tiById) if (!byStudent.has(sid) && studentById.get(sid)?.status === "ACTIVE") aDebt += computeTiExpectedPrice(t);
   for (const s of students) {
     const inPeriod = (!s.enrollDate || s.enrollDate <= end) && (s.inactiveDate == null || s.inactiveDate >= start);
-    if (!inPeriod || byStudent.has(s.id) || tiById.has(s.id)) continue;
+    if (!inPeriod || s.status !== "ACTIVE" || byStudent.has(s.id) || tiById.has(s.id)) continue;
     aDebt += defaultPrice(s.discountPct);
   }
 

@@ -126,10 +126,11 @@ export async function GET(req: NextRequest) {
     // Nxënësit VËRTETË, TANI aktivë (status="ACTIVE", pa asnjë rindërtim
     // historik) — përdoret VETËM për KPI-të e headcount-it ("Aktivë X
     // gjithsej Y", "Nxënës Aktivë", "Nxënës Aktualë" te Bilanci, dhe ndarjen
-    // Cikli Ulët/Lartë poshtë) — jo për llogaritjet financiare.
+    // Cikli Ulët/Lartë poshtë) — dhe për të vendosur kujt i imputohet borxh pa plan
+    // pagese (vetëm aktivëve tani — shih "Borxhe Shkollimi" më poshtë).
     prisma.student.findMany({
       where: { organizationId: orgId, status: "ACTIVE" },
-      select: { class: { select: { name: true } } },
+      select: { id: true, class: { select: { name: true } } },
     }),
 
     prisma.payment.findMany({
@@ -211,9 +212,16 @@ export async function GET(req: NextRequest) {
   // çmimi i TYRE specifik (jo standardi i kategorisë) imputohet plotësisht si
   // borxh, çfarëdo statusi (Profaturë/Në Proces/E Kryer). Vetëm një pagesë
   // reale e konfirmuar (rasti i mbuluar nga loop-i sipër) e heq dikë prej këtu.
+  // Borxh pa plan pagese imputohet VETËM për nxënësit aktivë TANI (2026-10-08, vendim i
+  // Pranverës): një nxënës që u largua pa pasur kurrë plan pagese s'i detyrohet shkollës
+  // asgjë — më parë karta i vinte çmimin e plotë si borxh (p.sh. 21 të larguar më
+  // 25.09.2026 = 39.420 € borxh që s'ekzistonte). Tani karta përputhet me "Borxhi i
+  // mbetur" te Pasqyra (shkollimiOverview.ts). Të larguarit ME plan pagese mbeten si më parë.
+  const activeNowIds = new Set(currentlyActive.map(s => s.id));
   for (const [studentId, ti] of timiInvestById) {
     if (tuitionByStudent.has(studentId)) continue; // tashmë llogaritur sipër, nga pagesat reale
-    const tiPrice = Math.round(computeTiExpectedPrice(ti));
+    if (!activeNowIds.has(studentId)) continue;    // i larguar, pa plan pagese
+    const tiPrice = computeTiExpectedPrice(ti);     // pa rrumbullakim — si te Pasqyra
     tuitionExpected += tiPrice;
     tuitionDebt += tiPrice;
     tuitionDebtStudentCount++;
@@ -225,6 +233,7 @@ export async function GET(req: NextRequest) {
   if (shkollimiCategory) {
     for (const s of activeInPeriod) {
       if (tuitionByStudent.has(s.id) || timiInvestById.has(s.id)) continue;
+      if (!activeNowIds.has(s.id)) continue; // i larguar, pa plan pagese — s'ka borxh
       const price = Math.round(shkollimiCategory.defaultAmount * (1 - (s.discountPct ?? 0) / 100));
       tuitionExpected += price;
       tuitionDebt += price;
