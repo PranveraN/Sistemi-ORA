@@ -110,11 +110,21 @@ type Tab = "income" | "expense" | "handover";
 // Filtrat e veçantë të kolonës "Metoda"
 const METODA_BANKE = "__BANKE__"; // BANK + CARD + ONLINE (paraja hyn në llogari)
 const METODA_NONE = "__NONE__";   // pagesa me shumë të paguar, por pa metodë
-function metodaMatches(s: StudentRow, filter: string): boolean {
+// Rreshtat që kanë metodë pagese kuptimplote — pa FLEX_HEADER (koka e planit
+// fleksibël mban vetëm totalin, s'ka pagesë; ruhet gjithmonë "CASH").
+function methodRows(s: StudentRow) {
   const list = s.installments.length ? s.installments : s.payment ? [s.payment] : [];
+  return list.filter(p => p.description !== "FLEX_HEADER");
+}
+/** Metodat e pagesave reale (me para të paguara) — për kolonën "Metoda" te plani fleksibël/mujor. */
+function paidMethodsOf(s: StudentRow): string[] {
+  return [...new Set(methodRows(s).filter(p => p.paidAmount > 0).map(p => p.method).filter(Boolean) as string[])];
+}
+function metodaMatches(s: StudentRow, filter: string): boolean {
+  const list = methodRows(s);
   if (filter === METODA_NONE) return list.some(p => p.paidAmount > 0 && !p.method);
   if (filter === METODA_BANKE) return list.some(p => p.method === "BANK" || p.method === "CARD" || p.method === "ONLINE");
-  return s.payment?.method === filter || s.installments.some(p => p.method === filter);
+  return list.some(p => p.method === filter);
 }
 
 function exportStudentsExcel(
@@ -370,9 +380,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
 
   // Vlerat unike për dropdown filtrat
   const uniqueKlasa  = [...new Set(students.map(s => s.class?.name).filter(Boolean) as string[])].sort();
-  const uniqueMetoda = [...new Set(students.flatMap(s =>
-    s.installments.length ? s.installments.map(p => p.method).filter(Boolean) : [s.payment?.method].filter(Boolean)
-  ) as string[])].sort();
+  const uniqueMetoda = [...new Set(students.flatMap(s => methodRows(s).map(p => p.method).filter(Boolean)) as string[])].sort();
 
   function applyColFilters(list: StudentRow[]) {
     return list
@@ -1197,6 +1205,8 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                                 {k2?.method && <div>K2: {getStatusLabel(k2.method)}</div>}
                                 {!k1?.method && !k2?.method && "—"}
                               </div>
+                            ) : hasFlex || hasMonthly ? (
+                              paidMethodsOf(s).length ? paidMethodsOf(s).map(getStatusLabel).join(" + ") : "—"
                             ) : (
                               p?.method ? getStatusLabel(p.method) : "—"
                             )}

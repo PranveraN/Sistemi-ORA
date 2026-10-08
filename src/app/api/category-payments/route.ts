@@ -58,8 +58,12 @@ function aggregatePayment(payments: PrismaPayment[]): PrismaPayment | null {
   if (!payments.length) return null;
   if (payments.length === 1) return payments[0];
   const { finalAmount: totalFinal, paidAmount: totalPaid, balance } = aggregatePaymentTotals(payments);
+  // Metoda: nga pagesat reale (me para të paguara) — jo nga rreshti i parë, që te
+  // plani fleksibël është FLEX_HEADER (pa pagesë, i ruajtur gjithmonë "CASH").
+  const paidMethods = [...new Set(payments.filter(p => p.paidAmount > 0 && p.description !== "FLEX_HEADER").map(p => p.method).filter(Boolean))];
   return {
     ...payments[0],
+    method: paidMethods.length === 1 ? paidMethods[0] : payments[0].method,
     finalAmount: totalFinal,
     paidAmount:  totalPaid,
     balance,
