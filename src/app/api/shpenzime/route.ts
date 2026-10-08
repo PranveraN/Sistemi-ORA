@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { remainingOf } from "@/lib/shpenzimPagesat";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
   const [shpenzime, total, sumResult] = await Promise.all([
     prisma.shpenzim.findMany({
       where,
-      include: { kategori: true },
+      include: { kategori: true, pagesat: { select: { shumaCents: true } } },
       orderBy: { data: "desc" },
       skip: (page - 1) * limit,
       take: limit,
@@ -48,7 +49,11 @@ export async function GET(req: NextRequest) {
   ]);
 
   return NextResponse.json({
-    shpenzime,
+    // paguarDeriTani/mbetur — për faturat me pagesa pjesë-pjesë (src/lib/shpenzimPagesat.ts)
+    shpenzime: shpenzime.map(({ pagesat, ...x }) => {
+      const paid = pagesat.reduce((sum, p) => sum + p.shumaCents, 0) / 100;
+      return { ...x, paguarDeriTani: x.mePagesa ? paid : (x.paguar ? x.shuma : 0), mbetur: remainingOf(x, paid), pagesaCount: pagesat.length };
+    }),
     total,
     totalShuma: sumResult._sum.shuma ?? 0,
   });

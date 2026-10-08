@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { paidSumsByShpenzim, remainingOf } from "@/lib/shpenzimPagesat";
 import { getDateRange, getAcademicMonths, type YearType } from "@/lib/academicYear";
 
 export async function GET(req: NextRequest) {
@@ -61,10 +62,11 @@ export async function GET(req: NextRequest) {
         })
       : Promise.resolve([]),
 
-    // Vetëm shpenzimet aktive (jo të fshira logjikisht); të papaguarat ndahen si "Borxhe te furnitorët"
+    // Vetëm shpenzimet aktive (jo të fshira logjikisht); të papaguarat ndahen si "Borxhe te furnitorët".
+    // Faturat me pagesa pjesë-pjesë: këtu vetëm për borxhin e mbetur (pagesat më poshtë).
     prisma.shpenzim.findMany({
       where: { deletedAt: null, data: { gte: start, lte: end } },
-      select: { shuma: true, data: true, paguar: true },
+      select: { id: true, shuma: true, data: true, paguar: true, mePagesa: true },
     }),
 
     prisma.$queryRawUnsafe<{ vlera: number; tipi: string; data: string }[]>(
@@ -98,11 +100,18 @@ export async function GET(req: NextRequest) {
     hyraShkMap[k] = (hyraShkMap[k] ?? 0) + p.paidAmount;
   }
   let borxheFurnitore = 0;
+  const paidSums = await paidSumsByShpenzim(prisma, shpenzimetRaw.filter(s => s.mePagesa).map(s => s.id));
   for (const s of shpenzimetRaw) {
-    if (!s.paguar) { borxheFurnitore += s.shuma; continue; } // s'llogaritet derisa të paguhet
+    borxheFurnitore += remainingOf(s, paidSums.get(s.id) ?? 0); // s'llogaritet derisa të paguhet
+    if (s.mePagesa || !s.paguar) continue;
     const d = new Date(s.data);
     const k = key(d.getMonth() + 1, d.getFullYear());
     shpenzimMap[k] = (shpenzimMap[k] ?? 0) + s.shuma;
+  }
+  // Pagesat pjesë-pjesë — secila në muajin e vet
+  for (const p of await prisma.shpenzimPagese.findMany({ where: { data: { gte: start, lte: end }, shpenzim: { deletedAt: null } }, select: { shumaCents: true, data: true } })) {
+    const k = key(p.data.getMonth() + 1, p.data.getFullYear());
+    shpenzimMap[k] = (shpenzimMap[k] ?? 0) + p.shumaCents / 100;
   }
   for (const inv of investimeRaw) {
     const d = new Date(inv.data);

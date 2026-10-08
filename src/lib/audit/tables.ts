@@ -15,6 +15,7 @@ export const AUDITED_TABLES: AuditedTable[] = [
   { table: "InvoiceItem" },
   { table: "Expense" },
   { table: "Shpenzim" },
+  { table: "ShpenzimPagese" },
   { table: "Hyra" },
   { table: "Investim" },
   { table: "UniSale" },

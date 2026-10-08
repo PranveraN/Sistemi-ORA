@@ -8,7 +8,8 @@
 //                                  HANDOVER (dorëzim)    → − shuma     (date)
 //   …vetëm arka e Shkollimit merr edhe (si "Ku janë paratë" te Dashboard-i):
 //     Hyra      kategoria SHKOLLIMI, metoda CASH        → + shuma     (data e regjistrimit — s'ka ditë)
-//     Shpenzim  i paguar, cash/pa metodë, jo Ushqimi, jo i fshirë → − shuma (data)
+//     Shpenzim  i paguar, cash/pa metodë, jo Ushqimi, jo i fshirë, pa pagesa pjesore → − shuma (data)
+//     ShpenzimPagese  pagesë pjesore e një fature, cash, jo Ushqimi → − shuma (data e pagesës)
 //     Investim  metoda CASH                             → − vlera     (data)
 //   Arka e Uniformave:  UniPayment CASH + / UniHandover −   (paidAt / handoverAt)
 //   Arka e Librave:     BookPayment CASH + / BookHandover − (paidAt / handoverAt)
@@ -17,7 +18,7 @@
 // por sipas datës, jo sipas muajit të detyrimit — dhe pa filtër statusi të
 // nxënësit (përfshihen edhe të larguarit).
 
-export const CASH_TABLES = new Set(["Payment", "Hyra", "Shpenzim", "Expense", "Investim", "UniPayment", "UniHandover", "BookPayment", "BookHandover"]);
+export const CASH_TABLES = new Set(["Payment", "Hyra", "Shpenzim", "ShpenzimPagese", "Expense", "Investim", "UniPayment", "UniHandover", "BookPayment", "BookHandover"]);
 
 export type MovementKind = "PAGESA" | "HYRA" | "SHPENZIM" | "SHPENZIM_VJETER" | "DOREZIM" | "INVESTIM" | "SHITJE";
 
@@ -87,7 +88,13 @@ export function cashOf(table: string, row: Row | null, box: CashBox): { cents: n
       if (!extras) return null;
       return {
         kind: "SHPENZIM", day: dayKey(row.data),
-        cents: row.deletedAt == null && truthy(row.paguar) && isCash(row.metoda) && !box.foodKategoriIds.includes(Number(row.kategoriId)) ? -toCents(row.shuma) : 0,
+        cents: row.deletedAt == null && truthy(row.paguar) && !truthy(row.mePagesa) && isCash(row.metoda) && !box.foodKategoriIds.includes(Number(row.kategoriId)) ? -toCents(row.shuma) : 0,
+      };
+    case "ShpenzimPagese":
+      if (!extras) return null;
+      return {
+        kind: "SHPENZIM", day: dayKey(row.data),
+        cents: isCash(row.metoda) && !box.foodKategoriIds.includes(Number(row.kategoriId)) ? -Math.round(Number(row.shumaCents) || 0) : 0,
       };
     case "Investim":
       if (!extras) return null;

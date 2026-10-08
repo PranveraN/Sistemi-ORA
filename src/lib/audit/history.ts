@@ -20,6 +20,7 @@ const LABELS: Record<string, string> = {
   metoda: "Metoda", pershkrim: "Përshkrimi", paguar: "E paguar", deletedAt: "Fshirë më", kategoriId: "Kategoria", vlera: "Vlera",
   date: "Data", type: "Lloji", recipient: "Marrësi", paguesit: "Paguesi", muaj: "Muaji", vit: "Viti", kategoria: "Kategoria",
   discountPct: "Zbritja %", inactiveDate: "Data e largimit", enrollDate: "Data e regjistrimit", paymentPlan: "Plani i pagesës",
+  shumaCents: "Shuma (cent)", shpenzimId: "Fatura/Shpenzimi", shenim: "Shënim", mePagesa: "Me pagesa pjesë-pjesë",
   countedCents: "Numëruar (cent)", systemCents: "Sipas sistemit (cent)", diffCents: "Diferenca (cent)",
 };
 const SKIP = new Set(["updatedAt", "organizationId"]);
@@ -43,6 +44,13 @@ function changesOf(action: string, o: Record<string, unknown> | null, n: Record<
 export async function entityHistory(db: PrismaClient, table: string, id: number, limit = 200): Promise<HistoryEntry[]> {
   if (!AUDITED_MODELS.has(table)) return [];
   const logs = await db.finAuditLog.findMany({ where: { tableName: table, recordId: id }, orderBy: { id: "desc" }, take: limit });
+  // Fatura e shpenzimeve: përfshihen edhe pagesat e saj pjesë-pjesë
+  if (table === "Shpenzim") {
+    const pays = await db.$queryRawUnsafe<{ id: number }[]>(
+      `SELECT id FROM "FinAuditLog" WHERE "tableName" = 'ShpenzimPagese' AND (json_extract("newValues", '$.shpenzimId') = ? OR json_extract("oldValues", '$.shpenzimId') = ?) ORDER BY id DESC LIMIT ?`, id, id, limit);
+    if (pays.length) logs.push(...await db.finAuditLog.findMany({ where: { id: { in: pays.map(i => Number(i.id)) } } }));
+    logs.sort((a, b) => b.id - a.id);
+  }
   if (table === "Invoice") {
     const items = await db.$queryRawUnsafe<{ id: number }[]>(
       `SELECT id FROM "FinAuditLog" WHERE "tableName" = 'InvoiceItem' AND (json_extract("newValues", '$.invoiceId') = ? OR json_extract("oldValues", '$.invoiceId') = ?) ORDER BY id DESC LIMIT ?`, id, id, limit);
@@ -72,7 +80,8 @@ export async function entityLink(db: PrismaClient, entityType: string | null, en
     }
     case "Invoice": return entityId ? { href: `/invoices/${entityId}`, label: "Hap faturën" } : null;
     case "CashClosing": return { href: "/arka", label: "Hap Numërimin e Arkave" };
-    case "Shpenzim": return { href: "/shkollimi?tab=expense", label: "Hap Shpenzimet e Shkollimit" };
+    case "Shpenzim":
+    case "ShpenzimPagese": return { href: "/shkollimi?tab=expense", label: "Hap Shpenzimet e Shkollimit" };
     case "Expense": return { href: "/shkollimi?tab=handover", label: "Hap Shkollimin (Dorëzimet/Shpenzimet)" };
     case "Hyra": return { href: "/hyrat", label: "Hap Të Hyrat Tjera" };
     case "Investim": return { href: "/investime", label: "Hap Investimet" };

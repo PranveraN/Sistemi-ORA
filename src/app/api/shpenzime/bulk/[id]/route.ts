@@ -68,6 +68,9 @@ export async function POST(
         }
       } else {
         for (const row of rows) {
+          // Faturat me pagesa pjesë-pjesë: statusi "paguar" rrjedh nga pagesat — s'rikthehet nga fotografia
+          const cur = await tx.shpenzim.findUnique({ where: { id: row.id }, select: { mePagesa: true, paguar: true } });
+          await tx.shpenzimPagese.updateMany({ where: { shpenzimId: row.id }, data: { kategoriId: row.kategoriId } });
           await tx.shpenzim.update({
             where: { id: row.id },
             data: {
@@ -80,7 +83,7 @@ export async function POST(
               referenca: row.referenca,
               docType: row.docType,
               lloji: row.lloji,
-              paguar: row.paguar,
+              paguar: cur?.mePagesa ? cur.paguar : row.paguar,
               nrFature: row.nrFature,
               emriBiznesit: row.emriBiznesit,
               nrFiskal: row.nrFiskal,

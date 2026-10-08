@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
+import { paidSumsByShpenzim } from "@/lib/shpenzimPagesat";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -15,6 +16,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     await prisma.shpenzim.update({ where: { id: parseInt(id) }, data: { deletedAt: null, deletedById: null, deletedByName: null } });
     await logAction(session, "UPDATE", "Shpenzim", parseInt(id), "Riktheu shpenzimin e fshirë");
     return NextResponse.json({ success: true });
+  }
+
+  // Fatura me pagesa pjesë-pjesë: statusi "E paguar" rrjedh nga pagesat (s'vendoset me dorë),
+  // shuma s'mund të ulet nën të paguarën, dhe kategoria e re kalon edhe te pagesat.
+  const current = await prisma.shpenzim.findUnique({ where: { id: parseInt(id) }, select: { mePagesa: true } });
+  if (current?.mePagesa) {
+    const paid = (await paidSumsByShpenzim(prisma, [parseInt(id)])).get(parseInt(id)) ?? 0;
+    if (body.shuma != null && parseFloat(body.shuma) + 0.005 < paid) {
+      return NextResponse.json({ error: `Shuma s'mund të jetë më e vogël se sa është paguar tashmë (${paid.toFixed(2)} €).` }, { status: 400 });
+    }
+    delete body.paguar;
+    if (body.shuma != null) body.paguar = parseFloat(body.shuma) <= paid + 0.005;
+    if (body.kategoriId != null) {
+      await prisma.shpenzimPagese.updateMany({ where: { shpenzimId: parseInt(id) }, data: { kategoriId: parseInt(body.kategoriId) } });
+    }
   }
 
   await prisma.shpenzim.update({
@@ -47,6 +63,10 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   // Fshirje logjike: rreshti mbetet në databazë (me kush/kur), vetëm s'shfaqet e s'llogaritet më
   const { id } = await params;
   const user = session.user as { id?: string; name?: string | null };
+  const nPagesa = await prisma.shpenzimPagese.count({ where: { shpenzimId: parseInt(id) } });
+  if (nPagesa > 0) {
+    return NextResponse.json({ error: `Kjo faturë ka ${nPagesa} pagesa. Fshini pagesat së pari, pastaj faturën.` }, { status: 400 });
+  }
   const row = await prisma.shpenzim.update({
     where: { id: parseInt(id) },
     data: { deletedAt: new Date(), deletedById: parseInt(user.id ?? "") || null, deletedByName: user.name ?? null },

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { loadPaidPortions } from "@/lib/shpenzimPagesat";
 import { aggregatePaymentTotals } from "@/lib/paymentAggregate";
 import { getDateRange, getAcademicMonths, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import { MONTHS } from "@/lib/utils";
@@ -168,23 +169,13 @@ export async function GET(req: NextRequest) {
   }));
   const totalHandedOverPeriod = handoversByCategory.reduce((s, h) => s + h.amount, 0);
 
-  // ── Shpenzimet sipas llojit (brenda periudhës) — vetëm të paguarat dhe jo të fshira (si arka/Bilanci) ──
-  const [expenseGroups, expenseList] = await Promise.all([
-    prisma.shpenzim.groupBy({
-      by: ["lloji"],
-      where: { deletedAt: null, paguar: true, data: { gte: start, lte: end } },
-      _sum: { shuma: true },
-    }),
-    prisma.shpenzim.findMany({
-      where: { deletedAt: null, paguar: true, data: { gte: start, lte: end } },
-      include: { kategori: { select: { emri: true } } },
-      orderBy: { data: "desc" },
-      take: 300,
-    }),
-  ]);
+  // ── Shpenzimet sipas llojit (brenda periudhës) — vetëm të paguarat dhe jo të fshira (si arka/Bilanci);
+  // faturat me pagesa pjesë-pjesë: çdo pagesë në datën e vet (src/lib/shpenzimPagesat.ts) ──
+  const portions = await loadPaidPortions(prisma, { gte: start, lte: end });
   const expensesByType: Record<string, number> = { ZYRE: 0, BANKE: 0 };
-  for (const g of expenseGroups) expensesByType[g.lloji] = g._sum.shuma ?? 0;
+  for (const p of portions) expensesByType[p.lloji] = (expensesByType[p.lloji] ?? 0) + p.shuma;
   const totalExpensesPeriod = expensesByType.ZYRE + expensesByType.BANKE;
+  const expenseList = [...portions].sort((a, b) => b.data.getTime() - a.data.getTime()).slice(0, 300);
 
   // ── Borxhi i papaguar — të gjitha kategoritë, afati brenda periudhës (si /api/dashboard) ──
   const debtPayments = await prisma.payment.findMany({
@@ -222,7 +213,8 @@ export async function GET(req: NextRequest) {
       totalThisMonth: totalExpensesPeriod,
       byType: expensesByType,
       list: expenseList.map(e => ({
-        id: e.id, kategoria: e.kategori.emri, shuma: e.shuma, lloji: e.lloji, data: e.data, marres: e.marres,
+        id: e.shpenzimId, kategoria: e.kategoriEmri ?? "—", shuma: Math.round(e.shuma * 100) / 100, lloji: e.lloji, data: e.data,
+        marres: e.fromPayment ? `${e.marres ?? e.emriBiznesit ?? ""} (pagesë pjesore)`.trim() : e.marres,
       })),
     },
     debt: {

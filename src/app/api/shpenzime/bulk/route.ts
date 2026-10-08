@@ -54,10 +54,21 @@ export async function POST(req: NextRequest) {
       });
 
       if (isDelete) {
+        const withPays = await tx.shpenzimPagese.groupBy({ by: ["shpenzimId"], where: { shpenzimId: { in: ids } } });
+        if (withPays.length) throw new Error(`${withPays.length} nga faturat e zgjedhura kanë pagesa pjesë-pjesë. Fshini pagesat e tyre së pari, ose hiqini nga zgjedhja.`);
         // Fshirje logjike — rreshtat mbeten në databazë
         await tx.shpenzim.updateMany({ where: { id: { in: ids } }, data: { deletedAt: new Date(), deletedById: userId || null, deletedByName: (session.user as { name?: string | null }).name ?? null } });
       } else {
-        await tx.shpenzim.updateMany({ where: { id: { in: ids } }, data: body.patch });
+        // Faturat me pagesa pjesë-pjesë: statusi "paguar" rrjedh nga pagesat — s'ndryshohet në grup
+        const { paguar, ...rest } = body.patch as Record<string, unknown>;
+        if (paguar !== undefined) {
+          await tx.shpenzim.updateMany({ where: { id: { in: ids }, mePagesa: false }, data: { ...rest, paguar } as never });
+          if (Object.keys(rest).length) await tx.shpenzim.updateMany({ where: { id: { in: ids }, mePagesa: true }, data: rest as never });
+        } else {
+          await tx.shpenzim.updateMany({ where: { id: { in: ids } }, data: body.patch });
+        }
+        // Kategoria e re kalon edhe te pagesat e faturave
+        if (rest.kategoriId != null) await tx.shpenzimPagese.updateMany({ where: { shpenzimId: { in: ids } }, data: { kategoriId: Number(rest.kategoriId) } });
       }
 
       return { bulkActionId: bulkAction.id, count: rows.length };

@@ -42,6 +42,7 @@ const FINANCIAL_DELETE_PATTERNS: RegExp[] = [
   /^\/api\/librat\/handovers\/\d+$/,
   /^\/api\/payment-handovers\/\d+$/,
   /^\/api\/shpenzime\/\d+$/,
+  /^\/api\/shpenzime\/\d+\/pagesat\/\d+$/,
   /^\/api\/students\/\d+$/,
   /^\/api\/timi-invest\/invoices\/\d+$/,
   /^\/api\/uniforms\/handovers\/\d+$/,

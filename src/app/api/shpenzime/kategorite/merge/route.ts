@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
     where: { kategoriId: sourceId },
     data: { kategoriId: targetId },
   });
+  // Pagesat pjesë-pjesë mbajnë kopjen e kategorisë së faturës
+  await prisma.shpenzimPagese.updateMany({ where: { kategoriId: sourceId }, data: { kategoriId: targetId } });
   await prisma.shpenzimKategori.delete({ where: { id: sourceId } });
 
   await logAction(session, "UPDATE", "ShpenzimKategori", targetId,

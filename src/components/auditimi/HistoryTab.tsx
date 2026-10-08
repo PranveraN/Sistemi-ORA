@@ -7,7 +7,7 @@ import { TABLE_LABEL } from "./labels";
 
 // "Historiku i ndryshimeve" — çdo ndryshim i një pagese/fature (ose rekordi tjetër
 // financiar) nga gjurma e auditimit: kush, kur, nga cila IP, çka para/pas, arsyeja.
-const TABLES = ["Payment", "Invoice", "FamilyReceipt", "Shpenzim", "Expense", "Hyra", "Investim", "UniSale", "UniPayment", "BookSale", "BookPayment", "FeeExemption", "Student"];
+const TABLES = ["Payment", "Invoice", "FamilyReceipt", "Shpenzim", "ShpenzimPagese", "Expense", "Hyra", "Investim", "UniSale", "UniPayment", "BookSale", "BookPayment", "FeeExemption", "Student"];
 
 export default function HistoryTab() {
   const [numri, setNumri] = useState("");

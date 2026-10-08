@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { loadPaidPortions } from "@/lib/shpenzimPagesat";
 import { getAcademicMonths } from "@/lib/academicYear";
 import { paymentChannel } from "@/lib/cashFlow";
 import { computeShkollimiOverview } from "@/lib/shkollimiOverview";
@@ -42,7 +43,8 @@ export async function runCashDiagnosis(orgId: number, year: number) {
       select: { paidAmount: true, method: true, description: true, year: true },
     }),
     prisma.expense.findMany({ where: { categoryId: cat.id, type: "HANDOVER", date: { gte: from, lt: to } }, orderBy: { date: "asc" } }),
-    prisma.shpenzim.findMany({ where: { ...ACTIVE_SHPENZIM, paguar: true, data: { gte: from, lt: to } }, select: { data: true, shuma: true, metoda: true, kategori: { select: { fusha: true } } } }),
+    // Shpenzimet e paguara — edhe pagesat pjesë-pjesë, secila në datën e vet (src/lib/shpenzimPagesat.ts)
+    loadPaidPortions(prisma, { gte: from, lt: to }).then(ps => ps.map(x => ({ data: x.data, shuma: x.shuma, metoda: x.metoda, kategori: { fusha: x.fusha } }))),
     prisma.investim.findMany({ where: { metoda: "CASH", data: { gte: from, lt: to } }, select: { data: true, vlera: true } }),
     prisma.hyra.findMany({ where: { kategoria: "SHKOLLIMI", metoda: "CASH", OR: months.map(m => ({ muaj: m.calMonth, vit: m.calYear })) }, select: { muaj: true, vit: true, shuma: true } }),
     prisma.expense.findMany({ where: { categoryId: cat.id, type: "EXPENSE", migratedToShpenzimId: null, date: { gte: from, lt: to } }, select: { date: true, amount: true, method: true } }),

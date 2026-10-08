@@ -28,7 +28,7 @@ export const RUN_TRIGGER: Record<string, string> = { NATA: "Natën", MANUAL: "Me
 export const ACTION_LABEL: Record<string, string> = { CREATE: "Krijim", UPDATE: "Ndryshim", DELETE: "Fshirje" };
 export const TABLE_LABEL: Record<string, string> = {
   Payment: "Pagesë", Invoice: "Faturë", InvoiceItem: "Zë i faturës", FamilyReceipt: "Dëshmi familjeje", Expense: "Shpenzim/Dorëzim (skeda)",
-  Shpenzim: "Shpenzim", Hyra: "Të hyra tjera", Investim: "Investim", UniSale: "Shitje uniforme", UniSaleItem: "Artikull uniforme",
+  Shpenzim: "Shpenzim", ShpenzimPagese: "Pagesë e faturës", Hyra: "Të hyra tjera", Investim: "Investim", UniSale: "Shitje uniforme", UniSaleItem: "Artikull uniforme",
   UniPayment: "Pagesë uniforme", UniHandover: "Dorëzim uniformash", BookSale: "Shitje librash", BookSaleItem: "Artikull librash",
   BookPayment: "Pagesë librash", BookHandover: "Dorëzim librash", CashCount: "Numërim arke (i vjetër)", FeeExemption: "Lirim",
   PaymentHandover: "Dorëzim (libri i vjetër)", TimiInvestInvoice: "Profaturë TIMI Invest", PaymentCategory: "Kategori pagese",

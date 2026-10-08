@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import ShpenzimPagesatSection from "./ShpenzimPagesatSection";
 import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Header from "@/components/layout/Header";
 import { useSession } from "next-auth/react";
@@ -37,6 +38,11 @@ interface Shpenzim {
   createdAt?: string;
   deletedAt?: string | null;
   deletedByName?: string | null;
+  // Pagesat pjesë-pjesë (src/lib/shpenzimPagesat.ts)
+  mePagesa?: boolean;
+  paguarDeriTani?: number;
+  mbetur?: number;
+  pagesaCount?: number;
 }
 
 interface BulkActionRow {
@@ -88,6 +94,8 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
   const [fushaFilter, setFushaFilter] = useState<"" | "SHKOLLIMI" | "USHQIMI">("SHKOLLIMI");
   const [showDeleted, setShowDeleted] = useState(false);
   const [legacyPending, setLegacyPending] = useState(0);
+  // Totalet e kartave nga serveri — rregulli i vetëm (edhe pagesat pjesë-pjesë, sipas datës së tyre)
+  const [srvTotals, setSrvTotals] = useState<{ paid: number; cash: number; bank: number; unpaid: number; ushqimi: number } | null>(null);
   const [kategorite, setKategorite] = useState<Kategori[]>([]);
   const [shpenzime, setShpenzime] = useState<Shpenzim[]>([]);
   const [totalShuma, setTotalShuma] = useState(0);
@@ -273,6 +281,8 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
         window.location.href = "/login"; return;
       }
       const [shData, katData] = await Promise.all([shRes.json(), katRes.json()]);
+      fetch(`/api/shkollimi/expenses?month=${month}&year=${year}&yearType=${yearType}`).then(r => (r.ok ? r.json() : null))
+        .then(d => { setSrvTotals(d?.totals ?? null); setLegacyPending(d?.totals?.legacyPending ?? 0); }).catch(() => setSrvTotals(null));
       setShpenzime(shData.shpenzime || []);
       setTotalShuma(shData.totalShuma || 0);
       setKategorite(katData || []);
@@ -723,7 +733,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
       s.lloji === "BANKE" ? "Bankë" : "Zyrë", s.docType === "FATURE" ? "Faturë" : s.docType === "KUPON" ? "Kupon" : (s.docType || ""),
       s.emriBiznesit || "", s.nrFiskal || "", s.nrFature || "", s.referenca || "",
       s.paguar === false ? "" : (!s.metoda || s.metoda === "CASH") ? "Arka" : "Banka",
-      s.paguar === false ? "Pa paguar" : "Paguar", s.shuma,
+      s.mePagesa ? ((s.mbetur ?? 0) > 0 ? `Pjesërisht (${(s.paguarDeriTani ?? 0).toFixed(2)} €)` : "Paguar") : s.paguar === false ? "Pa paguar" : "Paguar", s.shuma,
       ...(showDeleted ? [s.deletedAt ? formatDate(s.deletedAt) : "", s.deletedByName || ""] : []),
     ]);
     const head = ["Data e faturës/kuponit", "Regjistruar", "Kategoria", "Fusha", "Përshkrimi", "Marrësi", "Lloji", "Dokumenti", "Biznesi", "Nr. Fiskal", "Nr. i Faturës", "Referenca", "Paguar nga", "Statusi", "Shuma (€)",
@@ -832,11 +842,14 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
 
   // Kartelat — vetëm Shkollimi (pa kategoritë e Ushqimit), si arka te Pasqyra e Arkës dhe dashboard-i
   const shk = showDeleted ? [] : shpenzime.filter(s => !isFood(s));
-  const totalPaguar = shk.filter(s => s.paguar !== false).reduce((sum, s) => sum + s.shuma, 0);
-  const totalArka   = shk.filter(s => s.paguar !== false && isCashM(s)).reduce((sum, s) => sum + s.shuma, 0);
-  const totalBankeM = shk.filter(s => s.paguar !== false && !isCashM(s)).reduce((sum, s) => sum + s.shuma, 0);
-  const totalBorxh  = shk.filter(s => s.paguar === false).reduce((sum, s) => sum + s.shuma, 0);
-  const totalUshqim = showDeleted ? 0 : shpenzime.filter(isFood).reduce((sum, s) => sum + s.shuma, 0);
+  const editRow = editId != null ? shpenzime.find(x => x.id === editId) ?? null : null;
+  // Nga serveri kur është gati (përfshin pagesat pjesë-pjesë sipas datës së tyre); përndryshe nga lista
+  const useSrv = !!srvTotals && !showDeleted;
+  const totalPaguar = useSrv ? srvTotals!.paid : shk.filter(s => s.paguar !== false).reduce((sum, s) => sum + s.shuma, 0);
+  const totalArka   = useSrv ? srvTotals!.cash : shk.filter(s => s.paguar !== false && isCashM(s)).reduce((sum, s) => sum + s.shuma, 0);
+  const totalBankeM = useSrv ? srvTotals!.bank : shk.filter(s => s.paguar !== false && !isCashM(s)).reduce((sum, s) => sum + s.shuma, 0);
+  const totalBorxh  = useSrv ? srvTotals!.unpaid : shk.filter(s => s.paguar === false).reduce((sum, s) => sum + s.shuma, 0);
+  const totalUshqim = showDeleted ? 0 : useSrv ? srvTotals!.ushqimi : shpenzime.filter(isFood).reduce((sum, s) => sum + s.shuma, 0);
   const totalFiltered = shpenzimeFiltruara.reduce((sum, s) => sum + s.shuma, 0);
 
   // Grupim sipas kategorisë për summary
@@ -1172,7 +1185,11 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                             <span className={`font-semibold ${s.paguar === false ? "text-orange-500 dark:text-orange-400" : "text-red-600 dark:text-red-400"}`}>
                               {formatCurrency(s.shuma)}
                             </span>
-                            {s.paguar === false && (
+                            {s.mePagesa && (s.mbetur ?? 0) > 0 ? (
+                              <span className="text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded-full" title={`${s.pagesaCount ?? 0} pagesa`}>
+                                ◐ Paguar {formatCurrency(s.paguarDeriTani ?? 0)} · mbetet {formatCurrency(s.mbetur ?? 0)}
+                              </span>
+                            ) : s.paguar === false && (
                               <span className="text-[10px] font-semibold bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 px-1.5 py-0.5 rounded-full">⏳ E papaguar</span>
                             )}
                           </div>
@@ -1185,7 +1202,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                             </button>
                           ) : (
                           <div className="flex items-center gap-1 justify-end">
-                            {s.paguar === false && (
+                            {s.paguar === false && !s.mePagesa && (
                               <button onClick={() => markPaid(s)} title="Shëno si të paguar"
                                 className="px-1.5 py-0.5 rounded text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 whitespace-nowrap">✓ Paguar</button>
                             )}
@@ -1669,7 +1686,10 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                 <div className="space-y-3 pt-1 border-t border-slate-100 dark:border-slate-700">
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide pt-1">Të dhënat e Faturës</p>
 
-                  {/* Statusi */}
+                  {/* Statusi — te faturat me pagesa pjesë-pjesë rrjedh nga pagesat (më poshtë) */}
+                  {editRow?.mePagesa ? (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Statusi i pagesës përcaktohet nga pagesat e faturës (më poshtë).</p>
+                  ) : (
                   <div>
                     <label className="form-label">Statusi i Pagesës</label>
                     <div className="flex rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600">
@@ -1683,9 +1703,12 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                       </button>
                     </div>
                     {!form.paguar && (
-                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Kjo faturë do të figurojë si borxh deri sa të shënohet e paguar.</p>
+                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                        Kjo faturë do të figurojë si borxh deri sa të shënohet e paguar{editId ? " — ose paguajeni pjesë-pjesë më poshtë (\"Pagesat e faturës\")" : " — pas ruajtjes mund ta paguani edhe pjesë-pjesë"}.
+                      </p>
                     )}
                   </div>
+                  )}
 
                   {/* Emri i Biznesit me autocomplete */}
                   <div className="relative">
@@ -1733,6 +1756,11 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* Pagesat pjesë-pjesë — për një shpenzim ekzistues që s'është shënuar "E paguar" e tëra */}
+              {editId != null && (editRow?.mePagesa || editRow?.paguar === false) && (
+                <ShpenzimPagesatSection shpenzimId={editId} onChanged={fetchData} />
               )}
 
               {/* 6. Marrësi + Referenca (sekondare) */}

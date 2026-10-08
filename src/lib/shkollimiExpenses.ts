@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { expensePeriodWhereByDate } from "@/lib/expensePeriod";
 import type { YearType } from "@/lib/academicYear";
+import { paidSumsByShpenzim, remainingOf } from "@/lib/shpenzimPagesat";
 
 // Shpenzimet e Shkollimit — një libër i vetëm: tabela Shpenzim (Shkollimi →
 // Shpenzime). Deri sa të bëhet migrimi, përfshihen edhe rreshtat e vjetër të
@@ -12,6 +13,7 @@ import type { YearType } from "@/lib/academicYear";
 //   • i paguar me Cash (ose pa metodë) → "Shpenzuar nga arka"
 //   • i paguar me Bankë/Kartelë         → nga banka (s'prek arkën)
 //   • i papaguar                        → borxh te furnitori, s'llogaritet
+//   • me pagesa pjesë-pjesë             → çdo pagesë në datën/metodën e vet; borxh = mbetja
 
 /** Filtri bazë i Shpenzim-it: vetëm rreshtat aktivë (jo të fshirë logjikisht). */
 export const ACTIVE_SHPENZIM = { deletedAt: null } as const;
@@ -30,6 +32,10 @@ export interface ShkollimiExpenseRow {
   method: string | null;
   paid: boolean;
   reference: string | null;
+  /** Fatura paguhet pjesë-pjesë (shih src/lib/shpenzimPagesat.ts) */
+  mePagesa?: boolean;
+  /** Sa është paguar deri tani (euro), për faturat me pagesa pjesë-pjesë */
+  paidSoFar?: number;
 }
 
 export interface ShkollimiExpenseTotals {
@@ -58,7 +64,7 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 
 export async function loadShkollimiExpenses(categoryId: number | null, month: number, year: number, yearType: YearType) {
   const range = shkollimiPeriodRange(month, year, yearType);
-  const [shp, legacy] = await Promise.all([
+  const [shp, legacy, pagesat] = await Promise.all([
     prisma.shpenzim.findMany({
       where: { ...ACTIVE_SHPENZIM, ...(range ? { data: range } : {}) },
       include: { kategori: { select: { id: true, emri: true, fusha: true } } },
@@ -67,7 +73,13 @@ export async function loadShkollimiExpenses(categoryId: number | null, month: nu
     categoryId
       ? prisma.expense.findMany({ where: { categoryId, type: "EXPENSE", migratedToShpenzimId: null, ...expensePeriodWhereByDate(month, year, yearType) }, orderBy: { date: "desc" } })
       : Promise.resolve([]),
+    // Pagesat pjesë-pjesë me datë brenda periudhës (fatura mund të jetë e një periudhe tjetër)
+    prisma.shpenzimPagese.findMany({
+      where: { ...(range ? { data: range } : {}), shpenzim: ACTIVE_SHPENZIM },
+      include: { shpenzim: { select: { kategori: { select: { fusha: true } } } } },
+    }),
   ]);
+  const paidSums = await paidSumsByShpenzim(prisma, shp.filter(s => s.mePagesa).map(s => s.id));
 
   const rows: ShkollimiExpenseRow[] = [
     ...shp.map(s => ({
@@ -76,6 +88,7 @@ export async function loadShkollimiExpenses(categoryId: number | null, month: nu
       scope: (s.kategori?.fusha === "USHQIMI" ? "USHQIMI" : "SHKOLLIMI") as "SHKOLLIMI" | "USHQIMI",
       supplier: s.emriBiznesit || s.marres || null,
       amount: s.shuma, method: s.metoda, paid: s.paguar, reference: s.nrFature || s.referenca || null,
+      mePagesa: s.mePagesa, paidSoFar: s.mePagesa ? paidSums.get(s.id) ?? 0 : undefined,
     })),
     ...legacy.map(e => ({
       key: `E${e.id}`, source: "EXPENSE" as const, id: e.id, date: e.date.toISOString(),
@@ -86,10 +99,22 @@ export async function loadShkollimiExpenses(categoryId: number | null, month: nu
 
   const t = { paid: 0, cash: 0, bank: 0, unpaid: 0, ushqimi: 0 };
   for (const r of rows) {
+    if (r.mePagesa) {
+      // Fatura me pagesa pjesë-pjesë: këtu vetëm borxhi i mbetur; pagesat llogariten më poshtë
+      if (r.scope === "USHQIMI") continue;
+      t.unpaid += remainingOf({ shuma: r.amount, paguar: r.paid, mePagesa: true }, r.paidSoFar ?? 0);
+      continue;
+    }
     if (r.scope === "USHQIMI") { t.ushqimi += r.amount; continue; }
     if (!r.paid) { t.unpaid += r.amount; continue; }
     t.paid += r.amount;
     if (isCashMethod(r.method)) t.cash += r.amount; else t.bank += r.amount;
+  }
+  for (const p of pagesat) {
+    const shuma = p.shumaCents / 100;
+    if (p.shpenzim.kategori?.fusha === "USHQIMI") { t.ushqimi += shuma; continue; }
+    t.paid += shuma;
+    if (isCashMethod(p.metoda)) t.cash += shuma; else t.bank += shuma;
   }
   const totals: ShkollimiExpenseTotals = {
     paid: r2(t.paid), cash: r2(t.cash), bank: r2(t.bank), unpaid: r2(t.unpaid), ushqimi: r2(t.ushqimi),

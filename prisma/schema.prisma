@@ -583,6 +583,11 @@ model Shpenzim {
   emriBiznesit String?          // emri i biznesit/furnitorit
   nrFiskal     String?          // numri fiskal i biznesit
   dataDokumentit DateTime?      // data e shkruar në faturë/kupon (`data` = data e regjistrimit/pagesës)
+  // Pagesa pjesë-pjesë: true që nga pagesa e parë pjesore — atëherë fatura s'llogaritet
+  // vetë si e paguar; llogariten vetëm pagesat e saj (ShpenzimPagese), secila në datën
+  // dhe me metodën e vet. `paguar` mbahet në sinkron (true kur pagesat mbulojnë shumën).
+  mePagesa      Boolean         @default(false)
+  pagesat       ShpenzimPagese[]
   // Fshirje logjike: rreshti s'fshihet kurrë nga databaza, vetëm fshihet nga listat/totalet
   deletedAt     DateTime?
   deletedById   Int?
@@ -1896,4 +1901,25 @@ model AuditRun {
 
   @@index([startedAt])
   @@index([status])
+}
+
+// Pagesat pjesë-pjesë të një fature/shpenzimi (p.sh. 2.200 € nga 17.600 €).
+// Çdo pagesë zbret nga arka (cash) ose banka në DATËN e vet. Shuma në CENT.
+// kategoriId = kopje e kategorisë së faturës (për arkën dhe auditimin, që s'e njohin faturën).
+model ShpenzimPagese {
+  id            Int      @id @default(autoincrement())
+  shpenzimId    Int
+  shpenzim      Shpenzim @relation(fields: [shpenzimId], references: [id])
+  kategoriId    Int
+  shumaCents    Int
+  data          DateTime
+  metoda        String   // CASH, BANK, CARD
+  shenim        String?
+  createdById   Int?
+  createdByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([shpenzimId])
+  @@index([data])
 }
