@@ -12,6 +12,7 @@ import { moduleForPath, firstAllowedPath, isConfigurableRole } from "@/lib/modul
 // nga module të tjera të lejuara.
 const API_MODULE_PREFIXES: { prefix: string; moduleKey: string }[] = [
   { prefix: "/api/investime",          moduleKey: "investime" },
+  { prefix: "/api/arka",               moduleKey: "arka" },
   { prefix: "/api/timi-invest",        moduleKey: "investime" },
   { prefix: "/api/arkiva",             moduleKey: "arkiva" },
   { prefix: "/api/shpenzime",          moduleKey: "shpenzime" },

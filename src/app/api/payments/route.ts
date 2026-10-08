@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { recordPaymentEvent } from "@/lib/studentHistory";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ payments, total, page, limit });
 }
 
-export async function POST(req: NextRequest) {
+async function POST_handler(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
@@ -168,3 +169,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
+export const POST = guardClosedDay(POST_handler);

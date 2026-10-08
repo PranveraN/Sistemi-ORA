@@ -1790,3 +1790,74 @@ model FinAuditContext {
   userAgent String?
   reason    String?
 }
+
+// ── Auditimi financiar — Faza 2: mbyllja ditore e arkës ──
+// Një rresht për çdo ditë të mbyllur. Shumat në CENT (numra të plotë).
+// Gjendja sipas sistemit = shuma e numëruar e mbylljes së mëparshme + lëvizjet
+// cash sipas DATËS REALE (nga FinAuditLog, src/lib/audit/cashClosing.ts).
+// kind=OPENING: hapja e arkës (gjendja fillestare) — pika e nisjes së zinxhirit.
+model CashClosing {
+  id             Int       @id @default(autoincrement())
+  organizationId Int       @default(1)
+  date           String    // "YYYY-MM-DD" (ora e Kosovës)
+  kind           String    @default("DAILY") // OPENING, DAILY
+  scope          String    // JSON: kategoritë e pagesave që hyjnë në këtë arkë
+  openingCents   Int       @default(0)
+  inCents        Int       @default(0)
+  outCents       Int       @default(0)
+  lateCents      Int       @default(0)  // neto i regjistrimeve të vonuara për ditë të mbyllura më parë
+  lastLogId      Int       @default(0)  // FinAuditLog.id i fundit i llogaritur — lëvizjet deri këtu i takojnë kësaj mbylljeje ose më parë
+  systemCents    Int
+  countedCents   Int
+  diffCents      Int       // countedCents − systemCents (negative = mungojnë)
+  breakdown      String?   // JSON: lëvizjet sipas llojit + regjistrimet e vonuara
+  note           String?
+  countedById    Int?
+  countedByName  String?
+  verifiedById   Int?
+  verifiedByName String?
+  verifiedAt     DateTime?
+  verifyNote     String?
+  createdAt      DateTime  @default(now())
+
+  @@unique([organizationId, date])
+}
+
+// Gjetjet e auditimit (Faza 2 i krijon për arkën; Faza 3 shton motorin e rregullave).
+// fingerprint unik — e njëjta gjetje s'krijohet dy herë.
+model AuditFinding {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @default(1)
+  ruleCode       String
+  runId          Int?
+  severity       String   // KRITIKE, E_LARTE, MESATARE, E_ULET
+  module         String   // ARKA, SHKOLLIMI, ...
+  entityType     String?
+  entityId       Int?
+  amountCents    Int?
+  title          String
+  description    String?
+  evidence       String?  // JSON
+  status         String   @default("E_RE") // E_RE, NE_SHQYRTIM, E_JUSTIFIKUAR, E_KORRIGJUAR
+  assignedToId   Int?
+  fingerprint    String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status, severity])
+  @@index([ruleCode])
+  @@index([entityType, entityId])
+}
+
+model AuditFindingComment {
+  id         Int      @id @default(autoincrement())
+  findingId  Int
+  userId     Int?
+  userName   String?
+  text       String
+  statusFrom String?
+  statusTo   String?
+  createdAt  DateTime @default(now())
+
+  @@index([findingId])
+}

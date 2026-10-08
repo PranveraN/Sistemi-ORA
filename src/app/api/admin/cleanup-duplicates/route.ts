@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
 import { formatDate } from "@/lib/utils";
 
-export async function POST() {
+async function POST_handler() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -104,3 +105,6 @@ export async function POST() {
     report,
   });
 }
+
+// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
+export const POST = guardClosedDay(POST_handler);

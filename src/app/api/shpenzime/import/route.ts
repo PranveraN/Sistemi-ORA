@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import * as XLSX from "xlsx";
@@ -43,7 +44,7 @@ function strVal(row: unknown[], i: number): string | null {
   return v && v !== "—" ? v : null;
 }
 
-export async function POST(req: NextRequest) {
+async function POST_handler(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -289,3 +290,6 @@ async function importBudgetFormat(raw: unknown[][], year: number, onlyMonth: num
     message: `✓ U importuan ${created} shpenzime${skipped > 0 ? ` (${skipped} bosh/duplikat)` : ""}${errors > 0 ? ` — ${errors} gabime` : ""}`,
   });
 }
+
+// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
+export const POST = guardClosedDay(POST_handler);

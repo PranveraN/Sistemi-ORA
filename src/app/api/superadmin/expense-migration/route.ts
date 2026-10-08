@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { migrationPreview, runMigration } from "@/lib/expenseMigration";
 
@@ -18,7 +19,7 @@ export async function GET() {
   return NextResponse.json(await migrationPreview());
 }
 
-export async function POST(req: NextRequest) {
+async function POST_handler(req: NextRequest) {
   const s = await superAdmin();
   if (s.error) return s.error;
   const body = await req.json().catch(() => ({}));
@@ -32,3 +33,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Migrimi dështoi — asgjë s'u ndryshua." }, { status: 500 });
   }
 }
+
+// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
+export const POST = guardClosedDay(POST_handler);

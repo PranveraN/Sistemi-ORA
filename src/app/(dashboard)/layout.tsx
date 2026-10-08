@@ -4,6 +4,7 @@ import { SessionProvider } from "next-auth/react";
 import Sidebar from "@/components/layout/Sidebar";
 import { SidebarProvider } from "@/components/layout/SidebarContext";
 import MaterialRequestReminder from "@/components/layout/MaterialRequestReminder";
+import ClosedDayGuard from "@/components/layout/ClosedDayGuard";
 
 export default async function DashboardLayout({
   children,
@@ -25,6 +26,7 @@ export default async function DashboardLayout({
           </div>
         </div>
         <MaterialRequestReminder />
+        <ClosedDayGuard />
       </SidebarProvider>
     </SessionProvider>
   );
