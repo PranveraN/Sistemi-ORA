@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
@@ -373,12 +374,12 @@ export default function StudentProfile({ student }: { student: Student }) {
   }
 
   async function handleDelete() {
-    const ok = window.confirm(
+    const reason = askDeleteReason(
       `Fshi përgjithmonë "${student.firstName} ${student.lastName}"?\n\nKJO VEPRIM NUK MUND TË KTHEHET — fshihen edhe të gjitha pagesat dhe faturat.`
     );
-    if (!ok) return;
+    if (!reason) return;
     try {
-      const res = await fetch(`/api/students/${student.id}?permanent=true`, { method: "DELETE" });
+      const res = await fetch(`/api/students/${student.id}?permanent=true`, { method: "DELETE", headers: reasonHeaders(reason) });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         alert(d.error || `Fshirja dështoi (gabim ${res.status})`);

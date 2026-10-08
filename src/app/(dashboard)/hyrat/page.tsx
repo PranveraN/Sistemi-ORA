@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
@@ -257,9 +258,10 @@ export default function HyratPage() {
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Fshi këtë të hyrë?")) return;
+    const reason = askDeleteReason("Fshi këtë të hyrë?");
+    if (!reason) return;
     try {
-      const res = await fetch(`/api/hyrat/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/hyrat/${id}`, { method: "DELETE", headers: reasonHeaders(reason) });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         alert(d.error || `Fshirja dështoi (gabim ${res.status})`);

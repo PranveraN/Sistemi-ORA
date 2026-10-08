@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Link from "next/link";
 import { ShoppingBag, Plus, Search, Eye, Trash2, Filter, ChevronLeft, ChevronRight, ArrowLeft, Users, X, Loader2, CheckCircle, Download } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -64,7 +65,9 @@ export default function ShitjetPage() {
 
   const confirmDelete = async () => {
     if (!deleteId) return;
-    const res = await fetch(`/api/uniforms/sales/${deleteId}`, { method: "DELETE" });
+    const reason = askDeleteReason("Fshi këtë shitje?");
+    if (!reason) return;
+    const res = await fetch(`/api/uniforms/sales/${deleteId}`, { method: "DELETE", headers: reasonHeaders(reason) });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       alert(d.error || "Fshirja dështoi.");

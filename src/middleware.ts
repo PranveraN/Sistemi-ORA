@@ -27,6 +27,32 @@ const API_MODULE_PREFIXES: { prefix: string; moduleKey: string }[] = [
   { prefix: "/api/eshkollori",         moduleKey: "eshkollori" },
 ];
 
+// Fshirjet e rekordeve financiare kërkojnë arsye (header-i X-Audit-Reason, i
+// dërguar nga askDeleteReason/reasonHeaders te src/lib/auditReason.ts). Arsyeja
+// ruhet te gjurma e auditimit (FinAuditLog) nga shtresa te src/lib/prisma.ts.
+const FINANCIAL_DELETE_PATTERNS: RegExp[] = [
+  /^\/api\/payments\/\d+$/,
+  /^\/api\/category-payments\/old-debt\/\d+$/,
+  /^\/api\/expenses\/\d+$/,
+  /^\/api\/hyrat\/\d+$/,
+  /^\/api\/investime\/\d+$/,
+  /^\/api\/invoices\/\d+$/,
+  /^\/api\/librat\/handovers\/\d+$/,
+  /^\/api\/payment-handovers\/\d+$/,
+  /^\/api\/shpenzime\/\d+$/,
+  /^\/api\/students\/\d+$/,
+  /^\/api\/timi-invest\/invoices\/\d+$/,
+  /^\/api\/uniforms\/handovers\/\d+$/,
+  /^\/api\/uniforms\/sales\/\d+$/,
+];
+
+function hasDeleteReason(header: string | null): boolean {
+  if (!header) return false;
+  let r = header;
+  try { r = decodeURIComponent(header); } catch { /* lihet siç është */ }
+  return r.trim().length >= 3;
+}
+
 // API-të e lejuara për rolin TEACHER (shih TeacherRequestsClient.tsx).
 // Kërkesat e veta: çdo metodë (vetë route-t e kufizojnë mësuesin te kërkesat
 // e TIJ dhe i ndalojnë veprimet e menaxhimit). Katalogët: vetëm lexim.
@@ -54,6 +80,11 @@ export default auth((req) => {
     const isAuthApi = nextUrl.pathname.startsWith("/api/auth");
     if (!isAuthApi && isLoggedIn && role === "ADMIN" && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
       return NextResponse.json({ error: "Roli 'Admin' ka vetëm qasje shikimi — ky veprim nuk lejohet." }, { status: 403 });
+    }
+
+    if (isLoggedIn && req.method === "DELETE" && FINANCIAL_DELETE_PATTERNS.some(re => re.test(nextUrl.pathname))
+      && !hasDeleteReason(req.headers.get("x-audit-reason"))) {
+      return NextResponse.json({ error: "Shkruani arsyen e fshirjes (të paktën 3 shenja)." }, { status: 400 });
     }
 
     // Mësimdhënësit (portal i veçantë /kerkesa-material) — VETËM API-të që

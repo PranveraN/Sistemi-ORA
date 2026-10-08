@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Header from "@/components/layout/Header";
 import {
   BookOpen, Plus, Search, X, Printer, Trash2, Loader2, Package, TrendingUp, ShoppingCart, AlertCircle,
@@ -547,8 +548,9 @@ export default function LibratPage() {
   }
 
   async function deleteHandover(id: number) {
-    if (!confirm("Fshi këtë dorëzim?")) return;
-    const res = await fetch(`/api/librat/handovers/${id}`, { method: "DELETE" });
+    const reason = askDeleteReason("Fshi këtë dorëzim?");
+    if (!reason) return;
+    const res = await fetch(`/api/librat/handovers/${id}`, { method: "DELETE", headers: reasonHeaders(reason) });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       alert(d.error || "Fshirja dështoi.");

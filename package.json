@@ -12,7 +12,8 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "test:ora": "tsx scripts/ora-test.ts"
+    "test:ora": "tsx scripts/ora-test.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
@@ -49,6 +50,7 @@
     "prisma": "^5.22.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
   }
 }

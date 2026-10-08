@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
@@ -1478,10 +1479,11 @@ function OldDebtEditModal({
   }
 
   async function handleDelete() {
-    if (!confirm(`Fshi borxhin e vjetër të ${student.firstName} ${student.lastName}? Ky veprim s'kthehet mbrapsht.`)) return;
+    const reason = askDeleteReason(`Fshi borxhin e vjetër të ${student.firstName} ${student.lastName}? Ky veprim s'kthehet mbrapsht.`);
+    if (!reason) return;
     setDeleting(true);
     setError("");
-    const res = await fetch(`/api/category-payments/old-debt/${oldDebt.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/category-payments/old-debt/${oldDebt.id}`, { method: "DELETE", headers: reasonHeaders(reason) });
     setDeleting(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
@@ -2053,9 +2055,10 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   async function removeFlexRow(idx: number) {
     const row = flexRows[idx];
     if (row.id) {
-      if (!confirm("Fshi këtë këst? Ky veprim nuk mund të kthehet.")) return;
+      const reason = askDeleteReason("Fshi këtë këst? Ky veprim nuk mund të kthehet.");
+      if (!reason) return;
       try {
-        const r = await fetch(`/api/payments/${row.id}`, { method: "DELETE" });
+        const r = await fetch(`/api/payments/${row.id}`, { method: "DELETE", headers: reasonHeaders(reason) });
         if (!r.ok) {
           const d = await r.json().catch(() => ({}));
           alert(d.error || `Fshirja dështoi (gabim ${r.status})`);
@@ -2082,11 +2085,12 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
 
   async function handleDeleteInstallment(payment: Payment | null) {
     if (!payment) return;
-    if (!confirm("Fshi këtë këst? Ky veprim nuk mund të kthehet.")) return;
+    const reason = askDeleteReason("Fshi këtë këst? Ky veprim nuk mund të kthehet.");
+    if (!reason) return;
     setSaving(true);
     setSaveError("");
     try {
-      const r = await fetch(`/api/payments/${payment.id}`, { method: "DELETE" });
+      const r = await fetch(`/api/payments/${payment.id}`, { method: "DELETE", headers: reasonHeaders(reason) });
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
         setSaveError(d.error || `Fshirja dështoi (gabim ${r.status})`);
@@ -2120,12 +2124,14 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     // raportuar: pagesa dukej "e ruajtur" edhe kur serveri e kishte refuzuar).
     let failed = false;
     function noteFail(r: Response) { if (!r.ok) failed = true; return r; }
+    // Këstet e mënyrës së vjetër fshihen kur ndryshohet plani — arsyeja ruhet te gjurma e auditimit
+    const planDelete = { method: "DELETE", headers: reasonHeaders(`Ndryshim i planit të pagesës (${mode})`) };
 
     try {
       if (mode === "single") {
         // If switching from two-installment to single: delete both old ones
         if (isAlreadyTwo) {
-          const rs = await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+          const rs = await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, planDelete)));
           rs.forEach(noteFail);
         }
         const payload = {
@@ -2168,7 +2174,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         // Two-installment mode
         // If switching from single to two: delete old single payment
         if (!isAlreadyTwo && singleExisting) {
-          noteFail(await fetch(`/api/payments/${singleExisting.id}`, { method: "DELETE" }));
+          noteFail(await fetch(`/api/payments/${singleExisting.id}`, planDelete));
         }
 
         const saveInstallment = async (
@@ -2241,7 +2247,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
       } else if (mode === "monthly") {
         // Monthly mode — delete non-monthly installments if switching from other mode
         if (!isAlreadyMonthly) {
-          const rs = await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+          const rs = await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, planDelete)));
           rs.forEach(noteFail);
         }
         const yr = year > 0 ? year : new Date().getFullYear();
@@ -2283,13 +2289,13 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
       } else {
         // Flex mode — delete installments from a DIFFERENT mode if switching in
         if (!isAlreadyFlex) {
-          const rs = await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+          const rs = await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, planDelete)));
           rs.forEach(noteFail);
         }
         // Fshi rreshtat "legacy" (para header-it) — u zëvendësuan nga header-i +
         // pagesat individuale më poshtë, pjesë e migrimit një-herësh.
         if (flexLegacyRows.length > 0) {
-          const rs = await Promise.all(flexLegacyRows.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+          const rs = await Promise.all(flexLegacyRows.map(p => fetch(`/api/payments/${p.id}`, planDelete)));
           rs.forEach(noteFail);
         }
 

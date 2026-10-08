@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import { useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
@@ -260,12 +261,12 @@ export default function StudentsPage() {
   }
 
   async function handleDelete(r: Row) {
-    const ok = window.confirm(
+    const reason = askDeleteReason(
       `Fshi përgjithmonë "${r.firstName} ${r.lastName}"?\n\nKJO VEPRIM NUK MUND TË KTHEHET — fshihen edhe të gjitha pagesat dhe faturat.`
     );
-    if (!ok) return;
+    if (!reason) return;
     try {
-      const res = await fetch(`/api/students/${r.id}?permanent=true`, { method: "DELETE" });
+      const res = await fetch(`/api/students/${r.id}?permanent=true`, { method: "DELETE", headers: reasonHeaders(reason) });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         alert(d.error || `Fshirja dështoi (gabim ${res.status})`);

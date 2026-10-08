@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Header from "@/components/layout/Header";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -276,10 +277,12 @@ export default function InvestimetPage() {
 
   async function confirmDelete() {
     if (!deleteTarget) return;
+    const reason = askDeleteReason("Fshi këtë investim?");
+    if (!reason) return;
     setDeleting(true);
     setDeleteError("");
     try {
-      const res = await fetch(`/api/investime/${deleteTarget.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/investime/${deleteTarget.id}`, { method: "DELETE", headers: reasonHeaders(reason) });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         setDeleteError(d.error || `Fshirja dështoi (gabim ${res.status})`);

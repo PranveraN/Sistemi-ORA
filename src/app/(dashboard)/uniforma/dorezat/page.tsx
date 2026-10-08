@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Link from "next/link";
 import { Plus, Trash2, Printer, ArrowRightLeft, X, ArrowLeft } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -110,7 +111,9 @@ export default function DorezatPage() {
 
   const confirmDelete = async () => {
     if (!deleteId) return;
-    const res = await fetch(`/api/uniforms/handovers/${deleteId}`, { method: "DELETE" });
+    const reason = askDeleteReason("Fshi këtë dorëzim?");
+    if (!reason) return;
+    const res = await fetch(`/api/uniforms/handovers/${deleteId}`, { method: "DELETE", headers: reasonHeaders(reason) });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       alert(d.error || "Fshirja dështoi.");

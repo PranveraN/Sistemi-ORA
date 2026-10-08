@@ -40,11 +40,38 @@ async function vacuumInto(destPath: string) {
   await prisma.$executeRawUnsafe(`VACUUM INTO '${escaped}'`);
 }
 
+/**
+ * Kopje e veçantë e gjurmës së auditimit (FinAuditLog) jashtë databazës:
+ * `backups/finauditlog.ndjson`, një rresht JSON për çdo ndryshim, vetëm shtim
+ * (shtohen vetëm rreshtat e rinj që nga eksporti i fundit). S'fshihet nga
+ * pastrimi 30-ditor — gjurma mbetet edhe nëse databaza rikthehet nga një
+ * backup më i vjetër. (Backup-et .db e përfshijnë gjithsesi tabelën.)
+ */
+export async function exportFinAuditLog(): Promise<number> {
+  const dir = getBackupDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "finauditlog.ndjson");
+  const stateFile = path.join(dir, "finauditlog.lastid");
+  let lastId = 0;
+  try { lastId = parseInt(fs.readFileSync(stateFile, "utf8"), 10) || 0; } catch { /* eksporti i parë */ }
+  let total = 0;
+  for (;;) {
+    const rows = await prisma.finAuditLog.findMany({ where: { id: { gt: lastId } }, orderBy: { id: "asc" }, take: 5000 });
+    if (rows.length === 0) break;
+    fs.appendFileSync(file, rows.map(r => JSON.stringify(r)).join("\n") + "\n");
+    lastId = rows[rows.length - 1].id;
+    fs.writeFileSync(stateFile, String(lastId));
+    total += rows.length;
+  }
+  return total;
+}
+
 /** Krijon një backup për herë të parë sot, nëse nuk ekziston ende. */
 export async function runDailyBackupIfNeeded() {
   const dest = path.join(getBackupDir(), `akademia-ora-${todayStamp()}.db`);
   if (fs.existsSync(dest)) return;
   await vacuumInto(dest);
+  await exportFinAuditLog().catch(err => console.error("[backup] eksporti i FinAuditLog dështoi:", err));
   await pruneOldBackups();
 }
 
@@ -55,6 +82,7 @@ export async function createManualBackup(): Promise<string> {
   const filename = `akademia-ora-${todayStamp(now)}_${time}-manual.db`;
   const dest = path.join(getBackupDir(), filename);
   await vacuumInto(dest);
+  await exportFinAuditLog().catch(err => console.error("[backup] eksporti i FinAuditLog dështoi:", err));
   await pruneOldBackups();
   return filename;
 }

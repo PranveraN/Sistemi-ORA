@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { Plus, X, Save, Loader2, Trash2, Pencil, Upload, Download } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -64,10 +65,11 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
   const total = items.reduce((s, e) => s + e.amount, 0);
 
   async function deleteItem(id: number) {
-    if (!confirm("Fshi këtë regjistrim?")) return;
+    const reason = askDeleteReason("Fshi këtë regjistrim?");
+    if (!reason) return;
     setDeleteError("");
     try {
-      const res = await fetch(`/api/expenses/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/expenses/${id}`, { method: "DELETE", headers: reasonHeaders(reason) });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         setDeleteError(d.error || `Fshirja dështoi (gabim ${res.status})`);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -125,8 +126,10 @@ export default function UniformaBorxhetPage() {
 
   async function confirmDeleteRow() {
     if (!deleteRow) return;
+    const reason = askDeleteReason("Fshi këtë shitje?");
+    if (!reason) return;
     setDeleting(true);
-    const res = await fetch(`/api/uniforms/sales/${deleteRow.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/uniforms/sales/${deleteRow.id}`, { method: "DELETE", headers: reasonHeaders(reason) });
     setDeleting(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));

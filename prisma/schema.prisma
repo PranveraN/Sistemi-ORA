@@ -898,6 +898,9 @@ model Payment {
   // Invest (shih POST /api/payments dhe /api/payments/import) — deri sa
   // dikush ta shqyrtojë manualisht te "Shkollimi → Verifikim".
   confirmed      Boolean          @default(true)
+  // Kush e regjistroi pagesën — vendoset vetë nga shtresa e auditimit (src/lib/prisma.ts)
+  // për pagesat e reja; bosh për pagesat e vjetra (shih AuditLog/FinAuditLog).
+  createdById    Int?
   organizationId Int              @default(1)
   organization   Organization     @relation(fields: [organizationId], references: [id])
   createdAt      DateTime         @default(now())
@@ -1749,4 +1752,41 @@ model StudentTag {
 
   @@unique([studentId, module, schoolYear])
   @@index([module, schoolYear])
+}
+
+// ── Auditimi financiar — Faza 1 ───────────────────────────
+// Gjurma e çdo ndryshimi në tabelat financiare. Rreshtat i shkruajnë VETËM
+// triggers e SQLite (src/lib/audit/triggers.ts), kështu që kapet edhe një
+// ndryshim i bërë jashtë aplikacionit. Vetëm shtim: triggers bllokojnë çdo
+// UPDATE/DELETE mbi këtë tabelë, për çdo rol.
+model FinAuditLog {
+  id        Int      @id @default(autoincrement())
+  tableName String
+  recordId  Int?
+  action    String   // CREATE, UPDATE, DELETE
+  oldValues String?  // JSON — rreshti para ndryshimit
+  newValues String?  // JSON — rreshti pas ndryshimit
+  userId    Int?
+  userName  String?
+  ip        String?
+  userAgent String?
+  reason    String?
+  source    String   @default("DB") // APP = nga aplikacioni (me përdorues), DB = pa kontekst (sistem/jashtë app-it)
+  createdAt DateTime @default(now())
+
+  @@index([tableName, recordId])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+// Konteksti i kërkesës (përdoruesi, IP, arsyeja) që triggers e lexojnë.
+// Një rresht i vetëm (id=1), i vendosur dhe i fshirë brenda të njëjtit
+// transaksion me ndryshimin — jashtë transaksionit është gjithmonë bosh.
+model FinAuditContext {
+  id        Int     @id
+  userId    Int?
+  userName  String?
+  ip        String?
+  userAgent String?
+  reason    String?
 }

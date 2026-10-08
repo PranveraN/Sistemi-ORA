@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Header from "@/components/layout/Header";
 import { useSession } from "next-auth/react";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
@@ -385,9 +386,10 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Fshi këtë shpenzim? Rreshti s'fshihet nga databaza — mund ta riktheni te \"Të fshirat\".")) return;
+    const reason = askDeleteReason("Fshi këtë shpenzim? Rreshti s'fshihet nga databaza — mund ta riktheni te \"Të fshirat\".");
+    if (!reason) return;
     try {
-      const res = await fetch(`/api/shpenzime/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/shpenzime/${id}`, { method: "DELETE", headers: reasonHeaders(reason) });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         alert(d.error || `Fshirja dështoi (gabim ${res.status})`);

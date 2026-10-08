@@ -202,9 +202,10 @@ export default function DashboardPage() {
                 <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               </div>
               {data.newInPeriod > 0 && (
-                <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400">
+                <span title="Të regjistruar 1 qershor – 31 maj (bruto): përfshin edhe ata që u larguan më pas"
+                  className="inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400">
                   <UserPlus className="w-3 h-3" />
-                  +{data.newInPeriod}
+                  +{data.newInPeriod} bruto (qer–maj)
                 </span>
               )}
             </div>
@@ -291,7 +292,7 @@ export default function DashboardPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-lg font-bold text-slate-900 dark:text-white leading-tight">{data.newStudents.count}</p>
-                <p className="text-xs text-slate-400 truncate">Regjistrime të Reja</p>
+                <p className="text-xs text-slate-400 truncate" title="Regjistruar 1 qershor – 31 maj, ende aktivë">Regjistrime aktive (qer–maj)</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -300,7 +301,7 @@ export default function DashboardPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-lg font-bold text-slate-900 dark:text-white leading-tight">{data.departedStudents.count}</p>
-                <p className="text-xs text-slate-400 truncate">Largime</p>
+                <p className="text-xs text-slate-400 truncate" title="Larguar 1 shtator – 31 gusht">Largime (sht–gus)</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -321,7 +322,7 @@ export default function DashboardPage() {
                   {data.newStudents.count - data.departedStudents.count > 0 ? "+" : ""}
                   {data.newStudents.count - data.departedStudents.count}
                 </p>
-                <p className="text-xs text-slate-400 truncate">Bilanci Neto</p>
+                <p className="text-xs text-slate-400 truncate" title="Regjistrime aktive (qershor–maj) minus largime (shtator–gusht)">Bilanci neto</p>
               </div>
             </div>
             <div className="flex items-center gap-3">

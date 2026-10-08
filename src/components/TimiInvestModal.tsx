@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import type { ReactNode } from "react";
 import {
   X, Plus, Trash2, Printer, Users, FileText,
@@ -563,8 +564,9 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   }
 
   async function deleteInvoice(id: number) {
-    if (!confirm("Fshi këtë profaturë?")) return;
-    const r = await okOrAlert(fetch(`/api/timi-invest/invoices/${id}`, { method: "DELETE" }), "Fshirja dështoi.");
+    const reason = askDeleteReason("Fshi këtë profaturë?");
+    if (!reason) return;
+    const r = await okOrAlert(fetch(`/api/timi-invest/invoices/${id}`, { method: "DELETE", headers: reasonHeaders(reason) }), "Fshirja dështoi.");
     if (!r) return;
     fetchInvoices();
   }

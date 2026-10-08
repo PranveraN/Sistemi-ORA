@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
@@ -636,9 +637,10 @@ export default function UshqimiPage() {
     const warning = totalPaid > 0
       ? `${s.firstName} ${s.lastName} ka ${formatCurrency(totalPaid)} të paguara për ushqimin këtë vit. Fshirja heq krejt historikun e pagesave të ushqimit për të (të gjitha periudhat). Vazhdo?`
       : `Hiq ${s.firstName} ${s.lastName} nga ushqimi (${effectiveYear})?`;
-    if (!confirm(warning)) return;
+    const reason = askDeleteReason(warning);
+    if (!reason) return;
 
-    const results = await Promise.all(payments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE" })));
+    const results = await Promise.all(payments.map(p => fetch(`/api/payments/${p.id}`, { method: "DELETE", headers: reasonHeaders(reason) })));
     if (results.some(r => !r.ok)) {
       alert("Disa nga periudhat nuk u fshinë (gabim serveri) — provo përsëri.");
     }
