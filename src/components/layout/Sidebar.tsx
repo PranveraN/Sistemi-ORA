@@ -7,14 +7,14 @@ import {
   LayoutDashboard, Users, FileText,
   GraduationCap, BarChart3, Settings, BookOpen,
   ChevronLeft, ChevronRight, UtensilsCrossed,
-  Shirt, BookMarked, NotebookPen, ClipboardList, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip, Sparkles, Vault,
+  Shirt, BookMarked, NotebookPen, ClipboardList, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip, Sparkles, Vault, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useSidebar } from "@/components/layout/SidebarContext";
 import { moduleForPath } from "@/lib/modules";
 
-type Role = "ADMIN" | "FINANCE" | "SECRETARY" | "PEDAGOGIA";
+type Role = "ADMIN" | "FINANCE" | "SECRETARY" | "PEDAGOGIA" | "AUDITOR";
 
 const navSections = [
   {
@@ -56,6 +56,7 @@ const navSections = [
       { href: "/ora", icon: Sparkles, label: "Ora · Asistenti", roles: ["ADMIN"] as Role[] },
       { href: "/materialet", icon: Package,        label: "Materialet",   roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/materiale",  icon: Boxes,          label: "Katalogu i Materialeve", roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/auditimi",   icon: ShieldCheck,    label: "Auditimi",     roles: ["AUDITOR"] as Role[] },
     ],
   },
   {

@@ -61,6 +61,7 @@ const ROLES = [
   { value: "FINANCE",   label: "Financë" },
   { value: "SECRETARY", label: "Sekretari" },
   { value: "PEDAGOGIA", label: "Pedagogia (vetëm Klasat)" },
+  { value: "AUDITOR",   label: "Auditor (vetëm lexim + Auditimi)" },
 ];
 
 const ROLE_COLORS: Record<string, string> = {
@@ -68,6 +69,7 @@ const ROLE_COLORS: Record<string, string> = {
   FINANCE:   "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   SECRETARY: "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300",
   PEDAGOGIA: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  AUDITOR:   "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
 };
 
 const TABS = [

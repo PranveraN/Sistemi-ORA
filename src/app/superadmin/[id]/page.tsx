@@ -30,7 +30,7 @@ interface PermData {
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Admin", FINANCE: "Financë", SECRETARY: "Sekretari", SUPERADMIN: "Super Admin",
-  PEDAGOGIA: "Pedagogia", TEACHER: "Mësimdhënës",
+  PEDAGOGIA: "Pedagogia", TEACHER: "Mësimdhënës", AUDITOR: "Auditor",
 };
 
 const ROLE_COLORS: Record<string, string> = {
@@ -40,11 +40,12 @@ const ROLE_COLORS: Record<string, string> = {
   SUPERADMIN: "text-amber-300 bg-amber-500/15 border-amber-500/20",
   PEDAGOGIA: "text-pink-300 bg-pink-500/15 border-pink-500/20",
   TEACHER: "text-cyan-300 bg-cyan-500/15 border-cyan-500/20",
+  AUDITOR: "text-orange-300 bg-orange-500/15 border-orange-500/20",
 };
 
 const ROLE_ICONS: Record<string, string> = {
   ADMIN: "⚡", FINANCE: "💰", SECRETARY: "📋", SUPERADMIN: "👑",
-  PEDAGOGIA: "🎓", TEACHER: "📖",
+  PEDAGOGIA: "🎓", TEACHER: "📖", AUDITOR: "🔍",
 };
 
 const FEATURES = [
@@ -339,6 +340,7 @@ export default function OrgDetailPage() {
                       <option value="SECRETARY">📋 Sekretari</option>
                       <option value="PEDAGOGIA">🎓 Pedagogia</option>
                       <option value="TEACHER">📖 Mësimdhënës</option>
+                      <option value="AUDITOR">🔍 Auditor (vetëm lexim + Auditimi)</option>
                     </select>
                   </div>
                   <div className="col-span-2 flex gap-2 pt-1">

@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { MODULE_KEYS, DEFAULT_ALLOWED, isConfigurableRole } from "./modules";
+import { MODULE_KEYS, DEFAULT_ALLOWED, AUDIT_MODULE, isConfigurableRole } from "./modules";
 
 /**
  * Modulet e lejuara për një (organizatë, rol) — kombinon rreshtat eksplicitë
@@ -19,5 +19,7 @@ export async function getAllowedModules(organizationId: number, role: string): P
   const overrides = new Map(rows.map(r => [r.moduleKey, r.allowed]));
   const defaults = DEFAULT_ALLOWED[role];
 
-  return MODULE_KEYS.filter(key => overrides.has(key) ? overrides.get(key)! : defaults.includes(key));
+  return MODULE_KEYS
+    .filter(key => key !== AUDIT_MODULE || role === "AUDITOR") // Auditimi: vetëm Auditori (dhe Super Admin)
+    .filter(key => overrides.has(key) ? overrides.get(key)! : defaults.includes(key));
 }

@@ -13,6 +13,7 @@ import { moduleForPath, firstAllowedPath, isConfigurableRole } from "@/lib/modul
 const API_MODULE_PREFIXES: { prefix: string; moduleKey: string }[] = [
   { prefix: "/api/investime",          moduleKey: "investime" },
   { prefix: "/api/arka",               moduleKey: "arka" },
+  { prefix: "/api/auditimi",           moduleKey: "auditimi" },
   { prefix: "/api/timi-invest",        moduleKey: "investime" },
   { prefix: "/api/arkiva",             moduleKey: "arkiva" },
   { prefix: "/api/shpenzime",          moduleKey: "shpenzime" },
@@ -81,6 +82,13 @@ export default auth((req) => {
     const isAuthApi = nextUrl.pathname.startsWith("/api/auth");
     if (!isAuthApi && isLoggedIn && role === "ADMIN" && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
       return NextResponse.json({ error: "Roli 'Admin' ka vetëm qasje shikimi — ky veprim nuk lejohet." }, { status: 403 });
+    }
+
+    // Roli "Auditor": vetëm lexim kudo — shkruan vetëm te Auditimi (statusi i
+    // gjetjeve, komentet, "Ekzekuto tani"). Faza 4 e auditimit.
+    if (!isAuthApi && isLoggedIn && role === "AUDITOR" && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS"
+      && !nextUrl.pathname.startsWith("/api/auditimi")) {
+      return NextResponse.json({ error: "Roli 'Auditor' ka vetëm qasje shikimi — ky veprim nuk lejohet." }, { status: 403 });
     }
 
     if (isLoggedIn && req.method === "DELETE" && FINANCIAL_DELETE_PATTERNS.some(re => re.test(nextUrl.pathname))

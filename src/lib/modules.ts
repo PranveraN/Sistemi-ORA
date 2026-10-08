@@ -43,6 +43,7 @@ export const MODULES: ModuleDef[] = [
   { key: "fletorja",        label: "Fletorja",                  pathPrefixes: ["/fletorja"] },
   { key: "investime",       label: "Investimet",                pathPrefixes: ["/investime"] },
   { key: "arka",            label: "Numërimi i Arkave",         pathPrefixes: ["/arka"] },
+  { key: "auditimi",        label: "Auditimi",                  pathPrefixes: ["/auditimi"] },
   { key: "historiku",       label: "Historiku (Audit Log)",     pathPrefixes: ["/historiku"] },
   { key: "settings",        label: "Cilësimet",                 pathPrefixes: ["/settings"] },
 ];
@@ -50,7 +51,14 @@ export const MODULES: ModuleDef[] = [
 export const MODULE_KEYS = MODULES.map(m => m.key);
 
 /** Rolet që kanë lejet e tyre të konfigurueshme te ky sistem. */
-export const CONFIGURABLE_ROLES = ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as const;
+export const CONFIGURABLE_ROLES = ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA", "AUDITOR"] as const;
+
+/**
+ * Moduli "Auditimi" — vetëm Super Admin dhe roli Auditor (Faza 4). S'jepet kurrë
+ * rolet e tjera, as me leje të konfiguruar (shih getAllowedModules).
+ */
+export const AUDIT_MODULE = "auditimi";
+export const AUDIT_ROLES = ["SUPERADMIN", "AUDITOR"];
 export type ConfigurableRole = (typeof CONFIGURABLE_ROLES)[number];
 
 /**
@@ -71,12 +79,19 @@ const FINANCE_MODULES = [
 const SECRETARY_MODULES = ["sms", "sekretaria", "dokumentet"];
 const SHARED_MODULES = ["dashboard", "students", "families", "levizjet", "regjistrimet", "classes", "arkiva", "fletorja"];
 const PEDAGOGIA_MODULES = ["classes", "regjistrimet", "levizjet"];
+// Auditori: vetëm lexim në modulet financiare (shkrimin e bllokon middleware) + Auditimi
+const AUDITOR_MODULES = [
+  "dashboard", "students", "families", "levizjet", "arkiva",
+  ...FINANCE_MODULES.filter(m => m !== "kerkesat" && m !== "materiale"),
+  "historiku", AUDIT_MODULE,
+];
 
 export const DEFAULT_ALLOWED: Record<ConfigurableRole, string[]> = {
   ADMIN:     MODULE_KEYS,
   FINANCE:   [...SHARED_MODULES, ...FINANCE_MODULES],
   SECRETARY: [...SHARED_MODULES, ...SECRETARY_MODULES],
   PEDAGOGIA: PEDAGOGIA_MODULES,
+  AUDITOR:   AUDITOR_MODULES,
 };
 
 export function isConfigurableRole(role: string): role is ConfigurableRole {

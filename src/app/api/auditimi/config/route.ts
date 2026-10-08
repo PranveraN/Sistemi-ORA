@@ -1,26 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
 import { loadAuditConfig, saveAuditConfig } from "@/lib/audit/config";
+import { requireAuditAccess } from "@/lib/audit/access";
 
-// Pragjet e rregullave të auditimit (X ditë, kufiri i zbritjes, …). Vetëm Super Admin.
-async function superAdmin() {
-  const session = await auth();
-  if (!session) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  if ((session.user as { role?: string }).role !== "SUPERADMIN") return { error: NextResponse.json({ error: "Vetëm Super Admin." }, { status: 403 }) };
-  return { session };
-}
-
+// Pragjet e rregullave të auditimit (X ditë, kufiri i zbritjes, …).
+// GET: Auditori dhe Super Admin · PUT: vetëm Super Admin.
 export async function GET() {
-  const g = await superAdmin();
-  if (g.error) return g.error;
+  const g = await requireAuditAccess();
+  if ("error" in g) return g.error;
   return NextResponse.json(await loadAuditConfig(prisma));
 }
 
 export async function PUT(req: NextRequest) {
-  const g = await superAdmin();
-  if (g.error) return g.error;
+  const g = await requireAuditAccess({ manageRules: true });
+  if ("error" in g) return g.error;
   const body = await req.json().catch(() => ({}));
   try {
     const cfg = await saveAuditConfig(prisma, body);
