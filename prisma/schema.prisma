@@ -1775,6 +1775,7 @@ model FinAuditLog {
   createdAt DateTime @default(now())
 
   @@index([tableName, recordId])
+  @@index([tableName, createdAt])
   @@index([createdAt])
   @@index([userId])
 }
@@ -1843,6 +1844,7 @@ model AuditFinding {
   status         String   @default("E_RE") // E_RE, NE_SHQYRTIM, E_JUSTIFIKUAR, E_KORRIGJUAR
   assignedToId   Int?
   fingerprint    String   @unique
+  lastSeenAt     DateTime? // ekzekutimi i fundit që e gjeti ende (null = s'është parë nga motori)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1862,4 +1864,36 @@ model AuditFindingComment {
   createdAt  DateTime @default(now())
 
   @@index([findingId])
+}
+
+// ── Auditimi financiar — Faza 3: motori i rregullave ──
+// Përkufizimet e rregullave (sinkronizohen nga kodi, src/lib/audit/rules) —
+// "active" dhe "severity" mund të ndryshohen pa prekur kodin.
+model AuditRule {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  name        String
+  description String
+  module      String
+  severity    String   // KRITIKE, E_LARTE, MESATARE, E_ULET
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Çdo ekzekutim i motorit (natën, manual, ose në nisje pas një nate të humbur).
+model AuditRun {
+  id            Int       @id @default(autoincrement())
+  trigger       String    // NATA, MANUAL, NISJA
+  status        String    @default("RUNNING") // RUNNING, OK, ME_GABIME, DESHTOI
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  findingsNew   Int       @default(0)
+  findingsSeen  Int       @default(0)
+  ruleStats     String?   // JSON: kodi → { gjetje, ms, gabim? }
+  error         String?
+  userName      String?
+
+  @@index([startedAt])
+  @@index([status])
 }

@@ -14,5 +14,14 @@ export async function register() {
     } catch (err) {
       console.error("[auditimi] GABIM — triggers s'u krijuan, gjurma e auditimit NUK po regjistrohet:", err);
     }
+
+    // Motori i rregullave: ekzekutimi i natës (02:00), dhe në nisje nëse një natë humbi
+    try {
+      const { prisma } = await import("@/lib/prisma");
+      const { startAuditScheduler } = await import("@/lib/audit/scheduler");
+      startAuditScheduler(prisma);
+    } catch (err) {
+      console.error("[auditimi] planifikuesi s'u nis:", err);
+    }
   }
 }
