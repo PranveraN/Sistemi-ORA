@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-async function PUT_handler(
+export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -37,7 +36,7 @@ async function PUT_handler(
   return NextResponse.json(expense);
 }
 
-async function DELETE_handler(
+export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -48,7 +47,3 @@ async function DELETE_handler(
   await prisma.expense.delete({ where: { id: parseInt(id) } });
   return NextResponse.json({ success: true });
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const PUT = guardClosedDay(PUT_handler);
-export const DELETE = guardClosedDay(DELETE_handler);

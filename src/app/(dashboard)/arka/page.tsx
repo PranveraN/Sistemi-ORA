@@ -91,7 +91,7 @@ export default function ArkaPage() {
     if (!p || countedCents == null || countedCents < 0) { setSaveError("Shkruani shumën e numëruar."); return; }
     const text = p.kind === "OPENING"
       ? `Hap arkën më ${fmtDay(date)} me gjendje fillestare ${eur(countedCents)}?`
-      : `Mbyll arkën e ${fmtDay(date)}?\n\nSipas sistemit: ${eur(p.systemCents)}\nNumëruar: ${eur(countedCents)}\nDiferenca: ${eur(diff ?? 0)}\n\nPas mbylljes, pagesat e kësaj dite s'mund të ndryshohen më (vetëm Super Admin, me arsye).`;
+      : `Mbyll arkën e ${fmtDay(date)}?\n\nSipas sistemit: ${eur(p.systemCents)}\nNumëruar: ${eur(countedCents)}\nDiferenca: ${eur(diff ?? 0)}\n\nÇdo ndryshim i mëvonshëm në paratë e kësaj dite do të shënohet si gjetje auditimi.`;
     if (!confirm(text)) return;
     setSaving(true); setSaveError("");
     try {

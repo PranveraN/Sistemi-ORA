@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-async function PUT_handler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -26,7 +25,7 @@ async function PUT_handler(req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json(hyra);
 }
 
-async function DELETE_handler(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -34,7 +33,3 @@ async function DELETE_handler(_: NextRequest, { params }: { params: Promise<{ id
   await prisma.hyra.delete({ where: { id: parseInt(id) } });
   return NextResponse.json({ ok: true });
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const PUT = guardClosedDay(PUT_handler);
-export const DELETE = guardClosedDay(DELETE_handler);

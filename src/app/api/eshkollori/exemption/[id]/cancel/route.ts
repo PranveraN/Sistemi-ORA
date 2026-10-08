@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
 import { requireEshkollori, syncYearRow, baseOf, logChange, yearRowWhere } from "@/lib/eshkollori";
 
 // Anulon një lirim (me arsye). S'fshihet — mbetet në histori me kush/kur/pse.
-async function POST_handler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   const a = requireEshkollori(session, true);
   if (a instanceof NextResponse) return a;
@@ -29,6 +28,3 @@ async function POST_handler(req: NextRequest, { params }: { params: Promise<{ id
   await logAction(session, "UPDATE", "FeeExemption", ex.id, `Eshkollori: anuloi lirimin e nxënësit #${ex.studentId} — ${reason}`);
   return NextResponse.json({ ok: true });
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const POST = guardClosedDay(POST_handler);

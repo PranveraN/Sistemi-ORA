@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
@@ -42,7 +41,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   return NextResponse.json(student);
 }
 
-async function PUT_handler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -120,7 +119,7 @@ async function PUT_handler(req: NextRequest, { params }: { params: Promise<{ id:
   }
 }
 
-async function PATCH_handler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -193,7 +192,7 @@ async function PATCH_handler(req: NextRequest, { params }: { params: Promise<{ i
   }
 }
 
-async function DELETE_handler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -228,8 +227,3 @@ async function DELETE_handler(req: NextRequest, { params }: { params: Promise<{ 
 
   return NextResponse.json({ success: true });
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const PUT = guardClosedDay(PUT_handler);
-export const PATCH = guardClosedDay(PATCH_handler);
-export const DELETE = guardClosedDay(DELETE_handler);

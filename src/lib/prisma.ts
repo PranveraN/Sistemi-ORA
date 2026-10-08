@@ -5,9 +5,9 @@ import {
   type AuditActor, type AuditStore, type AuditTx,
 } from "@/lib/audit/context";
 import { CASH_TABLES } from "@/lib/audit/cashEffect";
-import { enforceClosedDays, maxAuditLogId } from "@/lib/audit/closedDay";
+import { recordClosedDayChanges, maxAuditLogId } from "@/lib/audit/closedDay";
 
-type TxDb = Parameters<typeof enforceClosedDays>[0];
+type TxDb = Parameters<typeof recordClosedDayChanges>[0];
 
 // ── Shtresa qendrore e auditimit ───────────────────────────────────────────
 // Çdo shkrim (create/update/upsert/delete…) në një tabelë financiare kalon nga
@@ -55,8 +55,8 @@ export function createPrismaClient(url?: string): PrismaClient {
           const a = stampCreatedBy(model, operation, args as Args, actor.userId);
           if (store?.batch) return query(a as typeof args);
 
-          // Tabelat që prekin arkën: pas shkrimit kontrollohet (brenda transaksionit)
-          // nëse ndryshimi prek një ditë të mbyllur — Faza 2, src/lib/audit/closedDay.ts
+          // Tabelat që prekin arkën: pas shkrimit (brenda transaksionit) shënohet gjetje
+          // nëse ndryshimi prek një ditë të mbyllur — s'bllokohet — src/lib/audit/closedDay.ts
           if (CASH_TABLES.has(model)) {
             if (store?.tx && store.txState) {
               const tx = store.tx as unknown as TxDb;
@@ -64,14 +64,14 @@ export function createPrismaClient(url?: string): PrismaClient {
               store.txState.ctxSet = true;
               const before = await maxAuditLogId(tx);
               const result = await query(a as typeof args);
-              await enforceClosedDays(tx, before, actor);
+              await recordClosedDayChanges(tx, before, actor);
               return result;
             }
             return base.$transaction(async tx => {
               await tx.$executeRawUnsafe(SET_CONTEXT_SQL, ...contextParams(actor));
               const before = await maxAuditLogId(tx);
               const result = await (tx as unknown as Record<string, AnyDelegate>)[lowerFirst(model)][operation](a);
-              await enforceClosedDays(tx, before, actor);
+              await recordClosedDayChanges(tx, before, actor);
               await tx.$executeRawUnsafe(CLEAR_CONTEXT_SQL);
               return result;
             });

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -22,7 +21,7 @@ interface ShpenzimSnapshot {
   createdAt: string;
 }
 
-async function POST_handler(
+export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -98,6 +97,3 @@ async function POST_handler(
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const POST = guardClosedDay(POST_handler);

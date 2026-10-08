@@ -8,7 +8,6 @@ import { ensureAuditTriggers } from "@/lib/audit/triggers";
 import { auditStorage, type AuditActor } from "@/lib/audit/context";
 import { movementsOf, type CashScope } from "@/lib/audit/cashEffect";
 import { computeClosing, createClosing, verifyClosing, ClosingError } from "@/lib/audit/cashClosing";
-import { ClosedDayError } from "@/lib/audit/closedDay";
 
 // Faza 2 — mbyllja ditore e arkës dhe bllokimi i ditëve të mbyllura.
 // Kopje e përkohshme e prisma/test-copy.db (asnjëherë databaza reale).
@@ -23,8 +22,7 @@ const kosovoDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Eur
 const daysAgo = (n: number) => { const key = kosovoDay(new Date(Date.now() - n * 86400000)); return { key, at: new Date(`${key}T12:00:00+02:00`) }; };
 const D0 = daysAgo(6), D1 = daysAgo(5), D2 = daysAgo(4), D3 = daysAgo(3);
 
-const staff: AuditActor = { userId: 9001, userName: "Arkëtarja", ip: null, userAgent: null, reason: null, role: "FINANCE", override: false };
-const boss: AuditActor = { userId: 9002, userName: "Super", ip: null, userAgent: null, reason: "Korrigjim i verifikuar", role: "SUPERADMIN", override: true };
+const staff: AuditActor = { userId: 9001, userName: "Arkëtarja", ip: null, userAgent: null, reason: null, role: "FINANCE" };
 const as = <T,>(actor: AuditActor, fn: () => Promise<T>) => auditStorage.run({ actor }, async () => await fn());
 
 const pay = (sid: number, paid: number, at: Date, method: string | null = "CASH") =>
@@ -117,40 +115,43 @@ describe("zinxhiri i mbylljeve", () => {
   });
 });
 
-describe("bllokimi i ditëve të mbyllura", () => {
-  it("stafi s'mund të shtojë pagesë cash në ditë të mbyllur — asgjë s'ruhet", async () => {
-    const before = await db.payment.count();
-    await expect(as(staff, () => pay(studentId, 20, D1.at))).rejects.toBeInstanceOf(ClosedDayError);
-    expect(await db.payment.count()).toBe(before);
+describe("ndryshimet në ditë të mbyllura (pa bllokim — vetëm gjetje)", () => {
+  it("pagesa cash në ditë të mbyllur lejohet dhe krijon gjetje me emrin e përdoruesit", async () => {
+    const p = await as(staff, () => pay(studentId, 15, D1.at));
+    expect(p.id).toBeGreaterThan(0);
+    const f = await db.auditFinding.findFirstOrThrow({ where: { ruleCode: "ARKA_MBYLLUR", entityId: p.id } });
+    expect(f).toMatchObject({ severity: "E_LARTE", amountCents: 1500, module: "ARKA", status: "E_RE" });
+    expect(f.description).toContain("Arkëtarja");
   });
 
-  it("brenda transaksionit: refuzimi kthen mbrapsht të gjithë transaksionin", async () => {
-    const before = await db.hyra.count();
-    await expect(as(staff, () => db.$transaction(async tx => {
+  it("brenda transaksionit: ruhet gjithçka dhe gjetja krijohet", async () => {
+    const before = await db.auditFinding.count({ where: { ruleCode: "ARKA_MBYLLUR" } });
+    await as(staff, () => db.$transaction(async tx => {
       await tx.hyra.create({ data: { paguesit: "Brenda tx", shuma: 1, muaj: 1, vit: 2026, metoda: "BANK" } });
-      await tx.payment.create({ data: { studentId, categoryId: shk, amount: 5, finalAmount: 5, dueDate: D1.at, paidDate: D1.at, paidAmount: 5, method: "CASH" } });
-    }))).rejects.toBeInstanceOf(ClosedDayError);
-    expect(await db.hyra.count()).toBe(before);
+      const x = await tx.payment.create({ data: { studentId, categoryId: shk, amount: 5, finalAmount: 5, dueDate: D1.at, paidDate: D1.at, paidAmount: 5, method: "CASH" } });
+      await tx.payment.delete({ where: { id: x.id } });
+    }));
+    expect(await db.auditFinding.count({ where: { ruleCode: "ARKA_MBYLLUR" } })).toBe(before + 2);
   });
 
-  it("ndryshim pa efekt në arkë (shënim) lejohet edhe në ditë të mbyllur", async () => {
+  it("ndryshim pa efekt në arkë (shënim) s'krijon gjetje", async () => {
     const p = await db.payment.findFirstOrThrow({ where: { studentId, paidAmount: 100, method: "CASH" } });
+    const before = await db.auditFinding.count();
     await as(staff, () => db.payment.update({ where: { id: p.id }, data: { note: "shënim pas mbylljes" } }));
     expect((await db.payment.findUniqueOrThrow({ where: { id: p.id } })).note).toBe("shënim pas mbylljes");
+    expect(await db.auditFinding.count()).toBe(before);
   });
 
-  it("Super Admin pa konfirmim të posaçëm refuzohet; me arsye + konfirmim lejohet dhe krijon gjetje", async () => {
-    await expect(as({ ...boss, override: false }, () => pay(studentId, 15, D1.at))).rejects.toBeInstanceOf(ClosedDayError);
-    const p = await as(boss, () => pay(studentId, 15, D1.at));
-    const f = await db.auditFinding.findFirstOrThrow({ where: { ruleCode: "ARKA_MBYLLUR", entityId: p.id } });
-    expect(f).toMatchObject({ severity: "E_LARTE", amountCents: 1500, module: "ARKA" });
-    expect(f.description).toContain("Korrigjim i verifikuar");
+  it("ndryshim në ditë të hapur s'krijon gjetje", async () => {
+    const before = await db.auditFinding.count();
+    await as(staff, () => pay(studentId, 7, D3.at));
+    expect(await db.auditFinding.count()).toBe(before);
   });
 
-  it("regjistrimi i vonuar për ditën 1 shfaqet te mbyllja e radhës si 'i vonuar'", async () => {
+  it("regjistrimet e vonuara për ditën 1 shfaqen te mbyllja e radhës si 'të vonuara'", async () => {
     const c = await computeClosing(db, 1, D2.key);
-    expect(c.lateCents).toBe(1500);
-    expect(c.late[0]).toMatchObject({ day: D1.key, cents: 1500, kind: "PAGESA" });
+    expect(c.lateCents).toBe(1500); // 15 € + (5 € e shtuar dhe e fshirë = 0)
+    expect(c.late.filter(l => l.cents === 1500)[0]).toMatchObject({ day: D1.key, kind: "PAGESA" });
     expect(c.systemCents).toBe(25000 + 3000 + 1500);
   });
 });

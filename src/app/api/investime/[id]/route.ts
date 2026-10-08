@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -21,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json(row);
 }
 
-async function PUT_handler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAccess();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -46,7 +45,7 @@ async function PUT_handler(req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json({ ok: true });
 }
 
-async function DELETE_handler(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAccess();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -54,7 +53,3 @@ async function DELETE_handler(_req: NextRequest, { params }: { params: Promise<{
   await prisma.investim.delete({ where: { id: parseInt(id) } });
   return NextResponse.json({ ok: true });
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const PUT = guardClosedDay(PUT_handler);
-export const DELETE = guardClosedDay(DELETE_handler);

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
@@ -7,7 +6,7 @@ import { activeExemption } from "@/lib/feeLedger";
 import { requireEshkollori, getCategory, defaultFee, ensureYearRow, syncYearRow, baseOf, logChange, round, yearLabel } from "@/lib/eshkollori";
 
 // "Ndrysho shumën" e vitit për një nxënës — vetëm ai nxënës; arsyeja e detyrueshme.
-async function POST_handler(req: NextRequest) {
+export async function POST(req: NextRequest) {
   const session = await auth();
   const a = requireEshkollori(session, true);
   if (a instanceof NextResponse) return a;
@@ -38,6 +37,3 @@ async function POST_handler(req: NextRequest) {
     `Eshkollori ${yearLabel(year)}: ndryshoi shumën e ${student.firstName} ${student.lastName} nga ${res.before.toFixed(2)} € në ${amount.toFixed(2)} € — ${reason}`);
   return NextResponse.json(res.updated);
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const POST = guardClosedDay(POST_handler);

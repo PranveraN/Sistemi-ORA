@@ -11,10 +11,8 @@ export interface AuditActor {
   ip: string | null;
   userAgent: string | null;
   reason: string | null;
-  /** Roli i përdoruesit (p.sh. SUPERADMIN) — për lejen e posaçme te ditët e mbyllura. */
+  /** Roli i përdoruesit (p.sh. SUPERADMIN). */
   role?: string | null;
-  /** Konfirmimi i posaçëm për të ndryshuar një ditë të mbyllur (header X-Closed-Day-Override). */
-  override?: boolean;
 }
 
 /** Klienti i transaksionit interaktiv (vetëm metodat që na duhen). */
@@ -34,7 +32,6 @@ export const auditStorage = new AsyncLocalStorage<AuditStore>();
 
 /** Header-i me të cilin UI dërgon arsyen e fshirjes (i koduar me encodeURIComponent). */
 export const AUDIT_REASON_HEADER = "x-audit-reason";
-export const CLOSED_DAY_OVERRIDE_HEADER = "x-closed-day-override";
 
 export const SET_CONTEXT_SQL =
   `INSERT OR REPLACE INTO "FinAuditContext" ("id","userId","userName","ip","userAgent","reason") VALUES (1, ?, ?, ?, ?, ?)`;
@@ -67,7 +64,7 @@ export async function resolveActor(): Promise<AuditActor> {
   const store = auditStorage.getStore();
   if (store?.actor) return { ...store.actor, reason: store.reason ?? store.actor.reason };
 
-  const actor: AuditActor = { userId: null, userName: null, ip: null, userAgent: null, reason: null, role: null, override: false };
+  const actor: AuditActor = { userId: null, userName: null, ip: null, userAgent: null, reason: null, role: null };
   let inRequest = false;
   try {
     const { headers } = await import("next/headers");
@@ -76,7 +73,6 @@ export async function resolveActor(): Promise<AuditActor> {
     actor.ip = h.get("cf-connecting-ip") || h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || null;
     actor.userAgent = h.get("user-agent")?.slice(0, 300) ?? null;
     actor.reason = decodeReason(h.get(AUDIT_REASON_HEADER));
-    actor.override = h.get(CLOSED_DAY_OVERRIDE_HEADER) === "1";
   } catch {
     // jashtë kërkesës HTTP
   }

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
@@ -19,7 +18,7 @@ async function receiptNumber(orgId: number): Promise<string> {
 
 // "+ Pagesë" (viti aktual) ose "Regjistro pagesë" te borxhi i vjetër (debtId).
 // Metoda (Cash/Bankë) ruhet për arkën; s'shfaqet te tabela.
-async function POST_handler(req: NextRequest) {
+export async function POST(req: NextRequest) {
   const session = await auth();
   const a = requireEshkollori(session, true);
   if (a instanceof NextResponse) return a;
@@ -85,6 +84,3 @@ async function POST_handler(req: NextRequest) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Gabim" }, { status: 400 });
   }
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const POST = guardClosedDay(POST_handler);

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
@@ -22,7 +21,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   return NextResponse.json(invoice);
 }
 
-async function PUT_handler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
@@ -111,7 +110,7 @@ interface EditItemInput {
 // Payment real të lidhur me shumën origjinale (shih PUT sipër) — ndryshimi i
 // totalit pas kësaj do ta linte atë pagesë "të vjetruar", të pa-përputhur më
 // me faturën.
-async function PATCH_handler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -166,7 +165,7 @@ async function PATCH_handler(req: NextRequest, { params }: { params: Promise<{ i
   return NextResponse.json(updated);
 }
 
-async function DELETE_handler(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -193,8 +192,3 @@ async function DELETE_handler(_: NextRequest, { params }: { params: Promise<{ id
 
   return NextResponse.json({ ok: true });
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const PUT = guardClosedDay(PUT_handler);
-export const PATCH = guardClosedDay(PATCH_handler);
-export const DELETE = guardClosedDay(DELETE_handler);

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
@@ -10,7 +9,7 @@ import { requireEshkollori, getCategory, logChange, paymentStatus, round, yearLa
 //   PATCH { studentId, debtIds, action: EDIT|FORGIVE|VOID, amount?, reason }
 // Falja dhe fshirja s'e heqin rreshtin nga databaza: statusi FORGIVEN / VOID, bilanci 0.
 
-async function POST_handler(req: NextRequest) {
+export async function POST(req: NextRequest) {
   const session = await auth();
   const a = requireEshkollori(session, true);
   if (a instanceof NextResponse) return a;
@@ -55,7 +54,7 @@ async function POST_handler(req: NextRequest) {
   return NextResponse.json(row, { status: 201 });
 }
 
-async function PATCH_handler(req: NextRequest) {
+export async function PATCH(req: NextRequest) {
   const session = await auth();
   const a = requireEshkollori(session, true);
   if (a instanceof NextResponse) return a;
@@ -105,7 +104,3 @@ async function PATCH_handler(req: NextRequest) {
     `Eshkollori: borxhi i vjetër i ${s.firstName} ${s.lastName} — ${verb} (${rows.map(r => (r.year ? yearLabel(r.year) : "?")).join(", ")}) — ${reason}`);
   return NextResponse.json({ ok: true, total });
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const POST = guardClosedDay(POST_handler);
-export const PATCH = guardClosedDay(PATCH_handler);

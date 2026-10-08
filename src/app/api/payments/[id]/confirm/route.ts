@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardClosedDay } from "@/lib/audit/routeGuard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
@@ -7,7 +6,7 @@ import { logAction } from "@/lib/audit";
 // Konfirmon manualisht një pagesë "pa konfirmuar" (import ose TIMI Invest) —
 // pas kësaj, shuma e saj llogaritet si "Të Hyra" reale. Shih fushën
 // Payment.confirmed në schema.prisma.
-async function PATCH_handler(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -23,6 +22,3 @@ async function PATCH_handler(_req: NextRequest, { params }: { params: Promise<{ 
 
   return NextResponse.json(payment);
 }
-
-// Refuzimi për ditë të mbyllur të arkës → 409 me mesazh (Faza 2 e auditimit)
-export const PATCH = guardClosedDay(PATCH_handler);
