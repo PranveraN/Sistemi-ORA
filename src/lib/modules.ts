@@ -42,7 +42,7 @@ export const MODULES: ModuleDef[] = [
   { key: "arkiva",          label: "Arkiva",                    pathPrefixes: ["/arkiva"] },
   { key: "fletorja",        label: "Fletorja",                  pathPrefixes: ["/fletorja"] },
   { key: "investime",       label: "Investimet",                pathPrefixes: ["/investime"] },
-  { key: "arka",            label: "Mbyllja e Arkës",           pathPrefixes: ["/arka"] },
+  { key: "arka",            label: "Numërimi i Arkave",         pathPrefixes: ["/arka"] },
   { key: "historiku",       label: "Historiku (Audit Log)",     pathPrefixes: ["/historiku"] },
   { key: "settings",        label: "Cilësimet",                 pathPrefixes: ["/settings"] },
 ];

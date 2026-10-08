@@ -4,7 +4,6 @@ import {
   auditStorage, resolveActor, contextParams, SET_CONTEXT_SQL, CLEAR_CONTEXT_SQL,
   type AuditActor, type AuditStore, type AuditTx,
 } from "@/lib/audit/context";
-import { CASH_TABLES } from "@/lib/audit/cashEffect";
 import { recordClosedDayChanges, maxAuditLogId } from "@/lib/audit/closedDay";
 
 type TxDb = Parameters<typeof recordClosedDayChanges>[0];
@@ -14,7 +13,7 @@ type TxDb = Parameters<typeof recordClosedDayChanges>[0];
 // këtu: para ndryshimit vendoset FinAuditContext (përdoruesi, IP, arsyeja)
 // BRENDA të njëjtit transaksion, dhe hiqet në fund të tij — triggers e SQLite
 // (src/lib/audit/triggers.ts) e lexojnë kur shkruajnë FinAuditLog.
-//   • shkrim i vetëm       → transaksion i vogël [konteksti, shkrimi, pastrimi]
+//   • shkrim i vetëm       → transaksion i vogël: konteksti, shkrimi, kontrolli i arkave, pastrimi
 //   • $transaction(async)  → konteksti vendoset te tx para shkrimit, hiqet në fund
 //   • $transaction([...])  → konteksti shtohet në fillim/fund të listës
 // Edhe nëse dikush e anashkalon këtë shtresë (SQL i papërpunuar), triggers e
@@ -55,40 +54,27 @@ export function createPrismaClient(url?: string): PrismaClient {
           const a = stampCreatedBy(model, operation, args as Args, actor.userId);
           if (store?.batch) return query(a as typeof args);
 
-          // Tabelat që prekin arkën: pas shkrimit (brenda transaksionit) shënohet gjetje
-          // nëse ndryshimi prek një ditë të mbyllur — s'bllokohet — src/lib/audit/closedDay.ts
-          if (CASH_TABLES.has(model)) {
-            if (store?.tx && store.txState) {
-              const tx = store.tx as unknown as TxDb;
-              await store.tx.$executeRawUnsafe(SET_CONTEXT_SQL, ...contextParams(actor));
-              store.txState.ctxSet = true;
-              const before = await maxAuditLogId(tx);
-              const result = await query(a as typeof args);
-              await recordClosedDayChanges(tx, before, actor);
-              return result;
-            }
-            return base.$transaction(async tx => {
-              await tx.$executeRawUnsafe(SET_CONTEXT_SQL, ...contextParams(actor));
-              const before = await maxAuditLogId(tx);
-              const result = await (tx as unknown as Record<string, AnyDelegate>)[lowerFirst(model)][operation](a);
-              await recordClosedDayChanges(tx, before, actor);
-              await tx.$executeRawUnsafe(CLEAR_CONTEXT_SQL);
-              return result;
-            });
-          }
-
+          // Pas shkrimit (brenda të njëjtit transaksion) shënohet gjetje nëse ndryshimi prek
+          // paratë e një arke në një ditë tashmë të numëruar — s'bllokohet asgjë
+          // (src/lib/audit/closedDay.ts). Për çdo tabelë të audituar, jo vetëm ato të
+          // arkës: p.sh. një shitje uniforme krijon pagesën e saj si shkrim i brendshëm.
           if (store?.tx && store.txState) {
+            const tx = store.tx as unknown as TxDb;
             await store.tx.$executeRawUnsafe(SET_CONTEXT_SQL, ...contextParams(actor));
             store.txState.ctxSet = true;
-            return query(a as typeof args);
+            const before = await maxAuditLogId(tx);
+            const result = await query(a as typeof args);
+            await recordClosedDayChanges(tx, before, actor);
+            return result;
           }
-          const delegate = (base as unknown as Record<string, AnyDelegate>)[lowerFirst(model)];
-          const [, result] = await base.$transaction([
-            base.$executeRawUnsafe(SET_CONTEXT_SQL, ...contextParams(actor)),
-            delegate[operation](a) as never,
-            base.$executeRawUnsafe(CLEAR_CONTEXT_SQL),
-          ]);
-          return result;
+          return base.$transaction(async tx => {
+            await tx.$executeRawUnsafe(SET_CONTEXT_SQL, ...contextParams(actor));
+            const before = await maxAuditLogId(tx);
+            const result = await (tx as unknown as Record<string, AnyDelegate>)[lowerFirst(model)][operation](a);
+            await recordClosedDayChanges(tx, before, actor);
+            await tx.$executeRawUnsafe(CLEAR_CONTEXT_SQL);
+            return result;
+          });
         },
       },
     },

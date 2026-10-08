@@ -1791,17 +1791,19 @@ model FinAuditContext {
   reason    String?
 }
 
-// ── Auditimi financiar — Faza 2: mbyllja ditore e arkës ──
-// Një rresht për çdo ditë të mbyllur. Shumat në CENT (numra të plotë).
-// Gjendja sipas sistemit = shuma e numëruar e mbylljes së mëparshme + lëvizjet
-// cash sipas DATËS REALE (nga FinAuditLog, src/lib/audit/cashClosing.ts).
-// kind=OPENING: hapja e arkës (gjendja fillestare) — pika e nisjes së zinxhirit.
+// ── Auditimi financiar — Faza 2: numërimi i arkave ──
+// Një rresht për çdo numërim të një arke (çdo burim ka arkën e vet: box).
+// Numërohet kur të jepet mundësia — pa afat. Shumat në CENT (numra të plotë).
+// Gjendja sipas sistemit = shuma e numëruar herën e kaluar + lëvizjet cash
+// sipas DATËS REALE (nga FinAuditLog, src/lib/audit/cashClosing.ts).
+// kind=OPENING: numërimi i parë (gjendja fillestare) — pika e nisjes së zinxhirit.
 model CashClosing {
   id             Int       @id @default(autoincrement())
   organizationId Int       @default(1)
+  box            String    @default("") // "CAT:<id>" (kategori pagese), "UNIFORMA", "LIBRAT"
   date           String    // "YYYY-MM-DD" (ora e Kosovës)
   kind           String    @default("DAILY") // OPENING, DAILY
-  scope          String    // JSON: kategoritë e pagesave që hyjnë në këtë arkë
+  scope          String    // JSON: arka (box) dhe emri i saj në momentin e numërimit
   openingCents   Int       @default(0)
   inCents        Int       @default(0)
   outCents       Int       @default(0)
@@ -1820,7 +1822,7 @@ model CashClosing {
   verifyNote     String?
   createdAt      DateTime  @default(now())
 
-  @@unique([organizationId, date])
+  @@unique([organizationId, box, date])
 }
 
 // Gjetjet e auditimit (Faza 2 i krijon për arkën; Faza 3 shton motorin e rregullave).

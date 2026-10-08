@@ -6,16 +6,20 @@ import type { PrismaClient } from "@prisma/client";
 import { createPrismaClient } from "@/lib/prisma";
 import { ensureAuditTriggers } from "@/lib/audit/triggers";
 import { auditStorage, type AuditActor } from "@/lib/audit/context";
-import { movementsOf, type CashScope } from "@/lib/audit/cashEffect";
-import { computeClosing, createClosing, verifyClosing, ClosingError } from "@/lib/audit/cashClosing";
+import { movementsOf, type CashBox } from "@/lib/audit/cashEffect";
+import { computeClosing as computeBox, createClosing as createBox, verifyClosing, loadCashBoxes, ClosingError } from "@/lib/audit/cashClosing";
 
-// Faza 2 — mbyllja ditore e arkës dhe bllokimi i ditëve të mbyllura.
+// Faza 2 — numërimi i arkave (çdo burim arka e vet) dhe gjetjet pas numërimit.
 // Kopje e përkohshme e prisma/test-copy.db (asnjëherë databaza reale).
 
 const SRC = path.resolve(__dirname, "../../../../prisma/test-copy.db");
 const TMP = path.join(os.tmpdir(), `cashclosing-test-${process.pid}-${Date.now()}.db`);
 let db: PrismaClient;
-let shk = 0, studentId = 0, departedId = 0;
+let shk = 0, ush = 0, studentId = 0, departedId = 0;
+let SHK: CashBox, USH: CashBox, UNI: CashBox;
+// Arka e Shkollimit si parazgjedhje në testet e zinxhirit
+const computeClosing = (d: PrismaClient, org: number, date: string) => computeBox(d, org, SHK, date);
+const createClosing = (d: PrismaClient, org: number, a: { id: number; name: string }, input: { date: string; countedCents: number }) => createBox(d, org, a, SHK, input);
 
 // Ditët e testit: 6, 5, 4, 3 ditë më parë (ora e Kosovës, në mesditë)
 const kosovoDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Belgrade" }).format(d);
@@ -34,6 +38,11 @@ beforeAll(async () => {
   await ensureAuditTriggers(db);
   await db.$executeRawUnsafe(`DELETE FROM "CashClosing"`);
   shk = (await db.paymentCategory.findFirstOrThrow({ where: { name: "Shkollimi" } })).id;
+  ush = (await db.paymentCategory.findFirstOrThrow({ where: { name: "Ushqimi" } })).id;
+  const boxes = await loadCashBoxes(db, 1);
+  SHK = boxes.find(b => b.key === `CAT:${shk}`)!;
+  USH = boxes.find(b => b.key === `CAT:${ush}`)!;
+  UNI = boxes.find(b => b.key === "UNIFORMA")!;
   const s = await db.student.findFirstOrThrow({ where: { status: "ACTIVE" } });
   studentId = s.id;
   departedId = (await db.student.create({ data: { firstName: "I", lastName: "Larguar", status: "INACTIVE", inactiveDate: D0.at } })).id;
@@ -45,7 +54,7 @@ afterAll(async () => {
 });
 
 describe("movementsOf (rregullat e efektit në arkë)", () => {
-  const scope: CashScope = { categoryIds: [4], includesShkollimi: true, foodKategoriIds: [7] };
+  const scope: CashBox = { key: "CAT:4", label: "Shkollimi", categoryId: 4, withShkollimiExtras: true, foodKategoriIds: [7] };
   it("pagesa e pjesshme: vetëm diferenca, në datën e re", () => {
     const m = movementsOf("Payment",
       { categoryId: 4, method: "CASH", paidAmount: 100, paidDate: Date.parse("2026-10-01T10:00:00Z") },
@@ -67,6 +76,19 @@ describe("movementsOf (rregullat e efektit në arkë)", () => {
   });
   it("kategori jashtë arkës (p.sh. Ushqimi) s'llogaritet", () => {
     expect(movementsOf("Payment", null, { categoryId: 5, method: "CASH", paidAmount: 10, paidDate: 0 }, scope)).toEqual([]);
+  });
+  it("arka e Ushqimit: vetëm pagesat dhe dorëzimet e veta — jo shpenzimet/të hyrat e Shkollimit", () => {
+    const food: CashBox = { key: "CAT:5", label: "Ushqimi", categoryId: 5, foodKategoriIds: [] };
+    expect(movementsOf("Payment", null, { categoryId: 5, method: "CASH", paidAmount: 10, paidDate: Date.parse("2026-10-01T10:00:00Z") }, food)).toEqual([{ cents: 1000, day: "2026-10-01", kind: "PAGESA" }]);
+    expect(movementsOf("Hyra", null, { kategoria: "SHKOLLIMI", metoda: "CASH", shuma: 5, createdAt: 0 }, food)).toEqual([]);
+    expect(movementsOf("Shpenzim", null, { kategoriId: 1, paguar: 1, metoda: "CASH", shuma: 5, data: 0, deletedAt: null }, food)).toEqual([]);
+  });
+  it("arka e Uniformave: pagesat cash të shitjeve hyjnë, dorëzimet dalin", () => {
+    const uni: CashBox = { key: "UNIFORMA", label: "Uniformat", module: "UNIFORMA", foodKategoriIds: [] };
+    expect(movementsOf("UniPayment", null, { amount: 25, method: "CASH", paidAt: Date.parse("2026-10-01T10:00:00Z") }, uni)).toEqual([{ cents: 2500, day: "2026-10-01", kind: "SHITJE" }]);
+    expect(movementsOf("UniPayment", null, { amount: 25, method: "BANK", paidAt: 0 }, uni)).toEqual([]);
+    expect(movementsOf("UniHandover", null, { amount: 10, handoverAt: Date.parse("2026-10-01T10:00:00Z") }, uni)).toEqual([{ cents: -1000, day: "2026-10-01", kind: "DOREZIM" }]);
+    expect(movementsOf("BookPayment", null, { amount: 25, method: "CASH", paidAt: 0 }, uni)).toEqual([]);
   });
 });
 
@@ -163,5 +185,44 @@ describe("verifikimi", () => {
     const v = await verifyClosing(db, 1, { id: 9003, name: "Drejtoresha" }, c.id, "ok");
     expect(v.verifiedByName).toBe("Drejtoresha");
     await expect(verifyClosing(db, 1, { id: 9004, name: "Tjetër" }, c.id)).rejects.toBeInstanceOf(ClosingError);
+  });
+});
+
+describe("arkat e ndara — secila numërohet më vete", () => {
+  it("pagesa e Ushqimit hyn vetëm te arka e Ushqimit, jo te e Shkollimit", async () => {
+    await createBox(db, 1, { id: 9001, name: "Arkëtarja" }, USH, { date: D0.key, countedCents: 0 });
+    const shkBefore = await computeBox(db, 1, SHK, D3.key);
+    await as(staff, () => db.payment.create({ data: { studentId, categoryId: ush, amount: 12, finalAmount: 12, dueDate: D3.at, paidDate: D3.at, paidAmount: 12, method: "CASH" } }));
+    expect((await computeBox(db, 1, USH, D3.key)).inCents).toBe(1200);
+    expect((await computeBox(db, 1, SHK, D3.key)).systemCents).toBe(shkBefore.systemCents);
+  });
+
+  it("ndryshimi pas numërimit shënohet vetëm për arkën që preket", async () => {
+    const p = await as(staff, () => db.payment.create({ data: { studentId, categoryId: ush, amount: 8, finalAmount: 8, dueDate: D0.at, paidDate: D0.at, paidAmount: 8, method: "CASH" } }));
+    const fs_ = await db.auditFinding.findMany({ where: { ruleCode: "ARKA_MBYLLUR", entityType: "Payment", entityId: p.id } });
+    expect(fs_).toHaveLength(1);
+    expect(fs_[0].fingerprint).toContain(USH.key);
+    expect(fs_[0].title).toContain("Ushqimi");
+  });
+
+  it("arka e Uniformave: shitja me pagesë cash (pagesa krijohet brenda shitjes) hyn te Uniformat dhe shënohet pas numërimit", async () => {
+    await createBox(db, 1, { id: 9001, name: "Arkëtarja" }, UNI, { date: D2.key, countedCents: 5000 });
+    const sale = await as(staff, () => db.uniSale.create({ data: {
+      customerName: "Prind", totalAmount: 30, totalCost: 20, profit: 10, paidAmount: 30, saleDate: D1.at,
+      payments: { create: { amount: 30, method: "CASH", paidAt: D1.at } },
+    } }));
+    const f = await db.auditFinding.findFirst({ where: { ruleCode: "ARKA_MBYLLUR", fingerprint: { contains: "UNIFORMA" } } });
+    expect(f?.amountCents).toBe(3000);
+    const c = await computeBox(db, 1, UNI, D3.key);
+    expect(c).toMatchObject({ openingCents: 5000, lateCents: 3000, systemCents: 8000 });
+    expect(sale.id).toBeGreaterThan(0);
+  });
+
+  it("çdo arkë ka zinxhirin e vet: e njëjta datë mund të numërohet në arka të ndryshme", async () => {
+    const a = await createBox(db, 1, { id: 9001, name: "Arkëtarja" }, USH, { date: D3.key, countedCents: 2000 });
+    // 12 € (D3) + 8 € e regjistruar pas numërimit të parë (D0) = 20 €
+    expect(a).toMatchObject({ box: USH.key, systemCents: 2000, diffCents: 0 });
+    const b = await createBox(db, 1, { id: 9001, name: "Arkëtarja" }, UNI, { date: D3.key, countedCents: 8000 });
+    expect(b.diffCents).toBe(0);
   });
 });

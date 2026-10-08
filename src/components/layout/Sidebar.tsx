@@ -43,7 +43,7 @@ const navSections = [
       { href: "/hyrat",     icon: TrendingUp,     label: "Të Hyrat",   roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/bilanci",    icon: Scale,          label: "Bilanci",      roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/investime",  icon: Building2,      label: "Investimet",   roles: ["ADMIN", "FINANCE"] as Role[] },
-      { href: "/arka",       icon: Vault,          label: "Mbyllja e Arkës", roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/arka",       icon: Vault,          label: "Numërimi i Arkave", roles: ["ADMIN", "FINANCE"] as Role[] },
     ],
   },
   {
