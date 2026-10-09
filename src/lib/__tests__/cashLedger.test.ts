@@ -138,9 +138,9 @@ describe("rakordimi: Pasqyra e vitit kundrejt arkës fizike", () => {
 
 describe("pamja e Dashboard-it: arka fizike, numërimet, rakordimi", () => {
   const at = (iso: string) => new Date(iso);
-  it("gjendja fillestare e supozuar 0 € më 31 gusht; vera s'hyn në arkën e vitit", () => {
+  it("gjendja më 31 gusht e panjohur (s'supozohet 0); vera s'hyn në arkën e vitit", () => {
     const v = buildPhysicalCashView([cashPay("2026-08-20", 300, 2026), cashPay("2026-09-02", 500)], { ay: 2026, today: "2026-10-09", counts: [], reconAY: 2026 });
-    expect(v.opening).toEqual({ day: "2026-08-31", cents: 0, assumed: true });
+    expect(v.opening).toEqual({ day: "2026-08-31", cents: null });
     expect(v.expectedCents).toBe(50000);
     expect(v.reconciliation!.outsideWindow.rows.map(r => r.reason)).toEqual(["lëvizi para 1 shtatorit (2026-08-20)"]);
     expect(v.reconciliation!.identityHolds).toBe(true);

@@ -234,7 +234,8 @@ export async function loadShkollimiMovements(db: Db, orgId = 1): Promise<LedgerM
 //
 // Arka fizike e vitit shkollor aktual: gjendja fillestare më 31 gusht + çdo
 // lëvizje cash me datë reale pas saj, deri sot. Pa numërim fillestar, gjendja
-// më 31 gusht merret 0 € dhe kjo thuhet hapur (`opening.assumed`). Çdo numërim
+// më 31 gusht është E PANJOHUR (`opening.cents = null`, "O"): shumat e pritura
+// janë atëherë "O + lëvizjet" dhe mungesat "të paktën". Çdo numërim
 // krahasohet me këtë shumë KUMULATIVE (jo me numërimin e kaluar), që një
 // mungesë të mos "zhduket" te numërimi i radhës — shpjegohet vetëm kur gjendet
 // shkaku (p.sh. një regjistrim i vonuar).
@@ -252,7 +253,7 @@ export interface CountCheck {
 export interface PhysicalCashView {
   ay: number;
   asOf: string;
-  opening: { day: string; cents: number; assumed: boolean };
+  opening: { day: string; cents: number | null }; // null = e panjohur (O) — shumat e pritura s'e përfshijnë
   expectedCents: number;
   inCents: number;
   outCents: number;
@@ -285,9 +286,9 @@ const toRow = (m: LedgerMovement, ay: number, kind: "outside" | "other"): ReconR
 
 /** Funksion i pastër: arka fizike e vitit `ay` deri më `today`, numërimet dhe rakordimi me Pasqyrën e vitit `reconAY`. */
 export function buildPhysicalCashView(movs: LedgerMovement[], o: { ay: number; today: string; counts: CountInput[]; reconAY: number | null; openingCents?: number }): PhysicalCashView {
-  const opening = { day: `${o.ay}-08-31`, cents: o.openingCents ?? 0, assumed: o.openingCents == null };
-  // Gjendje e supozuar, jo numërim: asgjë s'është "e vonuar" kundrejt saj.
-  const open: Opening = { day: opening.day, cents: opening.cents, recordedAt: Number.POSITIVE_INFINITY };
+  const opening = { day: `${o.ay}-08-31`, cents: o.openingCents ?? null };
+  // Pikënisje, jo numërim: asgjë s'është "e vonuar" kundrejt saj.
+  const open: Opening = { day: opening.day, cents: opening.cents ?? 0, recordedAt: Number.POSITIVE_INFINITY };
   const now = physicalBalance(movs, open, o.today);
 
   const counts = o.counts.map((c): CountCheck => {

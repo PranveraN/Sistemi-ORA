@@ -194,9 +194,11 @@ function PhysicalCashSection({ physical: p, yearView, lastCount, onCount }: {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 id="cf-phys" className="font-bold text-[#0F766E] dark:text-teal-300">Arka fizike – sot (sipas datës reale)</h3>
-          <p className={`text-[30px] leading-tight font-extrabold mt-1 ${p.expectedCents < 0 ? "text-red-700 dark:text-red-400" : "text-[#0F766E] dark:text-teal-300"}`}>{eur(p.expectedCents)}</p>
+          <p className={`text-[30px] leading-tight font-extrabold mt-1 ${p.expectedCents < 0 ? "text-red-700 dark:text-red-400" : "text-[#0F766E] dark:text-teal-300"}`}>
+            {eur(p.expectedCents)}{p.opening.cents == null && <span className="text-base font-bold"> + gjendja e {dmy(p.opening.day)}</span>}
+          </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Gjendja më {dmy(p.opening.day)}: {eur(p.opening.cents)}{p.opening.assumed && " (e supozuar — s'ka numërim të asaj dite)"}
+            Gjendja më {dmy(p.opening.day)}: {p.opening.cents == null ? "e panjohur (s'ka numërim të asaj dite)" : eur(p.opening.cents)}
             {" · "}hyrje cash {eur(p.inCents)} · dalje cash {eur(p.outCents)} · deri më {dmy(p.asOf)}
           </p>
           {p.futureCount > 0 && <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{p.futureCount} lëvizje me datë në të ardhmen s&apos;janë llogaritur ende.</p>}
@@ -208,7 +210,7 @@ function PhysicalCashSection({ physical: p, yearView, lastCount, onCount }: {
           </button>
           {lastCheck ? (
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 max-w-xs">
-              Numëruar më {dmy(lastCheck.day)}: {eur(lastCheck.countedCents)}, pritej {eur(lastCheck.expectedCents)} → {countVerdict(lastCheck.differenceCents / 100)}
+              Numëruar më {dmy(lastCheck.day)}: {eur(lastCheck.countedCents)}, pritej {eur(lastCheck.expectedCents)}{p.opening.cents == null && " + gjendja e 31.08"} → {p.opening.cents == null && lastCheck.differenceCents < 0 && "të paktën "}{countVerdict(lastCheck.differenceCents / 100)}
               {lastCheck.lateCents !== 0 && <> · me regjistrimet e vonuara ({signed(lastCheck.lateCents)}): {countVerdict(lastCheck.differenceNowCents / 100)}</>}
             </p>
           ) : lastCount && (
@@ -337,7 +339,7 @@ function CashCountModal({ year, yearType, system, onClose, onSaved }: {
             <label htmlFor="cc-amount" className="form-label">Sa para ke në arkë? (€)</label>
             <input id="cc-amount" ref={inputRef} inputMode="decimal" value={value} onChange={e => { setValue(e.target.value); setResult(null); }}
               className="form-input text-lg" placeholder="0,00" autoComplete="off" />
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Arka fizike sipas sistemit: {formatCurrency(system)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Arka fizike sipas sistemit: {formatCurrency(system)} + gjendja e 31.08 (e panjohur)</p>
           </div>
           {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           {result && (
