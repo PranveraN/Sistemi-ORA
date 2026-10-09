@@ -7,6 +7,7 @@ import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
 import { CYCLES, getCycle } from "@/lib/school-cycles";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { computeTiExpectedPrice } from "@/lib/timiInvestPricing";
 
 const PAYMENT_PLANS: { value: string; label: string }[] = [
   { value: "FULL",         label: "E plotë" },
@@ -1032,7 +1033,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                       const p = s.payment;
                       const isInactive = s.status === "INACTIVE";
                       const isFirstInactive = isInactive && (i === 0 || sorted[i - 1]?.status !== "INACTIVE");
-                      const hasMonthly = s.installments.some(p => p.description?.startsWith("MUAJI_"));
+                      const hasMonthly = s.installments.some(p => p.description?.startsWith("MUAJI_") || p.description?.startsWith("TI_MUAJI_"));
                       const hasFlex = s.installments.some(p => p.description?.startsWith("FLEX_"));
                       const hasTwo = !hasMonthly && !hasFlex && s.installments.length >= 2;
                       const rowNote = s.payment?.note ?? s.installments.find(p => p.note)?.note ?? null;
@@ -1116,7 +1117,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                             {hasMonthly && (
                               <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-medium">
                                 <CalendarDays className="w-3 h-3" />
-                                {s.installments.length} muaj
+                                {s.installments.some(p => p.description?.startsWith("TI_MUAJI_")) ? "TIMI · " : ""}{s.installments.length} muaj
                               </span>
                             )}
                             {hasTwo && (
@@ -1661,6 +1662,11 @@ function StatCard({ label, value, icon, bg, text }: {
 
 const SCHOOL_MONTHS_LBL = ["Shtator", "Tetor", "Nëntor", "Dhjetor", "Janar", "Shkurt", "Mars", "Prill", "Maj", "Qershor"];
 const SCHOOL_MONTH_CALS = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6];
+// Plani "TIMI Invest": 12 këste mujore, shtator–gusht (TIMI Invest paguan çdo muaj).
+// Rreshtat ruhen me përshkrimin "TI_MUAJI_1".."TI_MUAJI_12".
+const TI_PREFIX = "TI_MUAJI_";
+const TI_MONTHS_LBL = [...SCHOOL_MONTHS_LBL, "Korrik", "Gusht"];
+const TI_MONTH_CALS = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8];
 
 // Paralajmërim (jo bllokues) kur një Afat i shkruar dorazi bie jashtë vitit akademik
 // aktualisht të zgjedhur (1 Shtator schoolYearStart – 31 Gusht schoolYearStart+1) —
@@ -1770,9 +1776,12 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   const installments = student.installments;
 
   // Detect existing installment type
-  const isAlreadyMonthly = installments.some(p => p.description?.startsWith("MUAJI_"));
-  const isAlreadyFlex = !isAlreadyMonthly && installments.some(p => p.description?.startsWith("FLEX_"));
-  const isAlreadyTwo = !isAlreadyMonthly && !isAlreadyFlex && (
+  const isAlreadyTi = installments.some(p => p.description?.startsWith(TI_PREFIX));
+  const isAlreadyMonthly = !isAlreadyTi && installments.some(p => p.description?.startsWith("MUAJI_"));
+  // Plani mujor ose ai i TIMI Invest — të dy sillen njësoj për pjesën tjetër të dritares
+  const isMonthlyLike = isAlreadyMonthly || isAlreadyTi;
+  const isAlreadyFlex = !isMonthlyLike && installments.some(p => p.description?.startsWith("FLEX_"));
+  const isAlreadyTwo = !isMonthlyLike && !isAlreadyFlex && (
     installments.length >= 2 ||
     installments.some(p => p.description === "KESTI_1" || p.description === "KESTI_2")
   );
@@ -1791,13 +1800,13 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   // përsëritur "çmimi bazë nuk duhet të ndryshojë në asnjë rrethanë". Tani,
   // sapo ka këste reale, kjo fushë kyçet plotësisht — për të ndryshuar shumën
   // e vërtetë, modifiko drejtpërdrejt "Shuma e këstit" të çdo rreshti.
-  const hasExistingInstallmentPlan = isAlreadyTwo || isAlreadyMonthly || isAlreadyFlex;
+  const hasExistingInstallmentPlan = isAlreadyTwo || isMonthlyLike || isAlreadyFlex;
 
   // Single payment is the first one if it's not a KESTI/MUAJI/FLEX record
-  const singleExisting = !isAlreadyTwo && !isAlreadyMonthly && !isAlreadyFlex ? (installments[0] ?? null) : null;
+  const singleExisting = !isAlreadyTwo && !isMonthlyLike && !isAlreadyFlex ? (installments[0] ?? null) : null;
 
-  const [mode, setMode] = useState<"single" | "two" | "monthly" | "flex">(
-    isAlreadyMonthly ? "monthly" : isAlreadyFlex ? "flex" : isAlreadyTwo ? "two" : "single"
+  const [mode, setMode] = useState<"single" | "two" | "monthly" | "flex" | "timi">(
+    isAlreadyTi ? "timi" : isAlreadyMonthly ? "monthly" : isAlreadyFlex ? "flex" : isAlreadyTwo ? "two" : "single"
   );
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -1833,7 +1842,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     singleExisting ? singleExisting.amount :
     flexHeaderExisting ? flexHeaderExisting.amount :
     isAlreadyTwo && k1Existing && k2Existing ? round2(k1Existing.amount + k2Existing.amount) :
-    isAlreadyMonthly ? round2(installments.reduce((sum, p) => sum + p.amount, 0)) :
+    isMonthlyLike ? round2(installments.reduce((sum, p) => sum + p.amount, 0)) :
     flexLegacyRows.length > 0 ? round2(flexLegacyRows.reduce((sum, p) => sum + p.amount, 0)) :
     null;
 
@@ -1848,7 +1857,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   // të vërtetë të mbetur, jo kundrejt zeros.
   const existingTotalPaid: number =
     isAlreadyTwo && k1Existing && k2Existing ? round2(k1Existing.paidAmount + k2Existing.paidAmount) :
-    isAlreadyMonthly ? round2(installments.reduce((sum, p) => sum + p.paidAmount, 0)) :
+    isMonthlyLike ? round2(installments.reduce((sum, p) => sum + p.paidAmount, 0)) :
     isAlreadyFlex ? round2(installments.filter(p => p.description?.startsWith("FLEX_")).reduce((sum, p) => sum + p.paidAmount, 0)) :
     0;
 
@@ -1860,6 +1869,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   const existingInstallmentGroup: Payment[] =
     isAlreadyTwo && k1Existing && k2Existing ? [k1Existing, k2Existing] :
     isAlreadyMonthly ? installments.filter(p => p.description?.startsWith("MUAJI_")) :
+    isAlreadyTi ? installments.filter(p => p.description?.startsWith(TI_PREFIX)) :
     flexLegacyRows.length > 0 ? flexLegacyRows :
     [];
   const existingDiscountType: string | null =
@@ -1989,6 +1999,54 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
   function splitEvenly() {
     const perMonth = totalFinal > 0 ? Math.round((totalFinal / 10) * 100) / 100 : 0;
     setMForms(f => f.map(r => ({ ...r, portion: String(perMonth) })));
+  }
+
+  // ── TIMI Invest: 12 muaj (shtator–gusht), çmimi nga marrëveshja TIMI Invest ──
+  const tiPrice = student.timiInvest ? round2(computeTiExpectedPrice(student.timiInvest)) : null;
+  // Si te "Çdo Muaj": pagesat ekzistuese të një mënyre tjetër vendosen te muaji i afatit të tyre.
+  // Ato që s'përputhen me asnjë muaj (me para të paguara) ndalojnë ruajtjen — që të mos humbin.
+  const [tiInit] = useState(() => {
+    const yr0 = year > 0 ? year : new Date().getFullYear();
+    const carryOver = !isAlreadyTi ? installments : [];
+    const used = new Set<number>();
+    const rows = Array.from({ length: 12 }, (_, i) => {
+      const targetMonth = TI_MONTH_CALS[i];
+      const targetYear  = i < 4 ? yr0 : yr0 + 1;
+      const ex = installments.find(p => p.description === `${TI_PREFIX}${i + 1}`)
+        ?? carryOver.find(p => {
+          if (used.has(p.id)) return false;
+          const d = new Date(p.dueDate);
+          return d.getMonth() + 1 === targetMonth && d.getFullYear() === targetYear;
+        })
+        ?? null;
+      if (ex && carryOver.includes(ex)) used.add(ex.id);
+      return {
+        portion:    ex ? String(ex.finalAmount) : (tiPrice != null ? String(round2(tiPrice / 12)) : ""),
+        paidAmount: ex ? String(ex.paidAmount)  : "0",
+        paidDate:   ex?.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
+        dueDate:    ex?.dueDate  ? new Date(ex.dueDate).toISOString().split("T")[0]  : `${targetYear}-${String(targetMonth).padStart(2, "0")}-05`,
+        method:     ex?.method   ?? "",
+      };
+    });
+    const unmatchedPaid = carryOver.filter(p => p.paidAmount > 0 && !used.has(p.id) && p.description !== "FLEX_HEADER");
+    return { rows, unmatchedPaid };
+  });
+  const [tForms, setTForms] = useState(tiInit.rows);
+  function setT(idx: number, field: string, val: string) {
+    setTForms(f => f.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  }
+  function splitEvenlyTi() {
+    if (totalFinal <= 0) return;
+    const per = Math.round((totalFinal / 12) * 100) / 100;
+    const last = round2(totalFinal - per * 11); // mbetja e rrumbullakimit te muaji i fundit
+    setTForms(f => f.map((r, i) => ({ ...r, portion: String(i === 11 ? last : per) })));
+  }
+  // Kur zgjidhet plani për herë të parë: çmimi bazë dhe zbritja nga marrëveshja TIMI Invest
+  function selectTi() {
+    setMode("timi");
+    if (isAlreadyTi || !student.timiInvest || tiPrice == null) return;
+    const regular = student.timiInvest.regularPrice;
+    setForm(f => ({ ...f, amount: String(regular), discountType: "fixed", discount: String(round2(regular - tiPrice)), scholarship: "0" }));
   }
 
   const sPaid    = parseFloat(sForm.paidAmount || "0");
@@ -2121,7 +2179,12 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
       mode === "single"  ? [{ paid: sForm.paidAmount, method: sForm.method }] :
       mode === "two"     ? [{ paid: k1Form.paidAmount, method: k1Form.method }, { paid: k2Form.paidAmount, method: k2Form.method }] :
       mode === "monthly" ? mForms.map(r => ({ paid: r.paidAmount, method: r.method })) :
+      mode === "timi"    ? tForms.map(r => ({ paid: r.paidAmount, method: r.method })) :
                            flexRows.map(r => ({ paid: r.paidAmount, method: r.method }));
+    if (mode === "timi" && tiInit.unmatchedPaid.length > 0) {
+      setSaveError(`${tiInit.unmatchedPaid.length} pagesa ekzistuese s'përputhen me asnjë muaj të planit (afati jashtë shtator–gusht). Që të mos humbin, përdorni "Këste Fleksibël" ose korrigjoni afatet e tyre.`);
+      return;
+    }
     if (paidRows.some(r => (parseFloat(r.paid || "0") || 0) > 0 && !r.method)) {
       setSaveError("Zgjidhni mënyrën e pagesës (Cash ose Bankë) për çdo shumë të paguar.");
       return;
@@ -2296,6 +2359,47 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
           }
           if (i === lastPaidMonthIdx) receiptPaymentId = rid;
         }));
+      } else if (mode === "timi") {
+        // TIMI Invest — fshihen këstet e një mënyre tjetër (pagesat e tyre janë bartur te muajt)
+        if (!isAlreadyTi) {
+          const rs = await Promise.all(installments.map(p => fetch(`/api/payments/${p.id}`, planDelete)));
+          rs.forEach(noteFail);
+        }
+        const yr = year > 0 ? year : new Date().getFullYear();
+        const lastPaidIdx = tForms.reduce((last, f, i) => parseFloat(f.paidAmount || "0") > 0 ? i : last, -1);
+        await Promise.all(tForms.map(async (tf, i) => {
+          const ex = installments.find(p => p.description === `${TI_PREFIX}${i + 1}`) ?? null;
+          const split = splitGross(parseFloat(tf.portion || "0"), totalFinal, amount, form.discountType, discount, scholarship);
+          const payload = {
+            studentId:    student.id,
+            categoryId:   category.id,
+            amount:       split.amount,
+            discount:     split.discount,
+            discountType: form.discountType,
+            scholarship:  split.scholarship,
+            paidAmount:   parseFloat(tf.paidAmount || "0"),
+            method:       tf.method,
+            dueDate:      tf.dueDate,
+            paidDate:     tf.paidDate,
+            description:  `${TI_PREFIX}${i + 1}`,
+            note:         form.note || null,
+            month:        TI_MONTH_CALS[i],
+            year:         i < 4 ? yr : yr + 1,
+          };
+          let rid: number | undefined;
+          if (ex) {
+            const r = noteFail(await fetch(`/api/payments/${ex.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+            rid = r.ok ? ex.id : undefined;
+          } else {
+            const r = noteFail(await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+            if (r.ok) rid = (await r.json()).id;
+          }
+          if (i === lastPaidIdx) receiptPaymentId = rid;
+        }));
+        // Etiketa te kolona "Mënyra e pagesës"
+        if (student.paymentPlan !== "TIMI_INVEST") {
+          noteFail(await fetch(`/api/students/${student.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paymentPlan: "TIMI_INVEST" }) }));
+        }
       } else {
         // Flex mode — delete installments from a DIFFERENT mode if switching in
         if (!isAlreadyFlex) {
@@ -2396,6 +2500,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     mode === "single"  ? parseFloat(sForm.paidAmount || "0") > 0 :
     mode === "two"     ? (k1Paid > 0 || k2Paid > 0) :
     mode === "monthly" ? mForms.some(f => parseFloat(f.paidAmount || "0") > 0) :
+    mode === "timi"    ? tForms.some(f => parseFloat(f.paidAmount || "0") > 0) :
     mode === "flex"    ? flexRows.some(r => parseFloat(r.paidAmount || "0") > 0) :
     false;
 
@@ -2409,7 +2514,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-800 z-10">
           <div>
             <h3 className="font-bold text-slate-900 dark:text-white">
-              {mode === "two" ? "Pagesa me Dy Këste" : mode === "flex" ? "Pagesa me Këste Fleksibël" : (singleExisting ? "Modifiko Pagesën" : "Shto Pagesë")}
+              {mode === "two" ? "Pagesa me Dy Këste" : mode === "flex" ? "Pagesa me Këste Fleksibël" : mode === "timi" ? "Pagesa përmes TIMI Invest" : (singleExisting ? "Modifiko Pagesën" : "Shto Pagesë")}
             </h3>
             <p className="text-sm text-slate-400 mt-0.5">
               {student.firstName} {student.lastName}
@@ -2467,6 +2572,17 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
               >
                 <CalendarDays className="w-4 h-4" />
                 Këste Fleksibël
+              </button>
+              <button
+                onClick={selectTi}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  mode === "timi"
+                    ? "bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+              >
+                <CalendarDays className="w-4 h-4" />
+                TIMI Invest
               </button>
             </div>
           )}
@@ -2807,6 +2923,97 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
             );
           })()}
 
+          {/* ── TIMI INVEST: 12 muaj ── */}
+          {mode === "timi" && (() => {
+            const totalTAmount = tForms.reduce((s, f) => s + parseFloat(f.portion || "0"), 0);
+            const totalTPaid   = tForms.reduce((s, f) => s + parseFloat(f.paidAmount || "0"), 0);
+            return (
+              <div className="space-y-3">
+                <div className={`rounded-xl px-3 py-2 text-xs ${student.timiInvest ? "bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200" : "bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-200"}`}>
+                  {student.timiInvest
+                    ? <>Marrëveshja TIMI Invest: <b>{formatCurrency(tiPrice ?? 0)}</b> (çmimi {formatCurrency(student.timiInvest.regularPrice)}{student.timiInvest.discountPct ? ` − ${student.timiInvest.discountPct}%` : ""}{student.timiInvest.manualDiscAmt ? ` − ${formatCurrency(student.timiInvest.manualDiscAmt)}` : ""}) · {formatCurrency(round2((tiPrice ?? 0) / 12))}/muaj. Pagesat kalojnë te &quot;Verifikim&quot; derisa të konfirmohen.</>
+                    : <>Ky nxënës s&apos;është i lidhur me TIMI Invest — shkruani çmimin me dorë, ose lidheni te moduli TIMI Invest.</>}
+                </div>
+                {tiInit.unmatchedPaid.length > 0 && (
+                  <p className="rounded-xl px-3 py-2 text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300">
+                    {tiInit.unmatchedPaid.length} pagesa ekzistuese s&apos;përputhen me asnjë muaj (shtator–gusht) — që të mos humbin, përdorni &quot;Këste Fleksibël&quot;.
+                  </p>
+                )}
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">12 muaj (shtator–gusht)</p>
+                  <button onClick={splitEvenlyTi} className="text-xs text-primary-600 hover:underline">
+                    Ndaj njëlloj ({totalFinal > 0 ? formatCurrency(Math.round(totalFinal / 12 * 100) / 100) : "0 €"}/muaj)
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-slate-400 border-b border-slate-100 dark:border-slate-700">
+                        <th className="text-left pb-2 pr-2 font-medium">Muaji</th>
+                        <th className="pb-2 pr-2 font-medium">Shuma €</th>
+                        <th className="pb-2 pr-2 font-medium">Afati</th>
+                        <th className="pb-2 pr-2 font-medium">Paguar €</th>
+                        <th className="pb-2 pr-2 font-medium">Mënyra</th>
+                        <th className="pb-2 pr-2 font-medium">Statusi</th>
+                        <th className="pb-2 font-medium"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tForms.map((tf, i) => {
+                        const portionAmt = parseFloat(tf.portion || "0");
+                        const paidAmt    = parseFloat(tf.paidAmount || "0");
+                        const st = statusLabel(portionAmt, paidAmt, tf.dueDate);
+                        return (
+                          <tr key={i} className="border-b border-slate-100 dark:border-slate-700/50">
+                            <td className="py-1.5 pr-2 font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">{TI_MONTHS_LBL[i]}</td>
+                            <td className="py-1.5 pr-2">
+                              <input type="number" value={tf.portion} min="0" aria-label={`Shuma — ${TI_MONTHS_LBL[i]}`}
+                                onChange={e => setT(i, "portion", e.target.value)} className="form-input py-1 w-20 text-xs text-right" placeholder="0" />
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <input type="date" value={tf.dueDate} aria-label={`Afati — ${TI_MONTHS_LBL[i]}`}
+                                onChange={e => setT(i, "dueDate", e.target.value)} className="form-input py-1 text-xs" />
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <input type="number" value={tf.paidAmount} min="0" aria-label={`Paguar — ${TI_MONTHS_LBL[i]}`}
+                                onChange={e => setT(i, "paidAmount", e.target.value)} className="form-input py-1 w-20 text-xs text-right" placeholder="0" />
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <MethodSelect value={tf.method} onChange={v => setT(i, "method", v)} className="form-input py-1 text-xs" />
+                            </td>
+                            <td className={`py-1.5 pr-2 font-medium whitespace-nowrap ${st.color}`}>{st.label}</td>
+                            <td className="py-1.5">
+                              {portionAmt > 0 && paidAmt === 0 && (
+                                <button onClick={() => setTForms(f => f.map((r, j) => j === i ? { ...r, paidAmount: String(portionAmt), method: r.method || "BANK", paidDate: today } : r))}
+                                  className="text-green-600 dark:text-green-400 hover:underline text-xs whitespace-nowrap">
+                                  ✓ Pago
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl text-xs">
+                  <div>
+                    <p className="text-slate-400 mb-0.5">Total paguar</p>
+                    <p className="font-bold text-green-600">{formatCurrency(totalTPaid)}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 mb-0.5">Borxhi</p>
+                    <p className="font-bold text-red-600">{formatCurrency(Math.max(0, totalTAmount - totalTPaid))}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 mb-0.5">Total i 12 muajve</p>
+                    <p className={`font-bold ${Math.abs(totalTAmount - totalFinal) > 0.01 && totalFinal > 0 ? "text-amber-500" : "text-primary-600"}`}>{formatCurrency(totalTAmount)}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ── FLEX MODE ── */}
           {mode === "flex" && (
             <div className="space-y-3">
@@ -2892,7 +3099,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
           </button>
           <button onClick={() => handleSave(false)} disabled={saving} className="btn-secondary">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? "Duke ruajtur..." : mode === "two" ? "Ruaj Këste" : mode === "monthly" ? "Ruaj Muajt" : mode === "flex" ? "Ruaj Pagesat" : "Ruaj"}
+            {saving ? "Duke ruajtur..." : mode === "two" ? "Ruaj Këste" : mode === "monthly" || mode === "timi" ? "Ruaj Muajt" : mode === "flex" ? "Ruaj Pagesat" : "Ruaj"}
           </button>
           <button
             onClick={() => handleSave(true)}

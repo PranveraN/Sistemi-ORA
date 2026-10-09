@@ -58,6 +58,9 @@ function periodLabel(month: number | null, year: number | null, description: str
     const k = description.replace("KESTI_", "Kësti ");
     return year ? `${k} — ${year}` : k;
   }
+  if (description?.startsWith("TI_MUAJI_")) {
+    return `TIMI Invest — ${month ? MONTHS[month - 1] : ""} ${year ?? ""}`.trim();
+  }
   if (description?.startsWith("MUAJI_")) {
     const idx = parseInt(description.replace("MUAJI_", "")) - 1;
     return `Muaji ${MONTHS[idx] ?? ""} ${year ?? ""}`.trim();
