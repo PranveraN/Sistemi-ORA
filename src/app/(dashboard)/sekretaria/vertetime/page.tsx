@@ -65,10 +65,58 @@ function fmtDate(iso: string): string {
 
 function todayFmt(): string { return fmtDate(new Date().toISOString()); }
 
-function personLabel(p: Person): string {
-  if (isStaff(p)) return `${p.emri}${p.lenda ? ` – ${p.lenda}` : ""}`;
-  const s = p as Student;
-  return `${s.firstName} ${s.lastName}${s.class ? ` (${s.class.level})` : ""}`;
+// Kërkimi: pa theks (ë→e, ç→c), çdo fjalë e shkruar duhet të gjendet diku te
+// emri, mbiemri, klasa ose emri i prindit — p.sh. "amar 3" ose "amar ferati".
+const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+function personHaystack(p: Person): string {
+  if (isStaff(p)) return fold(`${p.emri} ${p.lenda ?? ""}`);
+  return fold(`${p.firstName} ${p.lastName} ${p.class?.name ?? ""} ${p.class?.level ?? ""} ${p.parentName ?? ""}`);
+}
+
+function PersonPicker({ persons, selId, onSelect }: { persons: Person[]; selId: number | null; onSelect: (id: number) => void }) {
+  const [q, setQ] = useState("");
+  const selected = selId != null ? persons.find(p => p.id === selId) ?? null : null;
+  const words = fold(q).split(/\s+/).filter(Boolean);
+  const matches = words.length ? persons.filter(p => { const h = personHaystack(p); return words.every(w => h.includes(w)); }) : [];
+
+  if (selected) {
+    return (
+      <div className="rounded-lg border border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-900/20 p-2.5 text-sm">
+        <p className="font-semibold text-slate-900 dark:text-white">{isStaff(selected) ? selected.emri : `${selected.firstName} ${selected.lastName}`}</p>
+        {!isStaff(selected) && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {selected.class?.name ?? "pa klasë"}{selected.parentName ? ` · prindi: ${selected.parentName}` : ""}
+          </p>
+        )}
+        <button type="button" onClick={() => { onSelect(0); setQ(""); }} className="mt-1.5 text-xs font-semibold text-primary-700 dark:text-primary-300 hover:underline">
+          Ndrysho
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <input className="input w-full text-sm" autoFocus value={q} onChange={e => setQ(e.target.value)}
+        placeholder="Shkruaj emrin ose mbiemrin…" aria-label="Kërko" />
+      {words.length > 0 && (
+        <ul className="mt-1.5 max-h-80 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+          {matches.length === 0 && <li className="px-2.5 py-2 text-xs text-slate-500">Asnjë rezultat</li>}
+          {matches.slice(0, 50).map(p => (
+            <li key={p.id}>
+              <button type="button" onClick={() => onSelect(p.id)}
+                className="w-full text-left px-2.5 py-2 hover:bg-primary-50 dark:hover:bg-slate-800">
+                <span className="block text-sm font-medium text-slate-900 dark:text-white">{isStaff(p) ? p.emri : `${p.firstName} ${p.lastName}`}</span>
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                  {isStaff(p) ? (p.lenda ?? "") : `${p.class?.name ?? "pa klasë"}${p.parentName ? ` · prindi: ${p.parentName}` : ""}`}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function makeTemplate(typeId: CertTypeId, p: Person): string {
@@ -388,13 +436,7 @@ export default function Vertetime() {
             <div className="w-60 flex-shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-y-auto p-4 space-y-4">
               <div>
                 <label className="label">{active.personSource === "student" ? "Nxënësi/ja" : "Anëtari i stafit"}</label>
-                <select className="input w-full text-sm" value={selId ?? ""}
-                  onChange={e => handleSelect(Number(e.target.value))}>
-                  <option value="">— Zgjidh —</option>
-                  {persons.map(p => (
-                    <option key={p.id} value={p.id}>{personLabel(p)}</option>
-                  ))}
-                </select>
+                <PersonPicker persons={persons} selId={selId} onSelect={handleSelect} />
               </div>
 
               <div>
