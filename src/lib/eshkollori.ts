@@ -25,9 +25,7 @@ export function requireEshkollori(session: unknown, write = false): Actor | Next
   if (u.role === "TEACHER" || !sessionHasModule(session, "eshkollori")) {
     return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
   }
-  if (write && u.role === "ADMIN") {
-    return NextResponse.json({ error: "Roli 'Admin' ka vetëm qasje shikimi." }, { status: 403 });
-  }
+  void write; // edhe Admini mund të shkruajë (që nga 2026-10-09)
   return { orgId: u.organizationId ?? 1, userId: Number(u.id), userName: u.name ?? null };
 }
 

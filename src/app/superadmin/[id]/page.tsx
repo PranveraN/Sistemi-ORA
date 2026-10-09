@@ -422,7 +422,7 @@ export default function OrgDetailPage() {
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <div>
               <h2 className="text-sm font-semibold">Lejet e Moduleve</h2>
-              <p className="text-xs text-gray-600 mt-0.5">Cilat module mund t&apos;i shohë/përdorë secili rol — Admin ka gjithsesi vetëm shikim, pavarësisht listës.</p>
+              <p className="text-xs text-gray-600 mt-0.5">Cilat module mund t&apos;i shohë/përdorë secili rol (shikim dhe ndryshim; Auditori vetëm shikim).</p>
             </div>
             <div className="flex items-center gap-2">
               {permMsg === "ok" && <span className="text-xs text-emerald-400">✓ U ruajt</span>}

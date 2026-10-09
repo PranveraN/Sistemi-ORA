@@ -37,7 +37,7 @@ export default function MaterialsModule() {
   const { tab, id } = parseMaterialsPath(pathname);
   const { data: session } = useSession();
   const role = (session?.user as { role?: string } | undefined)?.role;
-  const canAct = role === "SUPERADMIN" || role === "FINANCE"; // Admini: vetëm lexim
+  const canAct = role === "SUPERADMIN" || role === "FINANCE" || role === "ADMIN";
 
   const [requests, setRequests] = useState<MaterialRequestRow[]>([]);
   const [orders, setOrders] = useState<OrderRow[]>([]);

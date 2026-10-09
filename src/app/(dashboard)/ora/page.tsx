@@ -15,7 +15,7 @@ interface AdminData {
 }
 interface TestReport { cases: { id: string; name: string; pass: boolean; detail: string; skipped?: boolean }[]; passed: number; failed: number; skipped: number; ms: number }
 
-const ROLE_LABEL: Record<string, string> = { ADMIN: "Admin (vetëm shikim)", SECRETARY: "Sekretaria", FINANCE: "Financa", PEDAGOGIA: "Pedagogia" };
+const ROLE_LABEL: Record<string, string> = { ADMIN: "Admin", SECRETARY: "Sekretaria", FINANCE: "Financa", PEDAGOGIA: "Pedagogia" };
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   ANSWERED: { label: "Përgjigjur", cls: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
   UNANSWERED: { label: "Pa përgjigje", cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },

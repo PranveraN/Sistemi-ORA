@@ -74,17 +74,13 @@ export default auth((req) => {
   const role = (req.auth?.user as { role?: string })?.role;
   const allowedModules = (req.auth?.user as { allowedModules?: string[] })?.allowedModules ?? [];
 
-  // Roli "Admin" ka VETËM të drejtë shikimi — asnjë veprim shkrimi (krijim/
-  // ndryshim/fshirje), pavarësisht modulit. Zbatohet këtu, në një vend të
-  // vetëm, mbi çdo kërkesë API — jo e përsëritur në çdo skedar route.ts.
+  // Rregullat e roleve mbi çdo kërkesë API — në një vend të vetëm, jo të përsëritura
+  // në çdo skedar route.ts. (Roli "Admin" mund të shtojë dhe ndryshojë që nga
+  // 2026-10-09, me kërkesë të Pranverës — më parë ishte vetëm shikim.)
   if (nextUrl.pathname.startsWith("/api")) {
     // /api/auth/* (kyçja/daljja e vetë NextAuth-it) përjashtohet gjithmonë —
     // mekanizëm autentikimi, jo veprim mbi të dhëna, s'duhet bllokuar kurrë.
     const isAuthApi = nextUrl.pathname.startsWith("/api/auth");
-    if (!isAuthApi && isLoggedIn && role === "ADMIN" && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
-      return NextResponse.json({ error: "Roli 'Admin' ka vetëm qasje shikimi — ky veprim nuk lejohet." }, { status: 403 });
-    }
-
     // Roli "Auditor": vetëm lexim kudo — shkruan vetëm te Auditimi (statusi i
     // gjetjeve, komentet, "Ekzekuto tani"). Faza 4 e auditimit.
     if (!isAuthApi && isLoggedIn && role === "AUDITOR" && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS"

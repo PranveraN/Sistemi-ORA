@@ -2,13 +2,12 @@
 // përcaktohen. Përdoret si nga API (kontrolli real) ashtu edhe nga ndërfaqja
 // (vetëm për të mos shfaqur elemente; s'është mbrojtje në vetvete).
 //
-// Drejtoria: Super Admin, Admin (vetëm shikim — middleware bllokon shkrimin),
-// Pedagogia. Financa/Sekretaria s'i shohin. Mësuesit e klasave dhe asistentët
+// Drejtoria: Super Admin, Admin, Pedagogia (shikim dhe ndryshim). Financa/Sekretaria s'i shohin. Mësuesit e klasave dhe asistentët
 // s'kanë ende llogari në panelin e stafit — qasja e tyre mund të shtohet më
 // vonë përmes portalit të mësuesve.
 
 export const SPECIAL_CARE_VIEW_ROLES = ["SUPERADMIN", "ADMIN", "PEDAGOGIA"];
-export const SPECIAL_CARE_EDIT_ROLES = ["SUPERADMIN", "PEDAGOGIA"];
+export const SPECIAL_CARE_EDIT_ROLES = ["SUPERADMIN", "ADMIN", "PEDAGOGIA"];
 
 export function canViewSpecialCare(role: string | null | undefined): boolean {
   return !!role && SPECIAL_CARE_VIEW_ROLES.includes(role);

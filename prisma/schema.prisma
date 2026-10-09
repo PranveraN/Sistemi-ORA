@@ -46,7 +46,7 @@ model User {
   email          String       @unique
   name           String
   password       String
-  role           String       @default("SECRETARY") // ADMIN (vetëm shikim), FINANCE, SECRETARY, SUPERADMIN (qasje e plotë), TEACHER (portal i vet), PEDAGOGIA (module të konfigurueshme)
+  role           String       @default("SECRETARY") // ADMIN (shikim + shtim/ndryshim), FINANCE, SECRETARY, SUPERADMIN (qasje e plotë), TEACHER (portal i vet), PEDAGOGIA (module të konfigurueshme)
   active         Boolean      @default(true)
   organizationId Int          @default(1)
   organization   Organization @relation(fields: [organizationId], references: [id])

@@ -21,7 +21,7 @@ export async function GET() {
       ...summary,
       yearClosing: { ...summary.yearClosing, debtCount: canStudents ? summary.yearClosing.debtCount : null },
       permissions: {
-        canWrite: role !== "ADMIN", // Admini: vetëm shikim (i zbatuar edhe nga middleware)
+        canWrite: true, // edhe Admini mund të shtojë/ndryshojë (që nga 2026-10-09)
         classes: sessionHasModule(session, "classes"),
         arkiva: sessionHasModule(session, "arkiva"),
         students: canStudents,
