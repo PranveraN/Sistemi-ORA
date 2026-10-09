@@ -1923,3 +1923,23 @@ model ShpenzimPagese {
   @@index([shpenzimId])
   @@index([data])
 }
+
+// ── Arka fizike: transferet ndërmjet arkës dhe bankës ──
+// Depozitë (BOX_TO_BANK): paraja del nga arka dhe hyn në bankë — s'është shpenzim
+// dhe s'është dorëzim te një person. Tërheqje (BANK_TO_BOX): e kundërta.
+// Shumat në CENT. Data = data REALE e lëvizjes. Logjika: src/lib/cashLedger.ts
+model CashTransfer {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @default(1)
+  box            String   // arka: "CAT:<id>" (si te CashClosing)
+  direction      String   // BOX_TO_BANK, BANK_TO_BOX
+  amountCents    Int
+  date           DateTime
+  reference      String?
+  note           String?
+  createdById    Int?
+  createdByName  String?
+  createdAt      DateTime @default(now())
+
+  @@index([box, date])
+}
