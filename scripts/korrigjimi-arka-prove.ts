@@ -26,12 +26,12 @@ async function scenario(name: string, apply: (db: PrismaClient) => Promise<void>
   try { await apply(db); await measure(db, name); } finally { await db.$disconnect(); fs.unlinkSync(tmp); }
 }
 
-const fixYear = (db: PrismaClient) => Promise.all([
+const fixYear = async (db: PrismaClient): Promise<void> => { await Promise.all([
   db.payment.update({ where: { id: 386 }, data: { year: 2026 } }),
   db.payment.update({ where: { id: 370 }, data: { year: 2026 } }),
   db.payment.update({ where: { id: 1456 }, data: { year: 2026 } }),
   db.payment.update({ where: { id: 1457 }, data: { year: 2026 } }),
-]);
+]); };
 const fixHandovers = async (db: PrismaClient) => {
   // një rresht për çdo dorëzim real: data reale + viti shkollor si atribuim; dyfishimet e 25.08 hiqen
   await db.expense.update({ where: { id: 229 }, data: { date: new Date("2026-08-25T12:00:00Z"), month: 9, year: 2026 } });
