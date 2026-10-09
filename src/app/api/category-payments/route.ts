@@ -312,7 +312,10 @@ export async function GET(req: NextRequest) {
       handedOver,
       totalExpenses: shk ? shk.cash : totalExpenses,
       totalInvestments,
-      ...(shk ? {
+      // Pasqyra e Arkës vetëm për gjithë shkollën: me kërkim/klasë, pagesat cash
+      // janë vetëm të atyre nxënësve, kurse dorëzimet/shpenzimet të gjithë vitit —
+      // dilte gabimisht "Arka del negative" (p.sh. kërkimi "Medina", 2026-10-09).
+      ...(shk && !search && !classId ? {
         cashBox: {
           cash: Math.round(cashRevenue * 100) / 100,
           bank: Math.round(bankRevenue * 100) / 100,
