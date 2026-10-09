@@ -62,9 +62,10 @@ async function main() {
     const desc = (m?: LedgerMovement) => m ? `${dmy(m.day)} · arkë ${eur(m.boxCents)} · bankë ${eur(m.bankCents)}` : "—";
     for (const k of new Set([...om.keys(), ...byKey.keys()])) {
       const a = om.get(k), b = byKey.get(k);
-      const d = (b?.boxCents ?? 0) - (a?.boxCents ?? 0);
+      // efekti brenda periudhës nga 1 shtatori — edhe kur ndryshon vetëm data (p.sh. kalon në gusht)
       const inWin = (m?: LedgerMovement) => !!m && m.day >= FROM;
-      if (d !== 0 && (inWin(a) || inWin(b))) corrections.push({ key: k, label: (b ?? a)!.label, before: desc(a), after: desc(b), boxDelta: d });
+      const d = (inWin(b) ? b!.boxCents : 0) - (inWin(a) ? a!.boxCents : 0);
+      if (d !== 0) corrections.push({ key: k, label: (b ?? a)!.label, before: desc(a), after: desc(b), boxDelta: d });
     }
     for (const x of corrections) findings.push({ group: "KORRIGJUAR", title: "Ndryshuar në sistem pas kopjes së mëparshme", refs: `${x.key} ${x.label}`, evidence: `${x.before} → ${x.after}`, effectCents: x.boxDelta, affectsTotal: true });
   }
