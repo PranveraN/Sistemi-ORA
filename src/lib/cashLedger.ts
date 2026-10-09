@@ -29,7 +29,7 @@ export interface LedgerMovement {
   attributedAY: number | null; // viti shkollor (viti fillestar) sipas Pasqyrës së vitit
   inYearView: boolean;      // a e përfshin Pasqyra e vitit (p.sh. jo pagesat e pakonfirmuara)
   label: string;
-  flags?: string[];         // p.sh. "PA_METODE", "PA_DATE_PAGESE", "DATA_E_REGJISTRIMIT"
+  flags?: string[];         // p.sh. "PA_METODE", "PA_DATE_PAGESE", "DATA_E_REGJISTRIMIT", "PAKONFIRMUAR", "JO_AKTIV"
 }
 
 export interface Opening { day: string; cents: number; recordedAt: number }
@@ -153,9 +153,13 @@ export async function loadShkollimiMovements(db: Db, orgId = 1): Promise<LedgerM
     const when = p.paidDate ?? p.updatedAt;
     if (!p.paidDate) flags.push("PA_DATE_PAGESE");
     if (!p.method) flags.push("PA_METODE");
+    if (!p.confirmed) flags.push("PAKONFIRMUAR");
+    if (p.student.status !== "ACTIVE") flags.push("JO_AKTIV");
     const c = cents(p.paidAmount);
     out.push({
-      key: `P${p.id}`, source: "PAGESE", id: p.id, day: dayKey(when)!, recordedAt: p.createdAt.getTime(),
+      // Rreshti i detyrimit krijohet shpesh para pagesës (p.sh. 10.09, paguar 29.09):
+      // pagesa s'mund të jetë regjistruar para ditës së saj.
+      key: `P${p.id}`, source: "PAGESE", id: p.id, day: dayKey(when)!, recordedAt: Math.max(p.createdAt.getTime(), when.getTime()),
       boxCents: p.method === "CASH" ? c : 0, bankCents: isBankMethod(p.method) ? c : 0,
       attributedAY: academicYearOf(p.month, p.year),
       inYearView: p.confirmed && p.student.status === "ACTIVE",
@@ -224,4 +228,121 @@ export async function loadShkollimiMovements(db: Db, orgId = 1): Promise<LedgerM
     });
   }
   return out.sort((a, b) => a.day.localeCompare(b.day) || a.recordedAt - b.recordedAt);
+}
+
+// ── Pamja për Dashboard-in dhe "Numëro arkën" ──
+//
+// Arka fizike e vitit shkollor aktual: gjendja fillestare më 31 gusht + çdo
+// lëvizje cash me datë reale pas saj, deri sot. Pa numërim fillestar, gjendja
+// më 31 gusht merret 0 € dhe kjo thuhet hapur (`opening.assumed`). Çdo numërim
+// krahasohet me këtë shumë KUMULATIVE (jo me numërimin e kaluar), që një
+// mungesë të mos "zhduket" te numërimi i radhës — shpjegohet vetëm kur gjendet
+// shkaku (p.sh. një regjistrim i vonuar).
+
+export interface ReconRow { key: string; source: LedgerSource; id: number; day: string; label: string; cents: number; attributedAY: number | null; reason: string }
+export interface CountInput { id: number; at: Date; countedCents: number }
+export interface CountCheck {
+  id: number; at: string; day: string;
+  countedCents: number;
+  expectedCents: number;     // arka fizike sipas regjistrimeve që ekzistonin në atë çast
+  differenceCents: number;   // numëruar − pritur (negative = mungojnë)
+  lateCents: number;         // lëvizje me datë deri në atë ditë, të regjistruara PAS numërimit
+  differenceNowCents: number; // diferenca pasi llogariten edhe ato të vonuarat
+}
+export interface PhysicalCashView {
+  ay: number;
+  asOf: string;
+  opening: { day: string; cents: number; assumed: boolean };
+  expectedCents: number;
+  inCents: number;
+  outCents: number;
+  bankDeltaCents: number;
+  futureCount: number;
+  counts: CountCheck[];
+  reconciliation: {
+    ay: number;
+    yearViewCents: number;
+    physicalWindowCents: number;
+    identityHolds: boolean;
+    outsideWindow: { totalCents: number; rows: ReconRow[] };
+    otherYear: { totalCents: number; rows: ReconRow[] };
+  } | null;
+}
+
+const ayLabel = (ay: number) => `${ay}–${ay + 1}`;
+
+function reasonOf(m: LedgerMovement, ay: number, kind: "outside" | "other"): string {
+  if (kind === "outside") return m.day < ayWindow(ay).from ? `lëvizi para 1 shtatorit (${m.day})` : `lëvizi pas 31 gushtit (${m.day})`;
+  if (m.source === "TRANSFER") return "transfer arkë ↔ bankë (s'është e hyrë as shpenzim)";
+  if (!m.inYearView) return m.flags?.includes("PAKONFIRMUAR") ? "pagesë e pakonfirmuar" : "nxënës jo aktiv (s'hyn në Pasqyrë)";
+  if (m.attributedAY == null) return "pa vit shkollor";
+  return `i caktohet vitit ${ayLabel(m.attributedAY)}`;
+}
+
+const toRow = (m: LedgerMovement, ay: number, kind: "outside" | "other"): ReconRow => ({
+  key: m.key, source: m.source, id: m.id, day: m.day, label: m.label, cents: m.boxCents, attributedAY: m.attributedAY, reason: reasonOf(m, ay, kind),
+});
+
+/** Funksion i pastër: arka fizike e vitit `ay` deri më `today`, numërimet dhe rakordimi me Pasqyrën e vitit `reconAY`. */
+export function buildPhysicalCashView(movs: LedgerMovement[], o: { ay: number; today: string; counts: CountInput[]; reconAY: number | null; openingCents?: number }): PhysicalCashView {
+  const opening = { day: `${o.ay}-08-31`, cents: o.openingCents ?? 0, assumed: o.openingCents == null };
+  // Gjendje e supozuar, jo numërim: asgjë s'është "e vonuar" kundrejt saj.
+  const open: Opening = { day: opening.day, cents: opening.cents, recordedAt: Number.POSITIVE_INFINITY };
+  const now = physicalBalance(movs, open, o.today);
+
+  const counts = o.counts.map((c): CountCheck => {
+    const t = c.at.getTime(), day = dayKey(c.at)!;
+    const known = movs.filter(m => m.recordedAt <= t);
+    const expectedCents = physicalBalance(known, open, day).closingCents;
+    const lateCents = movs.filter(m => m.recordedAt > t && m.day > open.day && m.day <= day).reduce((s, m) => s + m.boxCents, 0);
+    return {
+      id: c.id, at: c.at.toISOString(), day, countedCents: c.countedCents, expectedCents,
+      differenceCents: c.countedCents - expectedCents, lateCents, differenceNowCents: c.countedCents - (expectedCents + lateCents),
+    };
+  });
+
+  let reconciliation: PhysicalCashView["reconciliation"] = null;
+  if (o.reconAY != null) {
+    const r = reconcileYearView(movs, o.reconAY);
+    const outside = r.attributedOutsideWindow.map(m => toRow(m, o.reconAY!, "outside"));
+    const other = r.inWindowOtherYear.map(m => toRow(m, o.reconAY!, "other"));
+    const sum = (a: ReconRow[]) => a.reduce((s, x) => s + x.cents, 0);
+    reconciliation = {
+      ay: r.ay, yearViewCents: r.yearViewCents, physicalWindowCents: r.physicalWindowCents, identityHolds: r.identityHolds,
+      outsideWindow: { totalCents: sum(outside), rows: outside },
+      otherYear: { totalCents: sum(other), rows: other },
+    };
+  }
+
+  return {
+    ay: o.ay, asOf: o.today, opening,
+    expectedCents: now.closingCents, inCents: now.inCents, outCents: now.outCents, bankDeltaCents: now.bankDeltaCents, futureCount: now.futureCount,
+    counts, reconciliation,
+  };
+}
+
+/**
+ * Arka fizike e Shkollimit (vetëm lexim). `reconAY` = viti shkollor i Pasqyrës që
+ * shihet (null për pamjen kalendarike). Numërimet: "Numëro arkën" (CashCount) dhe
+ * numërimet e arkës së Shkollimit te "Numërimi i Arkave" (CashClosing).
+ */
+export async function computePhysicalCash(
+  db: Db & Pick<PrismaClient, "cashCount" | "cashClosing">,
+  orgId: number, reconAY: number | null, now = new Date(),
+): Promise<PhysicalCashView | null> {
+  const cat = await db.paymentCategory.findFirst({ where: { name: "Shkollimi", organizationId: orgId }, select: { id: true } });
+  if (!cat) return null;
+  const today = dayKey(now)!;
+  const ay = academicYearOfDay(today);
+  const since = new Date(`${ay}-08-31T00:00:00Z`);
+  const [movs, cc, cl] = await Promise.all([
+    loadShkollimiMovements(db, orgId),
+    db.cashCount.findMany({ where: { organizationId: orgId, createdAt: { gte: since } }, orderBy: { createdAt: "asc" } }),
+    db.cashClosing.findMany({ where: { organizationId: orgId, box: `CAT:${cat.id}`, createdAt: { gte: since } }, orderBy: { createdAt: "asc" } }),
+  ]);
+  const counts: CountInput[] = [
+    ...cc.map(c => ({ id: c.id, at: c.createdAt, countedCents: cents(c.countedAmount) })),
+    ...cl.map(c => ({ id: -c.id, at: c.createdAt, countedCents: c.countedCents })),
+  ].sort((a, b) => a.at.getTime() - b.at.getTime());
+  return buildPhysicalCashView(movs, { ay, today, counts, reconAY });
 }

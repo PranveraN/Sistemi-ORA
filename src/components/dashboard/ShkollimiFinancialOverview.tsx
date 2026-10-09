@@ -12,6 +12,7 @@ import type { YearType } from "@/lib/academicYear";
 import TuitionGroupModal, { type TuitionGroupRow } from "./TuitionGroupModal";
 import ShkollimiCashFlow, { type LastCashCount } from "./ShkollimiCashFlow";
 import type { CashFlow } from "@/lib/cashFlow";
+import type { PhysicalCashView } from "@/lib/cashLedger";
 
 interface Row extends TuitionGroupRow { className: string | null }
 interface Bucket { count: number; amount: number; paidAmount: number; students: Row[] }
@@ -25,6 +26,7 @@ interface Overview {
   anomalies: { noPaymentNoTi: Bucket; missingPlan: Bucket; overpaid: Bucket; handoverGap: number };
   cashFlow: CashFlow;
   lastCashCount: LastCashCount | null;
+  physicalCash?: PhysicalCashView | null;
 }
 
 const DONUT_COLORS = { full: "#10b981", partial: "#f59e0b", tiPartial: "#3b82f6", tiUnpaid: "#8b5cf6", zero: "#a855f7" };
@@ -86,7 +88,7 @@ export default function ShkollimiFinancialOverview({ year, yearType }: { year: n
     <div className="space-y-4">
       <ShkollimiCashFlow label={data.period.label} year={year} yearType={yearType}
         expected={kpi.expected} totalStudents={kpi.totalStudents}
-        cashFlow={data.cashFlow} lastCashCount={data.lastCashCount} />
+        cashFlow={data.cashFlow} lastCashCount={data.lastCashCount} physical={data.physicalCash ?? null} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Donut */}

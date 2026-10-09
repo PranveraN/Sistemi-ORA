@@ -2,16 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Landmark, CheckCircle2, AlertTriangle, X, Loader2 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { CashFlow } from "@/lib/cashFlow";
+import type { PhysicalCashView, ReconRow } from "@/lib/cashLedger";
 import type { YearType } from "@/lib/academicYear";
 
 // "Pasqyra financiare e shkollimit": rreshti "Pagesat e nxënësve" dhe
 // "Ku janë paratë e paguara" + "Numëro arkën". Të dhënat vijnë nga
 // /api/dashboard/shkollimi-financiare (llogaritur në server, në cent).
+// Dy shifra krejt të ndara: "Mbetja sipas vitit" (çdo rresht te viti i vet
+// shkollor) dhe "Arka fizike" (sipas datës reale — src/lib/cashLedger.ts);
+// diferenca mes tyre shpjegohet rresht për rresht.
 
 const C = { cash: "#0F766E", bank: "#1D4ED8", handed: "#7C3AED", spent: "#C2410C", invest: "#A16207" };
 const num = (v: number) => new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
@@ -26,10 +29,10 @@ interface Props {
   totalStudents: number;
   cashFlow: CashFlow;
   lastCashCount: LastCashCount | null;
+  physical: PhysicalCashView | null;
 }
 
-export default function ShkollimiCashFlow({ label, year, yearType, expected, totalStudents, cashFlow: f, lastCashCount }: Props) {
-  const router = useRouter();
+export default function ShkollimiCashFlow({ label, year, yearType, expected, totalStudents, cashFlow: f, lastCashCount, physical }: Props) {
   const { data: session } = useSession();
   const isSuperAdmin = (session?.user as { role?: string } | undefined)?.role === "SUPERADMIN";
   const [countOpen, setCountOpen] = useState(false);
@@ -140,30 +143,19 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
             <p className="text-[22px] leading-tight font-extrabold text-slate-900 dark:text-white mt-1">{formatCurrency(f.investmentsCash)}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Investime të paguara cash</p>
           </CardLink>
-          {/* Në arkë — e theksuar; karta hap pagesat cash, butoni numërimin */}
-          <div role="link" tabIndex={0}
-            onClick={() => router.push(href("metoda=CASH"))}
-            onKeyDown={e => { if (e.key === "Enter") router.push(href("metoda=CASH")); }}
-            className="cursor-pointer rounded-xl border-2 border-[#0F766E] bg-teal-50/70 dark:bg-teal-950/30 p-4 hover:shadow-md transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]">
-            <Legend color={C.cash} label="Në arkë (te ti)" strong />
-            <p className={`text-[28px] leading-tight font-extrabold mt-1 ${f.inCashBox < 0 ? "text-red-700 dark:text-red-400" : "text-[#0F766E] dark:text-teal-300"}`}>{formatCurrency(f.inCashBox)}</p>
-            <button type="button" onClick={e => { e.stopPropagation(); setCountOpen(true); }} onKeyDown={e => e.stopPropagation()}
-              className="mt-2.5 h-9 px-3.5 rounded-lg border-2 border-[#0F766E] bg-white dark:bg-slate-900 text-sm font-bold text-[#0F766E] dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-slate-800">
-              Numëro arkën
-            </button>
-            {lastCount && (
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
-                Numëruar më {formatDate(lastCount.at)}: {countVerdict(lastCount.difference)}
-              </p>
-            )}
-          </div>
+          {/* Mbetja sipas vitit shkollor — jo arka fizike (ajo është më poshtë) */}
+          <CardLink href={href("metoda=CASH")}>
+            <Legend color={C.cash} label="Mbetja sipas vitit" />
+            <p className={`text-[22px] leading-tight font-extrabold mt-1 ${f.inCashBox < 0 ? "text-red-700 dark:text-red-400" : "text-slate-900 dark:text-white"}`}>{formatCurrency(f.inCashBox)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Cash i vitit {label} pa daljet e tij</p>
+          </CardLink>
         </div>
 
         {f.inCashBox < 0 && (
           <div role="note" className="mt-3 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm text-red-900 dark:text-red-200 space-y-1.5">
             <p className="flex items-start gap-2 font-bold">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
-              Arka del negative: janë regjistruar {formatCurrency(cashOut - cashIn)} më shumë dalje cash sesa hyrje cash.
+              Mbetja e vitit del negative: janë regjistruar {formatCurrency(cashOut - cashIn)} më shumë dalje cash sesa hyrje cash.
             </p>
             <p className="text-[13px]">Hyrje cash: {formatCurrency(cashIn)} (pagesat cash + të hyrat tjera cash) · Dalje cash: {formatCurrency(cashOut)} (dorëzime + shpenzime cash + investime cash).</p>
             <p className="text-[13px]">Para që hynë cash por s&apos;janë regjistruar si të tilla — zakonisht: pagesa cash të shënuara si Bankë ose pa metodë, pagesa nga nxënës të larguar ose të pakonfirmuara, ose dorëzime që përfshijnë para të vitit të kaluar.</p>
@@ -171,29 +163,95 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
           </div>
         )}
 
-        {f.balanced ? (
-          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/30 px-4 py-2.5 text-sm text-green-800 dark:text-green-300">
-            <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden />
-            <b>Bilanci përputhet:</b>
-            <span>{num(f.bank)} + {num(f.handedOver)} + {num(f.expensesCash)} + {num(f.investmentsCash)} + {num(f.inCashBox)} = {num(f.total)} €</span>
-          </div>
-        ) : (
-          <Link href={href("metoda=NONE")}
-            className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-orange-200 dark:border-orange-900 bg-orange-50 dark:bg-orange-950/30 px-4 py-2.5 text-sm text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900/30">
-            <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />
-            <b>Diferencë: {num(f.difference)} €</b>
-            <span>– {f.noMethod.count > 0 ? `${f.noMethod.count} pagesa pa metodë` : "kontrolloni pagesat dhe shpenzimet"}</span>
-            <span className="font-semibold">→ Shiko</span>
-          </Link>
-        )}
       </section>
 
+      <PhysicalCashSection physical={physical} yearView={f.inCashBox} lastCount={lastCount} onCount={() => setCountOpen(true)} />
+
       {countOpen && (
-        <CashCountModal year={year} yearType={yearType} system={f.inCashBox}
+        <CashCountModal year={year} yearType={yearType} system={physical ? physical.expectedCents / 100 : f.inCashBox}
           onClose={() => setCountOpen(false)}
           onSaved={c => setLastCount(c)} />
       )}
     </div>
+  );
+}
+
+const dmy = (day: string) => day.split("-").reverse().join(".");
+const eur = (c: number) => formatCurrency(c / 100);
+const signed = (c: number) => `${c < 0 ? "−" : "+"} ${num(Math.abs(c) / 100)} €`;
+
+// Arka fizike: gjendja fillestare më 31 gusht + çdo hyrje/dalje cash me datë
+// reale pas saj. Poshtë: pse ndryshon nga "Mbetja sipas vitit" — rresht për rresht.
+function PhysicalCashSection({ physical: p, yearView, lastCount, onCount }: {
+  physical: PhysicalCashView | null; yearView: number; lastCount: LastCashCount | null; onCount: () => void;
+}) {
+  if (!p) return null;
+  const r = p.reconciliation;
+  const lastCheck = p.counts.length > 0 ? p.counts[p.counts.length - 1] : null;
+  const yearViewMatches = !r || Math.round(yearView * 100) === r.yearViewCents;
+  return (
+    <section className="card p-4 sm:p-5 border-2 border-[#0F766E]" aria-labelledby="cf-phys">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 id="cf-phys" className="font-bold text-[#0F766E] dark:text-teal-300">Arka fizike – sot (sipas datës reale)</h3>
+          <p className={`text-[30px] leading-tight font-extrabold mt-1 ${p.expectedCents < 0 ? "text-red-700 dark:text-red-400" : "text-[#0F766E] dark:text-teal-300"}`}>{eur(p.expectedCents)}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Gjendja më {dmy(p.opening.day)}: {eur(p.opening.cents)}{p.opening.assumed && " (e supozuar — s'ka numërim të asaj dite)"}
+            {" · "}hyrje cash {eur(p.inCents)} · dalje cash {eur(p.outCents)} · deri më {dmy(p.asOf)}
+          </p>
+          {p.futureCount > 0 && <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{p.futureCount} lëvizje me datë në të ardhmen s&apos;janë llogaritur ende.</p>}
+        </div>
+        <div className="text-right">
+          <button type="button" onClick={onCount}
+            className="h-9 px-3.5 rounded-lg border-2 border-[#0F766E] bg-white dark:bg-slate-900 text-sm font-bold text-[#0F766E] dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-slate-800">
+            Numëro arkën
+          </button>
+          {lastCheck ? (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 max-w-xs">
+              Numëruar më {dmy(lastCheck.day)}: {eur(lastCheck.countedCents)}, pritej {eur(lastCheck.expectedCents)} → {countVerdict(lastCheck.differenceCents / 100)}
+              {lastCheck.lateCents !== 0 && <> · me regjistrimet e vonuara ({signed(lastCheck.lateCents)}): {countVerdict(lastCheck.differenceNowCents / 100)}</>}
+            </p>
+          ) : lastCount && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">Numëruar më {formatDate(lastCount.at)}: {countVerdict(lastCount.difference)}</p>
+          )}
+        </div>
+      </div>
+
+      {r && (
+        <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-4 py-3 text-sm space-y-2">
+          <p className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+            {r.identityHolds ? <CheckCircle2 className="w-4 h-4 text-green-700 dark:text-green-400 shrink-0" aria-hidden /> : <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" aria-hidden />}
+            Pse arka fizike ndryshon nga mbetja e vitit {r.ay}–{r.ay + 1}
+          </p>
+          <p className="text-slate-700 dark:text-slate-300">
+            Mbetja sipas vitit <b>{eur(r.yearViewCents)}</b>
+            {" "}{r.outsideWindow.totalCents >= 0 ? "−" : "+"} <b>{num(Math.abs(r.outsideWindow.totalCents) / 100)} €</b> (lëvizën jashtë 1 shtator – 31 gusht)
+            {" "}{r.otherYear.totalCents >= 0 ? "+" : "−"} <b>{num(Math.abs(r.otherYear.totalCents) / 100)} €</b> (lëvizën këtë vit, por i caktohen tjetërkujt)
+            {" "}= <b>{eur(r.physicalWindowCents)}</b> lëvizje të arkës fizike brenda vitit {r.identityHolds ? "✓" : "— nuk përputhet!"}
+          </p>
+          {!yearViewMatches && <p className="text-xs text-orange-700 dark:text-orange-400">Kujdes: mbetja e vitit e llogaritur këtu ({eur(r.yearViewCents)}) ndryshon nga karta më sipër ({formatCurrency(yearView)}).</p>}
+          <ReconList title="Lëvizën jashtë vitit (p.sh. pagesat e verës)" rows={r.outsideWindow.rows} />
+          <ReconList title="Lëvizën këtë vit, por i caktohen vitit tjetër ose s'hyjnë në Pasqyrë" rows={r.otherYear.rows} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReconList({ title, rows }: { title: string; rows: ReconRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <details className="rounded-lg bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700">
+      <summary className="cursor-pointer px-3 py-2 font-semibold text-slate-700 dark:text-slate-200">{title} — {rows.length} rreshta</summary>
+      <ul className="max-h-64 overflow-auto divide-y divide-slate-100 dark:divide-slate-700 text-[13px]">
+        {rows.map(x => (
+          <li key={x.key} className="px-3 py-1.5 flex justify-between gap-3">
+            <span className="text-slate-600 dark:text-slate-300">{dmy(x.day)} · {x.label} <span className="text-slate-400">— {x.reason}</span></span>
+            <span className={`font-semibold whitespace-nowrap ${x.cents < 0 ? "text-red-700 dark:text-red-400" : "text-slate-900 dark:text-white"}`}>{signed(x.cents)}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -223,7 +281,7 @@ function CardLink({ href, children }: { href: string; children: React.ReactNode 
   );
 }
 
-interface CountRow { id: number; createdAt: string; countedAmount: number; systemAmount: number; difference: number; userName: string | null }
+interface CountRow { id: number; createdAt: string; countedAmount: number; systemAmount: number; difference: number; userName: string | null; basis?: string | null }
 
 function CashCountModal({ year, yearType, system, onClose, onSaved }: {
   year: number; yearType: YearType; system: number; onClose: () => void; onSaved: (c: LastCashCount) => void;
@@ -279,7 +337,7 @@ function CashCountModal({ year, yearType, system, onClose, onSaved }: {
             <label htmlFor="cc-amount" className="form-label">Sa para ke në arkë? (€)</label>
             <input id="cc-amount" ref={inputRef} inputMode="decimal" value={value} onChange={e => { setValue(e.target.value); setResult(null); }}
               className="form-input text-lg" placeholder="0,00" autoComplete="off" />
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Sipas sistemit: {formatCurrency(system)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Arka fizike sipas sistemit: {formatCurrency(system)}</p>
           </div>
           {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           {result && (
@@ -303,6 +361,7 @@ function CashCountModal({ year, yearType, system, onClose, onSaved }: {
                   <span className="text-slate-600 dark:text-slate-300">
                     {formatDate(h.createdAt)} · {formatCurrency(h.countedAmount)}
                     {h.userName && <span className="text-slate-400"> · {h.userName}</span>}
+                    {h.basis !== "DATA_REALE" && <span className="block text-[11px] text-slate-400">krahasuar me Pasqyrën e vitit (logjika e vjetër)</span>}
                   </span>
                   <span className={`font-semibold whitespace-nowrap ${Math.abs(h.difference) < 0.005 ? "text-green-700 dark:text-green-400" : "text-orange-700 dark:text-orange-400"}`}>{countVerdict(h.difference)}</span>
                 </li>

@@ -5,6 +5,7 @@ import { computeTiExpectedPrice } from "@/lib/timiInvestPricing";
 import { expensePeriodWhereByDate } from "@/lib/expensePeriod";
 import { computeCashFlow, paymentChannel, toCents } from "@/lib/cashFlow";
 import { loadShkollimiExpenses, loadOtherCashIncome, loadCashInvestments } from "@/lib/shkollimiExpenses";
+import { computePhysicalCash } from "@/lib/cashLedger";
 
 interface Row { studentId: number; name: string; className: string | null; phone: string; amount: number }
 
@@ -36,7 +37,7 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
   if (yearType === "academic") hyraWhere.OR = months.map(m => ({ muaj: m.calMonth, vit: m.calYear }));
   else { hyraWhere.vit = year; }
 
-  const [activeStudents, tuitionRows, timiInvestLinks, handoverAgg, hyraAgg, shkExpenses, otherCashIncome, cashInvestments, lastCount] = await Promise.all([
+  const [activeStudents, tuitionRows, timiInvestLinks, handoverAgg, hyraAgg, shkExpenses, otherCashIncome, cashInvestments, lastCount, physicalCash] = await Promise.all([
     // Vetëm nxënësit REALISHT aktivë TANI (status="ACTIVE") — jo "aktivë
     // gjatë periudhës" (që përfshinte edhe dikë të larguar tashmë këtë vit).
     // I njëjti rregull si "Nxënës Aktivë"/"Nxënës Aktualë" te /api/dashboard
@@ -87,6 +88,9 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
     loadOtherCashIncome(0, year, yearType),
     loadCashInvestments(0, year, yearType),
     prisma.cashCount.findFirst({ where: { organizationId: orgId, yearLabel: label }, orderBy: { createdAt: "desc" } }),
+    // Arka fizike (sipas datës reale) — e ndarë nga "Në arkë" e vitit më sipër, që
+    // ndjek vitin shkollor të çdo rreshti. Rakordimi vetëm për pamjen akademike.
+    computePhysicalCash(prisma, orgId, yearType === "academic" ? year : null),
   ]);
 
   const tiById = new Map(timiInvestLinks.map(t => [t.studentId as number, t]));
@@ -239,6 +243,7 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
       profit,
     },
     cashFlow,
+    physicalCash,
     lastCashCount: lastCount && {
       at: lastCount.createdAt, counted: lastCount.countedAmount, system: lastCount.systemAmount,
       difference: lastCount.difference, userName: lastCount.userName,

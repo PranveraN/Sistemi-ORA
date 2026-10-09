@@ -1469,6 +1469,7 @@ model CashCount {
   countedAmount  Float    // shuma e numëruar
   systemAmount   Float    // "Në arkë" sipas sistemit në atë moment
   difference     Float    // countedAmount − systemAmount (negative = mungojnë)
+  basis          String?  // "DATA_REALE" = krahasuar me arkën fizike (src/lib/cashLedger.ts); null = me "Në arkë" të Pasqyrës së vitit (para 2026-10)
   userId         Int?
   userName       String?
   createdAt      DateTime @default(now())

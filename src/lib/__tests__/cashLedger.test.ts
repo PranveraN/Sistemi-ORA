@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import type { PrismaClient } from "@prisma/client";
-import { physicalBalance, reconcileYearView, academicYearOfDay, academicYearOf, type LedgerMovement } from "@/lib/cashLedger";
+import { physicalBalance, reconcileYearView, buildPhysicalCashView, academicYearOfDay, academicYearOf, type LedgerMovement } from "@/lib/cashLedger";
 
 // Arka fizike sipas datës reale (src/lib/cashLedger.ts). Pjesa 1: rregullat (funksione të
 // pastra). Pjesa 2: leximi nga databaza mbi një kopje të përkohshme të test-copy.db.
@@ -136,6 +136,57 @@ describe("rakordimi: Pasqyra e vitit kundrejt arkës fizike", () => {
   });
 });
 
+describe("pamja e Dashboard-it: arka fizike, numërimet, rakordimi", () => {
+  const at = (iso: string) => new Date(iso);
+  it("gjendja fillestare e supozuar 0 € më 31 gusht; vera s'hyn në arkën e vitit", () => {
+    const v = buildPhysicalCashView([cashPay("2026-08-20", 300, 2026), cashPay("2026-09-02", 500)], { ay: 2026, today: "2026-10-09", counts: [], reconAY: 2026 });
+    expect(v.opening).toEqual({ day: "2026-08-31", cents: 0, assumed: true });
+    expect(v.expectedCents).toBe(50000);
+    expect(v.reconciliation!.outsideWindow.rows.map(r => r.reason)).toEqual(["lëvizi para 1 shtatorit (2026-08-20)"]);
+    expect(v.reconciliation!.identityHolds).toBe(true);
+  });
+  it("Koprani: hyrja +6.600 dhe dorëzimi −6.600 në datën reale → arka fizike 0, pa asnjë hyrje të re", () => {
+    const movs = [cashPay("2026-09-29", 1100, 2027), cashPay("2026-09-29", 2000, 2027), cashPay("2026-09-30", 1800, 2027), cashPay("2026-09-30", 1700, 2027),
+      handover("2026-09-29", 6600, 2026)];
+    const v = buildPhysicalCashView(movs, { ay: 2026, today: "2026-10-09", counts: [], reconAY: 2026 });
+    expect(v.expectedCents).toBe(0);
+    expect(v.reconciliation!.yearViewCents).toBe(-660000);
+    expect(v.reconciliation!.otherYear.totalCents).toBe(660000);
+    expect(v.reconciliation!.otherYear.rows.every(r => r.reason === "i caktohet vitit 2027–2028")).toBe(true);
+    // Pasi dorëzimi lidhet me të njëjtin vit (2027–28): Pasqyra 2026–27 s'ka asnjërën, 2027–28 i ka të dyja (neto 0)
+    const linked = [...movs.slice(0, 4), handover("2026-09-29", 6600, 2027)];
+    expect(reconcileYearView(linked, 2026).yearViewCents).toBe(0);
+    expect(reconcileYearView(linked, 2027).yearViewCents).toBe(0);
+    expect(buildPhysicalCashView(linked, { ay: 2026, today: "2026-10-09", counts: [], reconAY: 2026 }).expectedCents).toBe(0);
+  });
+  it("numërimi krahasohet me regjistrimet e atij çasti; regjistrimet e vonuara e shpjegojnë diferencën më vonë", () => {
+    const pay = mv({ day: "2026-09-29", boxCents: 660000, attributedAY: 2027, recordedAt: Date.parse("2026-09-30T10:00:00Z") });
+    const late = mv({ day: "2026-09-29", source: "DOREZIM", boxCents: -660000, recordedAt: Date.parse("2026-10-06T10:00:00Z") });
+    const v = buildPhysicalCashView([pay, late], { ay: 2026, today: "2026-10-09", reconAY: null,
+      counts: [{ id: 1, at: at("2026-10-01T12:00:00Z"), countedCents: 0 }] });
+    expect(v.counts[0]).toMatchObject({ expectedCents: 660000, differenceCents: -660000, lateCents: -660000, differenceNowCents: 0 });
+    expect(v.reconciliation).toBeNull(); // pamja kalendarike: vetëm arka fizike
+  });
+  it("dorëzimi te një person ≠ depozitë në bankë", () => {
+    const base = [cashPay("2026-09-02", 1000)];
+    const toPerson = buildPhysicalCashView([...base, handover("2026-09-03", 400)], { ay: 2026, today: "2026-09-30", counts: [], reconAY: 2026 });
+    const toBank = buildPhysicalCashView([...base, deposit("2026-09-03", 400)], { ay: 2026, today: "2026-09-30", counts: [], reconAY: 2026 });
+    expect(toPerson.expectedCents).toBe(60000);
+    expect(toBank.expectedCents).toBe(60000);
+    expect(toPerson.bankDeltaCents).toBe(0);
+    expect(toBank.bankDeltaCents).toBe(40000);
+    expect(toPerson.reconciliation!.yearViewCents).toBe(60000);  // dorëzimi është dalje e vitit
+    expect(toBank.reconciliation!.yearViewCents).toBe(100000);   // depozita s'është dalje — paratë mbeten të shkollës
+  });
+  it("shpenzim retroaktiv: me datë para numërimit, i regjistruar pas tij", () => {
+    const exp = mv({ day: "2026-09-10", source: "SHPENZIM", boxCents: -5000, recordedAt: Date.parse("2026-09-20T10:00:00Z") });
+    const v = buildPhysicalCashView([cashPay("2026-09-05", 200), exp], { ay: 2026, today: "2026-09-30", reconAY: 2026,
+      counts: [{ id: 1, at: at("2026-09-15T16:00:00Z"), countedCents: 15000 }] });
+    expect(v.counts[0]).toMatchObject({ expectedCents: 20000, differenceCents: -5000, lateCents: -5000, differenceNowCents: 0 });
+    expect(v.expectedCents).toBe(15000);
+  });
+});
+
 // ── Pjesa 2: leximi nga databaza (kopje e përkohshme) ──
 const SRC = path.resolve(__dirname, "../../../prisma/test-copy.db");
 const TMP = path.join(os.tmpdir(), `cashledger-test-${process.pid}-${Date.now()}.db`);
@@ -174,5 +225,22 @@ describe("leximi i lëvizjeve nga databaza", () => {
     // Arka fizike e shtatorit 2031: +1.100 −1.100 −500 −25 = −525 € (kopja s'ka gjendje fillestare për 2031)
     const r = reconcileYearView(movs, 2031);
     expect(r.identityHolds).toBe(true);
+  });
+
+  it("pagesa e krijuar si detyrim më herët s'del 'e regjistruar' para ditës kur u pagua", async () => {
+    const p = await db.payment.create({ data: { studentId, categoryId: shk, amount: 850, finalAmount: 850, paidAmount: 850, method: "CASH", month: 11, year: 2032,
+      dueDate: new Date("2032-11-01"), paidDate: new Date("2032-09-29T10:00:00Z"), createdAt: new Date("2032-09-10T10:00:00Z") } });
+    const m = (await load(db)).find(x => x.key === `P${p.id}`)!;
+    expect(m.recordedAt).toBe(Date.parse("2032-09-29T10:00:00Z"));
+  });
+
+  it("computePhysicalCash lexon numërimet e 'Numëro arkën' dhe jep arkën fizike + rakordimin", async () => {
+    const { computePhysicalCash } = await import("@/lib/cashLedger");
+    const c = await db.cashCount.create({ data: { yearLabel: "2033–2034", countedAmount: 12.5, systemAmount: 0, difference: 0, basis: "DATA_REALE", createdAt: new Date("2033-09-05T10:00:00Z") } });
+    const v = (await computePhysicalCash(db, 1, 2033, new Date("2033-09-10T10:00:00Z")))!;
+    expect(v.ay).toBe(2033);
+    expect(v.counts.map(x => x.id)).toContain(c.id);
+    expect(v.counts.find(x => x.id === c.id)!.countedCents).toBe(1250);
+    expect(v.reconciliation!.identityHolds).toBe(true);
   });
 });
