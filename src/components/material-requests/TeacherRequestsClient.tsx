@@ -178,7 +178,8 @@ export default function TeacherRequestsClient() {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
         const f = d.field === "subject" ? "subject" : d.field === "reason" ? "reason" : d.field === "items" ? "items" : "form";
-        setErrors({ [f]: d.error || "Dërgimi dështoi. Provoni përsëri." });
+        // Pa mesazh nga serveri (p.sh. 502 kur serveri po riniset) — tregohet kodi, që të gjendet shkaku
+        setErrors({ [f]: d.error || `Dërgimi dështoi (gabim ${r.status}${r.status === 502 || r.status === 503 || r.status === 504 ? " — serveri s'u përgjigj, mund të jetë duke u rinisur" : ""}). Provoni përsëri pas pak.` });
         return;
       }
       setDone({ subject: subjects.find(s => String(s.id) === subjectId)?.name ?? "", items: list });
