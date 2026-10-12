@@ -199,8 +199,8 @@ export async function GET(req: NextRequest) {
       },
       _sum: { amount: true },
     }),
-    // Investimet — shih komentin te `investimDateWhere` (s'ka categoryId, ndaj
-    // përfshihen kudo, jo vetëm te Shkollimi).
+    // Investimet — shih komentin te `investimDateWhere` (s'ka categoryId); numërohen
+    // vetëm te Shkollimi (shih `totalInvestments` më poshtë).
     prisma.investim.aggregate({
       where: investimDateWhere(month ?? 0, year ?? 0, yearType),
       _sum: { vlera: true },
@@ -211,7 +211,10 @@ export async function GET(req: NextRequest) {
   }]));
   const handedOver = handoverAgg._sum.amount ?? 0;
   const totalExpenses = expenseAgg._sum.amount ?? 0;
-  const totalInvestments = investimAgg._sum.vlera ?? 0;
+  // Investimet i takojnë vetëm arkës së Shkollimit (paguhen me paratë e shkollimit) —
+  // jo Ushqimit/Eshkollorit etj. Më parë dilnin te çdo kategori dhe, te Ushqimi, i
+  // zbriteshin arkës edhe kur ishin paguar me bankë (p.sh. Panelet Solare 17.500 €).
+  const totalInvestments = categoryName === "Shkollimi" ? (investimAgg._sum.vlera ?? 0) : 0;
 
   // Harta e TIMI Invest (sipas studentId dhe emrit, si rezervë) — përdoret për
   // badge-in informativ "TI" te rreshti i nxënësit, DHE (poshtë) për të

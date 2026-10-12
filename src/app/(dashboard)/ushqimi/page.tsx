@@ -14,7 +14,7 @@ import {
   Search, CheckCircle, AlertCircle, Plus, X, Save,
   Users, Loader2, Printer, Calculator, ChevronDown, ChevronUp, Info,
   TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard, Trash2, Receipt, Send, Bot,
-  Wallet, Building2,
+  Wallet,
 } from "lucide-react";
 import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
@@ -905,11 +905,6 @@ export default function UshqimiPage() {
                   <p className="text-xl font-bold text-blue-600">{formatCurrency(yearCashStats?.handedOver ?? 0)}</p>
                   <p className="text-xs text-slate-400 mt-1">gjatë {yearType === "academic" ? `${effectiveYear}–${effectiveYear + 1}` : effectiveYear}</p>
                 </div>
-                <div className="card p-4">
-                  <p className="text-xs text-slate-400 mb-1">Investime</p>
-                  <p className="text-xl font-bold text-violet-600">{formatCurrency(yearCashStats?.totalInvestments ?? 0)}</p>
-                  <p className="text-xs text-slate-400 mt-1">gjatë {yearType === "academic" ? `${effectiveYear}–${effectiveYear + 1}` : effectiveYear}</p>
-                </div>
               </div>
 
               {/* Per-period breakdown */}
@@ -985,15 +980,6 @@ export default function UshqimiPage() {
                   <div>
                     <p className="text-xs text-slate-400">Sa kam shpenzuar</p>
                     <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{formatCurrency(yearCashStats.totalExpenses)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center shrink-0">
-                    <Building2 className="w-4.5 h-4.5 text-violet-600 dark:text-violet-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400">Investime</p>
-                    <p className="text-lg font-bold text-violet-600 dark:text-violet-400">{formatCurrency(yearCashStats.totalInvestments)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
