@@ -5,6 +5,7 @@ import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { Plus, X, Save, Loader2, Trash2, Pencil, Upload, Download } from "lucide-react";
 import * as XLSX from "xlsx";
+import SchoolYearSelect, { schoolYearLabel } from "@/components/finance/SchoolYearSelect";
 
 interface Expense {
   id: number;
@@ -15,6 +16,7 @@ interface Expense {
   date: string;
   method: string | null;
   reference: string | null;
+  academicYear?: number | null;
 }
 
 interface Props {
@@ -343,6 +345,7 @@ export default function ExpensesSection({ categoryId, type, month, year, yearTyp
                   <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
                   <td className="table-cell text-sm text-slate-600 dark:text-slate-300">
                     {formatDate(item.date)}
+                    {item.academicYear != null && <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" title="Për vitin shkollor">→ {schoolYearLabel(item.academicYear)}</span>}
                   </td>
                   <td className="table-cell font-medium text-slate-800 dark:text-slate-200">
                     {isHandover ? (item.recipient || "—") : (item.description || "—")}
@@ -420,6 +423,7 @@ function ExpenseModal({ type, categoryId, month, year, existing, onClose, onSave
       ? new Date(existing.date).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0]
   );
+  const [academicYear, setAcademicYear] = useState<number | null>(existing?.academicYear ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -440,6 +444,7 @@ function ExpenseModal({ type, categoryId, month, year, existing, onClose, onSave
       date,
       month,
       year,
+      academicYear,
     };
     try {
       const res = existing
@@ -513,6 +518,8 @@ function ExpenseModal({ type, categoryId, month, year, existing, onClose, onSave
               />
             </div>
           </div>
+
+          <SchoolYearSelect date={date} value={academicYear} onChange={setAcademicYear} />
 
           {/* Description / Recipient */}
           {isHandover ? (

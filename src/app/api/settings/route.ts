@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { schoolYearText } from "@/lib/academicYear";
 
 const DEFAULTS: Record<string, string> = {
   schoolName:    "Akademia Ora",
@@ -9,7 +10,7 @@ const DEFAULTS: Record<string, string> = {
   schoolEmail:   "",
   schoolNipt:    "",
   schoolUniqueNumber: "",
-  schoolYear:    "2025/2026",
+  schoolYear:    schoolYearText(),
   schoolWebsite: "",
   timiInvestEnabled: "true",
   enrollmentOpen: "true", // A pranohen aplikime të reja te /apliko (formulari publik i regjistrimit)

@@ -30,6 +30,7 @@ export async function PUT(
       date,
       month: date.getMonth() + 1,
       year:  date.getFullYear(),
+      ...(body.academicYear !== undefined ? { academicYear: Number.isInteger(body.academicYear) ? body.academicYear : null } : {}),
     },
   });
 

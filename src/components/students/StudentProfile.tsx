@@ -9,8 +9,9 @@ import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, Graduatio
 import { buildObligationMessage, buildSummaryMessage, type Obligation } from "@/lib/notificationTemplates";
 import { useModuleAccess } from "@/lib/useModuleAccess";
 import TimiInvestCard from "@/components/students/TimiInvestCard";
+import ProfilePaymentRows, { type ProfilePayment } from "@/components/students/ProfilePaymentRows";
 
-interface Payment {
+interface Payment extends ProfilePayment {
   id: number;
   amount: number;
   finalAmount: number;
@@ -882,6 +883,10 @@ export default function StudentProfile({ student }: { student: Student }) {
                       </p>
                     </div>
                   </div>
+                  {payments.some(p => p.category.name === g.categoryName) && (
+                    <ProfilePaymentRows rows={payments.filter(p => p.category.name === g.categoryName)}
+                      canEdit={canAccess("/payments")} onChanged={() => router.refresh()} />
+                  )}
                 </div>
               ))}
             </div>

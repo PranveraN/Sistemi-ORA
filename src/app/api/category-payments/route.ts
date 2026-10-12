@@ -114,6 +114,10 @@ export async function GET(req: NextRequest) {
       paymentFilter.OR = [
         { month: { gte: 9 }, year },
         { month: { lte: 8 }, year: year + 1 },
+        // Rreshta të vjetër pa muaj (p.sh. Feuzan Hajrizi, Adena Vila — pranverë 2026):
+        // s'binin në asnjë vit dhe s'mund të hapeshin për ndreqje. Tani shfaqen
+        // te viti i Afatit të tyre; ruajtja e radhës u vendos muajin/vitin.
+        { month: null, dueDate: { gte: new Date(Date.UTC(year, 8, 1)), lt: new Date(Date.UTC(year + 1, 8, 1)) } },
       ];
     } else {
       // Kalendarik "Të gjitha" → grupohet sipas datës REALE të arkëtimit (paidDate),
@@ -312,7 +316,10 @@ export async function GET(req: NextRequest) {
       handedOver,
       totalExpenses: shk ? shk.cash : totalExpenses,
       totalInvestments,
-      ...(shk ? {
+      // Pasqyra e Arkës vetëm për gjithë shkollën: me kërkim/klasë, pagesat cash
+      // janë vetëm të atyre nxënësve, kurse dorëzimet/shpenzimet të gjithë vitit —
+      // dilte gabimisht "Arka del negative" (p.sh. kërkimi "Medina", 2026-10-09).
+      ...(shk && !search && !classId ? {
         cashBox: {
           cash: Math.round(cashRevenue * 100) / 100,
           bank: Math.round(bankRevenue * 100) / 100,

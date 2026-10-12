@@ -1773,7 +1773,15 @@ function monthYearFromDateStr(dateStr: string): { month: number; year: number } 
 
 function PaymentModal({ student, category, month, year, onClose, onSave, overrideAmount, singlePaymentOnly = false }: ModalProps) {
   const today = new Date().toISOString().split("T")[0];
-  const installments = student.installments;
+  // "FLEX_HEADER" bosh (pa asnjë pagesë) i mbetur pas ndërrimit nga Fleksibël te
+  // një plan tjetër — p.sh. Medina Jahaj (2026-10-09): koka e fleksibëlit mbeti
+  // pranë KESTI_1/KESTI_2, dritarja e lexonte planin si "Fleksibël" dhe i fshihte
+  // këstet (s'mund të fshiheshin as të ndryshoheshin). Injorohet këtu dhe fshihet
+  // te ruajtja e radhës (shih `staleFlexHeaders` te handleSave).
+  const hasOtherPlanRows = student.installments.some(p => !p.description?.startsWith("FLEX_"));
+  const onlyEmptyFlexHeaders = student.installments.filter(p => p.description?.startsWith("FLEX_")).every(p => p.description === "FLEX_HEADER" && p.paidAmount === 0);
+  const orphanFlexHeaders = hasOtherPlanRows && onlyEmptyFlexHeaders ? student.installments.filter(p => p.description === "FLEX_HEADER") : [];
+  const installments = orphanFlexHeaders.length ? student.installments.filter(p => p.description !== "FLEX_HEADER") : student.installments;
 
   // Detect existing installment type
   const isAlreadyTi = installments.some(p => p.description?.startsWith(TI_PREFIX));
@@ -2199,8 +2207,18 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
     function noteFail(r: Response) { if (!r.ok) failed = true; return r; }
     // Këstet e mënyrës së vjetër fshihen kur ndryshohet plani — arsyeja ruhet te gjurma e auditimit
     const planDelete = { method: "DELETE", headers: reasonHeaders(`Ndryshim i planit të pagesës (${mode})`) };
+    // Koka bosh e Fleksibëlit s'duhet të mbetet pas ndërrimit te një plan tjetër
+    // (shih `orphanFlexHeaders`). Fshihet vetëm kur s'ka asnjë pagesë fleksibël me para.
+    const staleFlexHeaders = mode === "flex"
+      ? orphanFlexHeaders
+      : onlyEmptyFlexHeaders ? student.installments.filter(p => p.description === "FLEX_HEADER") : [];
 
     try {
+      if (staleFlexHeaders.length) {
+        const rs = await Promise.all(staleFlexHeaders.map(p => fetch(`/api/payments/${p.id}`, planDelete)));
+        rs.forEach(noteFail);
+      }
+
       if (mode === "single") {
         // If switching from two-installment to single: delete both old ones
         if (isAlreadyTwo) {

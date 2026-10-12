@@ -23,7 +23,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const profature = await prisma.timiInvestInvoice.findUnique({ where: { id: parseInt(id) } });
   if (!profature) return NextResponse.json({ error: "Profatura nuk u gjet" }, { status: 404 });
 
-  if (profature.regularInvoiceId) {
+  // E konvertuar më parë — lejohet sërish vetëm nëse ajo faturë është anuluar
+  // (p.sh. faturat e vjetra "një për fëmijë" të zëvendësuara me një faturë familjeje).
+  const previous = profature.regularInvoiceId
+    ? await prisma.invoice.findUnique({ where: { id: profature.regularInvoiceId }, select: { status: true } })
+    : null;
+  if (profature.regularInvoiceId && previous && previous.status !== "CANCELLED") {
     return NextResponse.json(
       { error: "Kjo profaturë është konvertuar tashmë", invoiceId: profature.regularInvoiceId },
       { status: 400 }
@@ -87,67 +92,50 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const primaryStudentId = resolved[0].studentId!;
 
-  // Profatura mund të mbulojë disa fëmijë (motra/vëllezër), secili me studentId
-  // TË VET — por Invoice mban VETËM NJË studentId. Më parë, gjithçka i shkonte
-  // fëmijës së parë, dhe borxhi i motrës/vëllait tjetër zhdukej fare nga
-  // llogaria e tij. Tani grupohen artikujt sipas fëmijës real dhe krijohet
-  // NJË FATURË E VEÇANTË për secilin, që borxhi t'i shkojë saktë secilit.
-  const byStudent = new Map<number, ProfatureItem[]>();
-  for (let i = 0; i < items.length; i++) {
-    const sid = resolved[i].studentId!;
-    if (!byStudent.has(sid)) byStudent.set(sid, []);
-    byStudent.get(sid)!.push(items[i]);
-  }
-
+  // Profatura mund të mbulojë disa fëmijë (motra/vëllezër): krijohet NJË faturë e
+  // prindit, me çdo zë të lidhur me fëmijën e vet (InvoiceItem.studentId) — si
+  // faturat e familjes te "Faturë e Re". (Më parë: një faturë për çdo fëmijë, dhe
+  // "Fatura e Rregullt" çonte vetëm te e para — p.sh. Ramiz Kelmendi, 2026-10-12.)
+  // Borxhi i nxënësve llogaritet nga pagesat, jo nga faturat.
   try {
-    const invoices = await prisma.$transaction(async tx => {
+    const invoice = await prisma.$transaction(async tx => {
       const prefix = "FAT";
       const year = new Date().getFullYear();
       const last = await tx.invoice.findFirst({
         where: { number: { startsWith: `${prefix}-${year}-` }, organizationId: orgId },
         orderBy: { number: "desc" },
       });
-      let seq = last ? parseInt(last.number.split("-").pop() || "0") : 0;
-
-      const created = [];
-      for (const [studentId, groupItems] of byStudent) {
-        seq += 1;
-        const number = `${prefix}-${year}-${String(seq).padStart(4, "0")}`;
-        const subtotal = groupItems.reduce((s, it) => s + it.finalAmount, 0);
-
-        const inv = await tx.invoice.create({
-          data: {
-            number,
-            type: "INVOICE",
-            studentId,
-            organizationId: orgId,
-            subtotal,
-            vatRate: 0,
-            vatAmount: 0,
-            total: subtotal,
-            status: "DRAFT",
-            notes: `Konvertuar nga Profaturë Timi Invest ${profature.number}${profature.notes ? ` — ${profature.notes}` : ""}`,
-            items: {
-              create: groupItems.map(it => ({
-                description: it.name,
-                quantity: 1,
-                unitPrice: it.finalAmount,
-                total: it.finalAmount,
-              })),
-            },
+      const seq = (last ? parseInt(last.number.split("-").pop() || "0") : 0) + 1;
+      const number = `${prefix}-${year}-${String(seq).padStart(4, "0")}`;
+      const subtotal = items.reduce((s, it) => s + it.finalAmount, 0);
+      const inv = await tx.invoice.create({
+        data: {
+          number,
+          type: "INVOICE",
+          studentId: primaryStudentId,
+          organizationId: orgId,
+          subtotal,
+          vatRate: 0,
+          vatAmount: 0,
+          total: subtotal,
+          status: "DRAFT",
+          notes: `Konvertuar nga Profaturë Timi Invest ${profature.number}${profature.notes ? ` — ${profature.notes}` : ""}`,
+          items: {
+            create: items.map((it, i) => ({
+              studentId: resolved[i].studentId,
+              description: it.name,
+              quantity: 1,
+              regularPrice: it.regularPrice ?? it.finalAmount,
+              discountPct: it.discountPct ?? 0,
+              unitPrice: it.finalAmount,
+              total: it.finalAmount,
+            })),
           },
-          include: { items: true, student: true },
-        });
-        created.push(inv);
-      }
-
-      const primaryInvoice = created.find(inv => inv.studentId === primaryStudentId) ?? created[0];
-      await tx.timiInvestInvoice.update({
-        where: { id: profature.id },
-        data: { regularInvoiceId: primaryInvoice.id },
+        },
+        include: { items: true, student: true },
       });
-
-      return created;
+      await tx.timiInvestInvoice.update({ where: { id: profature.id }, data: { regularInvoiceId: inv.id } });
+      return inv;
     });
 
     const userId = parseInt((session.user as { id?: string })?.id ?? "0");
@@ -157,14 +145,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           userId,
           action: "CREATE",
           entity: "Invoice",
-          entityId: invoices[0].id,
-          details: `Konvertoi profaturën Timi Invest ${profature.number} në ${invoices.length > 1 ? `${invoices.length} fatura (${invoices.map(i => i.number).join(", ")})` : `faturën ${invoices[0].number}`}`,
+          entityId: invoice.id,
+          details: `Konvertoi profaturën Timi Invest ${profature.number} në faturën ${invoice.number} (${items.length} ${items.length === 1 ? "fëmijë" : "fëmijë bashkë"})`,
         },
       });
     }
 
-    const primaryInvoice = invoices.find(inv => inv.studentId === primaryStudentId) ?? invoices[0];
-    return NextResponse.json({ ...primaryInvoice, invoices }, { status: 201 });
+    return NextResponse.json({ ...invoice, invoices: [invoice] }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

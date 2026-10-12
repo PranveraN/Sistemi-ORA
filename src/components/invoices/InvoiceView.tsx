@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft, Printer, Download, Send, ArrowRightLeft, Mail, Pencil } from "lucide-react";
+import { ChevronLeft, Printer, Download, Send, ArrowRightLeft, Mail, Pencil, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
@@ -465,6 +465,18 @@ ${notesBlock}
               <Pencil className="w-4 h-4" />
               Modifiko
             </Link>
+          )}
+          {invoice.status !== "PAID" && invoice.status !== "CANCELLED" && (
+            // Anulim (jo fshirje): numri i faturës mbetet në histori — p.sh. dy fatura
+            // të veçanta të fëmijëve që u zëvendësuan me një faturë familjeje.
+            <button
+              onClick={() => { if (confirm(`Anulo faturën ${invoice.number}? Mbetet në histori si "e anuluar" dhe s'mund të ndryshohet më.`)) updateStatus("CANCELLED"); }}
+              disabled={updatingStatus}
+              className="btn-secondary text-red-600 dark:text-red-400"
+            >
+              <X className="w-4 h-4" />
+              Anulo faturën
+            </button>
           )}
           {invoice.status !== "PAID" && invoice.status !== "CANCELLED" && (
             <button onClick={() => setShowEmailModal(true)} className="btn-secondary" title={parentEmail ? `Dërgo te ${parentEmail}` : "S'ka email të regjistruar për prindin"}>

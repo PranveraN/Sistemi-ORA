@@ -79,6 +79,8 @@ export async function POST(req: NextRequest) {
         date,
         month: date.getMonth() + 1,
         year:  date.getFullYear(),
+        // "Për vitin shkollor" — vetëm kur zgjidhet (null = sipas datës)
+        academicYear: Number.isInteger(body.academicYear) ? body.academicYear : null,
       },
     });
 

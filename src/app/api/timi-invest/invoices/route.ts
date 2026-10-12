@@ -13,7 +13,10 @@ export async function GET() {
   const invoices = await prisma.timiInvestInvoice.findMany({
     orderBy: { createdAt: "desc" },
   });
-  return NextResponse.json(invoices);
+  // Fatura e rregullt e anuluar → profatura shfaqet sërish me "Konverto"
+  const linked = invoices.map(i => i.regularInvoiceId).filter((x): x is number => x != null);
+  const cancelled = new Set((await prisma.invoice.findMany({ where: { id: { in: linked }, status: "CANCELLED" }, select: { id: true } })).map(i => i.id));
+  return NextResponse.json(invoices.map(i => (i.regularInvoiceId && cancelled.has(i.regularInvoiceId) ? { ...i, regularInvoiceId: null } : i)));
 }
 
 export async function POST(req: NextRequest) {

@@ -9,6 +9,7 @@ import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { Plus, Trash2, Edit, X, Save, Settings, TrendingDown, Calendar, BarChart3, Download, Upload, Loader2, History, Undo2, FileUp, Check, Combine, RotateCcw } from "lucide-react";
 import { MONTHS } from "@/lib/utils";
 import * as XLSX from "xlsx";
+import SchoolYearSelect, { schoolYearLabel, schoolYearOfDate } from "@/components/finance/SchoolYearSelect";
 
 interface Kategori {
   id: number;
@@ -35,6 +36,7 @@ interface Shpenzim {
   nrFiskal: string | null;
   kategori: Kategori;
   dataDokumentit?: string | null;
+  vitiShkollor?: number | null;
   createdAt?: string;
   deletedAt?: string | null;
   deletedByName?: string | null;
@@ -134,7 +136,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
   const [form, setForm] = useState({
     kategoriId: "", shuma: "", pershkrim: "", marres: "",
     data: now.toISOString().split("T")[0], metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true,
-    nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "",
+    nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "", vitiShkollor: null as number | null,
   });
   const [sipartnerSuggestions, setSipartnerSuggestions] = useState<Sipartner[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -331,7 +333,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
 
   function openNew() {
     setEditId(null);
-    setForm({ kategoriId: kategorite[0]?.id ? String(kategorite[0].id) : "", shuma: "", pershkrim: "", marres: "", data: now.toISOString().split("T")[0], metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true, nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "" });
+    setForm({ kategoriId: kategorite[0]?.id ? String(kategorite[0].id) : "", shuma: "", pershkrim: "", marres: "", data: now.toISOString().split("T")[0], metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true, nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "", vitiShkollor: null });
     setSipartnerSuggestions([]);
     setShowSuggestions(false);
     setShowModal(true);
@@ -347,6 +349,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
       docType: s.docType || "KUPON", lloji: s.lloji || "ZYRE", paguar: s.paguar,
       nrFature: s.nrFature || "", emriBiznesit: s.emriBiznesit || "", nrFiskal: s.nrFiskal || "",
       dataDokumentit: s.dataDokumentit ? new Date(s.dataDokumentit).toISOString().split("T")[0] : "",
+      vitiShkollor: s.vitiShkollor ?? null,
     });
     setSipartnerSuggestions([]);
     setShowSuggestions(false);
@@ -643,7 +646,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
       kategoriId: String(cellModal.kategoriId), shuma: "", pershkrim: "", marres: "",
       data: new Date(cellModal.year, cellModal.month - 1, 1).toISOString().split("T")[0],
       metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true,
-      nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "",
+      nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "", vitiShkollor: null,
     });
     setSipartnerSuggestions([]);
     setShowSuggestions(false);
@@ -1078,6 +1081,15 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                     </button>
                   </div>
 
+                  {/* Për vitin shkollor */}
+                  <select aria-label="Për vitin shkollor" defaultValue=""
+                    onChange={e => { const v = e.target.value; e.target.value = ""; if (!v) return; const y = v === "auto" ? null : parseInt(v); bulkPatch({ vitiShkollor: y }, y == null ? "Viti shkollor: sipas datës" : `Për vitin shkollor ${schoolYearLabel(y)}`); }}
+                    className="px-2 py-1 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                    <option value="">🎓 Për vitin shkollor…</option>
+                    {[0, 1, 2].map(d => { const y0 = (schoolYearOfDate(new Date().toISOString().slice(0, 10)) ?? new Date().getFullYear()) - 1 + d; return <option key={y0} value={y0}>{schoolYearLabel(y0)}</option>; })}
+                    <option value="auto">Sipas datës</option>
+                  </select>
+
                   {/* Statusi */}
                   <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 text-xs font-semibold">
                     <button onClick={() => bulkPatch({ paguar: true }, "Shëno si Paguar")}
@@ -1147,6 +1159,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                           <div className="flex items-center gap-1.5">
                             <Calendar className="w-3 h-3" />
                             {formatDate(s.data)}
+                            {s.vitiShkollor != null && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" title="Për vitin shkollor">→ {schoolYearLabel(s.vitiShkollor)}</span>}
                           </div>
                         </td>
                         <td className="table-cell">
@@ -1634,6 +1647,8 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
                   </select>
                 </div>
               </div>
+
+              <SchoolYearSelect id="sh-viti" date={form.data} value={form.vitiShkollor} onChange={v => setForm(f => ({ ...f, vitiShkollor: v }))} />
 
               {/* 3. Përshkrimi */}
               <div>
