@@ -59,6 +59,18 @@ export function shkollimiPeriodRange(month: number, year: number, yearType: Year
   return null;
 }
 
+/**
+ * Filtri i periudhës për Shpenzim. Pamja "vit shkollor" (të gjithë muajt): fatura me
+ * "Për vitin shkollor" (`vitiShkollor`) i takon atij viti, pavarësisht datës (p.sh. faturë
+ * e gushtit e paguar me pagesat e hershme të 2026–27). Muajt dhe viti kalendarik: data reale.
+ */
+export function shpenzimPeriodWhere(month: number, year: number, yearType: YearType): Record<string, unknown> {
+  const range = shkollimiPeriodRange(month, year, yearType);
+  if (!range) return {};
+  if (yearType === "academic" && !(month > 0)) return { OR: [{ vitiShkollor: year }, { vitiShkollor: null, data: range }] };
+  return { data: range };
+}
+
 export const isCashMethod = (m: string | null | undefined) => !m || m === "CASH";
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
@@ -66,7 +78,7 @@ export async function loadShkollimiExpenses(categoryId: number | null, month: nu
   const range = shkollimiPeriodRange(month, year, yearType);
   const [shp, legacy, pagesat] = await Promise.all([
     prisma.shpenzim.findMany({
-      where: { ...ACTIVE_SHPENZIM, ...(range ? { data: range } : {}) },
+      where: { ...ACTIVE_SHPENZIM, ...shpenzimPeriodWhere(month, year, yearType) },
       include: { kategori: { select: { id: true, emri: true, fusha: true } } },
       orderBy: { data: "desc" },
     }),

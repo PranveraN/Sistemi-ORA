@@ -50,6 +50,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       nrFiskal:     body.nrFiskal     ?? null,
       ...(body.dataDokumentit !== undefined ? { dataDokumentit: body.dataDokumentit ? new Date(body.dataDokumentit) : null } : {}),
       ...(body.paguar !== undefined ? { paguar: body.paguar !== false } : {}),
+      ...(body.vitiShkollor !== undefined ? { vitiShkollor: Number.isInteger(body.vitiShkollor) ? body.vitiShkollor : null } : {}),
     },
   });
 

@@ -27,8 +27,9 @@ export async function GET(req: NextRequest) {
       lte: new Date(y, m, 0, 23, 59, 59),
     };
   } else if (year && academic) {
-    // Viti akademik: 1 Shtator i vitit → 31 Gusht i vitit tjetër
-    where.data = { gte: new Date(parseInt(year), 8, 1), lt: new Date(parseInt(year) + 1, 8, 1) };
+    // Viti akademik: 1 Shtator i vitit → 31 Gusht i vitit tjetër — ose "Për vitin shkollor" i shënuar
+    const y = parseInt(year);
+    where.OR = [{ vitiShkollor: y }, { vitiShkollor: null, data: { gte: new Date(y, 8, 1), lt: new Date(y + 1, 8, 1) } }];
   } else if (year) {
     where.data = {
       gte: new Date(parseInt(year), 0, 1),
@@ -84,6 +85,7 @@ export async function POST(req: NextRequest) {
       emriBiznesit: body.emriBiznesit || null,
       nrFiskal:     body.nrFiskal     || null,
       dataDokumentit: body.dataDokumentit ? new Date(body.dataDokumentit) : null,
+      vitiShkollor: Number.isInteger(body.vitiShkollor) ? body.vitiShkollor : null,
     },
     include: { kategori: true },
   });

@@ -534,6 +534,9 @@ model Expense {
   reference   String?
   month       Int?
   year        Int?
+  // "Për vitin shkollor" (viti fillestar: 2026 = 2026–27) — p.sh. dorëzim i gushtit me paratë e
+  // pagesave të hershme të 2026–27. null = sipas datës. Vlen vetëm për pamjen "vit shkollor".
+  academicYear Int?
   // Shpenzimet e Shkollimit u bartën te tabela Shpenzim — rreshti mbetet (arkiv), me lidhje te i riu
   migratedToShpenzimId Int?
   createdAt   DateTime        @default(now())
@@ -583,6 +586,9 @@ model Shpenzim {
   emriBiznesit String?          // emri i biznesit/furnitorit
   nrFiskal     String?          // numri fiskal i biznesit
   dataDokumentit DateTime?      // data e shkruar në faturë/kupon (`data` = data e regjistrimit/pagesës)
+  // "Për vitin shkollor" (viti fillestar: 2026 = 2026–27) — p.sh. faturë e gushtit e paguar me
+  // pagesat e hershme të 2026–27. null = sipas datës. Vlen vetëm për pamjen "vit shkollor".
+  vitiShkollor  Int?
   // Pagesa pjesë-pjesë: true që nga pagesa e parë pjesore — atëherë fatura s'llogaritet
   // vetë si e paguar; llogariten vetëm pagesat e saj (ShpenzimPagese), secila në datën
   // dhe me metodën e vet. `paguar` mbahet në sinkron (true kur pagesat mbulojnë shumën).
