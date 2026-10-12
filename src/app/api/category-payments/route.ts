@@ -252,7 +252,7 @@ export async function GET(req: NextRequest) {
     for (const s of activeStudents) for (const p of s.payments) {
       if (!p.confirmed || p.paidAmount <= 0) continue;
       const ch = paymentChannel(p.method);
-      if (ch === "cash") cashRevenue += p.paidAmount; else if (ch === "banke") bankRevenue += p.paidAmount; else noMethodRevenue += p.paidAmount;
+      if (ch === "cash") cashRevenue += p.paidAmount; else if (ch === "banke") bankRevenue += p.paidAmount; else if (ch !== "kompensim") noMethodRevenue += p.paidAmount;
     }
     shk = (await loadShkollimiExpenses(category.id, month ?? 0, year ?? 0, yearType)).totals;
     otherCash = (await loadOtherCashIncome(month ?? 0, year ?? 0, yearType)).cash;

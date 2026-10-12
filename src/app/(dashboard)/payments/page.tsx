@@ -44,7 +44,7 @@ export default function PaymentsPage() {
     const res = await fetch(`/api/payments?${params}`);
     if (!res.ok) { alert("Eksporti dështoi."); return; }
     const all: Payment[] = (await res.json()).payments || [];
-    const method = (m: string | null) => m === "CASH" ? "Cash" : m === "BANK" ? "Bankë" : m === "CARD" ? "Kartelë" : m === "ONLINE" ? "Online" : "";
+    const method = (m: string | null) => m === "CASH" ? "Cash" : m === "BANK" ? "Bankë" : m === "CARD" ? "Kartelë" : m === "ONLINE" ? "Online" : m === "KOMPENSIM" ? "Kompensim" : "";
     exportToExcel<Payment>("Pagesat", [
       { header: "Nxënësi", value: p => `${p.student.firstName} ${p.student.lastName}`, width: 26 },
       { header: "Kategoria", value: p => p.category.name, width: 18 },

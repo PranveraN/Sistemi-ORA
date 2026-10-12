@@ -998,7 +998,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                             <option value={METODA_NONE}>Pa metodë</option>
                             {uniqueMetoda.map(m => (
                               <option key={m} value={m}>
-                                {m === "CASH" ? "Cash" : m === "BANK" ? "Bankë" : m === "CARD" ? "Kartelë" : m === "ONLINE" ? "Online" : m}
+                                {m === "CASH" ? "Cash" : m === "BANK" ? "Bankë" : m === "CARD" ? "Kartelë" : m === "ONLINE" ? "Online" : m === "KOMPENSIM" ? "Kompensim" : m}
                               </option>
                             ))}
                           </select>
@@ -3297,6 +3297,8 @@ function MethodSelect({ value, onChange, className }: { value: string; onChange:
       <option value="BANK">Bankë</option>
       {value === "CARD" && <option value="CARD">Kartelë</option>}
       {value === "ONLINE" && <option value="ONLINE">Online</option>}
+      {/* Kompensim/marrëveshje: e paguar pa para — s'hyn as në arkë, as në bankë */}
+      <option value="KOMPENSIM">Kompensim (marrëveshje)</option>
     </select>
   );
 }

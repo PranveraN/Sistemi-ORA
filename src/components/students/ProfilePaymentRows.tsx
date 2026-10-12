@@ -92,7 +92,7 @@ export default function ProfilePaymentRows({ rows, canEdit, onChanged }: { rows:
                     </td>
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">{formatCurrency(p.finalAmount)}{p.amount !== p.finalAmount && <span className="block text-[10px] text-slate-400 line-through">{formatCurrency(p.amount)}</span>}</td>
                     <td className="px-2 py-1.5 text-right whitespace-nowrap text-green-700 dark:text-green-400">{formatCurrency(p.paidAmount)}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap text-slate-600 dark:text-slate-300">{p.paidAmount > 0 ? `${p.method === "BANK" ? "Bankë" : p.method === "CASH" ? "Cash" : p.method ?? "—"} · ${p.paidDate ? formatDate(p.paidDate) : "—"}` : "—"}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap text-slate-600 dark:text-slate-300">{p.paidAmount > 0 ? `${p.method === "BANK" ? "Bankë" : p.method === "CASH" ? "Cash" : p.method === "KOMPENSIM" ? "Kompensim" : p.method ?? "—"} · ${p.paidDate ? formatDate(p.paidDate) : "—"}` : "—"}</td>
                     {canEdit && (
                       <td className="px-2 py-1.5 whitespace-nowrap text-right">
                         <button type="button" onClick={() => setEditing(p)} title="Ndrysho" className="p-1 rounded text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-700"><Pencil className="w-3.5 h-3.5" /></button>
@@ -180,6 +180,7 @@ function EditModal({ p, onClose, onSaved }: { p: ProfilePayment; onClose: () => 
               <select className="form-input" value={f.method} onChange={set("method")}>
                 <option value="">— Zgjidh —</option><option value="CASH">Cash</option><option value="BANK">Bankë</option>
                 {p.method === "CARD" && <option value="CARD">Kartelë</option>}{p.method === "ONLINE" && <option value="ONLINE">Online</option>}
+                <option value="KOMPENSIM">Kompensim (marrëveshje)</option>
               </select>
             </label>
             {paid > 0 && <label className="col-span-2"><span className="form-label">Data e pagesës</span><input type="date" className="form-input" value={f.paidDate} onChange={set("paidDate")} /></label>}

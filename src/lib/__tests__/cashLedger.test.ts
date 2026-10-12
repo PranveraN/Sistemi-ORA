@@ -227,6 +227,19 @@ describe("leximi i lëvizjeve nga databaza", () => {
     expect(r.identityHolds).toBe(true);
   });
 
+  it("pagesa me Kompensim (marrëveshje): e paguar, por s'hyn as në arkë, as në bankë", async () => {
+    const p = await db.payment.create({ data: { studentId, categoryId: shk, amount: 1710, finalAmount: 1710, paidAmount: 1710, method: "KOMPENSIM", month: 9, year: 2032,
+      dueDate: new Date("2032-09-17"), paidDate: new Date("2032-09-17T10:00:00Z") } });
+    const m = (await load(db)).find(x => x.key === `P${p.id}`)!;
+    expect(m).toMatchObject({ boxCents: 0, bankCents: 0, attributedAY: 2032 });
+    const { computeCashFlow, paymentChannel } = await import("@/lib/cashFlow");
+    expect(paymentChannel("KOMPENSIM")).toBe("kompensim");
+    const f = computeCashFlow({ cashCents: 100000, bankCents: 0, noMethodCents: 0, noMethodCount: 0, compensationCents: 171000, expensesCashCents: 0, handedOverCents: 0 });
+    expect(f.paid).toBe(2710);
+    expect(f.inCashBox).toBe(1000);
+    expect(f.balanced).toBe(true);
+  });
+
   it("pagesa e krijuar si detyrim më herët s'del 'e regjistruar' para ditës kur u pagua", async () => {
     const p = await db.payment.create({ data: { studentId, categoryId: shk, amount: 850, finalAmount: 850, paidAmount: 850, method: "CASH", month: 11, year: 2032,
       dueDate: new Date("2032-11-01"), paidDate: new Date("2032-09-29T10:00:00Z"), createdAt: new Date("2032-09-10T10:00:00Z") } });

@@ -77,6 +77,7 @@ function methodLabel(m: string | null) {
   if (m === "BANK")   return "Bankë";
   if (m === "CARD")   return "Kartelë";
   if (m === "ONLINE") return "Online";
+  if (m === "KOMPENSIM") return "Kompensim (marrëveshje)";
   return m || "—";
 }
 

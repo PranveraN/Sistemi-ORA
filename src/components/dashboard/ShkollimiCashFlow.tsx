@@ -93,6 +93,11 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
               <span className="flex items-center gap-1.5"><Dot color={C.cash} /> Cash <b className="text-slate-900 dark:text-white">{formatCurrency(f.cash)}</b></span>
               <span className="flex items-center gap-1.5"><Dot color={C.bank} /> Bankë <b className="text-slate-900 dark:text-white">{formatCurrency(f.bank)}</b></span>
             </div>
+            {f.compensation > 0 && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1" title="E paguar me marrëveshje/kompensim — s'hyjnë para as në arkë, as në bankë">
+                + Kompensim <b className="text-slate-900 dark:text-white">{formatCurrency(f.compensation)}</b>
+              </p>
+            )}
           </CardLink>
           <CardLink href={href("borxhi=DEBT")}>
             <p className="text-sm text-slate-600 dark:text-slate-300">Borxhi i mbetur</p>

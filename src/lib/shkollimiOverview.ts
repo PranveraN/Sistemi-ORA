@@ -115,7 +115,7 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
 
   let kpiExpected = 0, kpiPaid = 0, kpiDebt = 0;
   // E njëjta popullsi si "Paguar" (nxënës aktivë, pagesa të konfirmuara), e ndarë sipas metodës — në cent
-  let cashC = 0, bankC = 0, noMethodC = 0, noMethodCount = 0;
+  let cashC = 0, bankC = 0, compC = 0, noMethodC = 0, noMethodCount = 0;
   const full: Row[] = [], partial: Row[] = [], tiUnpaid: Row[] = [], tiPartial: Row[] = [], zero: Row[] = [];
   // Shuma e KONFIRMUAR e paguar për secilin grup — e ndarë nga `amount` te
   // vetë rreshtat (aty mban BORXHIN e mbetur, jo çka është paguar) — që
@@ -136,6 +136,7 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
       const ch = paymentChannel(r.method);
       if (ch === "cash") cashC += toCents(r.paidAmount);
       else if (ch === "banke") bankC += toCents(r.paidAmount);
+      else if (ch === "kompensim") compC += toCents(r.paidAmount);
       else { noMethodC += toCents(r.paidAmount); noMethodCount++; }
     }
 
@@ -212,7 +213,7 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
 
   const expensesCashC = toCents(shkExpenses.totals.cash);
   const cashFlow = computeCashFlow({
-    cashCents: cashC, bankCents: bankC, noMethodCents: noMethodC, noMethodCount,
+    cashCents: cashC, bankCents: bankC, compensationCents: compC, noMethodCents: noMethodC, noMethodCount,
     expensesCashCents: expensesCashC, handedOverCents: toCents(handedOver),
     otherCashCents: toCents(otherCashIncome.cash),
     investmentsCashCents: toCents(cashInvestments.cash),

@@ -17,7 +17,7 @@ type Split = { cash: number; bank: number; none: number; count: number };
 const empty = (): Split => ({ cash: 0, bank: 0, none: 0, count: 0 });
 function add(s: Split, amount: number, method: string | null) {
   const ch = paymentChannel(method);
-  if (ch === "cash") s.cash += amount; else if (ch === "banke") s.bank += amount; else s.none += amount;
+  if (ch === "cash") s.cash += amount; else if (ch === "banke") s.bank += amount; else if (ch !== "kompensim") s.none += amount;
   s.count++;
 }
 const fix = (s: Split): Split => ({ cash: r2(s.cash), bank: r2(s.bank), none: r2(s.none), count: s.count });
