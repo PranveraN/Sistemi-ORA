@@ -8,6 +8,7 @@ import {
   Printer, RotateCcw, X, ChevronRight,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { schoolYearText } from "@/lib/academicYear";
 import { logSekretariaDocument, loadSekretariaDocument } from "@/lib/sekretariaDocLog";
 
 const ARCHIVE_TYPE: Record<CertTypeId, "VERTETIM_NXENES" | "VERTETIM_MESIMDHENES" | "VERTETIM_ASISTENTE"> = {
@@ -130,7 +131,7 @@ function makeTemplate(typeId: CertTypeId, p: Person): string {
     return (
       `Me anë të këtij dokumenti vërtetohet se nxënësi/ja ${name}, i/e lindur më ${birth}` +
       ` (I/e biri/bija i/e ${parent}), është nxënës/e i/e rregullt në shkollën` +
-      ` "Akademia Ora", në klasën e ${cls} të vitit shkollor 2025/2026.\n\n` +
+      ` "Akademia Ora", në klasën e ${cls} të vitit shkollor ${schoolYearText()}.\n\n` +
       `Ky vërtetim lëshohet me kërkesë të prindit/kujdestarit për t'u përdorur si dëshmi` +
       ` për nevoja administrative dhe rregullimin e dokumenteve pranë Institucioneve` +
       ` përkatëse për shtesat e fëmijëve dhe nuk mund të përdoret për qëllime tjera jashtë atyre të deklaruara.`
@@ -141,7 +142,7 @@ function makeTemplate(typeId: CertTypeId, p: Person): string {
     const sub = s.lenda ? `, në lëndën ${s.lenda},` : "";
     return (
       `Me anë të këtij dokumenti vërtetohet se ${s.emri}, punësohet si mësimdhënës/e` +
-      ` në shkollën "Akademia Ora"${sub} duke ushtruar detyrën gjatë vitit shkollor 2025/2026.\n\n` +
+      ` në shkollën "Akademia Ora"${sub} duke ushtruar detyrën gjatë vitit shkollor ${schoolYearText()}.\n\n` +
       `Ky vërtetim lëshohet me kërkesë të personit të interesuar për t'u përdorur si dëshmi` +
       ` për nevoja administrative dhe nuk mund të përdoret për qëllime tjera jashtë atyre të deklaruara.`
     );
@@ -150,7 +151,7 @@ function makeTemplate(typeId: CertTypeId, p: Person): string {
   const s = p as StaffMember;
   return (
     `Me anë të këtij dokumenti vërtetohet se ${s.emri}, punësohet si asistente` +
-    ` në shkollën "Akademia Ora", duke ushtruar detyrën gjatë vitit shkollor 2025/2026.\n\n` +
+    ` në shkollën "Akademia Ora", duke ushtruar detyrën gjatë vitit shkollor ${schoolYearText()}.\n\n` +
     `Ky vërtetim lëshohet me kërkesë të personit të interesuar për t'u përdorur si dëshmi` +
     ` për nevoja administrative dhe nuk mund të përdoret për qëllime tjera jashtë atyre të deklaruara.`
   );

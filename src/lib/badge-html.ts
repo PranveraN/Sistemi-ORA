@@ -1,4 +1,5 @@
 import { PERIOD_BUCKETS } from "./food-periods";
+import { schoolYearText } from "./academicYear";
 
 export interface BadgeStudent {
   id: number;
@@ -9,8 +10,7 @@ export interface BadgeStudent {
 
 const SHORT_LABELS = ["Sht/Tet", "Nën/Dhj", "Jan/Shk", "Mar/Pri", "Maj/Qer"];
 
-const SCHOOL_YEAR = "2026/2027";
-const NOTE = `Bexhi vlen për vitin shkollor ${SCHOOL_YEAR}. Pagesa bëhet çdo dy muaj, nga data 1 deri më 5 të muajit. Në rast humbjeje ose dëmtimi, bexh i ri kushton 5&nbsp;€.`;
+const NOTE = () => `Bexhi vlen për vitin shkollor ${schoolYearText()}. Pagesa bëhet çdo dy muaj, nga data 1 deri më 5 të muajit. Në rast humbjeje ose dëmtimi, bexh i ri kushton 5&nbsp;€.`;
 
 export const BADGE_CSS = `
 .badge {
@@ -68,7 +68,7 @@ export function buildBadgeCardHTML(s: BadgeStudent): string {
     <div class="badge-info">
       <div class="badge-name">${s.firstName} ${s.lastName}</div>
       <div class="badge-class">Klasa: ${s.className || "—"}</div>
-      <div class="badge-note">${NOTE}</div>
+      <div class="badge-note">${NOTE()}</div>
       <div class="badge-brand">AKADEMIA ORA</div>
     </div>
   </div>

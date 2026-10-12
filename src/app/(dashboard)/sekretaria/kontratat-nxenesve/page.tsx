@@ -7,6 +7,7 @@ import { logSekretariaDocument } from "@/lib/sekretariaDocLog";
 import { STUDENT_CONTRACT_OPTIONS, STUDENT_CONTRACT_PENDING } from "@/lib/sekretariaConstants";
 import { Search, FileSignature, X, Printer, ChevronLeft, ChevronRight, Plus, FileDown, FileText } from "lucide-react";
 import React from "react";
+import { schoolYearText } from "@/lib/academicYear";
 
 interface Student {
   id: number;
@@ -314,7 +315,7 @@ function ContractModal({ student, onClose, onStatusChange }: { student: Student;
     fatherEmail: student.fatherEmail || "",
     respName: "", respAddress: "", respBirth: "", respProf: "", respPhone: "", respEmail: "",
     paymentMethod: "1",
-    schoolYear: "2026-2027",
+    schoolYear: schoolYearText(undefined, "-"),
     city: "Prishtinë",
     contractDate: todayStr,
   });
