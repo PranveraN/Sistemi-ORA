@@ -114,6 +114,10 @@ export async function GET(req: NextRequest) {
       paymentFilter.OR = [
         { month: { gte: 9 }, year },
         { month: { lte: 8 }, year: year + 1 },
+        // Rreshta të vjetër pa muaj (p.sh. Feuzan Hajrizi, Adena Vila — pranverë 2026):
+        // s'binin në asnjë vit dhe s'mund të hapeshin për ndreqje. Tani shfaqen
+        // te viti i Afatit të tyre; ruajtja e radhës u vendos muajin/vitin.
+        { month: null, dueDate: { gte: new Date(Date.UTC(year, 8, 1)), lt: new Date(Date.UTC(year + 1, 8, 1)) } },
       ];
     } else {
       // Kalendarik "Të gjitha" → grupohet sipas datës REALE të arkëtimit (paidDate),

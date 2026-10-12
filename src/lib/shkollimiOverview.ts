@@ -30,7 +30,11 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
   }
 
   const tuitionWhere = yearType === "academic"
-    ? { organizationId: orgId, categoryId: shkollimiCategory.id, OR: months.map(m => ({ month: m.calMonth, year: m.calYear })) }
+    ? { organizationId: orgId, categoryId: shkollimiCategory.id, OR: [
+        ...months.map(m => ({ month: m.calMonth, year: m.calYear } as Record<string, unknown>)),
+        // rreshta të vjetër pa muaj — sipas Afatit (si te /api/category-payments)
+        { month: null, dueDate: { gte: new Date(Date.UTC(year, 8, 1)), lt: new Date(Date.UTC(year + 1, 8, 1)) } },
+      ] }
     : { organizationId: orgId, categoryId: shkollimiCategory.id, dueDate: { gte: start, lte: end } };
   const hyraWhere: Record<string, unknown> = {};
   if (yearType === "academic") hyraWhere.OR = months.map(m => ({ muaj: m.calMonth, vit: m.calYear }));
