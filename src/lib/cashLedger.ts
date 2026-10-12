@@ -136,7 +136,7 @@ export async function loadShkollimiMovements(db: Db, orgId = 1): Promise<LedgerM
   const [pays, hyrat, shp, shpPag, exps, inv, transfers] = await Promise.all([
     db.payment.findMany({
       where: { organizationId: orgId, categoryId: cat.id, paidAmount: { gt: 0 } },
-      select: { id: true, paidAmount: true, method: true, paidDate: true, createdAt: true, updatedAt: true, month: true, year: true, confirmed: true, receiptNumber: true,
+      select: { id: true, paidAmount: true, method: true, paidDate: true, dueDate: true, createdAt: true, updatedAt: true, month: true, year: true, confirmed: true, receiptNumber: true,
         student: { select: { firstName: true, lastName: true, status: true } } },
     }),
     db.hyra.findMany({ where: { kategoria: "SHKOLLIMI" } }),
@@ -161,7 +161,8 @@ export async function loadShkollimiMovements(db: Db, orgId = 1): Promise<LedgerM
       // pagesa s'mund të jetë regjistruar para ditës së saj.
       key: `P${p.id}`, source: "PAGESE", id: p.id, day: dayKey(when)!, recordedAt: Math.max(p.createdAt.getTime(), when.getTime()),
       boxCents: p.method === "CASH" ? c : 0, bankCents: isBankMethod(p.method) ? c : 0,
-      attributedAY: academicYearOf(p.month, p.year),
+      // rreshta të vjetër pa muaj → sipas Afatit (si te Pasqyra, shih /api/category-payments)
+      attributedAY: p.month != null ? academicYearOf(p.month, p.year) : academicYearOfDay(dayKey(p.dueDate)!),
       inYearView: p.confirmed && p.student.status === "ACTIVE",
       label: `${p.student.firstName} ${p.student.lastName}`.replace(/\s+/g, " ") + (p.receiptNumber ? ` · ${p.receiptNumber}` : ""),
       flags,
@@ -181,7 +182,8 @@ export async function loadShkollimiMovements(db: Db, orgId = 1): Promise<LedgerM
     out.push({
       key: `S${s.id}`, source: "SHPENZIM", id: s.id, day: d, recordedAt: s.createdAt.getTime(),
       boxCents: isCash(s.metoda) ? -c : 0, bankCents: isCash(s.metoda) ? 0 : -c,
-      attributedAY: academicYearOfDay(d), inYearView: true, label: s.pershkrim ?? s.emriBiznesit ?? `Shpenzim #${s.id}`,
+      // "Për vitin shkollor" (p.sh. faturë e gushtit me pagesat e hershme) — përndryshe data
+      attributedAY: s.vitiShkollor ?? academicYearOfDay(d), inYearView: true, label: s.pershkrim ?? s.emriBiznesit ?? `Shpenzim #${s.id}`,
     });
   }
   for (const p of shpPag) {
@@ -199,13 +201,13 @@ export async function loadShkollimiMovements(db: Db, orgId = 1): Promise<LedgerM
       out.push({
         key: `D${e.id}`, source: "DOREZIM", id: e.id, day: d, recordedAt: e.createdAt.getTime(), boxCents: -c, bankCents: 0,
         // si Pasqyra: muaji/viti i shkruar nëse ka, përndryshe data
-        attributedAY: e.month != null ? academicYearOf(e.month, e.year) : academicYearOfDay(d),
+        attributedAY: e.academicYear ?? (e.month != null ? academicYearOf(e.month, e.year) : academicYearOfDay(d)),
         inYearView: true, label: `Dorëzim — ${e.recipient ?? ""}`.trim(),
       });
     } else if (isCash(e.method)) {
       out.push({
         key: `E${e.id}`, source: "SHPENZIM_VJETER", id: e.id, day: d, recordedAt: e.createdAt.getTime(), boxCents: -c, bankCents: 0,
-        attributedAY: academicYearOfDay(d), inYearView: true, label: e.description ?? `Shpenzim (skeda) #${e.id}`,
+        attributedAY: e.academicYear ?? (e.month != null ? academicYearOf(e.month, e.year) : academicYearOfDay(d)), inYearView: true, label: e.description ?? `Shpenzim (skeda) #${e.id}`,
       });
     }
   }
