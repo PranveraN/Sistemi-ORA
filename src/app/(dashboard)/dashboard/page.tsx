@@ -16,6 +16,7 @@ import QuickActions from "@/components/dashboard/QuickActions";
 import FinancialOverview from "@/components/dashboard/FinancialOverview";
 import YearPicker from "@/components/dashboard/YearPicker";
 import ShkollimiFinancialOverview from "@/components/dashboard/ShkollimiFinancialOverview";
+import CashBoxesTable from "@/components/dashboard/CashBoxesTable";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import { useModuleAccess } from "@/lib/useModuleAccess";
 
@@ -346,6 +347,8 @@ export default function DashboardPage() {
             </button>
           ))}
         </div>
+
+        {mainTab === "permbledhje" && canAccess("/arka") && <CashBoxesTable />}
 
         {mainTab === "permbledhje" && (
           <ShkollimiFinancialOverview year={year} yearType={yearType} />
