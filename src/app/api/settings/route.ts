@@ -19,6 +19,10 @@ const DEFAULTS: Record<string, string> = {
   // Afati i përgjithshëm i shkollimit ("MM-DD") — VETËM për statusin "Me vonesë"
   // te moduli i mesazheve (nxënësit pa këste / plan fleksibël). S'prek pagesat.
   tuitionDueDate: "09-30",
+  // Pikënisja e arkës fizike të Shkollimit: "arka kishte X € në fund të ditës D" (Dashboard → Arka fizike).
+  // Bosh = 31 gusht me gjendje të panjohur.
+  arkaFillimiData: "",
+  arkaFillimiShuma: "",
   // Kërkesat për materiale (shih src/lib/materialConfig.ts)
   materialAutoCreateItems: "false", // AUTO_CREATE_ITEMS — krijim automatik i artikujve të rinj
   materialRequestLeadDays: "3",     // sa ditë përpara duhet bërë një kërkesë "Normale"

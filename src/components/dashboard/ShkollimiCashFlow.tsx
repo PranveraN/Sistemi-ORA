@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Landmark, CheckCircle2, AlertTriangle, X, Loader2 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -173,7 +174,7 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
       <PhysicalCashSection physical={physical} yearView={f.inCashBox} lastCount={lastCount} onCount={() => setCountOpen(true)} />
 
       {countOpen && (
-        <CashCountModal year={year} yearType={yearType} system={physical ? physical.expectedCents / 100 : f.inCashBox}
+        <CashCountModal year={year} yearType={yearType} system={physical ? physical.expectedCents / 100 : f.inCashBox} unknownOpening={physical?.opening.cents == null}
           onClose={() => setCountOpen(false)}
           onSaved={c => setLastCount(c)} />
       )}
@@ -185,61 +186,93 @@ const dmy = (day: string) => day.split("-").reverse().join(".");
 const eur = (c: number) => formatCurrency(c / 100);
 const signed = (c: number) => `${c < 0 ? "−" : "+"} ${num(Math.abs(c) / 100)} €`;
 
-// Arka fizike: gjendja fillestare më 31 gusht + çdo hyrje/dalje cash me datë
-// reale pas saj. Poshtë: pse ndryshon nga "Mbetja sipas vitit" — rresht për rresht.
+// Arka fizike — e thjeshtë: sa duhet të jenë në arkë, sa u numëruan, sa mungojnë.
+// Pikënisja ("arka kishte X € në fund të ditës D") ruhet te Cilësimet; pa të, 31 gusht
+// me gjendje të panjohur. Shpjegimi teknik (pse ndryshon nga Pasqyra e vitit) është i mbyllur.
 function PhysicalCashSection({ physical: p, yearView, lastCount, onCount }: {
   physical: PhysicalCashView | null; yearView: number; lastCount: LastCashCount | null; onCount: () => void;
 }) {
+  const router = useRouter();
+  const [editStart, setEditStart] = useState(false);
+  const [startDay, setStartDay] = useState(p?.opening.day ?? "");
+  const [startAmt, setStartAmt] = useState(p?.opening.cents != null ? String(p.opening.cents / 100) : "0");
+  const [savingStart, setSavingStart] = useState(false);
   if (!p) return null;
   const r = p.reconciliation;
+  const unknown = p.opening.cents == null;
   const lastCheck = p.counts.length > 0 ? p.counts[p.counts.length - 1] : null;
   const yearViewMatches = !r || Math.round(yearView * 100) === r.yearViewCents;
+  const diff = lastCheck ? lastCheck.differenceNowCents : null; // + tepër, − mungon
+
+  async function saveStart(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingStart(true);
+    await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ arkaFillimiData: startDay, arkaFillimiShuma: startAmt.replace(",", ".") || "0" }) }).catch(() => null);
+    setSavingStart(false); setEditStart(false); router.refresh(); window.location.reload();
+  }
+
   return (
     <section className="card p-4 sm:p-5 border-2 border-[#0F766E]" aria-labelledby="cf-phys">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h3 id="cf-phys" className="font-bold text-[#0F766E] dark:text-teal-300">Arka fizike – sot (sipas datës reale)</h3>
-          <p className={`text-[30px] leading-tight font-extrabold mt-1 ${p.expectedCents < 0 ? "text-red-700 dark:text-red-400" : "text-[#0F766E] dark:text-teal-300"}`}>
-            {eur(p.expectedCents)}{p.opening.cents == null && <span className="text-base font-bold"> + gjendja e {dmy(p.opening.day)}</span>}
+          <h3 id="cf-phys" className="font-bold text-[#0F766E] dark:text-teal-300">Arka fizike (paratë në dorë)</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">Duhet të jenë në arkë sot</p>
+          <p className="text-[30px] leading-tight font-extrabold text-[#0F766E] dark:text-teal-300">
+            {eur(p.expectedCents)}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Gjendja më {dmy(p.opening.day)}: {p.opening.cents == null ? "e panjohur (s'ka numërim të asaj dite)" : eur(p.opening.cents)}
-            {" · "}hyrje cash {eur(p.inCents)} · dalje cash {eur(p.outCents)} · deri më {dmy(p.asOf)}
+            {unknown
+              ? <>Nga 1 shtatori · <b>pa paratë që ishin në arkë më {dmy(p.opening.day)}</b> (s&apos;dihet)</>
+              : <>Pikënisja: {eur(p.opening.cents!)} në fund të {dmy(p.opening.day)}</>}
+            {" · "}<button type="button" onClick={() => setEditStart(v => !v)} className="underline hover:text-slate-700 dark:hover:text-slate-200">{unknown ? "vendos pikënisjen" : "ndrysho"}</button>
           </p>
-          {p.futureCount > 0 && <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{p.futureCount} lëvizje me datë në të ardhmen s&apos;janë llogaritur ende.</p>}
+          {editStart && (
+            <form onSubmit={saveStart} className="mt-2 flex flex-wrap items-end gap-2 text-xs">
+              <label>Arka kishte në fund të ditës<br /><input type="date" required className="form-input py-1 text-xs" value={startDay} onChange={e => setStartDay(e.target.value)} /></label>
+              <label>Shuma (€)<br /><input inputMode="decimal" className="form-input py-1 text-xs w-24" value={startAmt} onChange={e => setStartAmt(e.target.value)} /></label>
+              <button type="submit" disabled={savingStart} className="btn-primary text-xs py-1.5">Ruaj</button>
+            </form>
+          )}
+          {p.futureCount > 0 && <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{p.futureCount} pagesë me datë në të ardhmen — kontrolloje datën.</p>}
         </div>
-        <div className="text-right">
+
+        <div className="text-right space-y-2">
           <button type="button" onClick={onCount}
             className="h-9 px-3.5 rounded-lg border-2 border-[#0F766E] bg-white dark:bg-slate-900 text-sm font-bold text-[#0F766E] dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-slate-800">
             Numëro arkën
           </button>
           {lastCheck ? (
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 max-w-xs">
-              Numëruar më {dmy(lastCheck.day)}: {eur(lastCheck.countedCents)}, pritej {eur(lastCheck.expectedCents)}{p.opening.cents == null && " + gjendja e 31.08"} → {p.opening.cents == null && lastCheck.differenceCents < 0 && "të paktën "}{countVerdict(lastCheck.differenceCents / 100)}
-              {lastCheck.lateCents !== 0 && <> · me regjistrimet e vonuara ({signed(lastCheck.lateCents)}): {countVerdict(lastCheck.differenceNowCents / 100)}</>}
-            </p>
+            <div className={`rounded-xl px-3 py-2 text-left ${diff != null && Math.abs(diff) < 1 ? "bg-green-50 text-green-800 dark:bg-green-950/40 dark:text-green-300" : "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-300"}`}>
+              <p className="text-xs">Numëruar më {dmy(lastCheck.day)}: <b>{eur(lastCheck.countedCents)}</b></p>
+              <p className="text-lg font-extrabold">
+                {diff != null && Math.abs(diff) < 1 ? "Përputhet ✓" : diff! < 0 ? `Mungojnë ${eur(-diff!)}` : `Tepër ${eur(diff!)}`}
+              </p>
+              {unknown && diff! < 0 && <p className="text-[11px]">të paktën — pa paratë e {dmy(p.opening.day)}</p>}
+            </div>
           ) : lastCount && (
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">Numëruar më {formatDate(lastCount.at)}: {countVerdict(lastCount.difference)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Numëruar më {formatDate(lastCount.at)}: {countVerdict(lastCount.difference)}</p>
           )}
         </div>
       </div>
 
       {r && (
-        <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-4 py-3 text-sm space-y-2">
-          <p className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+        <details className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-4 py-2 text-sm">
+          <summary className="cursor-pointer font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-2">
             {r.identityHolds ? <CheckCircle2 className="w-4 h-4 text-green-700 dark:text-green-400 shrink-0" aria-hidden /> : <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" aria-hidden />}
-            Pse arka fizike ndryshon nga mbetja e vitit {r.ay}–{r.ay + 1}
-          </p>
-          <p className="text-slate-700 dark:text-slate-300">
-            Mbetja sipas vitit <b>{eur(r.yearViewCents)}</b>
-            {" "}{r.outsideWindow.totalCents >= 0 ? "−" : "+"} <b>{num(Math.abs(r.outsideWindow.totalCents) / 100)} €</b> (lëvizën jashtë 1 shtator – 31 gusht)
-            {" "}{r.otherYear.totalCents >= 0 ? "+" : "−"} <b>{num(Math.abs(r.otherYear.totalCents) / 100)} €</b> (lëvizën këtë vit, por i caktohen tjetërkujt)
-            {" "}= <b>{eur(r.physicalWindowCents)}</b> lëvizje të arkës fizike brenda vitit {r.identityHolds ? "✓" : "— nuk përputhet!"}
-          </p>
-          {!yearViewMatches && <p className="text-xs text-orange-700 dark:text-orange-400">Kujdes: mbetja e vitit e llogaritur këtu ({eur(r.yearViewCents)}) ndryshon nga karta më sipër ({formatCurrency(yearView)}).</p>}
-          <ReconList title="Lëvizën jashtë vitit (p.sh. pagesat e verës)" rows={r.outsideWindow.rows} />
-          <ReconList title="Lëvizën këtë vit, por i caktohen vitit tjetër ose s'hyjnë në Pasqyrë" rows={r.otherYear.rows} />
-        </div>
+            Pse ndryshon nga "Mbetja sipas vitit"? (për kontroll)
+          </summary>
+          <div className="space-y-2 pt-2">
+            <p className="text-slate-700 dark:text-slate-300">
+              Mbetja sipas vitit <b>{eur(r.yearViewCents)}</b>
+              {" "}{r.outsideWindow.totalCents >= 0 ? "−" : "+"} <b>{num(Math.abs(r.outsideWindow.totalCents) / 100)} €</b> (verë: para 1 shtatorit)
+              {" "}{r.otherYear.totalCents >= 0 ? "+" : "−"} <b>{num(Math.abs(r.otherYear.totalCents) / 100)} €</b> (për vit tjetër, p.sh. Koprani)
+              {" "}= <b>{eur(r.physicalWindowCents)}</b> lëvizje në arkë nga 1 shtatori {r.identityHolds ? "✓" : "— nuk përputhet!"}
+            </p>
+            {!yearViewMatches && <p className="text-xs text-orange-700 dark:text-orange-400">Kujdes: mbetja e vitit këtu ({eur(r.yearViewCents)}) ndryshon nga karta më sipër ({formatCurrency(yearView)}).</p>}
+            <ReconList title="Verë: para 1 shtatorit" rows={r.outsideWindow.rows} />
+            <ReconList title="Për vit tjetër / jashtë Pasqyrës" rows={r.otherYear.rows} />
+          </div>
+        </details>
       )}
     </section>
   );
@@ -290,8 +323,8 @@ function CardLink({ href, children }: { href: string; children: React.ReactNode 
 
 interface CountRow { id: number; createdAt: string; countedAmount: number; systemAmount: number; difference: number; userName: string | null; basis?: string | null }
 
-function CashCountModal({ year, yearType, system, onClose, onSaved }: {
-  year: number; yearType: YearType; system: number; onClose: () => void; onSaved: (c: LastCashCount) => void;
+function CashCountModal({ year, yearType, system, unknownOpening, onClose, onSaved }: {
+  year: number; yearType: YearType; system: number; unknownOpening?: boolean; onClose: () => void; onSaved: (c: LastCashCount) => void;
 }) {
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
@@ -344,7 +377,7 @@ function CashCountModal({ year, yearType, system, onClose, onSaved }: {
             <label htmlFor="cc-amount" className="form-label">Sa para ke në arkë? (€)</label>
             <input id="cc-amount" ref={inputRef} inputMode="decimal" value={value} onChange={e => { setValue(e.target.value); setResult(null); }}
               className="form-input text-lg" placeholder="0,00" autoComplete="off" />
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Arka fizike sipas sistemit: {formatCurrency(system)} + gjendja e 31.08 (e panjohur)</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Duhet të jenë në arkë: {formatCurrency(system)}{unknownOpening && " + paratë e 31.08 (s'dihen)"}</p>
           </div>
           {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           {result && (

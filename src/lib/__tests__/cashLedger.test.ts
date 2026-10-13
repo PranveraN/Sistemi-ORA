@@ -145,6 +145,13 @@ describe("pamja e Dashboard-it: arka fizike, numërimet, rakordimi", () => {
     expect(v.reconciliation!.outsideWindow.rows.map(r => r.reason)).toEqual(["lëvizi para 1 shtatorit (2026-08-20)"]);
     expect(v.reconciliation!.identityHolds).toBe(true);
   });
+  it("pikënisja e dhënë (arka bosh në fund të korrikut) → gushti llogaritet, s'ka më 'gjendje të panjohur'", () => {
+    const movs = [cashPay("2026-08-25", 1000, 2026), handover("2026-08-31", 600, 2026), cashPay("2026-09-05", 500)];
+    const v = buildPhysicalCashView(movs, { ay: 2026, today: "2026-10-13", counts: [{ id: 1, at: new Date("2026-10-12T10:00:00Z"), countedCents: 30000 }], reconAY: 2026, openingDay: "2026-07-31", openingCents: 0 });
+    expect(v.opening).toEqual({ day: "2026-07-31", cents: 0 });
+    expect(v.expectedCents).toBe(90000);                 // 1.000 − 600 + 500
+    expect(v.counts[0].differenceNowCents).toBe(-60000); // mungojnë 600 €
+  });
   it("Koprani: hyrja +6.600 dhe dorëzimi −6.600 në datën reale → arka fizike 0, pa asnjë hyrje të re", () => {
     const movs = [cashPay("2026-09-29", 1100, 2027), cashPay("2026-09-29", 2000, 2027), cashPay("2026-09-30", 1800, 2027), cashPay("2026-09-30", 1700, 2027),
       handover("2026-09-29", 6600, 2026)];

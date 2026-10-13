@@ -287,8 +287,10 @@ const toRow = (m: LedgerMovement, ay: number, kind: "outside" | "other"): ReconR
 });
 
 /** Funksion i pastër: arka fizike e vitit `ay` deri më `today`, numërimet dhe rakordimi me Pasqyrën e vitit `reconAY`. */
-export function buildPhysicalCashView(movs: LedgerMovement[], o: { ay: number; today: string; counts: CountInput[]; reconAY: number | null; openingCents?: number }): PhysicalCashView {
-  const opening = { day: `${o.ay}-08-31`, cents: o.openingCents ?? null };
+export function buildPhysicalCashView(movs: LedgerMovement[], o: { ay: number; today: string; counts: CountInput[]; reconAY: number | null; openingCents?: number; openingDay?: string }): PhysicalCashView {
+  // Pikënisja: e dhënë nga administrata ("arka ishte X € në fund të ditës D"), përndryshe
+  // 31 gusht me gjendje të panjohur.
+  const opening = { day: o.openingDay ?? `${o.ay}-08-31`, cents: o.openingCents ?? null };
   // Pikënisje, jo numërim: asgjë s'është "e vonuar" kundrejt saj.
   const open: Opening = { day: opening.day, cents: opening.cents ?? 0, recordedAt: Number.POSITIVE_INFINITY };
   const now = physicalBalance(movs, open, o.today);
@@ -330,14 +332,18 @@ export function buildPhysicalCashView(movs: LedgerMovement[], o: { ay: number; t
  * numërimet e arkës së Shkollimit te "Numërimi i Arkave" (CashClosing).
  */
 export async function computePhysicalCash(
-  db: Db & Pick<PrismaClient, "cashCount" | "cashClosing">,
+  db: Db & Pick<PrismaClient, "cashCount" | "cashClosing" | "setting">,
   orgId: number, reconAY: number | null, now = new Date(),
 ): Promise<PhysicalCashView | null> {
   const cat = await db.paymentCategory.findFirst({ where: { name: "Shkollimi", organizationId: orgId }, select: { id: true } });
   if (!cat) return null;
   const today = dayKey(now)!;
   const ay = academicYearOfDay(today);
-  const since = new Date(`${ay}-08-31T00:00:00Z`);
+  // Pikënisja e arkës (Cilësimet: arkaFillimiData = "YYYY-MM-DD", arkaFillimiShuma = "0")
+  const st = new Map((await db.setting.findMany({ where: { key: { in: ["arkaFillimiData", "arkaFillimiShuma"] } } })).map(s => [s.key, s.value]));
+  const openingDay = /^d{4}-d{2}-d{2}$/.test(st.get("arkaFillimiData") ?? "") ? st.get("arkaFillimiData")! : undefined;
+  const openingCents = openingDay ? cents(parseFloat((st.get("arkaFillimiShuma") || "0").replace(",", "."))) : undefined;
+  const since = new Date(`${openingDay ?? `${ay}-08-31`}T00:00:00Z`);
   const [movs, cc, cl] = await Promise.all([
     loadShkollimiMovements(db, orgId),
     db.cashCount.findMany({ where: { organizationId: orgId, createdAt: { gte: since } }, orderBy: { createdAt: "asc" } }),
@@ -347,5 +353,5 @@ export async function computePhysicalCash(
     ...cc.map(c => ({ id: c.id, at: c.createdAt, countedCents: cents(c.countedAmount) })),
     ...cl.map(c => ({ id: -c.id, at: c.createdAt, countedCents: c.countedCents })),
   ].sort((a, b) => a.at.getTime() - b.at.getTime());
-  return buildPhysicalCashView(movs, { ay, today, counts, reconAY });
+  return buildPhysicalCashView(movs, { ay, today, counts, reconAY, openingDay, openingCents });
 }
