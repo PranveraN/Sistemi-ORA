@@ -442,7 +442,15 @@ export default function StafiPage() {
               </div>
               <div>
                 <label className="label">Kodi (EM...)</label>
-                <input className="input w-full" value={form.kodi ?? ""} onChange={e => setForm(f => ({ ...f, kodi: e.target.value || null }))} />
+                <div className="flex gap-1.5">
+                  <input className="input w-full" value={form.kodi ?? ""} placeholder="gjenerohet vetë" onChange={e => setForm(f => ({ ...f, kodi: e.target.value || null }))} />
+                  {!form.kodi && (
+                    <button type="button" className="btn-secondary text-xs whitespace-nowrap" title="Merr kodin e radhës"
+                      onClick={async () => { const r = await fetch("/api/staff/next-code").catch(() => null); const d = await r?.json().catch(() => null); if (d?.kodi) setForm(f => ({ ...f, kodi: d.kodi })); }}>
+                      Gjenero
+                    </button>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="label">Nr. Llogarisë</label>

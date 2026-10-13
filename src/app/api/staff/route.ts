@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sessionHasModule } from "@/lib/specialCarePermissions";
 import { buildStaffData } from "@/lib/staffFields";
+import { nextStaffCode } from "@/lib/staffCode";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest) {
   if (!sessionHasModule(session, "sekretaria")) return NextResponse.json({ error: "Nuk ke leje për këtë modul." }, { status: 403 });
 
   const body = await req.json();
-  const member = await prisma.staff.create({ data: buildStaffData(body) });
+  const data = buildStaffData(body);
+  // Kodi (EM...) gjenerohet vetë kur s'jepet
+  if (!data.kodi) data.kodi = await nextStaffCode(prisma);
+  const member = await prisma.staff.create({ data });
   return NextResponse.json(member, { status: 201 });
 }
