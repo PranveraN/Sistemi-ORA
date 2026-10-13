@@ -2027,9 +2027,13 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
           return d.getMonth() + 1 === targetMonth && d.getFullYear() === targetYear;
         })
         ?? null;
-      if (ex && carryOver.includes(ex)) used.add(ex.id);
+      const carried = !!ex && carryOver.includes(ex);
+      if (carried) used.add(ex.id);
       return {
-        portion:    ex ? String(ex.finalAmount) : (tiPrice != null ? String(round2(tiPrice / 12)) : ""),
+        // Rreshti i një plani tjetër (p.sh. "Pagesë e plotë" 2.000 €) që bie te muaji i parë
+        // s'e merr shumën e vet si këst — përndryshe Shtatori dilte 2.000 € + 11 × 166,67 =
+        // 3.833 € borxh (Imarah Ramadani, 2026-10-13). Këstet = çmimi TI / 12; paguarja ruhet.
+        portion:    ex && !carried ? String(ex.finalAmount) : (tiPrice != null ? String(round2(tiPrice / 12)) : ex ? String(ex.finalAmount) : ""),
         paidAmount: ex ? String(ex.paidAmount)  : "0",
         paidDate:   ex?.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
         dueDate:    ex?.dueDate  ? new Date(ex.dueDate).toISOString().split("T")[0]  : `${targetYear}-${String(targetMonth).padStart(2, "0")}-05`,
