@@ -5,7 +5,7 @@ import { CreditCard, Edit, X, Plus, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useModuleAccess } from "@/lib/useModuleAccess";
 
-interface TiRow { id: number; studentId: number | null; regularPrice: number }
+interface TiRow { id: number; studentId: number | null; regularPrice: number; firstName: string; lastName: string; active: boolean }
 
 // Lidhja me Timi Invest (Lidh / Ndrysho çmimin / Hiq) — zhvendosur këtu nga
 // kolona "Çmimi TI" e tabelës së Nxënësve. E njëjta logjikë dhe të njëjtat API
@@ -29,7 +29,12 @@ export default function TimiInvestCard({ student }: {
       const settings = sRes.ok ? await sRes.json() : {};
       setEnabled(settings.timiInvestEnabled !== "false");
       const rows: TiRow[] = tRes.ok ? await tRes.json() : [];
-      setLink(Array.isArray(rows) ? rows.find(r => r.studentId === student.id) ?? null : null);
+      // Si te lista e pagesave: sipas studentId, përndryshe sipas emrit e mbiemrit (vetëm rreshtat aktivë pa lidhje)
+      const key = (a: string, b: string) => `${a.trim().toLowerCase()}|${b.trim().toLowerCase()}`;
+      const list = Array.isArray(rows) ? rows : [];
+      setLink(list.find(r => r.active && r.studentId === student.id)
+        ?? list.find(r => r.active && r.studentId == null && key(r.firstName, r.lastName) === key(student.firstName, student.lastName))
+        ?? null);
     } catch { /* karta thjesht s'shfaqet */ }
     setLoaded(true);
   }, [student.id]);
@@ -71,11 +76,12 @@ export default function TimiInvestCard({ student }: {
   }
 
   async function remove() {
-    if (!link || !confirm(`Hiq lidhjen Timi Invest për ${student.firstName} ${student.lastName}?`)) return;
+    if (!link || !confirm(`Hiq lidhjen Timi Invest për ${student.firstName} ${student.lastName}?\n\nPërdoret kur prindi paguan direkt te shkolla. Nxënësi s'shfaqet më si TI dhe çmimi kthehet në çmimin e rregullt të shkollës (me zbritjen e nxënësit). Profaturat/faturat e vjetra TI mbeten në arkiv.`)) return;
     try {
+      // Edhe joaktiv: përndryshe lista e pagesave e lidh sërish sipas emrit e mbiemrit
       const res = await fetch(`/api/timi-invest/students/${link.id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId: null }),
+        body: JSON.stringify({ studentId: null, active: false }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
