@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { askInvoicePaidMethod } from "@/lib/invoicePaidMethod";
 import { ChevronLeft, Printer, Download, Send, ArrowRightLeft, Mail, Pencil, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
@@ -87,11 +88,13 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
   const isFamilyInvoice = distinctChildren.length > 1;
 
   async function updateStatus(status: string) {
+    const paidMethod = status === "PAID" ? askInvoicePaidMethod(invoice.number) : undefined;
+    if (status === "PAID" && !paidMethod) return;
     setUpdatingStatus(true);
     const res = await fetch(`/api/invoices/${invoice.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, paidMethod }),
     });
     setUpdatingStatus(false);
     if (!res.ok) {

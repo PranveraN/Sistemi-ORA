@@ -53,7 +53,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           data: { paidAmount: p.finalAmount, balance: 0, status: "PAID", paidDate: p.paidDate ?? new Date() },
         })
       ));
-    } else {
+    } else if (body.paidMethod !== "NONE") {
+      // Metoda zgjidhet nga përdoruesi (Cash/Bankë); "NONE" = pagesa është regjistruar tashmë
+      // te Shkollimi — s'krijohet pagesë e dytë. Pa zgjedhje: pa metodë (s'hyn në arkë, del
+      // te "pa metodë" për t'u klasifikuar) — kurrë më CASH automatikisht.
       let category = await prisma.paymentCategory.findFirst({ where: { name: "Faturat", organizationId: orgId } });
       if (!category) {
         category = await prisma.paymentCategory.create({
@@ -72,7 +75,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           dueDate:     payDueDate,
           paidDate:    new Date(),
           status:      "PAID",
-          method:      "CASH",
+          method:      body.paidMethod === "CASH" || body.paidMethod === "BANK" ? body.paidMethod : null,
           description: `Fatura ${invoice.number}`,
           invoiceId:   invoice.id,
           organizationId: orgId,

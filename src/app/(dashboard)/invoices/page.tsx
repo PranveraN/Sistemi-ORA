@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
+import { askInvoicePaidMethod } from "@/lib/invoicePaidMethod";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel, MONTHS } from "@/lib/utils";
 import { CALENDAR_YEARS } from "@/lib/academicYear";
 import { Plus, Eye, CheckCircle, Loader2, Download, ArrowRightLeft, Mail, Search, Pencil } from "lucide-react";
@@ -107,12 +108,13 @@ export default function InvoicesPage() {
   }
 
   async function markPaid(inv: Invoice) {
-    if (!confirm(`Shëno faturën ${inv.number} (${inv.student.firstName} ${inv.student.lastName}) si Paguar?`)) return;
+    const paidMethod = askInvoicePaidMethod(`${inv.number} (${inv.student.firstName} ${inv.student.lastName})`);
+    if (!paidMethod) return;
     setMarkingPaid(inv.id);
     const res = await fetch(`/api/invoices/${inv.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "PAID" }),
+      body: JSON.stringify({ status: "PAID", paidMethod }),
     });
     setMarkingPaid(null);
     if (!res.ok) {
