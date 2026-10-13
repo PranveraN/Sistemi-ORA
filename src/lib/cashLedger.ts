@@ -341,9 +341,10 @@ export async function computePhysicalCash(
   const ay = academicYearOfDay(today);
   // Pikënisja e arkës (Cilësimet: arkaFillimiData = "YYYY-MM-DD", arkaFillimiShuma = "0")
   const st = new Map((await db.setting.findMany({ where: { key: { in: ["arkaFillimiData", "arkaFillimiShuma"] } } })).map(s => [s.key, s.value]));
-  const openingDay = /^d{4}-d{2}-d{2}$/.test(st.get("arkaFillimiData") ?? "") ? st.get("arkaFillimiData")! : undefined;
+  const openingDay = /^\d{4}-\d{2}-\d{2}$/.test(st.get("arkaFillimiData") ?? "") ? st.get("arkaFillimiData")! : undefined;
   const openingCents = openingDay ? cents(parseFloat((st.get("arkaFillimiShuma") || "0").replace(",", "."))) : undefined;
-  const since = new Date(`${openingDay ?? `${ay}-08-31`}T00:00:00Z`);
+  // Me pikënisje: numërimet deri në fund të asaj dite zëvendësohen nga vetë pikënisja.
+  const since = openingDay ? new Date(new Date(`${openingDay}T00:00:00Z`).getTime() + 86_400_000) : new Date(`${ay}-08-31T00:00:00Z`);
   const [movs, cc, cl] = await Promise.all([
     loadShkollimiMovements(db, orgId),
     db.cashCount.findMany({ where: { organizationId: orgId, createdAt: { gte: since } }, orderBy: { createdAt: "asc" } }),
