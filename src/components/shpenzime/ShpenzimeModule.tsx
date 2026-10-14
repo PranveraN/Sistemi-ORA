@@ -247,6 +247,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
   const [katForm, setKatForm] = useState({ emri: "", ngjyra: NGJYRAT[0], ikona: "" });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [pendingPagese, setPendingPagese] = useState("");
   const [katError, setKatError] = useState("");
 
   // Bashko kategoritë (p.sh. dyfishime aksidentale si "Mirëmbajtja hixhienike"
@@ -374,6 +375,11 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
 
   async function handleSave() {
     if (!form.kategoriId || !form.shuma) return;
+    // Shuma e pagesës së faturës ruhet vetëm me "+ Shto pagesë" — mos e humb në heshtje
+    if (editId && pendingPagese.trim()) {
+      setSaveError(`Pagesa ${pendingPagese} € s'është shtuar ende — kliko "+ Shto pagesë" (te "Pagesat e faturës") para "Ruaj".`);
+      return;
+    }
     // Data e regjistrimit përcakton muajin — një datë në të ardhmen zakonisht është gabim shtypi
     if (form.data && form.data > now.toISOString().split("T")[0]
       && !confirm(`"Data e regjistrimit (pagesës)" është në të ardhmen: ${form.data.split("-").reverse().join(".")}.
@@ -1783,7 +1789,7 @@ Shpenzimi do të dalë te ai muaj. A je e sigurt?`)) return;
 
               {/* Pagesat pjesë-pjesë — për një shpenzim ekzistues që s'është shënuar "E paguar" e tëra */}
               {editId != null && (editRow?.mePagesa || editRow?.paguar === false) && (
-                <ShpenzimPagesatSection shpenzimId={editId} onChanged={fetchData} />
+                <ShpenzimPagesatSection shpenzimId={editId} onChanged={fetchData} onPendingChange={setPendingPagese} />
               )}
 
               {/* 6. Marrësi + Referenca (sekondare) */}

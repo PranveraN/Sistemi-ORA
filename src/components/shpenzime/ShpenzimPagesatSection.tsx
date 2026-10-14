@@ -15,7 +15,8 @@ interface Gjendja { pagesat: Pagese[]; paguar: number; mbetur: number; statusi: 
 const METODA_LABEL: Record<string, string> = { CASH: "Cash (arka)", BANK: "Bankë", CARD: "Kartelë" };
 const today = () => new Date().toISOString().split("T")[0];
 
-export default function ShpenzimPagesatSection({ shpenzimId, onChanged }: { shpenzimId: number; onChanged: () => void }) {
+/** `onPendingChange`: shuma e shkruar por e pashtuar ende — që "Ruaj" i formës të mos e humbasë pa u ditur. */
+export default function ShpenzimPagesatSection({ shpenzimId, onChanged, onPendingChange }: { shpenzimId: number; onChanged: () => void; onPendingChange?: (shuma: string) => void }) {
   const [g, setG] = useState<Gjendja | null>(null);
   const [shuma, setShuma] = useState("");
   const [data, setData] = useState(today());
@@ -30,6 +31,8 @@ export default function ShpenzimPagesatSection({ shpenzimId, onChanged }: { shpe
     if (r.ok) setG(j); else setError(j.error || "S'u ngarkuan pagesat.");
   }, [shpenzimId]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { onPendingChange?.(shuma); }, [shuma, onPendingChange]);
+  useEffect(() => () => onPendingChange?.(""), [onPendingChange]);
 
   async function add() {
     setError("");
