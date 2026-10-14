@@ -13,7 +13,9 @@ export async function GET(req: NextRequest) {
   const year     = parseInt(searchParams.get("year") || String(DEFAULT_ACADEMIC_YEAR));
   const yearType = (searchParams.get("yearType") || "academic") as YearType;
 
-  const data = await computeShkollimiOverview(orgId, year, yearType);
+  // Arka fizike s'dërgohet fare te përdoruesit që s'janë Super Admin
+  const isSuperAdmin = (session.user as { role?: string }).role === "SUPERADMIN";
+  const data = await computeShkollimiOverview(orgId, year, yearType, isSuperAdmin);
   if (!data) return NextResponse.json({ error: "Kategoria 'Shkollimi' s'ekziston ende." }, { status: 404 });
   return NextResponse.json(data);
 }

@@ -21,6 +21,7 @@ function period(req: NextRequest, body?: { year?: unknown; yearType?: unknown })
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if ((session.user as { role?: string }).role !== "SUPERADMIN") return NextResponse.json({ error: "Nuk ke leje" }, { status: 403 });
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
   const { label } = period(req);
   const counts = await prisma.cashCount.findMany({
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if ((session.user as { role?: string }).role !== "SUPERADMIN") return NextResponse.json({ error: "Nuk ke leje" }, { status: 403 });
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
   const body = await req.json().catch(() => ({}));
   const counted = typeof body.counted === "number" ? body.counted : parseFloat(String(body.counted ?? "").replace(",", "."));

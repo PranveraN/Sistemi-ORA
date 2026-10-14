@@ -10,5 +10,6 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!sessionHasModule(session, "arka")) return NextResponse.json({ error: "Nuk ke leje" }, { status: 403 });
   const orgId = (session.user as { organizationId?: number }).organizationId ?? 1;
-  return NextResponse.json(await computeAllBoxes(prisma, orgId));
+  const isSuperAdmin = (session.user as { role?: string }).role === "SUPERADMIN";
+  return NextResponse.json(await computeAllBoxes(prisma, orgId, isSuperAdmin));
 }

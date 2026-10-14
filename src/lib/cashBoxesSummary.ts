@@ -19,7 +19,8 @@ export interface BoxBalance {
   expectedCents: number;
 }
 
-export async function computeAllBoxes(db: Db, orgId: number): Promise<{ today: string; boxes: BoxBalance[]; totalCents: number }> {
+/** `withShkollimi`: arka e Shkollimit (= arka fizike) — vetëm për Super Admin. */
+export async function computeAllBoxes(db: Db, orgId: number, withShkollimi = true): Promise<{ today: string; boxes: BoxBalance[]; totalCents: number }> {
   const today = todayKey();
   const ay = academicYearOfDay(today);
   const fromDay = `${ay}-08-31`;
@@ -36,7 +37,7 @@ export async function computeAllBoxes(db: Db, orgId: number): Promise<{ today: s
     ["BookPayment", await db.bookPayment.findMany() as never],
     ["BookHandover", await db.bookHandover.findMany() as never],
   ];
-  const physical = await computePhysicalCash(db, orgId, null);
+  const physical = withShkollimi ? await computePhysicalCash(db, orgId, null) : null;
 
   const out: BoxBalance[] = [];
   for (const box of boxes) {

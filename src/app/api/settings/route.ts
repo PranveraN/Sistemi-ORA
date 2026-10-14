@@ -56,6 +56,8 @@ export async function GET() {
   for (const row of rows) {
     settings[row.key] = row.value;
   }
+  // Pikënisja e arkës fizike — vetëm për Super Admin
+  if ((session.user as { role?: string }).role !== "SUPERADMIN") { delete settings.arkaFillimiData; delete settings.arkaFillimiShuma; }
   return NextResponse.json(settings);
 }
 
@@ -67,11 +69,11 @@ export async function PATCH(req: NextRequest) {
 
   // Rregulli i evidencës së regjistrimeve — vetëm administratorët (Super Admin;
   // roli "Admin" është vetëm-shikim). Rolet e tjera s'mund t'i ndryshojnë.
-  const ADMIN_ONLY = ["enrollmentEvidencaGrade1", "enrollmentEvidencaOtherGrades", "enrollmentDelayDays"];
+  const ADMIN_ONLY = ["enrollmentEvidencaGrade1", "enrollmentEvidencaOtherGrades", "enrollmentDelayDays", "arkaFillimiData", "arkaFillimiShuma"];
   const isSuperAdmin = (session.user as { role?: string }).role === "SUPERADMIN";
   const requested = ALLOWED.filter((key) => key in body);
   if (!isSuperAdmin && requested.length > 0 && requested.every(k => ADMIN_ONLY.includes(k))) {
-    return NextResponse.json({ error: "Vetëm administratorët mund ta ndryshojnë rregullin e evidencës." }, { status: 403 });
+    return NextResponse.json({ error: "Vetëm Super Admin mund ta ndryshojë këtë cilësim." }, { status: 403 });
   }
 
   await Promise.all(

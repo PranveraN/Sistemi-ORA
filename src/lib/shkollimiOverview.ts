@@ -19,7 +19,8 @@ interface Row { studentId: number; name: string; className: string | null; phone
 export type ShkollimiOverview = NonNullable<Awaited<ReturnType<typeof computeShkollimiOverview>>>;
 
 /** null = kategoria "Shkollimi" s'ekziston. Përdoret nga GET i pasqyrës dhe nga "Numëro arkën". */
-export async function computeShkollimiOverview(orgId: number, year: number, yearType: YearType) {
+/** `withPhysicalCash`: arka fizike + numërimet — vetëm për Super Admin. */
+export async function computeShkollimiOverview(orgId: number, year: number, yearType: YearType, withPhysicalCash = false) {
   const { start, end, label } = getDateRange(year, yearType);
   const months = yearType === "academic"
     ? getAcademicMonths(year)
@@ -91,10 +92,10 @@ export async function computeShkollimiOverview(orgId: number, year: number, year
     loadShkollimiExpenses(shkollimiCategory.id, 0, year, yearType),
     loadOtherCashIncome(0, year, yearType),
     loadCashInvestments(0, year, yearType),
-    prisma.cashCount.findFirst({ where: { organizationId: orgId, yearLabel: label }, orderBy: { createdAt: "desc" } }),
+    withPhysicalCash ? prisma.cashCount.findFirst({ where: { organizationId: orgId, yearLabel: label }, orderBy: { createdAt: "desc" } }) : null,
     // Arka fizike (sipas datës reale) — e ndarë nga "Në arkë" e vitit më sipër, që
     // ndjek vitin shkollor të çdo rreshti. Rakordimi vetëm për pamjen akademike.
-    computePhysicalCash(prisma, orgId, yearType === "academic" ? year : null),
+    withPhysicalCash ? computePhysicalCash(prisma, orgId, yearType === "academic" ? year : null) : null,
   ]);
 
   const tiById = new Map(timiInvestLinks.map(t => [t.studentId as number, t]));

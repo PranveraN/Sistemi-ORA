@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Landmark, CheckCircle2, AlertTriangle, X, Loader2 } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { Landmark, AlertTriangle, Banknote } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 import type { CashFlow } from "@/lib/cashFlow";
-import type { PhysicalCashView, ReconRow } from "@/lib/cashLedger";
+import type { PhysicalCashView } from "@/lib/cashLedger";
+import PhysicalCashDialog from "./PhysicalCashDialog";
 import type { YearType } from "@/lib/academicYear";
 
 // "Pasqyra financiare e shkollimit": rreshti "Pagesat e nxënësve" dhe
-// "Ku janë paratë e paguara" + "Numëro arkën". Të dhënat vijnë nga
+// "Ku janë paratë e paguara". Arka fizike (+ "Numëro arkën") vetëm për Super Admin,
+// te dritarja që hapet nga ikona e vogël në kokë (PhysicalCashDialog). Të dhënat vijnë nga
 // /api/dashboard/shkollimi-financiare (llogaritur në server, në cent).
 // Dy shifra krejt të ndara: "Mbetja sipas vitit" (çdo rresht te viti i vet
 // shkollor) dhe "Arka fizike" (sipas datës reale — src/lib/cashLedger.ts);
@@ -33,12 +34,10 @@ interface Props {
   physical: PhysicalCashView | null;
 }
 
-export default function ShkollimiCashFlow({ label, year, yearType, expected, totalStudents, cashFlow: f, lastCashCount, physical }: Props) {
+export default function ShkollimiCashFlow({ label, year, yearType, expected, totalStudents, cashFlow: f, physical }: Props) {
   const { data: session } = useSession();
   const isSuperAdmin = (session?.user as { role?: string } | undefined)?.role === "SUPERADMIN";
-  const [countOpen, setCountOpen] = useState(false);
-  const [lastCount, setLastCount] = useState<LastCashCount | null>(lastCashCount);
-  useEffect(() => setLastCount(lastCashCount), [lastCashCount]);
+  const [cashOpen, setCashOpen] = useState(false);
 
   // Lidhjet hapin faqen e Shkollimit me filtrin përkatës (viti vetëm për vitin akademik)
   const href = (q: string) => `/shkollimi?${q}${yearType === "academic" ? `${q ? "&" : ""}year=${year}` : ""}`;
@@ -57,6 +56,13 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
           <Landmark className="w-5 h-5 text-white" aria-hidden />
         </div>
         <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Pasqyra financiare e shkollimit – {label}</h2>
+        {/* Arka fizike — vetëm Super Admin (për të tjerët as butoni, as të dhënat) */}
+        {isSuperAdmin && physical && (
+          <button type="button" onClick={() => setCashOpen(true)} aria-label="Arka"
+            className="ml-auto w-[30px] h-[30px] flex items-center justify-center rounded-md text-[#a3aeab] hover:text-[#6b7a76] dark:hover:text-slate-300 transition-colors">
+            <Banknote size={15} aria-hidden />
+          </button>
+        )}
       </div>
 
       {f.noMethod.count > 0 && (
@@ -171,133 +177,11 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
 
       </section>
 
-      <PhysicalCashSection physical={physical} yearView={f.inCashBox} lastCount={lastCount} onCount={() => setCountOpen(true)} />
-
-      {countOpen && (
-        <CashCountModal year={year} yearType={yearType} system={physical ? physical.expectedCents / 100 : f.inCashBox} unknownOpening={physical?.opening.cents == null}
-          onClose={() => setCountOpen(false)}
-          onSaved={c => setLastCount(c)} />
+      {cashOpen && isSuperAdmin && physical && (
+        <PhysicalCashDialog physical={physical} year={year} yearType={yearType} onClose={() => setCashOpen(false)} />
       )}
     </div>
   );
-}
-
-const dmy = (day: string) => day.split("-").reverse().join(".");
-const eur = (c: number) => formatCurrency(c / 100);
-const signed = (c: number) => `${c < 0 ? "−" : "+"} ${num(Math.abs(c) / 100)} €`;
-
-// Arka fizike — e thjeshtë: sa duhet të jenë në arkë, sa u numëruan, sa mungojnë.
-// Pikënisja ("arka kishte X € në fund të ditës D") ruhet te Cilësimet; pa të, 31 gusht
-// me gjendje të panjohur. Shpjegimi teknik (pse ndryshon nga Pasqyra e vitit) është i mbyllur.
-function PhysicalCashSection({ physical: p, yearView, lastCount, onCount }: {
-  physical: PhysicalCashView | null; yearView: number; lastCount: LastCashCount | null; onCount: () => void;
-}) {
-  const router = useRouter();
-  const [editStart, setEditStart] = useState(false);
-  const [startDay, setStartDay] = useState(p?.opening.day ?? "");
-  const [startAmt, setStartAmt] = useState(p?.opening.cents != null ? String(p.opening.cents / 100) : "0");
-  const [savingStart, setSavingStart] = useState(false);
-  if (!p) return null;
-  const r = p.reconciliation;
-  const unknown = p.opening.cents == null;
-  const lastCheck = p.counts.length > 0 ? p.counts[p.counts.length - 1] : null;
-  const yearViewMatches = !r || Math.round(yearView * 100) === r.yearViewCents;
-  const diff = lastCheck ? lastCheck.differenceNowCents : null; // + tepër, − mungon
-
-  async function saveStart(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingStart(true);
-    await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ arkaFillimiData: startDay, arkaFillimiShuma: startAmt.replace(",", ".") || "0" }) }).catch(() => null);
-    setSavingStart(false); setEditStart(false); router.refresh(); window.location.reload();
-  }
-
-  return (
-    <section className="card p-4 sm:p-5 border-2 border-[#0F766E]" aria-labelledby="cf-phys">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h3 id="cf-phys" className="font-bold text-[#0F766E] dark:text-teal-300">Arka fizike (paratë në dorë)</h3>
-          <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">Duhet të jenë në arkë sot</p>
-          <p className="text-[30px] leading-tight font-extrabold text-[#0F766E] dark:text-teal-300">
-            {eur(p.expectedCents)}
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {unknown
-              ? <>Nga 1 shtatori · <b>pa paratë që ishin në arkë më {dmy(p.opening.day)}</b> (s&apos;dihet)</>
-              : <>Pikënisja: {eur(p.opening.cents!)} në fund të {dmy(p.opening.day)}</>}
-            {" · "}<button type="button" onClick={() => setEditStart(v => !v)} className="underline hover:text-slate-700 dark:hover:text-slate-200">{unknown ? "vendos pikënisjen" : "ndrysho"}</button>
-          </p>
-          {editStart && (
-            <form onSubmit={saveStart} className="mt-2 flex flex-wrap items-end gap-2 text-xs">
-              <label>Arka kishte në fund të ditës<br /><input type="date" required className="form-input py-1 text-xs" value={startDay} onChange={e => setStartDay(e.target.value)} /></label>
-              <label>Shuma (€)<br /><input inputMode="decimal" className="form-input py-1 text-xs w-24" value={startAmt} onChange={e => setStartAmt(e.target.value)} /></label>
-              <button type="submit" disabled={savingStart} className="btn-primary text-xs py-1.5">Ruaj</button>
-            </form>
-          )}
-          {p.futureCount > 0 && <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{p.futureCount} pagesë me datë në të ardhmen — kontrolloje datën.</p>}
-        </div>
-
-        <div className="text-right space-y-2">
-          <button type="button" onClick={onCount}
-            className="h-9 px-3.5 rounded-lg border-2 border-[#0F766E] bg-white dark:bg-slate-900 text-sm font-bold text-[#0F766E] dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-slate-800">
-            Numëro arkën
-          </button>
-          {lastCheck ? (
-            <div className={`rounded-xl px-3 py-2 text-left ${diff != null && Math.abs(diff) < 1 ? "bg-green-50 text-green-800 dark:bg-green-950/40 dark:text-green-300" : "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-300"}`}>
-              <p className="text-xs">Numëruar më {dmy(lastCheck.day)}: <b>{eur(lastCheck.countedCents)}</b></p>
-              <p className="text-lg font-extrabold">
-                {diff != null && Math.abs(diff) < 1 ? "Përputhet ✓" : diff! < 0 ? `Mungojnë ${eur(-diff!)}` : `Tepër ${eur(diff!)}`}
-              </p>
-              {unknown && diff! < 0 && <p className="text-[11px]">të paktën — pa paratë e {dmy(p.opening.day)}</p>}
-            </div>
-          ) : lastCount && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">Numëruar më {formatDate(lastCount.at)}: {countVerdict(lastCount.difference)}</p>
-          )}
-        </div>
-      </div>
-
-      {r && (
-        <details className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-4 py-2 text-sm">
-          <summary className="cursor-pointer font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-2">
-            {r.identityHolds ? <CheckCircle2 className="w-4 h-4 text-green-700 dark:text-green-400 shrink-0" aria-hidden /> : <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" aria-hidden />}
-            Pse ndryshon nga "Mbetja sipas vitit"? (për kontroll)
-          </summary>
-          <div className="space-y-2 pt-2">
-            <p className="text-slate-700 dark:text-slate-300">
-              Mbetja sipas vitit <b>{eur(r.yearViewCents)}</b>
-              {" "}{r.outsideWindow.totalCents >= 0 ? "−" : "+"} <b>{num(Math.abs(r.outsideWindow.totalCents) / 100)} €</b> (verë: para 1 shtatorit)
-              {" "}{r.otherYear.totalCents >= 0 ? "+" : "−"} <b>{num(Math.abs(r.otherYear.totalCents) / 100)} €</b> (për vit tjetër, p.sh. Koprani)
-              {" "}= <b>{eur(r.physicalWindowCents)}</b> lëvizje në arkë nga 1 shtatori {r.identityHolds ? "✓" : "— nuk përputhet!"}
-            </p>
-            {!yearViewMatches && <p className="text-xs text-orange-700 dark:text-orange-400">Kujdes: mbetja e vitit këtu ({eur(r.yearViewCents)}) ndryshon nga karta më sipër ({formatCurrency(yearView)}).</p>}
-            <ReconList title="Verë: para 1 shtatorit" rows={r.outsideWindow.rows} />
-            <ReconList title="Për vit tjetër / jashtë Pasqyrës" rows={r.otherYear.rows} />
-          </div>
-        </details>
-      )}
-    </section>
-  );
-}
-
-function ReconList({ title, rows }: { title: string; rows: ReconRow[] }) {
-  if (rows.length === 0) return null;
-  return (
-    <details className="rounded-lg bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700">
-      <summary className="cursor-pointer px-3 py-2 font-semibold text-slate-700 dark:text-slate-200">{title} — {rows.length} rreshta</summary>
-      <ul className="max-h-64 overflow-auto divide-y divide-slate-100 dark:divide-slate-700 text-[13px]">
-        {rows.map(x => (
-          <li key={x.key} className="px-3 py-1.5 flex justify-between gap-3">
-            <span className="text-slate-600 dark:text-slate-300">{dmy(x.day)} · {x.label} <span className="text-slate-400">— {x.reason}</span></span>
-            <span className={`font-semibold whitespace-nowrap ${x.cents < 0 ? "text-red-700 dark:text-red-400" : "text-slate-900 dark:text-white"}`}>{signed(x.cents)}</span>
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-}
-
-function countVerdict(diff: number): string {
-  if (Math.abs(diff) < 0.005) return "Përputhet ✓";
-  return diff < 0 ? `Mungojnë ${num(-diff)} €` : `Tepër ${num(diff)} €`;
 }
 
 function Dot({ color }: { color: string }) {
@@ -318,98 +202,5 @@ function CardLink({ href, children }: { href: string; children: React.ReactNode 
       className="block rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-4 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500">
       {children}
     </Link>
-  );
-}
-
-interface CountRow { id: number; createdAt: string; countedAmount: number; systemAmount: number; difference: number; userName: string | null; basis?: string | null }
-
-function CashCountModal({ year, yearType, system, unknownOpening, onClose, onSaved }: {
-  year: number; yearType: YearType; system: number; unknownOpening?: boolean; onClose: () => void; onSaved: (c: LastCashCount) => void;
-}) {
-  const [value, setValue] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<CountRow | null>(null);
-  const [history, setHistory] = useState<CountRow[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-    fetch(`/api/dashboard/cash-count?year=${year}&yearType=${yearType}`).then(r => (r.ok ? r.json() : [])).then(setHistory).catch(() => {});
-  }, [year, yearType]);
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    // pranon "13513.52", "13513,52" dhe "13.513,52"
-    const v = value.trim().replace(/\s|€/g, "");
-    const counted = parseFloat(v.includes(",") ? v.replace(/\./g, "").replace(",", ".") : v);
-    if (!Number.isFinite(counted) || counted < 0) { setError("Shkruani shumën e numëruar (€)."); inputRef.current?.focus(); return; }
-    setSaving(true); setError("");
-    try {
-      const r = await fetch("/api/dashboard/cash-count", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ counted, year, yearType }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) { setError(d.error || "Ruajtja dështoi."); return; }
-      setResult(d);
-      setHistory(h => [d, ...h]);
-      onSaved({ at: d.createdAt, counted: d.countedAmount, system: d.systemAmount, difference: d.difference, userName: d.userName });
-    } catch {
-      setError("Gabim rrjeti — provo përsëri.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const ok = result && Math.abs(result.difference) < 0.005;
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
-      onKeyDown={e => { if (e.key === "Escape") onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="cc-title" className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 shadow-2xl animate-fade-in">
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
-          <h3 id="cc-title" className="font-bold text-slate-900 dark:text-white">Numëro arkën</h3>
-          <button type="button" onClick={onClose} aria-label="Mbyll" className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X className="w-5 h-5" /></button>
-        </div>
-        <form onSubmit={save} className="p-5 space-y-4">
-          <div>
-            <label htmlFor="cc-amount" className="form-label">Sa para ke në arkë? (€)</label>
-            <input id="cc-amount" ref={inputRef} inputMode="decimal" value={value} onChange={e => { setValue(e.target.value); setResult(null); }}
-              className="form-input text-lg" placeholder="0,00" autoComplete="off" />
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Duhet të jenë në arkë: {formatCurrency(system)}{unknownOpening && " + paratë e 31.08 (s'dihen)"}</p>
-          </div>
-          {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-          {result && (
-            <p role="status" className={`rounded-xl px-4 py-3 font-bold ${ok ? "bg-green-50 text-green-800 dark:bg-green-950/40 dark:text-green-300" : "bg-orange-50 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300"}`}>
-              {countVerdict(result.difference)}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="btn-secondary">Mbyll</button>
-            <button type="submit" disabled={saving} className="btn-primary">
-              {saving && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />} Ruaj numërimin
-            </button>
-          </div>
-        </form>
-        {history.length > 0 && (
-          <div className="px-5 pb-5">
-            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Numërimet e mëparshme</p>
-            <ul className="max-h-48 overflow-auto divide-y divide-slate-100 dark:divide-slate-700 text-sm">
-              {history.map(h => (
-                <li key={h.id} className="py-2 flex justify-between gap-3">
-                  <span className="text-slate-600 dark:text-slate-300">
-                    {formatDate(h.createdAt)} · {formatCurrency(h.countedAmount)}
-                    {h.userName && <span className="text-slate-400"> · {h.userName}</span>}
-                    {h.basis !== "DATA_REALE" && <span className="block text-[11px] text-slate-400">krahasuar me Pasqyrën e vitit (logjika e vjetër)</span>}
-                  </span>
-                  <span className={`font-semibold whitespace-nowrap ${Math.abs(h.difference) < 0.005 ? "text-green-700 dark:text-green-400" : "text-orange-700 dark:text-orange-400"}`}>{countVerdict(h.difference)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
