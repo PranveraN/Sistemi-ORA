@@ -59,3 +59,16 @@ export const CALENDAR_YEARS = Array.from({ length: new Date().getFullYear() + 2 
  * tjetër çdo Gusht, duke fshehur pagesat e vitit aktual pa asnjë ndryshim manual.
  */
 export const DEFAULT_ACADEMIC_YEAR = 2026;
+
+/**
+ * Muaji/viti i një pagese nuk mund t'i takojë një viti shkollor MË TË HERSHËM se Afati i saj.
+ * P.sh. në qershor (viti 2025–26) regjistrohet çmimi për 2026–27 me afat 15.09.2026: pa këtë,
+ * pagesa merrte muajin 6/2026 dhe dilte si borxh i 2025–26 + dyfish me planin e shtatorit
+ * (Imarah Ramadani, Kajla Tafa, Iliriana Sefedini — 2026-10-14). Atëherë merret muaji i Afatit.
+ */
+export function alignPeriodToDue(month: number | null, year: number | null, dueDate: Date): { month: number | null; year: number | null } {
+  if (month == null || year == null || Number.isNaN(dueDate.getTime())) return { month, year };
+  const sy = (m: number, y: number) => (m >= 9 ? y : y - 1);
+  const dm = dueDate.getUTCMonth() + 1, dy = dueDate.getUTCFullYear();
+  return sy(dm, dy) > sy(month, year) ? { month: dm, year: dy } : { month, year };
+}

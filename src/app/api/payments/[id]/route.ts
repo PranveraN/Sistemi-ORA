@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { alignPeriodToDue } from "@/lib/academicYear";
 import { logAction } from "@/lib/audit";
 import { recordPaymentEvent } from "@/lib/studentHistory";
 
@@ -46,8 +47,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // raportet që kërkojnë muaj real (p.sh. Vit Akademik). Nëse frontend-i dërgon
   // month/year të llogaritur (siç bën tani CategoryPaymentPage), respektohen ato;
   // përndryshe llogariten direkt nga Afati, kurrë nuk lihen jashtë përditësimit.
-  const month = body.month != null ? parseInt(body.month) : dueDate.getMonth() + 1;
-  const year  = body.year  != null ? parseInt(body.year)  : dueDate.getFullYear();
+  const { month, year } = alignPeriodToDue(
+    body.month != null ? parseInt(body.month) : dueDate.getMonth() + 1,
+    body.year  != null ? parseInt(body.year)  : dueDate.getFullYear(),
+    dueDate,
+  );
 
   // Gjej rekordin ekzistues për të ruajtur receiptNumber nëse ka
   const existing = await prisma.payment.findUnique({ where: { id: parseInt(id) }, select: { receiptNumber: true, paidAmount: true } });

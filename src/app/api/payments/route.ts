@@ -3,6 +3,7 @@ import { recordPaymentEvent } from "@/lib/studentHistory";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { alignPeriodToDue } from "@/lib/academicYear";
 
 async function generateReceiptNumber(orgId: number): Promise<string> {
   const year = new Date().getFullYear();
@@ -129,8 +130,8 @@ export async function POST(req: NextRequest) {
         status,
         description: body.description || null,
         note: body.note || null,
-        month: body.month ? parseInt(body.month) : null,
-        year: body.year ? parseInt(body.year) : new Date().getFullYear(),
+        // muaji s'mund t'i takojë një viti shkollor më të hershëm se Afati (shih alignPeriodToDue)
+        ...alignPeriodToDue(body.month ? parseInt(body.month) : null, body.year ? parseInt(body.year) : new Date().getFullYear(), new Date(body.dueDate)),
         receiptNumber,
       },
       include: { student: { select: { firstName: true, lastName: true } } },
