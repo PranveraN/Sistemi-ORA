@@ -2953,7 +2953,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
               <div className="space-y-3">
                 <div className={`rounded-xl px-3 py-2 text-xs ${student.timiInvest ? "bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200" : "bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-200"}`}>
                   {student.timiInvest
-                    ? <>Marrëveshja TIMI Invest: <b>{formatCurrency(tiPrice ?? 0)}</b> (çmimi {formatCurrency(student.timiInvest.regularPrice)}{student.timiInvest.discountPct ? ` − ${student.timiInvest.discountPct}%` : ""}{student.timiInvest.manualDiscAmt ? ` − ${formatCurrency(student.timiInvest.manualDiscAmt)}` : ""}) · {formatCurrency(round2((tiPrice ?? 0) / 12))}/muaj. Pagesat kalojnë te &quot;Verifikim&quot; derisa të konfirmohen.</>
+                    ? <>Marrëveshja TIMI Invest: <b>{formatCurrency(tiPrice ?? 0)}</b> (çmimi {formatCurrency(student.timiInvest.regularPrice)}{student.timiInvest.discountPct ? ` − ${student.timiInvest.discountPct}%` : ""}{student.timiInvest.manualDiscAmt ? ` − ${formatCurrency(student.timiInvest.manualDiscAmt)}` : ""}) · {formatCurrency(round2((tiPrice ?? 0) / 12))}/muaj. <b>Paratë që hyjnë nga TIMI regjistrohen te TIMI Invest → &quot;Pagesat nga TIMI&quot;</b> (llogarit vetë komisionin 4,66% dhe i shpërndan te këstet) — mos i shëno këtu me &quot;Pago&quot;.</>
                     : <>Ky nxënës s&apos;është i lidhur me TIMI Invest — shkruani çmimin me dorë, ose lidheni te moduli TIMI Invest.</>}
                 </div>
                 {tiInit.unmatchedPaid.length > 0 && (

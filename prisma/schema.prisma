@@ -1286,6 +1286,31 @@ model TimiInvestStudent {
   updatedAt    DateTime @updatedAt
 }
 
+// Pagesë që hyri në bankë nga TIMI Invest (e plotë ose pjesë-pjesë, çfarëdo shume).
+// TIMI paguan çmimin minus komisionin (4,66%): fëmijëve u llogaritet shuma bruto
+// (shuma ÷ (1 − komisioni)), komisioni ruhet si shpenzim i shkollës (Shpenzim, Bankë).
+// `ndarja` (JSON): [{ studentId, emri, cents, rreshtat: [{ paymentId, cents }] }] — për ta kthyer mbrapsht.
+model TimiPagese {
+  id             Int       @id @default(autoincrement())
+  organizationId Int       @default(1)
+  data           DateTime
+  shumaCents     Int       // që hyri në bankë
+  brutoCents     Int       // që u llogarit te fëmijët
+  komisionCents  Int
+  komisionPct    Float
+  vitiShkollor   Int       // 2026 = 2026–27
+  referenca      String?   // nr. i (pro)faturës, p.sh. SHM02/05
+  prindi         String?
+  shenim         String?
+  ndarja         String
+  shpenzimId     Int?      // shpenzimi i komisionit
+  createdById    Int?
+  createdByName  String?
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+  deletedByName  String?
+}
+
 model TimiInvestInvoice {
   id               Int      @id @default(autoincrement())
   number           String   @unique

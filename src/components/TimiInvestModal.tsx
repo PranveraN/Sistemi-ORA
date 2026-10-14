@@ -6,8 +6,9 @@ import type { ReactNode } from "react";
 import {
   X, Plus, Trash2, Printer, Users, FileText,
   Edit2, Check, History, ArrowLeft, Eye, Download,
-  FileCheck, ArrowRightLeft, Search,
+  FileCheck, ArrowRightLeft, Search, Landmark,
 } from "lucide-react";
+import TimiPagesatPanel from "@/components/TimiPagesatPanel";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 /* ─── Types ─────────────────────────────────────────────── */
@@ -228,7 +229,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;padding:20
 /* ════════════════════════════════════════════════════════════
    MAIN COMPONENT
 ════════════════════════════════════════════════════════════ */
-type View = "list" | "invoices" | "create";
+type View = "list" | "invoices" | "create" | "pagesat";
 
 export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   const mouseDownOnBackdrop = useRef(false);
@@ -645,7 +646,7 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
 
         {/* Tab bar */}
         <div className="flex items-center gap-1 px-4 pt-3 pb-0 flex-shrink-0">
-          {([["list","Nxënësit",<Users className="w-3.5 h-3.5" key="u"/>],["invoices","Faturat",<History className="w-3.5 h-3.5" key="h"/>],["create","Krijo Profaturë",<FileText className="w-3.5 h-3.5" key="f"/>]] as [View, string, ReactNode][]).map(([v, label, icon]) => (
+          {([["list","Nxënësit",<Users className="w-3.5 h-3.5" key="u"/>],["invoices","Faturat",<History className="w-3.5 h-3.5" key="h"/>],["create","Krijo Profaturë",<FileText className="w-3.5 h-3.5" key="f"/>],["pagesat","Pagesat nga TIMI",<Landmark className="w-3.5 h-3.5" key="p"/>]] as [View, string, ReactNode][]).map(([v, label, icon]) => (
             <button key={v} onClick={() => setView(v)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-t-lg text-sm font-medium border-b-2 transition-all ${
                 view === v
@@ -904,6 +905,8 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
               )}
             </div>
           )}
+
+          {view === "pagesat" && <TimiPagesatPanel />}
 
           {/* ════ VIEW: INVOICES ════ */}
           {view === "invoices" && (

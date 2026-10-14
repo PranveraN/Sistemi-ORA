@@ -45,6 +45,7 @@ const FINANCIAL_DELETE_PATTERNS: RegExp[] = [
   /^\/api\/shpenzime\/\d+\/pagesat\/\d+$/,
   /^\/api\/students\/\d+$/,
   /^\/api\/timi-invest\/invoices\/\d+$/,
+  /^\/api\/timi-invest\/pagesat\/\d+$/,
   /^\/api\/uniforms\/handovers\/\d+$/,
   /^\/api\/uniforms\/sales\/\d+$/,
 ];
