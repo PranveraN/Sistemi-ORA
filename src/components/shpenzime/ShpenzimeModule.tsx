@@ -374,6 +374,10 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
 
   async function handleSave() {
     if (!form.kategoriId || !form.shuma) return;
+    // Data e regjistrimit përcakton muajin — një datë në të ardhmen zakonisht është gabim shtypi
+    if (form.data && form.data > now.toISOString().split("T")[0]
+      && !confirm(`"Data e regjistrimit (pagesës)" është në të ardhmen: ${form.data.split("-").reverse().join(".")}.
+Shpenzimi do të dalë te ai muaj. A je e sigurt?`)) return;
     setSaving(true);
     setSaveError("");
     const url = editId ? `/api/shpenzime/${editId}` : "/api/shpenzime";
@@ -1629,7 +1633,11 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="form-label" htmlFor="sh-data-dok">Data e faturës / kuponit</label>
-                  <input id="sh-data-dok" type="date" value={form.dataDokumentit} onChange={e => setForm(f => ({ ...f, dataDokumentit: e.target.value }))} className="form-input" />
+                  <input id="sh-data-dok" type="date" value={form.dataDokumentit} onChange={e => {
+                    const v = e.target.value;
+                    // Data e regjistrimit ndjek datën e faturës derisa të mos ndryshohet me dorë
+                    setForm(f => ({ ...f, dataDokumentit: v, data: v && (f.data === now.toISOString().split("T")[0] || f.data === f.dataDokumentit) ? v : f.data }));
+                  }} className="form-input" />
                   <p className="text-[11px] text-slate-400 mt-0.5">Data e shkruar në dokument</p>
                 </div>
                 <div>
