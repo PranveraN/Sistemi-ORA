@@ -738,7 +738,9 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
 
             {stats?.cashBox && <ShkollimiCashBox stats={stats} cashBox={stats.cashBox} onShowExpenses={() => setTab("expense")} />}
 
-            {stats && !stats.cashBox && (() => {
+            {/* Me kërkim aktiv "Sa kam marrë" është vetëm i nxënësve të gjetur, ndërsa dorëzimet/shpenzimet
+                janë të gjithë shkollës — arka do dilte absurde (p.sh. −131.141 €), ndaj s'shfaqet */}
+            {stats && !stats.cashBox && !search.trim() && (() => {
               // Mbetja e vërtetë në arkë — nga sa u mor, hiqet jo vetëm ç'u dorëzua,
               // por edhe ç'u shpenzua dhe ç'u investua direkt nga paraja e arkës
               // (Investimet s'kanë kategori pagese, ndaj janë gjithmonë shkollore,
