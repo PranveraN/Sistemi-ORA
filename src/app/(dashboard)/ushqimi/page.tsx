@@ -1450,6 +1450,8 @@ export default function UshqimiPage() {
                       {rowPeriods.map(({ period, payment }) => {
                         const skipped = payment?.description === SKIPPED_MARKER;
                         const free    = payment?.description === FREE_MARKER;
+                        // E paguar pjesërisht: tregohet edhe sa mbetet (me të kuqe) — "Bankë" vetëm e fshihte borxhin
+                        const mbetet  = payment && !skipped && !free && payment.paidAmount > 0 ? Math.max(0, Math.round((payment.finalAmount - payment.paidAmount) * 100) / 100) : 0;
                         return (
                           <td key={period.label} className="table-cell text-center p-0">
                             <button
@@ -1477,6 +1479,7 @@ export default function UshqimiPage() {
                                 : payment
                                 ? formatCurrency(payment.finalAmount)
                                 : "—"}
+                              {mbetet > 0.005 && <span className="block text-[11px] font-bold text-red-600 dark:text-red-400">mbetet {formatCurrency(mbetet)}</span>}
                             </button>
                           </td>
                         );
