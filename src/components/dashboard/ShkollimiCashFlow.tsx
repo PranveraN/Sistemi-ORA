@@ -14,9 +14,9 @@ import type { YearType } from "@/lib/academicYear";
 // "Ku janë paratë e paguara". Arka fizike (+ "Numëro arkën") vetëm për Super Admin,
 // te dritarja që hapet nga ikona e vogël në kokë (PhysicalCashDialog). Të dhënat vijnë nga
 // /api/dashboard/shkollimi-financiare (llogaritur në server, në cent).
-// Dy shifra krejt të ndara: "Mbetja sipas vitit" (çdo rresht te viti i vet
-// shkollor) dhe "Arka fizike" (sipas datës reale — src/lib/cashLedger.ts);
-// diferenca mes tyre shpjegohet rresht për rresht.
+// "Mbetja sipas vitit" s'shfaqet më këtu (ngatërronte: del negative kur paratë e një viti tjetër
+// dorëzohen bashkë) — paratë në dorë i tregon vetëm Arka fizike (src/lib/cashLedger.ts), ku
+// edhe diferenca me pamjen sipas vitit shpjegohet rresht për rresht.
 
 const C = { cash: "#0F766E", bank: "#1D4ED8", handed: "#7C3AED", spent: "#C2410C", invest: "#A16207" };
 const num = (v: number) => new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
@@ -44,7 +44,7 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
   const debt = Math.max(0, Math.round((expected - f.paid) * 100) / 100);
   const pct = (v: number) => (expected > 0 ? Math.round((v / expected) * 100) : 0);
   const share = (v: number, of: number) => (of > 0 ? `${Math.max(0, (v / of) * 100)}%` : "0%");
-  const segTotal = f.bank + f.handedOver + f.expensesCash + f.investmentsCash + Math.max(0, f.inCashBox);
+  const segTotal = f.bank + f.handedOver + f.expensesCash + f.investmentsCash;
 
   return (
     <div className="space-y-4">
@@ -123,15 +123,14 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
           <Link href="/hyrat" className="hover:underline">+ Të hyra tjera cash <b className="text-slate-900 dark:text-white">{formatCurrency(f.otherCash)}</b></Link>
         </div>
         <div className="flex h-3 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700 gap-px" role="img"
-          aria-label={`Në bankë ${formatCurrency(f.bank)}, Dorëzuar ${formatCurrency(f.handedOver)}, Shpenzuar nga arka ${formatCurrency(f.expensesCash)}, Investime nga arka ${formatCurrency(f.investmentsCash)}, Në arkë ${formatCurrency(f.inCashBox)}`}>
+          aria-label={`Në bankë ${formatCurrency(f.bank)}, Dorëzuar ${formatCurrency(f.handedOver)}, Shpenzuar nga arka ${formatCurrency(f.expensesCash)}, Investime nga arka ${formatCurrency(f.investmentsCash)}`}>
           <span style={{ width: share(f.bank, segTotal), background: C.bank }} />
           <span style={{ width: share(f.handedOver, segTotal), background: C.handed }} />
           <span style={{ width: share(f.expensesCash, segTotal), background: C.spent }} />
           <span style={{ width: share(f.investmentsCash, segTotal), background: C.invest }} />
-          <span style={{ width: share(Math.max(0, f.inCashBox), segTotal), background: C.cash }} />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-3 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mt-3">
           <CardLink href={href("metoda=BANKE")}>
             <Legend color={C.bank} label="Në bankë" />
             <p className="text-[22px] leading-tight font-extrabold text-slate-900 dark:text-white mt-1">{formatCurrency(f.bank)}</p>
@@ -152,20 +151,8 @@ export default function ShkollimiCashFlow({ label, year, yearType, expected, tot
             <p className="text-[22px] leading-tight font-extrabold text-slate-900 dark:text-white mt-1">{formatCurrency(f.investmentsCash)}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Investime të paguara cash</p>
           </CardLink>
-          {/* Mbetja sipas vitit shkollor — jo arka fizike (ajo është më poshtë) */}
-          <CardLink href={href("metoda=CASH")}>
-            <Legend color={C.cash} label="Mbetja sipas vitit" />
-            <p className={`text-[22px] leading-tight font-extrabold mt-1 ${f.inCashBox < 0 ? "text-amber-700 dark:text-amber-400" : "text-slate-900 dark:text-white"}`}>{formatCurrency(f.inCashBox)}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Cash i vitit {label} pa daljet e tij</p>
-          </CardLink>
         </div>
 
-        {/* Mbetja negative = ndarje sipas viteve, jo mungesë parash (shih arkën fizike) */}
-        {f.inCashBox < 0 && (
-          <p role="note" className="mt-3 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 px-4 py-2.5 text-sm text-amber-900 dark:text-amber-200">
-            <b>Pse del me minus?</b> Disa para cash të dorëzuara i takojnë një viti tjetër (p.sh. pagesa për vitin e ardhshëm), prandaj s&apos;numërohen te ky vit. Kjo <b>nuk</b> do të thotë që mungojnë para{isSuperAdmin ? " — për paratë në dorë shiko arkën (ikona lart)." : "."}
-          </p>
-        )}
 
       </section>
 
