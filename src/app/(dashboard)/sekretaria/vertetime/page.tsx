@@ -5,8 +5,9 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import {
   ArrowLeft, GraduationCap, Users, User,
-  Printer, RotateCcw, X, ChevronRight,
+  Printer, RotateCcw, X, ChevronRight, Mail,
 } from "lucide-react";
+import EmailDocumentModal from "@/components/sekretaria/EmailDocumentModal";
 import { formatDate } from "@/lib/utils";
 import { schoolYearText } from "@/lib/academicYear";
 import { logSekretariaDocument, loadSekretariaDocument } from "@/lib/sekretariaDocLog";
@@ -19,6 +20,8 @@ interface Student {
   id: number;
   firstName: string;
   lastName: string;
+  motherEmail?: string | null;
+  fatherEmail?: string | null;
   birthDate: string;
   parentName: string;
   class: { name: string; level: string } | null;
@@ -27,6 +30,7 @@ interface Student {
 interface StaffMember {
   id: number;
   emri: string;
+  email?: string | null;
   lenda: string | null;
   tipi: string | null;
 }
@@ -198,7 +202,7 @@ const CERT_TYPES: CertType[] = [
 
 // ── print ────────────────────────────────────────────────────────────────────
 
-function buildPrintHtml(nr: string, certDate: string, body: string): string {
+function buildPrintHtml(nr: string, certDate: string, body: string, autoPrint = true): string {
   const origin = window.location.origin;
   const paras = body.split("\n\n").filter(Boolean);
   return `<!DOCTYPE html>
@@ -256,12 +260,12 @@ function buildPrintHtml(nr: string, certDate: string, body: string): string {
     &nbsp;+3846 50 50 55
   </div>
 </div>
-<script>
+${autoPrint ? `<script>
   window.onload = function () {
     window.print();
     window.onfocus = function () { setTimeout(function () { window.close(); }, 400); };
   };
-</script>
+</script>` : ""}
 </body>
 </html>`;
 }
@@ -276,6 +280,7 @@ export default function Vertetime() {
   const [nr, setNr] = useState("");
   const [certDate, setCertDate] = useState(todayFmt());
   const [body, setBody] = useState("");
+  const [emailOpen, setEmailOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/students?limit=2000&status=ACTIVE")
@@ -314,19 +319,25 @@ export default function Vertetime() {
     if (p) setBody(makeTemplate(active.id, p));
   };
 
-  const handlePrint = () => {
-    const w = window.open("", "_blank", "width=860,height=700");
-    if (w) { w.document.write(buildPrintHtml(nr, certDate, body)); w.document.close(); }
-    // Arkivi (paneli i Sekretarisë: "Këtë muaj", "Dokumentet e fundit") — s'ndikon printimin
+  // Arkivi (paneli i Sekretarisë: "Këtë muaj", "Dokumentet e fundit") — pas printimit ose dërgimit me email
+  const logToArchive = (sentTo?: string) => {
     const p = persons.find(x => x.id === selId);
     if (active && p) {
       logSekretariaDocument({
         type: ARCHIVE_TYPE[active.id],
         ...(isStaff(p) ? { staffId: p.id, personName: p.emri } : { studentId: p.id, personName: `${p.firstName} ${p.lastName}`, className: p.class?.name ?? null }),
-        data: { certType: active.id, nr, certDate, body },
+        data: { certType: active.id, nr, certDate, body, ...(sentTo ? { emailedTo: sentTo } : {}) },
       });
     }
   };
+  const handlePrint = () => {
+    const w = window.open("", "_blank", "width=860,height=700");
+    if (w) { w.document.write(buildPrintHtml(nr, certDate, body)); w.document.close(); }
+    logToArchive();
+  };
+  const selPerson = persons.find(x => x.id === selId) ?? null;
+  const selName = selPerson ? (isStaff(selPerson) ? selPerson.emri : `${selPerson.firstName} ${selPerson.lastName}`) : "";
+  const selEmail = selPerson ? (isStaff(selPerson) ? selPerson.email ?? "" : selPerson.motherEmail || selPerson.fatherEmail || "") : "";
 
   // Nga paneli i Sekretarisë: ?type=nxenes|mesimdhenes|asistente (&studentId= / &staffId=) ose ?archiveId= (rihap)
   const urlHandled = useRef(false);
@@ -419,6 +430,9 @@ export default function Vertetime() {
               <button onClick={resetBody} title="Rifillo shabllonin"
                 className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors">
                 <RotateCcw className="w-4 h-4" />
+              </button>
+              <button onClick={() => setEmailOpen(true)} disabled={!body.trim()} className="btn-secondary text-sm" title="Dërgo vërtetimin si PDF me email">
+                <Mail className="w-4 h-4" /> Dërgo me email
               </button>
               <button onClick={handlePrint} className="btn-primary text-sm">
                 <Printer className="w-4 h-4" /> Printo
@@ -532,6 +546,24 @@ export default function Vertetime() {
             </div>
           </div>
         </div>
+      )}
+
+      {emailOpen && active && (
+        <EmailDocumentModal
+          defaultTo={selEmail}
+          defaultSubject={`Vërtetim${selName ? ` — ${selName}` : ""}${nr ? ` (Nr. ${nr})` : ""}`}
+          defaultMessage={`Të nderuar,
+
+Në bashkëngjitje gjeni vërtetimin${selName ? ` për ${selName}` : ""}.
+
+Me respekt,
+Shkolla "Akademia Ora"`}
+          filename={`Vertetim${selName ? ` ${selName}` : ""}${nr ? ` ${nr.replaceAll("/", "-")}` : ""}`}
+          label={`${active.label}${selName ? ` — ${selName}` : ""}`}
+          getHtml={() => buildPrintHtml(nr, certDate, body, false)}
+          onClose={() => setEmailOpen(false)}
+          onSent={to => logToArchive(to)}
+        />
       )}
     </>
   );
