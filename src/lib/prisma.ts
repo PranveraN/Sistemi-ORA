@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { AUDITED_MODELS } from "@/lib/audit/tables";
 import {
   auditStorage, resolveActor, contextParams, SET_CONTEXT_SQL, CLEAR_CONTEXT_SQL,
@@ -36,6 +37,24 @@ function stampCreatedBy(model: string, operation: string, args: Args, userId: nu
   return args;
 }
 
+// ── Radha e shkrimeve ───────────────────────────────────────────────────────
+// SQLite pranon vetëm NJË shkrim njëherësh. Kur ruhen shumë pagesa njëherësh
+// (p.sh. "Çdo muaj" — 10 PUT paralelë), transaksionet e auditimit përplaseshin
+// dhe dështonin me "Operations timed out" → "gabim serveri" (Amina Isufi,
+// 2026-10-16: nga 10 ruajtje paralele dështonin 6). Tani shkrimet e audituara
+// presin radhën njëri pas tjetrit (brenda procesit); reentrant — një shkrim
+// brenda një transaksioni që e mban radhën s'pret veten.
+const writeLockStore = new AsyncLocalStorage<boolean>();
+let writeChain: Promise<unknown> = Promise.resolve();
+function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+  if (writeLockStore.getStore()) return fn();
+  const run = writeChain.then(() => writeLockStore.run(true, fn));
+  writeChain = run.catch(() => undefined);
+  return run;
+}
+// Kohë më e gjatë pritjeje për transaksionet (parazgjedhja e Prisma-s: 2 s / 5 s)
+const TX_OPTS = { maxWait: 20_000, timeout: 30_000 };
+
 export function createPrismaClient(url?: string): PrismaClient {
   const base = new PrismaClient({
     log: ["error"],
@@ -67,14 +86,14 @@ export function createPrismaClient(url?: string): PrismaClient {
             await recordClosedDayChanges(tx, before, actor);
             return result;
           }
-          return base.$transaction(async tx => {
+          return withWriteLock(() => base.$transaction(async tx => {
             await tx.$executeRawUnsafe(SET_CONTEXT_SQL, ...contextParams(actor));
             const before = await maxAuditLogId(tx);
             const result = await (tx as unknown as Record<string, AnyDelegate>)[lowerFirst(model)][operation](a);
             await recordClosedDayChanges(tx, before, actor);
             await tx.$executeRawUnsafe(CLEAR_CONTEXT_SQL);
             return result;
-          });
+          }, TX_OPTS));
         },
       },
     },
@@ -106,6 +125,11 @@ export function createPrismaClient(url?: string): PrismaClient {
   async function auditedTransaction(arg: unknown, opts?: unknown): Promise<unknown> {
     const parent = auditStorage.getStore();
     if (parent?.tx || parent?.batch) return origTx(arg, opts);
+    const o = { ...TX_OPTS, ...((opts as object) ?? {}) };
+    return withWriteLock(() => auditedTransactionInner(arg, o, parent));
+  }
+
+  async function auditedTransactionInner(arg: unknown, opts: unknown, parent: AuditStore | undefined): Promise<unknown> {
     const actor: AuditActor = await resolveActor();
     if (Array.isArray(arg)) {
       const store: AuditStore = { ...parent, actor, batch: true };

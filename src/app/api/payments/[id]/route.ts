@@ -108,6 +108,8 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
     include: { student: { select: { firstName: true, lastName: true } }, category: { select: { name: true } } },
   });
 
+  // E fshirë tashmë (p.sh. dy ruajtje të njëpasnjëshme të planit) → 404, jo "gabim serveri"
+  if (!existing) return NextResponse.json({ error: "Pagesa s'u gjet (mund të jetë fshirë tashmë)." }, { status: 404 });
   await prisma.payment.delete({ where: { id: paymentId } });
 
   if (existing) {
