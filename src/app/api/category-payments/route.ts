@@ -259,6 +259,20 @@ export async function GET(req: NextRequest) {
     investmentsCash = (await loadCashInvestments(month ?? 0, year ?? 0, yearType)).cash;
   }
 
+  // Arka e kategorive të tjera (Ushqimi, eShkollori…): VETËM pagesat cash hyjnë në arkë —
+  // "Sa kam marrë" përfshinte edhe bankën (p.sh. Ushqimi 1.372,50 € me bankë, 2026-10-16),
+  // kështu "Sa kam në arkë" dilte më i madh se realiteti. Edhe nxënësit e larguar: paratë hynë.
+  let simpleCash = 0, simpleBank = 0;
+  for (const s of students) for (const p of s.payments) {
+    if (p.paidAmount <= 0) continue;
+    const ch = paymentChannel(p.method);
+    if (ch === "cash") simpleCash += p.paidAmount; else if (ch === "banke") simpleBank += p.paidAmount;
+  }
+  const expensesCashAgg = categoryName === "Shkollimi" ? null : await prisma.expense.aggregate({
+    where: { categoryId: category.id, type: "EXPENSE", OR: [{ method: "CASH" }, { method: null }], ...expensePeriodWhere(month ?? 0, year ?? 0, yearType) },
+    _sum: { amount: true },
+  });
+
   const totalDebt = activeStudents.reduce((sum, s) => {
     const agg = aggregatePayment(s.payments as PrismaPayment[]);
     if (agg) return sum + (agg.balance || 0);
@@ -319,6 +333,12 @@ export async function GET(req: NextRequest) {
       handedOver,
       totalExpenses: shk ? shk.cash : totalExpenses,
       totalInvestments,
+      // Arka (pa Shkollimin, që ka cashBox më poshtë): hyrjet cash/bankë dhe shpenzimet cash
+      cashSimple: {
+        cash: Math.round(simpleCash * 100) / 100,
+        bank: Math.round(simpleBank * 100) / 100,
+        expensesCash: Math.round((expensesCashAgg?._sum.amount ?? 0) * 100) / 100,
+      },
       // Pasqyra e Arkës vetëm për gjithë shkollën: me kërkim/klasë, pagesat cash
       // janë vetëm të atyre nxënësve, kurse dorëzimet/shpenzimet të gjithë vitit —
       // dilte gabimisht "Arka del negative" (p.sh. kërkimi "Medina", 2026-10-09).

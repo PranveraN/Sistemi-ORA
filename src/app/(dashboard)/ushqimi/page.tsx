@@ -120,6 +120,8 @@ interface CashStats {
   handedOver: number;
   totalExpenses: number;
   totalInvestments: number;
+  // Vetëm cash hyn në arkë (shih /api/category-payments → stats.cashSimple)
+  cashSimple?: { cash: number; bank: number; expensesCash: number };
 }
 
 function findPeriodPayment(installments: Payment[], months: number[]): Payment | null {
@@ -621,7 +623,7 @@ export default function UshqimiPage() {
       // "pa ushqim" duhet të numërojnë VETËM nxënësit aktivë, përndryshe numrat
       // dalin të fryrë (përfshihen edhe ata që kanë lëshuar shkollën).
       setYearStudents((d.students as StudentRow[]).filter(s => s.status === "ACTIVE"));
-      setYearCashStats(d.stats ? { totalRevenue: d.stats.totalRevenue, handedOver: d.stats.handedOver, totalExpenses: d.stats.totalExpenses, totalInvestments: d.stats.totalInvestments } : null);
+      setYearCashStats(d.stats ? { totalRevenue: d.stats.totalRevenue, handedOver: d.stats.handedOver, totalExpenses: d.stats.totalExpenses, totalInvestments: d.stats.totalInvestments, cashSimple: d.stats.cashSimple } : null);
       if (d.category?.id) setCategoryId(d.category.id);
     }
     setYearLoading(false);
@@ -950,7 +952,9 @@ export default function UshqimiPage() {
             "Të Hyra", që më parë e bënte "Sa kam marrë" të mos përputhej me
             "Paguar gjithsej" të Raportit). */}
         {yearCashStats && (() => {
-          const cashOnHand = Math.round((yearCashStats.totalRevenue - yearCashStats.handedOver - yearCashStats.totalExpenses - yearCashStats.totalInvestments) * 100) / 100;
+          // Në arkë = hyrjet CASH − dorëzimet − shpenzimet CASH (pagesat me bankë s'kalojnë nga arka)
+          const cs = yearCashStats.cashSimple;
+          const cashOnHand = Math.round(((cs?.cash ?? yearCashStats.totalRevenue) - yearCashStats.handedOver - (cs?.expensesCash ?? yearCashStats.totalExpenses) - yearCashStats.totalInvestments) * 100) / 100;
           return (
             <div className="card p-4 border-2 border-primary-100 dark:border-primary-900/40">
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Pasqyra e Arkës</p>
@@ -962,6 +966,7 @@ export default function UshqimiPage() {
                   <div>
                     <p className="text-xs text-slate-400">Sa kam marrë</p>
                     <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(yearCashStats.totalRevenue)}</p>
+                    {cs && <p className="text-[11px] text-slate-500">Cash {formatCurrency(cs.cash)} · Bankë {formatCurrency(cs.bank)}</p>}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

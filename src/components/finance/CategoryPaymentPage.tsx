@@ -84,6 +84,7 @@ interface Stats {
   handedOver: number;
   totalExpenses: number;
   totalInvestments: number;
+  cashSimple?: { cash: number; bank: number; expensesCash: number };
   // Vetëm Shkollimi: arka e saktë (shih /api/category-payments)
   cashBox?: { cash: number; bank: number; noMethod: number; expensesCash: number; expensesBank: number; expensesUnpaid: number; otherCash: number; investmentsCash: number; expensesUshqimi: number; legacyPending: number };
 }
@@ -745,8 +746,10 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
               // por edhe ç'u shpenzua dhe ç'u investua direkt nga paraja e arkës
               // (Investimet s'kanë kategori pagese, ndaj janë gjithmonë shkollore,
               // jo vetëm të kësaj kategorie — shih investimDateWhere te API).
+              // Vetëm cash hyn në arkë — pagesat me bankë s'kalojnë nga arka
+              const cs = stats.cashSimple;
               const cashOnHand = Math.round(
-                (stats.totalRevenue - stats.handedOver - stats.totalExpenses - stats.totalInvestments) * 100
+                ((cs?.cash ?? stats.totalRevenue) - stats.handedOver - (cs?.expensesCash ?? stats.totalExpenses) - stats.totalInvestments) * 100
               ) / 100;
               return (
                 <div className="card p-4 border-2 border-primary-100 dark:border-primary-900/40">
@@ -759,6 +762,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                       <div>
                         <p className="text-xs text-slate-400">Sa kam marrë</p>
                         <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(stats.totalRevenue)}</p>
+                        {cs && <p className="text-[11px] text-slate-500">Cash {formatCurrency(cs.cash)} · Bankë {formatCurrency(cs.bank)}</p>}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
