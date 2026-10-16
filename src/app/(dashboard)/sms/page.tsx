@@ -85,8 +85,9 @@ export default function SmsPage() {
   const familyPhoneParam = searchParams.get("familyPhone") || "";
   const studentsParam = searchParams.get("students") || "";   // nga faqja e Nxënësve
   const classesParam = searchParams.get("classes") || "";     // nga faqja e klasës
+  const textParam = searchParams.get("text") || "";           // p.sh. linku i një dokumenti (Dokumentet → "Dërgo linkun me SMS")
   const preselected = !!(familyPhoneParam || studentsParam);
-  const initialIntent: Intent = preselected ? "one" : classesParam ? "classes" : "debt";
+  const initialIntent: Intent = preselected ? "one" : classesParam ? "classes" : textParam ? "all" : "debt";
   const initialType: MessageType = initialIntent === "debt" ? "SHKOLLIMI" : "GENERAL";
 
   const [intent, setIntent] = useState<Intent>(initialIntent);
@@ -103,7 +104,7 @@ export default function SmsPage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [familyMode, setFamilyMode] = useState(true);
 
-  const [message, setMessage] = useState(initialIntent === "debt" ? debtTemplate("SHKOLLIMI") : SMS_TEMPLATES.GENERAL);
+  const [message, setMessage] = useState(textParam || (initialIntent === "debt" ? debtTemplate("SHKOLLIMI") : SMS_TEMPLATES.GENERAL));
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const templateRef = useRef<HTMLSelectElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);

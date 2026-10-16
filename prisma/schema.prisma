@@ -1244,6 +1244,17 @@ model SchoolDocument {
   uploadedBy       User         @relation(fields: [uploadedById], references: [id])
   createdAt        DateTime     @default(now())
   emailLogs        DocumentEmailLog[]
+  // Fiksuar = "dërgohet shpesh" (kartelat sipër te Dokumentet)
+  pinned           Boolean      @default(false)
+  // Arkivim në vend të fshirjes — dokumenti dhe skedari mbeten
+  archivedAt       DateTime?
+  archivedByName   String?
+  // Linku publik për prindërit (/api/public/dok/<token>) — s'ndryshon kur zëvendësohet skedari
+  publicToken      String?      @unique
+  // "Zëvendëso me version të ri": versionet e vjetra mbeten në disk (JSON [{fileName, originalFileName, mimeType, size, at}])
+  version          Int          @default(1)
+  replacedAt       DateTime?
+  previousFiles    String?
 
   @@index([organizationId, category])
 }

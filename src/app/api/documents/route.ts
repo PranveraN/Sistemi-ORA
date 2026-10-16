@@ -9,9 +9,11 @@ export async function GET(req: NextRequest) {
 
   const orgId: number = (session.user as { organizationId?: number }).organizationId ?? 1;
   const category = req.nextUrl.searchParams.get("category");
+  // Të arkivuarat shfaqen vetëm me ?archived=1 (asnjë dokument s'fshihet)
+  const archived = req.nextUrl.searchParams.get("archived") === "1";
 
   const documents = await prisma.schoolDocument.findMany({
-    where: { organizationId: orgId, ...(category ? { category } : {}) },
+    where: { organizationId: orgId, archivedAt: archived ? { not: null } : null, ...(category ? { category } : {}) },
     include: { uploadedBy: { select: { name: true } } },
     orderBy: { createdAt: "desc" },
   });
