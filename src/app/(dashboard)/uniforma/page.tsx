@@ -13,6 +13,7 @@ interface Stats {
   totalRevenue: number; totalCost: number; totalProfit: number;
   totalCollected: number; totalDebt: number;
   totalHandedOver: number; remainingProfit: number;
+  earlierHandedOver: number; collectedCash: number; collectedBank: number; firstSaleDate: string | null;
   stockValue: number; totalItems: number;
   lowStock: { name: string; stock: number }[];
   salesCount: number; paidCount: number; partialCount: number; pendingCount: number;
@@ -87,6 +88,7 @@ export default function UniformaDashboard() {
             <div>
               <p className="text-xs text-slate-400">Sa kam marrë</p>
               <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(stats.totalCollected)}</p>
+              {stats.collectedBank > 0 && <p className="text-[11px] text-slate-400">Cash {formatCurrency(stats.collectedCash)} · Bankë {formatCurrency(stats.collectedBank)}</p>}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -96,6 +98,11 @@ export default function UniformaDashboard() {
             <div>
               <p className="text-xs text-slate-400">Sa kam dorëzuar</p>
               <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{formatCurrency(stats.totalHandedOver)}</p>
+              {stats.earlierHandedOver > 0 && (
+                <p className="text-[11px] text-slate-400" title="Dorëzime para shitjes së parë të regjistruar në sistem — i takojnë shitjeve të viteve të kaluara, ndaj s'zbriten këtu">
+                  + {formatCurrency(stats.earlierHandedOver)} nga periudhat e mëhershme{stats.firstSaleDate ? ` (para ${new Date(stats.firstSaleDate).toLocaleDateString("de-DE")})` : ""}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -103,7 +110,7 @@ export default function UniformaDashboard() {
               <Wallet className={`w-4.5 h-4.5 ${stats.remainingProfit < 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`} />
             </div>
             <div>
-              <p className="text-xs text-slate-400">Sa kam në arkë</p>
+              <p className="text-xs text-slate-400">Sa kam në arkë (cash)</p>
               <p className={`text-lg font-bold ${stats.remainingProfit < 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>{formatCurrency(stats.remainingProfit)}</p>
               {stats.remainingProfit < 0 && <p className="text-[11px] text-red-500 mt-0.5">⚠ Keni dorëzuar më shumë se ç&apos;keni marrë</p>}
             </div>
@@ -178,6 +185,7 @@ export default function UniformaDashboard() {
               { label: "= Fitim bruto",  val: stats.totalProfit,      cls: "text-green-600 font-bold pt-1 border-t border-slate-100 dark:border-slate-700" },
               { label: "E arkëtuar",     val: stats.totalCollected,   cls: "text-primary-600 mt-1" },
               { label: "(-) Borxhet",    val: stats.totalDebt,        cls: "text-amber-500" },
+              ...(stats.collectedBank > 0 ? [{ label: "(-) Me bankë (s'janë në arkë)", val: stats.collectedBank, cls: "text-slate-500" }] : []),
               { label: "(-) Dorëzuar",   val: stats.totalHandedOver,  cls: "text-red-400" },
               { label: "= Mbetja",       val: stats.remainingProfit,  cls: "text-orange-600 font-bold pt-1 border-t border-slate-100 dark:border-slate-700" },
             ].map(r => (
