@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { HeartHandshake, Plus, Pencil, AlertTriangle, X, Loader2, Search, Trash2, UserRound } from "lucide-react";
+import { HeartHandshake, Plus, Pencil, AlertTriangle, X, Loader2, Search, Trash2, UserRound, ClipboardList } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 export interface CareItem {
@@ -63,8 +63,8 @@ function detailLine(i: CareItem): string {
 
 // Karta "Kujdes i veçantë" — numrat, filtrat dhe lista. Të dhënat vijnë nga
 // /api/special-care, i cili kthen 403 për rolet pa leje (kontrolli real).
-export function SpecialCareCard({ data, onChanged, limit = 8, title = "Kujdes i veçantë" }: {
-  data: CareData; onChanged: () => void; limit?: number; title?: string;
+export function SpecialCareCard({ data, onChanged, limit = 8, title = "Kujdes i veçantë", year }: {
+  data: CareData; onChanged: () => void; limit?: number; title?: string; year?: number;
 }) {
   const [filter, setFilter] = useState<"all" | "assistant" | "needs">("all");
   const [editing, setEditing] = useState<CareItem | "new" | null>(null);
@@ -89,6 +89,10 @@ export function SpecialCareCard({ data, onChanged, limit = 8, title = "Kujdes i 
                 : i.iepWarning === "soon" ? `Rishikimi i PEI afër: ${formatDate(i.iepReviewDate!)}`
                 : detailLine(i)}
             </p>
+          </Link>
+          <Link href={`/classes/pia/${i.studentId}${year ? `?year=${year}` : ""}`} title="Plani Individual i Arsimit (PIA)"
+            className="px-1.5 py-0.5 rounded text-[11px] font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 dark:bg-violet-900/30 dark:text-violet-300 flex items-center gap-1">
+            <ClipboardList className="w-3 h-3" /> PIA
           </Link>
           {data.canEdit && (
             <button type="button" onClick={() => setEditing(i)} title="Ndrysho" aria-label={`Ndrysho kujdesin e veçantë për ${i.studentName}`}

@@ -259,7 +259,7 @@ export default function ClassDetailPage() {
 
           {care.allowed && care.data && (
             <aside className="lg:sticky lg:top-4 lg:self-start">
-              <SpecialCareCard data={care.data} onChanged={care.reload} title="Kujdes i veçantë në këtë klasë" />
+              <SpecialCareCard data={care.data} onChanged={care.reload} title="Kujdes i veçantë në këtë klasë" year={year || currentYear || 2026} />
             </aside>
           )}
         </div>

@@ -301,7 +301,7 @@ export default function ClassesPage() {
 
               {showSidebar && care.data && (
                 <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
-                  <SpecialCareCard data={care.data} onChanged={() => { care.reload(); load(); }} />
+                  <SpecialCareCard data={care.data} onChanged={() => { care.reload(); load(); }} year={effectiveYear || 2026} />
                   <AssistantsCard data={care.data} onAssign={() => setAssignAssistant(true)} />
                 </aside>
               )}

@@ -1627,6 +1627,38 @@ model StudentSpecialCare {
   @@index([assistantStaffId])
 }
 
+// ── Plani Individual i Arsimit (PIA) — të dhëna të NDJESHME ──
+// Një plan për nxënës për vit shkollor; vlerësimet shtohen kurdo (pa periudha të
+// caktuara). Lexohen/shkruhen VETËM përmes /api/pia me lejet e "Kujdesit të
+// veçantë" (src/lib/specialCarePermissions.ts). Përmbajtja ruhet si JSON
+// (src/lib/pia.ts) — formulari ndjek dokumentin "PIA — version i thjeshtuar".
+model StudentPia {
+  id             Int         @id @default(autoincrement())
+  organizationId Int         @default(1)
+  studentId      Int
+  academicYear   Int         // viti fillestar, p.sh. 2026 për 2026/2027
+  data           String      @default("{}") // JSON: PiaData
+  updatedByName  String?
+  reviews        PiaReview[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([studentId, academicYear])
+}
+
+model PiaReview {
+  id            Int        @id @default(autoincrement())
+  piaId         Int
+  pia           StudentPia @relation(fields: [piaId], references: [id], onDelete: Cascade)
+  date          DateTime
+  data          String     @default("{}") // JSON: PiaReviewData
+  updatedByName String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([piaId])
+}
+
 // Fotografi e klasave për çdo vit shkollor (mësuesi, kapaciteti, numri i
 // nxënësve) — ruhet në kalimin e vitit, që vitet e kaluara të shihen te Klasat.
 model ClassYearSnapshot {
