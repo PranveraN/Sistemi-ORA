@@ -1777,6 +1777,106 @@ function monthYearFromDateStr(dateStr: string): { month: number; year: number } 
   return { month: m, year: y };
 }
 
+// ── TIMI Invest: regjistro një pagesë nga banka direkt te nxënësi ──
+// Shkruhet shuma që hyri në bankë; çmimi i plotë (÷ (1 − komisioni)) mbush muajt
+// TIMI me radhë, komisioni regjistrohet si shpenzim — e njëjta logjikë si te
+// TIMI Invest → "Pagesat nga TIMI" (një transaksion, pa "Pago" muaj për muaj).
+interface TimiPageseRow { id: number; data: string; shumaCents: number; brutoCents: number; komisionCents: number; ndarja: { studentId: number; cents: number }[] }
+
+function TimiQuickPay({ studentId, year, remaining, monthly, onDone }: { studentId: number; year: number; remaining: number; monthly: number; onDone: () => void }) {
+  const today = new Date().toISOString().split("T")[0];
+  const [pct, setPct] = useState<number | null>(null);
+  const [list, setList] = useState<TimiPageseRow[]>([]);
+  const [date, setDate] = useState(today);
+  const [bank, setBank] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    fetch(`/api/timi-invest/pagesat?viti=${year}`)
+      .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "S'u lexuan pagesat nga TIMI."); return d; })
+      .then(d => {
+        setPct(d.komisionPct);
+        setList((d.pagesat as TimiPageseRow[]).filter(p => p.ndarja.some(n => n.studentId === studentId)));
+      })
+      .catch(e => setErr(e.message));
+  }, [studentId, year]);
+
+  const k = pct ?? 4.66;
+  const bankAmt = parseFloat(bank.replace(",", ".")) || 0;
+  const bruto = round2(bankAmt / (1 - k / 100));
+  const fromBank = (gross: number) => setBank(String(round2(gross * (1 - k / 100))));
+
+  async function save() {
+    setBusy(true); setErr("");
+    const r = await fetch("/api/timi-invest/pagesat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: date, shuma: bankAmt, vitiShkollor: year, femijet: [{ studentId }] }),
+    });
+    const d = await r.json().catch(() => ({}));
+    setBusy(false);
+    if (!r.ok) { setErr(d.error || "Ruajtja dështoi."); return; }
+    onDone();
+  }
+
+  async function remove(p: TimiPageseRow) {
+    const reason = askDeleteReason(`Fshi pagesën nga TIMI ${formatCurrency(p.shumaCents / 100)} (${formatDate(p.data)})? Muajt dhe komisioni kthehen mbrapsht.`);
+    if (!reason) return;
+    setBusy(true);
+    const r = await fetch(`/api/timi-invest/pagesat/${p.id}`, { method: "DELETE", headers: reasonHeaders(reason) });
+    setBusy(false);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); setErr(d.error || "Fshirja dështoi."); return; }
+    onDone();
+  }
+
+  return (
+    <div className="rounded-xl border-2 border-primary-200 dark:border-primary-800 p-3 space-y-3">
+      <p className="text-sm font-semibold text-slate-800 dark:text-white">Regjistro pagesë nga TIMI</p>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-slate-500">Data (kur hyri në bankë)</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="form-input py-1.5 text-sm w-full" />
+        </div>
+        <div>
+          <label className="text-xs text-slate-500">Shuma nga banka (€)</label>
+          <input type="number" step="0.01" min="0" value={bank} onChange={e => setBank(e.target.value)} className="form-input py-1.5 text-sm w-full" placeholder="p.sh. 1906.80" />
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 text-xs">
+        <button type="button" onClick={() => fromBank(remaining)} disabled={remaining <= 0} className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-400">E plotë ({formatCurrency(remaining)})</button>
+        <button type="button" onClick={() => fromBank(monthly)} disabled={monthly <= 0} className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-400">Një muaj ({formatCurrency(monthly)})</button>
+        <span className="text-slate-400 self-center">ose shkruaj çfarëdo shume (fleksibël)</span>
+      </div>
+      {bankAmt > 0 && (
+        <p className="text-xs text-slate-600 dark:text-slate-300">
+          I llogaritet nxënësit: <b className="text-green-600">{formatCurrency(bruto)}</b> · Komisioni TIMI {k}%: <b>{formatCurrency(round2(bruto - bankAmt))}</b> (shpenzim)
+        </p>
+      )}
+      {err && <p className="text-xs text-red-600">{err}</p>}
+      <button type="button" onClick={save} disabled={busy || bankAmt <= 0 || pct == null} className="btn-primary w-full justify-center">
+        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Ruaj pagesën
+      </button>
+      {list.length > 0 && (
+        <div className="pt-1">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Pagesat nga TIMI</p>
+          <ul className="divide-y divide-slate-100 dark:divide-slate-700 text-xs">
+            {list.map(p => {
+              const mine = p.ndarja.find(n => n.studentId === studentId)?.cents ?? 0;
+              return (
+                <li key={p.id} className="py-1.5 flex items-center gap-2">
+                  <span className="text-slate-500 w-20">{formatDate(p.data)}</span>
+                  <span className="flex-1">Banka {formatCurrency(p.shumaCents / 100)} → nxënësit <b>{formatCurrency(mine / 100)}</b>{p.ndarja.length > 1 ? " (pagesë e përbashkët)" : ""}</span>
+                  <button type="button" onClick={() => remove(p)} disabled={busy} title="Fshi (kthe mbrapsht)" className="p-1 rounded text-slate-300 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PaymentModal({ student, category, month, year, onClose, onSave, overrideAmount, singlePaymentOnly = false }: ModalProps) {
   const today = new Date().toISOString().split("T")[0];
   // "FLEX_HEADER" bosh (pa asnjë pagesë) i mbetur pas ndërrimit nga Fleksibël te
@@ -2959,9 +3059,14 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
               <div className="space-y-3">
                 <div className={`rounded-xl px-3 py-2 text-xs ${student.timiInvest ? "bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200" : "bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-200"}`}>
                   {student.timiInvest
-                    ? <>Marrëveshja TIMI Invest: <b>{formatCurrency(tiPrice ?? 0)}</b> (çmimi {formatCurrency(student.timiInvest.regularPrice)}{student.timiInvest.discountPct ? ` − ${student.timiInvest.discountPct}%` : ""}{student.timiInvest.manualDiscAmt ? ` − ${formatCurrency(student.timiInvest.manualDiscAmt)}` : ""}) · {formatCurrency(round2((tiPrice ?? 0) / 12))}/muaj. <b>Paratë që hyjnë nga TIMI regjistrohen te TIMI Invest → &quot;Pagesat nga TIMI&quot;</b> (llogarit vetë komisionin 4,66% dhe i shpërndan te këstet) — mos i shëno këtu me &quot;Pago&quot;.</>
+                    ? <>Marrëveshja TIMI Invest: <b>{formatCurrency(tiPrice ?? 0)}</b> (çmimi {formatCurrency(student.timiInvest.regularPrice)}{student.timiInvest.discountPct ? ` − ${student.timiInvest.discountPct}%` : ""}{student.timiInvest.manualDiscAmt ? ` − ${formatCurrency(student.timiInvest.manualDiscAmt)}` : ""}) · {formatCurrency(round2((tiPrice ?? 0) / 12))}/muaj.</>
                     : <>Ky nxënës s&apos;është i lidhur me TIMI Invest — shkruani çmimin me dorë, ose lidheni te moduli TIMI Invest.</>}
                 </div>
+                {student.timiInvest && tiPrice != null && (
+                  <TimiQuickPay studentId={student.id} year={year > 0 ? year : new Date().getFullYear()}
+                    remaining={round2(Math.max(0, tiPrice - tForms.reduce((s, f) => s + parseFloat(f.paidAmount || "0"), 0)))}
+                    monthly={round2(tiPrice / 12)} onDone={() => onSave(undefined)} />
+                )}
                 {tiInit.unmatchedPaid.length > 0 && (
                   <p className="rounded-xl px-3 py-2 text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300">
                     {tiInit.unmatchedPaid.length} pagesa ekzistuese s&apos;përputhen me asnjë muaj (shtator–gusht) — që të mos humbin, përdorni &quot;Këste Fleksibël&quot;.
@@ -3010,14 +3115,7 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                               <MethodSelect value={tf.method} onChange={v => setT(i, "method", v)} className="form-input py-1 text-xs" />
                             </td>
                             <td className={`py-1.5 pr-2 font-medium whitespace-nowrap ${st.color}`}>{st.label}</td>
-                            <td className="py-1.5">
-                              {portionAmt > 0 && paidAmt === 0 && (
-                                <button onClick={() => setTForms(f => f.map((r, j) => j === i ? { ...r, paidAmount: String(portionAmt), method: r.method || "BANK", paidDate: today } : r))}
-                                  className="text-green-600 dark:text-green-400 hover:underline text-xs whitespace-nowrap">
-                                  ✓ Pago
-                                </button>
-                              )}
-                            </td>
+                            <td className="py-1.5" />
                           </tr>
                         );
                       })}

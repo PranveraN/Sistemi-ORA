@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
 import { currentSchoolYearStart } from "@/lib/academicYear";
-import { krijoTimiPagese, permbledhjaTimi, TimiError, TIMI_KOMISION_PCT } from "@/lib/timiPagesat";
+import { krijoTimiPagese, permbledhjaTimi, TimiError, TIMI_KOMISION_PCT, brutoNgaShuma } from "@/lib/timiPagesat";
 
 // Pagesat nga TIMI Invest (src/lib/timiPagesat.ts).
 // GET ?viti=2026 → fëmijët TIMI (çmimi, sa pagoi TIMI, sa mbetet) + lista e pagesave
@@ -33,16 +33,27 @@ export async function POST(req: NextRequest) {
   if (!ALLOWED_ROLES.includes(role)) return NextResponse.json({ error: "Nuk ke leje për këtë veprim" }, { status: 403 });
   const b = await req.json().catch(() => ({}));
   const cents = (v: unknown) => Math.round((typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", "."))) * 100);
+  // Pa komision të dhënë → ai i ruajtur te cilësimet (si te GET), përndryshe 4,66%.
+  let komisionPct = b.komisionPct != null ? Number(b.komisionPct) : NaN;
+  if (!Number.isFinite(komisionPct)) {
+    const setting = await prisma.setting.findUnique({ where: { key: "timiKomisionPct" } });
+    komisionPct = parseFloat(setting?.value ?? "") || TIMI_KOMISION_PCT;
+  }
+  // Një fëmijë pa shumë (nga dritarja e nxënësit) → i llogaritet krejt bruto.
+  const femijet = Array.isArray(b.femijet) ? b.femijet : [];
+  if (femijet.length === 1 && (femijet[0]?.shuma == null || femijet[0]?.shuma === "")) {
+    femijet[0] = { ...femijet[0], shuma: brutoNgaShuma(cents(b.shuma), komisionPct) / 100 };
+  }
   try {
     const p = await krijoTimiPagese(prisma, orgId, actor, {
       data: String(b.data ?? ""),
       shumaCents: cents(b.shuma),
-      komisionPct: b.komisionPct != null ? Number(b.komisionPct) : TIMI_KOMISION_PCT,
+      komisionPct,
       vitiShkollor: parseInt(b.vitiShkollor),
       referenca: typeof b.referenca === "string" ? b.referenca.slice(0, 100) : null,
       prindi: typeof b.prindi === "string" ? b.prindi.slice(0, 150) : null,
       shenim: typeof b.shenim === "string" ? b.shenim.slice(0, 500) : null,
-      femijet: Array.isArray(b.femijet) ? b.femijet.map((f: { studentId: unknown; shuma: unknown }) => ({ studentId: parseInt(String(f.studentId)), cents: cents(f.shuma) })) : [],
+      femijet: femijet.length ? femijet.map((f: { studentId: unknown; shuma: unknown }) => ({ studentId: parseInt(String(f.studentId)), cents: cents(f.shuma) })) : [],
     });
     await logAction(session, "CREATE", "TimiPagese", p.id,
       `Pagesë nga TIMI ${(p.shumaCents / 100).toFixed(2)} € (${p.referenca ?? "pa ref."}) — për fëmijët ${(p.brutoCents / 100).toFixed(2)} €, komisioni ${(p.komisionCents / 100).toFixed(2)} €`);

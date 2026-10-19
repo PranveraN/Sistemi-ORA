@@ -43,8 +43,31 @@ async function kestetTimi(tx: Tx, orgId: number, categoryId: number, studentId: 
     where: { organizationId: orgId, categoryId, studentId, OR: yearMonths(viti) },
     select: { id: true, description: true, finalAmount: true, paidAmount: true, method: true, dueDate: true },
   });
+  const byIdx = (a: { description: string | null }, b: { description: string | null }) =>
+    parseInt(a.description!.slice(TI_PREFIX.length)) - parseInt(b.description!.slice(TI_PREFIX.length));
   const ti = rows.filter(r => r.description?.startsWith(TI_PREFIX));
-  if (ti.length > 0) return ti.sort((a, b) => parseInt(a.description!.slice(TI_PREFIX.length)) - parseInt(b.description!.slice(TI_PREFIX.length)));
+  if (ti.length > 0) {
+    // Plan i ruajtur pjesërisht (p.sh. disa muaj dështuan te ruajtja) → krijo muajt që mungojnë.
+    const link = ti.length < 12 ? await tx.timiInvestStudent.findFirst({ where: { studentId, active: true } }) : null;
+    if (!link) return ti.sort(byIdx);
+    const regular = e2c(link.regularPrice), price = e2c(computeTiExpectedPrice(link));
+    const am = ndajProporcionalisht(regular, Array(12).fill(1)), fi = ndajProporcionalisht(price, Array(12).fill(1));
+    const have = new Set(ti.map(r => r.description));
+    for (let i = 0; i < 12; i++) {
+      if (have.has(`${TI_PREFIX}${i + 1}`)) continue;
+      const { month, year } = yearMonths(viti)[i];
+      const due = new Date(`${year}-${String(month).padStart(2, "0")}-05T00:00:00Z`);
+      ti.push(await tx.payment.create({
+        data: {
+          organizationId: orgId, studentId, categoryId, amount: c2e(am[i]), discount: c2e(am[i] - fi[i]), discountType: "fixed", scholarship: 0,
+          finalAmount: c2e(fi[i]), balance: c2e(fi[i]), paidAmount: 0, dueDate: due, status: statusOf(0, c2e(fi[i]), due),
+          description: `${TI_PREFIX}${i + 1}`, month, year, confirmed: true,
+        },
+        select: { id: true, description: true, finalAmount: true, paidAmount: true, method: true, dueDate: true },
+      }));
+    }
+    return ti.sort(byIdx);
+  }
 
   const other = rows.filter(r => !r.description?.startsWith(TI_PREFIX));
   if (other.some(r => r.paidAmount > 0)) {

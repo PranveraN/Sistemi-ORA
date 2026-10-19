@@ -4,16 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { alignPeriodToDue } from "@/lib/academicYear";
-
-async function generateReceiptNumber(orgId: number): Promise<string> {
-  const year = new Date().getFullYear();
-  const last = await prisma.payment.findFirst({
-    where: { organizationId: orgId, receiptNumber: { startsWith: `DEP-${year}-` } },
-    orderBy: { receiptNumber: "desc" },
-  });
-  const lastSeq = last ? parseInt(last.receiptNumber!.split("-").pop() || "0") : 0;
-  return `DEP-${year}-${String(lastSeq + 1).padStart(4, "0")}`;
-}
+import { withReceiptNumber } from "@/lib/receiptNumber";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -95,28 +86,18 @@ export async function POST(req: NextRequest) {
   else if (new Date(body.dueDate) < new Date()) status = "OVERDUE";
 
   try {
-    const receiptNumber = paidAmount > 0 ? await generateReceiptNumber(orgId) : undefined;
-
-    // Rregulli financiar: pagesat e Shkollimit për nxënës të lidhur me TIMI
-    // Invest s'konsiderohen "e hyrë" e konfirmuar automatikisht — shuma vjen
-    // përmes një marrëveshjeje financimi, jo domosdo cash i marrë direkt nga
-    // shkolla — mbeten "pa konfirmuar" derisa dikush t'i shqyrtojë manualisht
-    // te Shkollimi → Verifikim.
+    // Pagesat e nxënësve TIMI ruhen të konfirmuara si çdo pagesë tjetër — s'presin
+    // më "Verifikim" (kërkesë e Pranverës, 19.10.2026).
     const studentIdNum = parseInt(body.studentId);
     const categoryIdNum = parseInt(body.categoryId);
     const category = await prisma.paymentCategory.findUnique({ where: { id: categoryIdNum }, select: { name: true } });
-    let confirmed = true;
-    if (category?.name === "Shkollimi") {
-      const tiLink = await prisma.timiInvestStudent.findFirst({ where: { studentId: studentIdNum } });
-      if (tiLink) confirmed = false;
-    }
 
-    const payment = await prisma.payment.create({
+    const create = (receiptNumber: string | undefined) => prisma.payment.create({
       data: {
         studentId: studentIdNum,
         categoryId: categoryIdNum,
         organizationId: orgId,
-        confirmed,
+        confirmed: true,
         amount,
         discount,
         discountType: body.discountType || null,
@@ -136,6 +117,7 @@ export async function POST(req: NextRequest) {
       },
       include: { student: { select: { firstName: true, lastName: true } } },
     });
+    const payment = paidAmount > 0 ? await withReceiptNumber(orgId, create) : await create(undefined);
 
     const userId = parseInt((session?.user as { id?: string } | undefined)?.id ?? "0");
     if (userId > 0) {

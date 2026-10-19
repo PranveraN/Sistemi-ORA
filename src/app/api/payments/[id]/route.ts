@@ -6,15 +6,7 @@ import { alignPeriodToDue } from "@/lib/academicYear";
 import { logAction } from "@/lib/audit";
 import { recordPaymentEvent } from "@/lib/studentHistory";
 
-async function generateReceiptNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const last = await prisma.payment.findFirst({
-    where: { receiptNumber: { startsWith: `DEP-${year}-` } },
-    orderBy: { receiptNumber: "desc" },
-  });
-  const lastSeq = last ? parseInt(last.receiptNumber!.split("-").pop() || "0") : 0;
-  return `DEP-${year}-${String(lastSeq + 1).padStart(4, "0")}`;
-}
+import { withReceiptNumber } from "@/lib/receiptNumber";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -56,9 +48,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // Gjej rekordin ekzistues për të ruajtur receiptNumber nëse ka
   const existing = await prisma.payment.findUnique({ where: { id: parseInt(id) }, select: { receiptNumber: true, paidAmount: true } });
   const needsReceipt = paidAmount > 0 && !existing?.receiptNumber;
-  const receiptNumber = needsReceipt ? await generateReceiptNumber() : undefined;
-
-  const payment = await prisma.payment.update({
+  const update = (receiptNumber: string | undefined) => prisma.payment.update({
     where: { id: parseInt(id) },
     data: {
       amount,
@@ -80,6 +70,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     },
     include: { student: { select: { firstName: true, lastName: true } }, category: { select: { name: true } } },
   });
+  const payment = needsReceipt ? await withReceiptNumber(undefined, update) : await update(undefined);
 
   await logAction(session, "UPDATE", "Payment", payment.id,
     `Ndryshoi pagesën e ${payment.student.firstName} ${payment.student.lastName} (${payment.category.name}) — ${finalAmount}€`);
