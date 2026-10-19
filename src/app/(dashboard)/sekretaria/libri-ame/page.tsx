@@ -381,8 +381,24 @@ export default function LibriAmePage() {
                   </div>
                 </div>
 
+                {/* Printimi: të dyja faqet drejt (pa rrotullimin 3D, që printohej i pasqyruar), secila në fletë të vet */}
+                <div className="hidden print:block">
+                  <div className="bg-white" style={{ breakAfter: "page" }}>
+                    {bookType === "fillore"
+                      ? <Page1Fillore record={record} extra={extra} setExtra={setExtra} grades={grades15} setGrades={setGrades15} />
+                      : <Page1Mesme record={record} extra={extra} setExtra={setExtra} grades={grades69} setGrades={setGrades69} />
+                    }
+                  </div>
+                  <div className="bg-white">
+                    {bookType === "fillore"
+                      ? <Page2Fillore move={move15} setMove={setMove15} />
+                      : <Page2Mesme move={move69} setMove={setMove69} />
+                    }
+                  </div>
+                </div>
+
                 {/* Flip book */}
-                <div style={{ perspective:"1400px" }}>
+                <div className="print:hidden" style={{ perspective:"1400px" }}>
                   <div style={{
                     transformStyle:"preserve-3d",
                     transition:"transform 0.7s cubic-bezier(0.4,0,0.2,1)",

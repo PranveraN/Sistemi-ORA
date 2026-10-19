@@ -434,7 +434,7 @@ export default function Header({ title, backHref }: { title?: string; backHref?:
   const avatarGradient = getAvatarColor(name);
 
   return (
-    <header className="h-14 flex items-center justify-between px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+    <header className="h-14 flex items-center justify-between px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 print:hidden">
       {/* Left */}
       <div className="flex items-center gap-2">
         <button
