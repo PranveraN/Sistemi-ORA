@@ -1085,6 +1085,47 @@ model UniHandover {
   createdAt   DateTime @default(now())
 }
 
+// ── Stoku i uniformave sipas numrit ───────────────────────
+// Tabela të veçanta: shitjet vetëm lexohen (UniSaleItem.size). Nuk lidhen me
+// relacion me UniProduct që tabela e produkteve të mos preket fare.
+// Stoku = hyrjet − copët e shitjeve të regjistruara pas UniStockConfig.startedAt.
+
+model UniStockConfig {
+  id        Int      @id @default(1)
+  startedAt DateTime @default(now()) // stoku i ri nis nga zero në këtë moment
+}
+
+model UniStockEntry {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  size      String
+  quantity  Int      // hyrje > 0; numërimi mund të krijojë edhe korrigjim negativ
+  date      DateTime @default(now())
+  note      String?
+  kind      String   @default("HYRJE") // HYRJE | NUMERIM
+  createdAt DateTime @default(now())
+
+  @@index([productId, size])
+}
+
+model UniProductSize {
+  id        Int    @id @default(autoincrement())
+  productId Int
+  size      String
+  sortOrder Int    @default(0)
+
+  @@unique([productId, size])
+}
+
+model UniStockSetting {
+  id           Int    @id @default(autoincrement())
+  productId    Int
+  size         String
+  minThreshold Int    @default(0)
+
+  @@unique([productId, size])
+}
+
 // ── Librat e Anglishtes ───────────────────────────────────
 
 model BookProduct {

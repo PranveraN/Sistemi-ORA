@@ -15,6 +15,7 @@ interface Product {
   stock: number;
   stockAlert: number;
   active: boolean;
+  lowStock?: boolean;
   _count?: { saleItems: number };
 }
 
@@ -201,7 +202,7 @@ export default function ProduktetPage() {
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{p.name}</span>
-                      {p.stock <= p.stockAlert && p.active && (
+                      {p.lowStock && p.active && (
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                       )}
                     </div>

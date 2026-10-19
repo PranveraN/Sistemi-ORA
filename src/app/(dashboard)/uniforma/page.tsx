@@ -6,7 +6,7 @@ import { formatCurrency } from "@/lib/utils";
 import {
   ShoppingBag, TrendingUp, Wallet, AlertTriangle,
   Package, ArrowRightLeft, BarChart3, Plus, ChevronRight,
-  Banknote, CreditCard, Archive, ClipboardList,
+  Banknote, CreditCard, Archive, ClipboardList, Boxes,
 } from "lucide-react";
 
 interface Stats {
@@ -44,9 +44,10 @@ export default function UniformaDashboard() {
       </div>
 
       {/* Quick nav */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         {[
           { href: "/uniforma/shitje",    icon: ShoppingBag,    label: "Shitjet",   sub: `${stats.salesCount} gjithsej`,   color: "bg-blue-50 dark:bg-blue-900/30 text-blue-600" },
+          { href: "/uniforma/stoku",     icon: Boxes,          label: "Stoku",     sub: stats.lowStock.length > 0 ? `${stats.lowStock.length} nën prag` : `${stats.totalItems} copë`, color: "bg-teal-50 dark:bg-teal-900/30 text-teal-600" },
           { href: "/uniforma/produktet", icon: Package,        label: "Produktet", sub: `${stats.totalItems} cope stok`,  color: "bg-purple-50 dark:bg-purple-900/30 text-purple-600" },
           { href: "/uniforma/dorezat",   icon: ArrowRightLeft, label: "Dorezat",   sub: formatCurrency(stats.totalHandedOver), color: "bg-green-50 dark:bg-green-900/30 text-green-600" },
           { href: "/uniforma/porosite",  icon: ClipboardList,  label: "Porositë",  sub: stats.lowStock.length > 0 ? `${stats.lowStock.length} nën prag` : "Stoku në rregull", color: "bg-amber-50 dark:bg-amber-900/30 text-amber-600" },
@@ -134,7 +135,10 @@ export default function UniformaDashboard() {
 
         {/* Stock */}
         <div className="card p-5">
-          <h2 className="font-semibold text-slate-800 dark:text-white mb-4 text-sm">Stoku</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-slate-800 dark:text-white text-sm">Stoku</h2>
+            <Link href="/uniforma/stoku" className="text-xs text-primary-600 hover:underline">Shiko stokun →</Link>
+          </div>
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
               <p className="text-xs text-slate-400">Cope në stok</p>

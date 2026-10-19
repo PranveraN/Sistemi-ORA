@@ -8,7 +8,7 @@ import {
   ChevronLeft, Plus, X, Sparkles, CheckCircle, Trash2, Download, Loader2, Package,
 } from "lucide-react";
 
-interface Product { id: number; name: string; buyPrice: number; stock: number; stockAlert: number; active: boolean }
+interface Product { id: number; name: string; buyPrice: number; stock: number; stockAlert: number; active: boolean; lowStock?: boolean }
 interface OrderItem { id: number; productId: number; quantity: number; buyPrice: number; total: number; product: { name: string } }
 interface Order {
   id: number; orderNumber: string; supplier: string | null; status: string;
@@ -52,7 +52,7 @@ export default function PorositePage() {
   }
 
   function recommend() {
-    const low = products.filter(p => p.active && p.stock <= p.stockAlert);
+    const low = products.filter(p => p.active && p.lowStock);
     if (low.length === 0) { alert("Asnjë produkt s'është nën pragun e stokut aktualisht."); return; }
     setItems(low.map(p => ({
       productId: String(p.id),

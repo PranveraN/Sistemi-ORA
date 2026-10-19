@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getStock } from "@/lib/uniStock";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -8,12 +9,21 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const activeOnly = searchParams.get("active") === "true";
   const where = activeOnly ? { active: true } : {};
-  const products = await prisma.uniProduct.findMany({
-    where,
-    orderBy: { name: "asc" },
-    include: { _count: { select: { saleItems: true } } },
-  });
-  return NextResponse.json(products);
+  const [products, stock] = await Promise.all([
+    prisma.uniProduct.findMany({
+      where,
+      orderBy: { name: "asc" },
+      include: { _count: { select: { saleItems: true } } },
+    }),
+    getStock(),
+  ]);
+  // "stock" në përgjigje vjen nga stoku i ri sipas numrit; fusha e vjetër s'shfaqet më.
+  const byId = new Map(stock.rows.map(r => [r.productId, r]));
+  return NextResponse.json(products.map(p => ({
+    ...p,
+    stock: byId.get(p.id)?.stok ?? 0,
+    lowStock: (byId.get(p.id)?.lowCount ?? 0) > 0,
+  })));
 }
 
 export async function POST(req: NextRequest) {

@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getStock } from "@/lib/uniStock";
 
 export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [sales, handovers, products, saleItems] = await Promise.all([
+  const [sales, handovers, products, saleItems, stock] = await Promise.all([
     prisma.uniSale.findMany({ select: { totalAmount: true, totalCost: true, profit: true, paidAmount: true, balance: true, status: true } }),
     prisma.uniHandover.findMany({ select: { amount: true } }),
     prisma.uniProduct.findMany({ select: { id: true, stock: true, buyPrice: true, sellPrice: true, stockAlert: true, active: true, name: true } }),
     prisma.uniSaleItem.findMany({ select: { productId: true, quantity: true, total: true, profit: true, buyPrice: true, sellPrice: true } }),
+    getStock(),
   ]);
 
   const totalRevenue    = sales.reduce((s, x) => s + x.totalAmount, 0);
@@ -21,9 +23,11 @@ export async function GET() {
   const totalHandedOver = handovers.reduce((s, x) => s + x.amount,  0);
   const remainingProfit = totalCollected - totalHandedOver;
 
-  const stockValue   = products.filter(p => p.active).reduce((s, p) => s + p.stock * p.buyPrice, 0);
-  const lowStock     = products.filter(p => p.active && p.stock <= p.stockAlert);
-  const totalItems   = products.filter(p => p.active).reduce((s, p) => s + p.stock, 0);
+  // Stoku vjen nga sistemi i ri sipas numrit (hyrjet − shitjet pas nisjes) —
+  // fusha e vjetër UniProduct.stock s'përdoret më.
+  const stockValue   = stock.stockValue;
+  const lowStock     = stock.low.map(l => ({ name: l.name, stock: l.stock }));
+  const totalItems   = stock.totalItems;
 
   // Shitjet sipas produktit
   const productMap = new Map(products.map(p => [p.id, p.name]));
