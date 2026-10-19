@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { recordPaymentEvent } from "@/lib/studentHistory";
+import { logAction } from "@/lib/audit";
 
 const s = (v: unknown) =>
   v != null && v !== "" ? `'${String(v).replace(/'/g, "''")}'` : "NULL";
@@ -42,9 +43,48 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
   const sid = parseInt(id);
-  const { addPayment, method } = await req.json();
+  const { addPayment, method, notTaken } = await req.json();
+
+  // "Nuk i merr librat": s'pritet pagesë — borxhi 0, s'llogaritet te të hyrat,
+  // librat kthehen në stok. Lejohet vetëm kur s'është paguar asgjë. Kthehet mbrapsht me notTaken:false.
+  if (typeof notTaken === "boolean") {
+    const [sale] = await prisma.$queryRawUnsafe<{ totalAmount: number; paidAmount: number; status: string; studentId: number | null }[]>(
+      `SELECT totalAmount, paidAmount, status, studentId FROM BookSale WHERE id=${sid}`
+    );
+    if (!sale) return NextResponse.json({ error: "Shitja nuk u gjet" }, { status: 404 });
+    const items = await prisma.$queryRawUnsafe<{ productId: number; quantity: number }[]>(
+      `SELECT productId, quantity FROM BookSaleItem WHERE saleId=${sid}`
+    );
+    if (notTaken && sale.status !== "NOT_TAKEN") {
+      const [{ cnt }] = await prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`SELECT COUNT(*) as cnt FROM BookPayment WHERE saleId=${sid}`);
+      if (Number(sale.paidAmount) > 0 || Number(cnt) > 0) {
+        return NextResponse.json({ error: "Kjo shitje ka pagesë — s'mund të shënohet 'Nuk i merr'." }, { status: 400 });
+      }
+      for (const it of items) {
+        await prisma.$executeRawUnsafe(`UPDATE BookProduct SET stock = stock + ${Number(it.quantity)}, updatedAt=datetime('now') WHERE id=${Number(it.productId)}`);
+      }
+      await prisma.$executeRawUnsafe(`UPDATE BookSale SET status='NOT_TAKEN', balance=0, updatedAt=datetime('now') WHERE id=${sid}`);
+      await logAction(session, "UPDATE", "BookSale", sid, `Shënoi 'Nuk i merr librat' (shitja #${sid}) — librat u kthyen në stok, s'pritet pagesë`);
+    } else if (!notTaken && sale.status === "NOT_TAKEN") {
+      if (items.length === 0) {
+        // Shënim pa libra (nxënës që s'bleu kurrë) → fshihet, nxënësi kthehet te "Nuk kanë blerë ende"
+        await prisma.$executeRawUnsafe(`DELETE FROM BookSale WHERE id=${sid}`);
+      } else {
+        for (const it of items) {
+          await prisma.$executeRawUnsafe(`UPDATE BookProduct SET stock = stock - ${Number(it.quantity)}, updatedAt=datetime('now') WHERE id=${Number(it.productId)}`);
+        }
+        await prisma.$executeRawUnsafe(`UPDATE BookSale SET status='PENDING', balance=${Number(sale.totalAmount)}, updatedAt=datetime('now') WHERE id=${sid}`);
+      }
+      await logAction(session, "UPDATE", "BookSale", sid, `Hoqi 'Nuk i merr librat' (shitja #${sid})`);
+    }
+    return NextResponse.json({ ok: true });
+  }
 
   if (addPayment > 0) {
+    const [cur] = await prisma.$queryRawUnsafe<{ status: string }[]>(`SELECT status FROM BookSale WHERE id=${sid}`);
+    if (cur?.status === "NOT_TAKEN") {
+      return NextResponse.json({ error: "Kjo shitje është shënuar 'Nuk i merr librat' — hiqe shënimin para se të regjistrosh pagesë." }, { status: 400 });
+    }
     await prisma.$executeRawUnsafe(`
       INSERT INTO BookPayment (saleId, amount, method, paidAt, createdAt)
       VALUES (${sid}, ${parseFloat(addPayment)}, ${s(method||"CASH")}, datetime('now'), datetime('now'))

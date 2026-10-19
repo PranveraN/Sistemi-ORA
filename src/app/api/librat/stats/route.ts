@@ -56,11 +56,14 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  const sales = salesRaw.map(s => ({
+  const allSales = salesRaw.map(s => ({
     id: Number(s.id), totalAmount: Number(s.totalAmount), totalCost: Number(s.totalCost),
     profit: Number(s.profit), paidAmount: Number(s.paidAmount), balance: Number(s.balance),
     status: String(s.status),
   }));
+  // "Nuk i merr librat" s'është shitje: s'hyn te të hyrat, kostoja, fitimi apo borxhi.
+  const sales = allSales.filter(s => s.status !== "NOT_TAKEN");
+  const notTakenCount = allSales.length - sales.length;
   // BookSaleItem s'ka relacion Prisma drejt BookSale (vetëm saleId si kolonë e thjeshtë),
   // ndaj kufizohet me listën e ID-ve të shitjeve tashmë të filtruara sipas datës.
   const saleItems = sales.length
@@ -120,6 +123,7 @@ export async function GET(req: NextRequest) {
     paidCount:    sales.filter(s => s.status === "PAID").length,
     partialCount: sales.filter(s => s.status === "PARTIAL").length,
     pendingCount: sales.filter(s => s.status === "PENDING").length,
+    notTakenCount,
     productSales,
   });
 }

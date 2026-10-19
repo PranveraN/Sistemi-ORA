@@ -26,7 +26,8 @@ export default async function StudentPage({ params }: { params: Promise<{ id: st
   // te Student (vetëm studentId opsional), prandaj merren veç e veç dhe
   // bashkohen më poshtë — përndryshe blerjet mungonin krejtësisht nga historiku.
   const [bookSales, uniSales] = await Promise.all([
-    prisma.bookSale.findMany({ where: { studentId: student.id }, orderBy: { saleDate: "desc" } }),
+    // "Nuk i merr librat" s'është detyrim — s'shfaqet si borxh te profili
+    prisma.bookSale.findMany({ where: { studentId: student.id, status: { not: "NOT_TAKEN" } }, orderBy: { saleDate: "desc" } }),
     prisma.uniSale.findMany({ where: { studentId: student.id }, orderBy: { saleDate: "desc" } }),
   ]);
 

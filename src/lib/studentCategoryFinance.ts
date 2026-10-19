@@ -40,7 +40,9 @@ export async function computeStudentAllFinance(orgId: number, studentIds: number
     computeStudentFinanceRows({ organizationId: orgId, id: { in: studentIds } }, { year, yearType: "academic" }),
     prisma.paymentCategory.findMany({ where: { name: { in: Object.values(catNames) } }, select: { id: true, name: true } }),
     prisma.uniSale.findMany({ where: { ...saleWhere, studentId: { in: studentIds }, status: { not: "CANCELLED" } }, select: { studentId: true, totalAmount: true, paidAmount: true } }),
-    prisma.bookSale.findMany({ where: { ...saleWhere, studentId: { in: studentIds }, status: { not: "CANCELLED" } }, select: { studentId: true, totalAmount: true, paidAmount: true } }),
+    prisma.bookSale.findMany({ where: { ...saleWhere, studentId: { in: studentIds }, status: { not: "CANCELLED" } }, select: { studentId: true, totalAmount: true, paidAmount: true, status: true } })
+      // "Nuk i merr librat" → s'pritet pagesë (si e paguar, pa borxh)
+      .then(rows => rows.map(b => (b.status === "NOT_TAKEN" ? { ...b, totalAmount: b.paidAmount } : b))),
   ]);
   for (const r of tuition.rows) {
     const f = out.get(r.id);

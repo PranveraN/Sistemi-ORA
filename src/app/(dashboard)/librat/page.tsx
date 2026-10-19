@@ -6,7 +6,7 @@ import Header from "@/components/layout/Header";
 import {
   BookOpen, Plus, Search, X, Printer, Trash2, Loader2, Package, TrendingUp, ShoppingCart, AlertCircle,
   TrendingDown, ArrowRightLeft, BarChart3, Download, Wallet, Medal, Users, CheckCircle,
-  MessageSquare,
+  MessageSquare, Ban, Undo2,
 } from "lucide-react";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, getDateRange, type YearType } from "@/lib/academicYear";
@@ -59,9 +59,10 @@ function fmt(v: number) {
   return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 }
 function statusLabel(s: string) {
-  return s === "PAID" ? "Paguar" : s === "PARTIAL" ? "Pjesërisht" : "Pa paguar";
+  return s === "NOT_TAKEN" ? "Nuk i merr" : s === "PAID" ? "Paguar" : s === "PARTIAL" ? "Pjesërisht" : "Pa paguar";
 }
 function statusColor(s: string) {
+  if (s === "NOT_TAKEN") return "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300";
   return s === "PAID"
     ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
     : s === "PARTIAL"
@@ -593,6 +594,27 @@ export default function LibratPage() {
     setDetailLoading(false);
   }
 
+  // "Nuk i merr librat": s'llogaritet borxh, librat kthehen në stok (kthehet mbrapsht me Undo)
+  async function setNotTaken(sale: Sale, notTaken: boolean) {
+    const q = notTaken
+      ? `${sale.studentName} nuk i merr librat? Nuk do të llogaritet borxh dhe librat kthehen në stok.`
+      : `Hiq shënimin 'Nuk i merr' për ${sale.studentName}?`;
+    if (!confirm(q)) return;
+    const res = await fetch(`/api/librat/sales/${sale.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notTaken }) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ruajtja dështoi."); return; }
+    fetchSales(); fetchMissing(); fetchStats();
+  }
+
+  async function markMissingNotTaken(st: Student) {
+    if (!confirm(`${st.firstName} ${st.lastName} nuk i merr librat? Del nga lista "Nuk kanë blerë ende" dhe s'pritet pagesë.`)) return;
+    const res = await fetch("/api/librat/sales/not-taken", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ studentId: st.id, studentName: `${st.firstName} ${st.lastName}`, studentClass: st.class?.name ?? null }),
+    });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ruajtja dështoi."); return; }
+    fetchSales(); fetchMissing(); fetchStats();
+  }
+
   async function deleteSale(id: number) {
     if (!confirm("Fshi këtë shitje? Stoku do të rikthehet.")) return;
     const res = await fetch(`/api/librat/sales/${id}`, { method: "DELETE" });
@@ -928,6 +950,7 @@ export default function LibratPage() {
                 <option value="PAID">Paguar</option>
                 <option value="PARTIAL">Pjesërisht</option>
                 <option value="PENDING">Pa paguar</option>
+                <option value="NOT_TAKEN">Nuk i merr</option>
               </select>
               <select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="form-input w-32">
                 <option value="">Të gjitha klasat</option>
@@ -1023,7 +1046,9 @@ export default function LibratPage() {
                         <td className="table-cell font-medium text-slate-800 dark:text-slate-200">{fmt(sale.totalAmount)} €</td>
                         <td className="table-cell text-green-600 dark:text-green-400 font-medium">{fmt(sale.paidAmount)} €</td>
                         <td className="table-cell">
-                          {sale.balance > 0 ? (
+                          {sale.status === "NOT_TAKEN" ? (
+                            <span className="text-slate-400 text-xs">— s&apos;pritet pagesë</span>
+                          ) : sale.balance > 0 ? (
                             <span className="text-red-600 dark:text-red-400 font-semibold">{fmt(sale.balance)} €</span>
                           ) : (
                             <span className="text-green-500 text-xs">✓ Pa borxh</span>
@@ -1043,6 +1068,15 @@ export default function LibratPage() {
                                 className={`p-1.5 rounded-lg transition-colors ${sale.sentSmsAt ? "text-green-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20" : "text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20"}`}
                               >
                                 <MessageSquare className="w-4 h-4" />
+                              </button>
+                            )}
+                            {sale.status === "NOT_TAKEN" ? (
+                              <button onClick={() => setNotTaken(sale, false)} title="Hiq 'Nuk i merr' (kthehet si më parë)" className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors">
+                                <Undo2 className="w-4 h-4" />
+                              </button>
+                            ) : sale.paidAmount === 0 && (
+                              <button onClick={() => setNotTaken(sale, true)} title="Nuk i merr librat — s'pritet pagesë, librat kthehen në stok" className="p-1.5 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                                <Ban className="w-4 h-4" />
                               </button>
                             )}
                             <button onClick={() => deleteSale(sale.id)} title="Fshi" className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
@@ -1085,6 +1119,13 @@ export default function LibratPage() {
                                 className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
                               >
                                 <Plus className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => markMissingNotTaken(s)}
+                                title="Nuk i merr librat — del nga kjo listë, s'pritet pagesë"
+                                className="p-1.5 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                              >
+                                <Ban className="w-4 h-4" />
                               </button>
                             </td>
                           </tr>

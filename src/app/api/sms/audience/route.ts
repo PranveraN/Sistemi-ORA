@@ -112,7 +112,9 @@ export async function GET(req: NextRequest) {
     const saleWhere = { OR: [{ saleDate: { gte: from, lt: to } }, { saleDate: { lt: from }, balance: { gt: 0 } }] };
     const sales = type === "UNIFORMA"
       ? await prisma.uniSale.findMany({ where: { ...saleWhere, status: { not: "CANCELLED" } }, select: { studentId: true, totalAmount: true, paidAmount: true } })
-      : await prisma.bookSale.findMany({ where: { ...saleWhere, status: { not: "CANCELLED" } }, select: { studentId: true, totalAmount: true, paidAmount: true } });
+      // "Nuk i merr librat" → s'pritet pagesë (si e paguar, pa borxh)
+      : (await prisma.bookSale.findMany({ where: { ...saleWhere, status: { not: "CANCELLED" } }, select: { studentId: true, totalAmount: true, paidAmount: true, status: true } }))
+          .map(b => (b.status === "NOT_TAKEN" ? { ...b, totalAmount: b.paidAmount } : b));
     const activeIds = new Set(students.map(s => s.id));
     const byStudent = new Map<number, { totalAmount: number; paidAmount: number }[]>();
     for (const sale of sales) {
