@@ -542,8 +542,8 @@ export default function StudentProfile({ student }: { student: Student }) {
     <>
     <div className="p-6 max-w-5xl mx-auto animate-fade-in space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="flex items-center gap-3 flex-1 min-w-[260px]">
           <button
             onClick={() => window.history.length > 1 ? router.back() : router.push("/students")}
             className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
@@ -589,6 +589,17 @@ export default function StudentProfile({ student }: { student: Student }) {
           <Printer className="w-4 h-4" />
           Printo Historinë
         </button>
+        {/* Dokumentet e Sekretarisë me nxënësin të zgjedhur paraprakisht */}
+        {[
+          { href: `/sekretaria/vertetime?type=nxenes&studentId=${student.id}`, label: "Lësho Vërtetim", icon: FileCheck2 },
+          { href: `/sekretaria/kontratat-nxenesve?studentId=${student.id}`, label: "Kontrata", icon: FileText },
+          { href: `/sekretaria/fletkalimet?studentId=${student.id}`, label: "Fletëkalimi", icon: GraduationCap },
+        ].filter(d => canAccess(d.href)).map(d => (
+          <Link key={d.label} href={d.href} className="btn-secondary">
+            <d.icon className="w-4 h-4" />
+            {d.label}
+          </Link>
+        ))}
         <Link href={`/students/${student.id}/edit`} className="btn-secondary">
           <Edit className="w-4 h-4" />
           Modifiko
