@@ -21,8 +21,10 @@ import {
   Plus, X, Save, Users, Loader2, Printer,
   TrendingUp, TrendingDown, ArrowLeftRight, FileUp,
   CalendarDays, Download, Trash2, Calculator, Lock, StickyNote, MessageSquare, Send, Bot,
-  Wallet, Receipt, Building2,
+  Wallet, Receipt, Building2, SlidersHorizontal, MoreHorizontal, Pencil, ExternalLink,
 } from "lucide-react";
+import QuickPayDrawer, { PLAN_LABEL } from "./QuickPayDrawer";
+import { installmentLabel, planKind, realInstallments, type QpInstallment } from "@/lib/quickPayPlan";
 import * as XLSX from "xlsx";
 import InvoicePrintModal from "./InvoicePrintModal";
 import PaymentReceiptModal from "./PaymentReceiptModal";
@@ -108,6 +110,30 @@ interface Props {
 }
 
 type Tab = "income" | "expense" | "handover";
+
+type QuickStatus = "PAID" | "OVERDUE" | "PARTIAL" | "OK" | "NONE";
+const QUICK_PILLS: ["" | QuickStatus, string][] = [["", "Të gjithë"], ["OVERDUE", "Të vonuara"], ["PARTIAL", "Pjesërisht"], ["OK", "Në rregull"], ["PAID", "Paguar"]];
+const QUICK_STYLE: Record<QuickStatus, { label: string; cls: string }> = {
+  PAID:    { label: "Paguar plotësisht", cls: "bg-green-600 text-white" },
+  OVERDUE: { label: "Vonuar",            cls: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+  PARTIAL: { label: "Pjesërisht",        cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
+  OK:      { label: "Në rregull",        cls: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" },
+  NONE:    { label: "Pa pagesë",         cls: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
+};
+function quickStatusOf(s: { payment: { status: string } | null; installments: QpInstallment[] }): QuickStatus {
+  const st = s.payment?.status;
+  if (!s.payment) return "NONE";
+  if (st === "PAID") return "PAID";
+  if (st === "OVERDUE") return "OVERDUE";
+  if (st === "PARTIAL") {
+    const kind = planKind(s.installments);
+    if (kind === "FLEX" || kind === "LEGACY_FLEX") return "PARTIAL";
+    const now = Date.now();
+    const behind = realInstallments(s.installments).some(x => x.paidAmount < x.finalAmount - 0.001 && new Date(x.dueDate).getTime() < now);
+    return behind ? "PARTIAL" : "OK";
+  }
+  return "NONE";
+}
 
 // Filtrat e veçantë të kolonës "Metoda"
 const METODA_BANKE = "__BANKE__"; // BANK + CARD + ONLINE (paraja hyn në llogari)
@@ -249,6 +275,11 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
   const [familyReceiptPrintId, setFamilyReceiptPrintId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [notifyRecipients, setNotifyRecipients] = useState<NotificationRecipient[] | null>(null);
+  const [quick, setQuick] = useState<"" | QuickStatus>("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [drawerId, setDrawerId] = useState<number | null>(null);
+  const [rowMenu, setRowMenu] = useState<{ id: number; top: number; right: number } | null>(null);
+  const [planChangeFor, setPlanChangeFor] = useState<{ id: number; name: string; plan: string } | null>(null);
 
   function toggleSelect(id: number) {
     setSelected(prev => {
@@ -452,7 +483,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
     });
   }
 
-  const filteredActives = applyColFilters(
+  const preQuick = applyColFilters(
     activeStudents.filter(s => {
       if (!statusFilter) return true;
       if (statusFilter === "NONE") return !s.payment;
@@ -460,6 +491,10 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
       return (s.payment?.status || "PENDING") === statusFilter;
     })
   );
+  const quickCounts: Record<"" | QuickStatus, number> = { "": preQuick.length, PAID: 0, OVERDUE: 0, PARTIAL: 0, OK: 0, NONE: 0 };
+  for (const s of preQuick) quickCounts[quickStatusOf(s)]++;
+  const filteredActives = quick ? preQuick.filter(s => quickStatusOf(s) === quick) : preQuick;
+  const activeFilterCount = [colKlasa, colCikli, colPlan, colBorxhi, colMetoda, statusFilter, sortCol].filter(Boolean).length;
   const sortedActives = applySort(
     [...filteredActives].sort((a, b) => {
       if (sortCol) return 0; // sort handled by applySort
@@ -471,7 +506,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
 
   const sorted = [
     ...sortedActives,
-    ...applyColFilters(inactiveStudents), // joaktivët gjithmonë në fund
+    ...(quick ? [] : applyColFilters(inactiveStudents)), // joaktivët gjithmonë në fund (pa filtrin e shpejtë)
   ];
 
   const totalPaidVisible = sorted.reduce((sum, s) => sum + (s.payment?.paidAmount ?? 0), 0);
@@ -612,130 +647,60 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
         {/* ── INCOME TAB ── */}
         {tab === "income" && (
           <>
-            {stats && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-                <div
-                  onClick={() => setStatusFilter("")}
-                  className={`card p-3 cursor-pointer transition-all hover:shadow-md ${statusFilter === "" ? "ring-2 ring-slate-400" : "opacity-80 hover:opacity-100"}`}
-                  title="Shfaq të gjithë"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                      <Users className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+            {stats && (() => {
+              // Të njëjtat vlera që faqja llogariste më parë: "Pritet" = Σ i mesatares së ponderuar,
+              // "Paguar" = Të Hyra, "Borxh" = Borxhe, "Të vonuara" = numri i serverit (+ borxhi i tyre, vetëm shfaqje)
+              const expected = weightedAvgData?.totalExpected ?? 0;
+              const pct = expected > 0 ? Math.min(100, Math.round((stats.totalRevenue / expected) * 100)) : 0;
+              const overdueRows = activeStudents.filter(s => s.payment?.status === "OVERDUE");
+              const overdueSum = overdueRows.reduce((sum, s) => sum + (s.payment?.balance ?? 0), 0);
+              return (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="card p-4">
+                      <p className="text-xs text-slate-400">Pritet gjithsej</p>
+                      <p className="text-2xl font-bold text-slate-900 dark:text-white">{formatCurrency(expected)}</p>
+                      <p className="text-[11px] text-slate-400">{stats.total} nxënës aktivë</p>
                     </div>
-                    <span className="text-xs text-slate-400">Gjithsej</span>
-                    {statusFilter === "" && <span className="ml-auto text-[10px] bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 px-1.5 rounded-full font-medium">Aktiv</span>}
-                  </div>
-                  <p className="text-xl font-bold text-slate-700 dark:text-slate-200">{stats.total}</p>
-                </div>
-
-                <div
-                  onClick={() => setStatusFilter(f => f === "PAID" ? "" : "PAID")}
-                  className={`card p-3 cursor-pointer transition-all hover:shadow-md ${statusFilter === "PAID" ? "ring-2 ring-green-400" : "opacity-80 hover:opacity-100"}`}
-                  title="Filtro: Paguar"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-7 h-7 rounded-lg bg-green-50 dark:bg-green-900/30 flex items-center justify-center">
-                      <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
-                    </div>
-                    <span className="text-xs text-slate-400">Paguar</span>
-                    {statusFilter === "PAID" && <span className="ml-auto text-[10px] bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-1.5 rounded-full font-medium">Aktiv</span>}
-                  </div>
-                  <p className="text-xl font-bold text-green-600 dark:text-green-400">{stats.paid}</p>
-                </div>
-
-                <div
-                  onClick={() => setStatusFilter(f => f === "PARTIAL" ? "" : "PARTIAL")}
-                  className={`card p-3 cursor-pointer transition-all hover:shadow-md ${statusFilter === "PARTIAL" ? "ring-2 ring-blue-400" : "opacity-80 hover:opacity-100"}`}
-                  title="Filtro: Pjesërisht"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
-                      <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <span className="text-xs text-slate-400">Pjesërisht</span>
-                    {statusFilter === "PARTIAL" && <span className="ml-auto text-[10px] bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-1.5 rounded-full font-medium">Aktiv</span>}
-                  </div>
-                  <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{stats.partial}</p>
-                </div>
-
-                <div
-                  onClick={() => setStatusFilter(f => f === "OVERDUE" ? "" : "OVERDUE")}
-                  className={`card p-3 cursor-pointer transition-all hover:shadow-md ${statusFilter === "OVERDUE" ? "ring-2 ring-red-400" : "opacity-80 hover:opacity-100"}`}
-                  title="Filtro: Vonuar"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
-                      <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                    </div>
-                    <span className="text-xs text-slate-400">Vonuar</span>
-                    {statusFilter === "OVERDUE" && <span className="ml-auto text-[10px] bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 px-1.5 rounded-full font-medium">Aktiv</span>}
-                  </div>
-                  <p className="text-xl font-bold text-red-600 dark:text-red-400">{stats.overdue}</p>
-                </div>
-
-                <div
-                  onClick={() => setStatusFilter(f => f === "WITH_PAYMENT" ? "" : "WITH_PAYMENT")}
-                  className={`card p-3 cursor-pointer transition-all hover:shadow-md ${statusFilter === "WITH_PAYMENT" ? "ring-2 ring-emerald-400" : "opacity-80 hover:opacity-100"}`}
-                  title="Filtro: Të gjitha me pagesë (Paguar + Pjesërisht)"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center">
-                      <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    </div>
-                    <span className="text-xs text-slate-400 whitespace-nowrap">Me pagesë</span>
-                    {statusFilter === "WITH_PAYMENT" && <span className="ml-auto text-[10px] bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 px-1.5 rounded-full font-medium">Aktiv</span>}
-                  </div>
-                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{stats.paid + stats.partial}</p>
-                </div>
-
-                <div className="card p-3 sm:col-span-2">
-                  <p className="text-xs text-slate-400 mb-0.5">Të Hyra</p>
-                  <p className="text-lg font-bold text-green-600">{formatCurrency(stats.totalRevenue)}</p>
-                </div>
-                <div className="card p-3 sm:col-span-2 lg:col-span-2 hidden lg:block">
-                  <p className="text-xs text-slate-400 mb-0.5">Borxhe</p>
-                  <p className="text-lg font-bold text-red-500">{formatCurrency(stats.totalDebt)}</p>
-                </div>
-
-                <div className="card p-3 sm:col-span-2 lg:col-span-2">
-                  <p className="text-xs text-slate-400 mb-2">Mesatarja e Ponderuar</p>
-                  {weightedAvgData ? (
-                    <div className="space-y-1.5">
-                      {/* Grupet e çmimeve: çmimi × nxënës */}
-                      <div className="space-y-0.5 max-h-20 overflow-y-auto pr-1">
-                        {Object.entries(weightedAvgData.groups)
-                          .sort(([a], [b]) => Number(b) - Number(a))
-                          .map(([price, count]) => (
-                            <div key={price} className="flex justify-between items-center text-[11px]">
-                              <span className="text-slate-500">
-                                {formatCurrency(Number(price))} × <span className="font-medium text-slate-700 dark:text-slate-300">{count}</span> nxënës
-                              </span>
-                              <span className="text-slate-400 font-mono">
-                                = {formatCurrency(Number(price) * count)}
-                              </span>
-                            </div>
-                          ))}
-                      </div>
-                      <div className="border-t border-slate-100 dark:border-slate-700 pt-1.5 space-y-0.5">
-                        <div className="flex justify-between items-center text-[11px] text-slate-400">
-                          <span>Σ / {stats.total} nxënës</span>
-                          <span className="font-mono">{formatCurrency(weightedAvgData.totalExpected)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Mesatare e ponderuar</span>
-                          <span className="font-bold text-amber-600 dark:text-amber-400 text-sm">
-                            {formatCurrency(weightedAvgData.avg)}
-                          </span>
-                        </div>
+                    <div className="card p-4">
+                      <p className="text-xs text-slate-400">Paguar</p>
+                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">{formatCurrency(stats.totalRevenue)}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden"><div className="h-full bg-green-500 rounded-full" style={{ width: `${pct}%` }} /></div>
+                        <span className="text-[11px] font-semibold text-slate-500">{pct}%</span>
                       </div>
                     </div>
-                  ) : (
-                    <p className="text-sm text-slate-400">—</p>
+                    <div className="card p-4">
+                      <p className="text-xs text-slate-400">Borxh</p>
+                      <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(stats.totalDebt)}</p>
+                    </div>
+                    <button type="button" onClick={() => setQuick(q => q === "OVERDUE" ? "" : "OVERDUE")}
+                      className={`card p-4 text-left bg-red-50/70 dark:bg-red-900/15 border-2 transition-all ${quick === "OVERDUE" ? "border-red-400" : "border-transparent hover:border-red-200"}`}>
+                      <p className="text-xs text-red-500">Të vonuara</p>
+                      <p className="text-xl font-bold text-red-600 dark:text-red-400">{stats.overdue} nxënës · {formatCurrency(overdueSum)}</p>
+                    </button>
+                  </div>
+                  {weightedAvgData && (
+                    <details className="text-xs text-slate-500">
+                      <summary className="cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-300">
+                        Mesatarja e ponderuar: <b className="text-amber-600">{formatCurrency(weightedAvgData.avg)}</b> · çmimet sipas nxënësve
+                      </summary>
+                      <div className="card p-3 mt-2 max-w-md space-y-0.5">
+                        {Object.entries(weightedAvgData.groups).sort(([a], [b]) => Number(b) - Number(a)).map(([price, count]) => (
+                          <div key={price} className="flex justify-between">
+                            <span>{formatCurrency(Number(price))} × <b>{count}</b> nxënës</span>
+                            <span className="font-mono text-slate-400">= {formatCurrency(Number(price) * count)}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between border-t border-slate-100 dark:border-slate-700 pt-1 mt-1">
+                          <span>Σ / {stats.total} nxënës</span><span className="font-mono">{formatCurrency(weightedAvgData.totalExpected)}</span>
+                        </div>
+                      </div>
+                    </details>
                   )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {stats?.cashBox && <ShkollimiCashBox stats={stats} cashBox={stats.cashBox} onShowExpenses={() => setTab("expense")} />}
 
@@ -807,263 +772,183 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
               );
             })()}
 
-            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Kërko nxënësin..."
-                  className="form-input pl-9"
-                />
+            {/* ── Shiriti i filtrave ── */}
+            <div className="card p-3 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Kërko nxënësin..." className="form-input pl-9" />
+                </div>
+                {QUICK_PILLS.map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => setQuick(k)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${quick === k ? "bg-primary-600 border-primary-600 text-white" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary-300"}`}>
+                    {l} ({quickCounts[k]})
+                  </button>
+                ))}
+                <div className="flex items-center gap-2 ml-auto">
+                  <button onClick={generateAutoNotifications} className="btn-secondary text-sm"><Bot className="w-4 h-4" /> Gjenero automatikisht</button>
+                  <button type="button" onClick={() => setFiltersOpen(o => !o)} aria-expanded={filtersOpen}
+                    className={`btn-secondary text-sm ${activeFilterCount ? "border-primary-400 text-primary-700 dark:text-primary-300" : ""}`}>
+                    <SlidersHorizontal className="w-4 h-4" /> Filtrat{activeFilterCount ? ` (${activeFilterCount})` : ""}
+                  </button>
+                </div>
               </div>
-              <button onClick={generateAutoNotifications} className="btn-secondary text-sm shrink-0">
-                <Bot className="w-4 h-4" /> Gjenero automatikisht
-              </button>
-              <div className="flex items-center gap-2 flex-wrap">
+
+              {filtersOpen && (
+                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                  <label className="text-xs text-slate-500">Klasa
+                    <select value={colKlasa} onChange={e => setColKlasa(e.target.value)} className="form-input py-1.5 text-sm mt-0.5">
+                      <option value="">Të gjitha</option>
+                      {uniqueKlasa.map(k => <option key={k} value={k}>{k}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs text-slate-500">Cikli
+                    <select value={colCikli} onChange={e => setColCikli(e.target.value)} className="form-input py-1.5 text-sm mt-0.5">
+                      <option value="">Të gjithë</option>
+                      {CYCLES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs text-slate-500">Mënyra e pagesës
+                    <select value={colPlan} onChange={e => setColPlan(e.target.value)} className="form-input py-1.5 text-sm mt-0.5">
+                      <option value="">Të gjitha</option>
+                      {PAYMENT_PLANS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs text-slate-500">Borxhi
+                    <select value={colBorxhi} onChange={e => setColBorxhi(e.target.value)} className="form-input py-1.5 text-sm mt-0.5">
+                      <option value="">Të gjitha</option>
+                      <option value="DEBT">Me borxh</option>
+                      <option value="FULL">Borxh total</option>
+                      <option value="PARTIAL">Borxh në pjesë</option>
+                    </select>
+                  </label>
+                  <label className="text-xs text-slate-500">Metoda
+                    <select value={colMetoda} onChange={e => setColMetoda(e.target.value)} className="form-input py-1.5 text-sm mt-0.5">
+                      <option value="">Të gjitha</option>
+                      <option value={METODA_BANKE}>Bankë (të gjitha)</option>
+                      <option value={METODA_NONE}>Pa metodë</option>
+                      {uniqueMetoda.map(m => (
+                        <option key={m} value={m}>{m === "CASH" ? "Cash" : m === "BANK" ? "Bankë" : m === "CARD" ? "Kartelë" : m === "ONLINE" ? "Online" : m === "KOMPENSIM" ? "Kompensim" : m}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs text-slate-500">Gjendja (sistemi)
+                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="form-input py-1.5 text-sm mt-0.5">
+                      <option value="">Të gjitha</option>
+                      <option value="PAID">Paguar</option>
+                      <option value="PARTIAL">Pjesërisht</option>
+                      <option value="OVERDUE">Vonuar</option>
+                      <option value="PENDING">Pa pagesë</option>
+                      <option value="WITH_PAYMENT">Me pagesë</option>
+                    </select>
+                  </label>
+                  <label className="text-xs text-slate-500">Renditja
+                    <select value={sortCol ? `${sortCol}:${sortDir}` : ""} onChange={e => {
+                      const [c, d] = e.target.value.split(":");
+                      if (!c) { setSortCol(null); setSortDir("asc"); } else { setSortCol(c); setSortDir(d as "asc" | "desc"); }
+                    }} className="form-input py-1.5 text-sm mt-0.5">
+                      <option value="">Sipas statusit</option>
+                      <option value="shuma:desc">Shuma ↓</option>
+                      <option value="paguar:desc">Paguar ↓</option>
+                      <option value="borxhi:desc">Borxhi ↓</option>
+                      <option value="borxhi:asc">Borxhi ↑</option>
+                      <option value="data:desc">Data ↓</option>
+                      <option value="data:asc">Data ↑</option>
+                    </select>
+                  </label>
+                  {activeFilterCount > 0 && (
+                    <button type="button" onClick={() => { setColKlasa(""); setColCikli(""); setColPlan(""); setColBorxhi(""); setColMetoda(""); setStatusFilter(""); setSortCol(null); setSortDir("asc"); }}
+                      className="text-xs text-red-500 hover:underline text-left self-end pb-2">Pastro filtrat</button>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 flex-wrap text-xs">
                 {statusFilter && (
-                  <button onClick={() => setStatusFilter("")}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100 transition-colors">
+                  <button onClick={() => setStatusFilter("")} className="flex items-center gap-1 px-2.5 py-1 rounded-full font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100">
                     <X className="w-3 h-3" />
-                    {statusFilter === "PAID" ? "Paguar" : statusFilter === "PARTIAL" ? "Pjesërisht" : statusFilter === "OVERDUE" ? "Vonuar" : statusFilter === "WITH_PAYMENT" ? "Me pagesë" : "Filtri"}
+                    {statusFilter === "PAID" ? "Paguar" : statusFilter === "PARTIAL" ? "Pjesërisht" : statusFilter === "OVERDUE" ? "Vonuar" : statusFilter === "WITH_PAYMENT" ? "Me pagesë" : statusFilter === "PENDING" ? "Pa pagesë" : "Filtri"}
                   </button>
                 )}
-                {colKlasa && (
-                  <button onClick={() => setColKlasa("")}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 transition-colors">
-                    <X className="w-3 h-3" />Klasa: {colKlasa}
-                  </button>
-                )}
-                {colCikli && (
-                  <button onClick={() => setColCikli("")}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors">
-                    <X className="w-3 h-3" />
-                    {CYCLES.find(c => c.value === colCikli)?.label ?? colCikli}
-                  </button>
-                )}
-                {colPlan && (
-                  <button onClick={() => setColPlan("")}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100 transition-colors">
-                    <X className="w-3 h-3" />
-                    {PAYMENT_PLAN_LABELS[colPlan] ?? colPlan}
-                  </button>
-                )}
+                {colKlasa && <button onClick={() => setColKlasa("")} className="flex items-center gap-1 px-2.5 py-1 rounded-full font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100"><X className="w-3 h-3" />Klasa: {colKlasa}</button>}
+                {colCikli && <button onClick={() => setColCikli("")} className="flex items-center gap-1 px-2.5 py-1 rounded-full font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100"><X className="w-3 h-3" />{CYCLES.find(c => c.value === colCikli)?.label ?? colCikli}</button>}
+                {colPlan && <button onClick={() => setColPlan("")} className="flex items-center gap-1 px-2.5 py-1 rounded-full font-medium bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100"><X className="w-3 h-3" />{PAYMENT_PLAN_LABELS[colPlan] ?? colPlan}</button>}
                 {colMetoda && (
-                  <button onClick={() => setColMetoda("")}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 transition-colors">
-                    <X className="w-3 h-3" />
-                    {colMetoda === METODA_NONE ? "Pa metodë" : colMetoda === METODA_BANKE ? "Bankë (të gjitha)" : colMetoda === "CASH" ? "Cash" : colMetoda === "BANK" ? "Bankë" : colMetoda === "CARD" ? "Kartelë" : colMetoda}
+                  <button onClick={() => setColMetoda("")} className="flex items-center gap-1 px-2.5 py-1 rounded-full font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100">
+                    <X className="w-3 h-3" />{colMetoda === METODA_NONE ? "Pa metodë" : colMetoda === METODA_BANKE ? "Bankë (të gjitha)" : colMetoda === "CASH" ? "Cash" : colMetoda === "BANK" ? "Bankë" : colMetoda === "CARD" ? "Kartelë" : colMetoda}
                   </button>
                 )}
-                {colBorxhi && (
-                  <button onClick={() => setColBorxhi("")}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-100 transition-colors">
-                    <X className="w-3 h-3" />
-                    {colBorxhi === "DEBT" ? "Me borxh" : colBorxhi === "FULL" ? "Borxh total" : "Borxh në pjesë"}
-                  </button>
-                )}
-                {sortCol && (
-                  <button onClick={() => { setSortCol(null); setSortDir("asc"); }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-colors">
-                    <X className="w-3 h-3" />
-                    Sort: {sortCol} {sortDir === "asc" ? "▲" : "▼"}
-                  </button>
-                )}
-                <span className="text-sm text-slate-400">
-                  {sorted.length}{(statusFilter || colKlasa || colCikli || colPlan || colMetoda || colBorxhi) ? ` / ${students.length}` : ""} nxënës
+                {colBorxhi && <button onClick={() => setColBorxhi("")} className="flex items-center gap-1 px-2.5 py-1 rounded-full font-medium bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-100"><X className="w-3 h-3" />{colBorxhi === "DEBT" ? "Me borxh" : colBorxhi === "FULL" ? "Borxh total" : "Borxh në pjesë"}</button>}
+                {sortCol && <button onClick={() => { setSortCol(null); setSortDir("asc"); }} className="flex items-center gap-1 px-2.5 py-1 rounded-full font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200"><X className="w-3 h-3" />Renditja: {sortCol} {sortDir === "asc" ? "▲" : "▼"}</button>}
+                <span className="text-slate-400 ml-auto">
+                  {sorted.length}{(statusFilter || quick || colKlasa || colCikli || colPlan || colMetoda || colBorxhi) ? ` / ${students.length}` : ""} nxënës
                 </span>
               </div>
             </div>
 
-            {stats && stats.total > 0 && (
-              <div className="card p-3 flex items-center gap-3">
-                <span className="text-xs text-slate-400 w-20 flex-shrink-0">Pagesa</span>
-                <div className="flex-1 h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden flex">
-                  <div className="bg-green-500 h-full transition-all" style={{ width: `${(stats.paid    / stats.total) * 100}%` }} />
-                  <div className="bg-blue-400 h-full transition-all"  style={{ width: `${(stats.partial / stats.total) * 100}%` }} />
-                  <div className="bg-red-400  h-full transition-all"  style={{ width: `${(stats.overdue / stats.total) * 100}%` }} />
-                </div>
-                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 w-12 text-right">
-                  {Math.round(((stats.paid + stats.partial) / stats.total) * 100)}%
-                </span>
-              </div>
-            )}
-
             {selected.size > 0 && (
               <div className="card p-3 flex items-center gap-3 bg-primary-50 dark:bg-primary-900/10 border-primary-200 dark:border-primary-800">
                 <span className="text-sm text-primary-700 dark:text-primary-300 font-medium">{selected.size} nxënës të zgjedhur</span>
-                <button
-                  onClick={() => generateNotificationsFor(sorted.filter(s => selected.has(s.id)))}
-                  className="btn-secondary text-sm ml-auto"
-                >
+                <button onClick={() => generateNotificationsFor(sorted.filter(s => selected.has(s.id)))} className="btn-secondary text-sm ml-auto">
                   <Send className="w-4 h-4" /> Gjenero njoftime për të zgjedhurit ({selected.size})
                 </button>
-                <button onClick={() => setSelected(new Set())} className="text-slate-400 hover:text-slate-600">
-                  <X className="w-4 h-4" />
-                </button>
+                <button onClick={() => setSelected(new Set())} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
               </div>
             )}
 
-            {/* Student table */}
+            {/* ── Tabela ── */}
             <div className="card overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[980px]">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
                       <th className="table-header w-8">#</th>
                       <th className="table-header w-8"></th>
                       <th className="table-header">Nxënësi</th>
-
-                      {/* KLASA + CIKLI — dropdown filters */}
-                      <th className="table-header p-0">
-                        <div className="flex items-center gap-1 px-3 py-2">
-                          <span>Klasa</span>
-                          <select
-                            value={colKlasa}
-                            onChange={e => setColKlasa(e.target.value)}
-                            className="ml-1 text-[10px] border border-slate-200 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
-                            title="Filtro sipas klasës"
-                          >
-                            <option value="">Të gjitha</option>
-                            {uniqueKlasa.map(k => <option key={k} value={k}>{k}</option>)}
-                          </select>
-                          {colKlasa && <button onClick={() => setColKlasa("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
-                          <select
-                            value={colCikli}
-                            onChange={e => setColCikli(e.target.value)}
-                            className="ml-1 text-[10px] border border-slate-200 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
-                            title="Filtro sipas ciklit"
-                          >
-                            <option value="">Cikli: të gjithë</option>
-                            {CYCLES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                          </select>
-                          {colCikli && <button onClick={() => setColCikli("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
-                        </div>
-                      </th>
-
-                      {/* MENYRA E PAGESES — dropdown filter */}
-                      <th className="table-header p-0">
-                        <div className="flex items-center gap-1 px-3 py-2">
-                          <span>Mënyra e Pagesës</span>
-                          <select
-                            value={colPlan}
-                            onChange={e => setColPlan(e.target.value)}
-                            className="ml-1 text-[10px] border border-slate-200 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
-                            title="Filtro sipas mënyrës së pagesës"
-                          >
-                            <option value="">Të gjitha</option>
-                            {PAYMENT_PLANS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                          </select>
-                          {colPlan && <button onClick={() => setColPlan("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
-                        </div>
-                      </th>
-
-                      {/* SHUMA — sortable */}
-                      <th className="table-header cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort("shuma")}>
-                        <div className="flex items-center gap-1">Shuma <SortIcon col="shuma" /></div>
-                      </th>
-
-                      {/* PAGUAR — sortable */}
-                      <th className="table-header cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort("paguar")}>
-                        <div className="flex items-center gap-1">Paguar <SortIcon col="paguar" /></div>
-                      </th>
-
-                      {/* BORXHI — sortable + dropdown filter */}
-                      <th className="table-header p-0">
-                        <div className="flex items-center gap-1 px-3 py-2">
-                          <span className="cursor-pointer select-none flex items-center gap-1" onClick={() => toggleSort("borxhi")}>
-                            Borxhi <SortIcon col="borxhi" />
-                          </span>
-                          <select
-                            value={colBorxhi}
-                            onChange={e => setColBorxhi(e.target.value)}
-                            className="ml-1 text-[10px] border border-slate-200 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
-                            title="Filtro sipas borxhit"
-                          >
-                            <option value="">Të gjitha</option>
-                            <option value="DEBT">Me borxh</option>
-                            <option value="FULL">Borxh total</option>
-                            <option value="PARTIAL">Borxh në pjesë</option>
-                          </select>
-                          {colBorxhi && <button onClick={() => setColBorxhi("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
-                        </div>
-                      </th>
-
-                      {/* METODA — dropdown filter */}
-                      <th className="table-header p-0">
-                        <div className="flex items-center gap-1 px-3 py-2">
-                          <span>Metoda</span>
-                          <select
-                            value={colMetoda}
-                            onChange={e => setColMetoda(e.target.value)}
-                            className="ml-1 text-[10px] border border-slate-200 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
-                            title="Filtro sipas metodës"
-                          >
-                            <option value="">Të gjitha</option>
-                            <option value={METODA_BANKE}>Bankë (të gjitha)</option>
-                            <option value={METODA_NONE}>Pa metodë</option>
-                            {uniqueMetoda.map(m => (
-                              <option key={m} value={m}>
-                                {m === "CASH" ? "Cash" : m === "BANK" ? "Bankë" : m === "CARD" ? "Kartelë" : m === "ONLINE" ? "Online" : m === "KOMPENSIM" ? "Kompensim" : m}
-                              </option>
-                            ))}
-                          </select>
-                          {colMetoda && <button onClick={() => setColMetoda("")} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>}
-                        </div>
-                      </th>
-
-                      {/* DATA — sortable */}
-                      <th className="table-header cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort("data")}>
-                        <div className="flex items-center gap-1">Data / Afati <SortIcon col="data" /></div>
-                      </th>
-
+                      <th className="table-header">Plani</th>
+                      <th className="table-header">Gjendja</th>
+                      <th className="table-header">Këstet</th>
                       <th className="table-header">Statusi</th>
                       <th className="table-header text-right">Veprime</th>
-                      <th className="table-header w-10"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                     {loading ? (
-                      <tr>
-                        <td colSpan={13} className="py-16 text-center">
-                          <Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" />
-                        </td>
-                      </tr>
+                      <tr><td colSpan={8} className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" /></td></tr>
                     ) : sorted.length === 0 ? (
-                      <tr>
-                        <td colSpan={13} className="py-16 text-center text-slate-400 text-sm">
-                          Asnjë nxënës nuk u gjet
-                        </td>
-                      </tr>
+                      <tr><td colSpan={8} className="py-16 text-center text-slate-400 text-sm">Asnjë nxënës nuk u gjet</td></tr>
                     ) : sorted.map((s, i) => {
                       const p = s.payment;
                       const isInactive = s.status === "INACTIVE";
                       const isFirstInactive = isInactive && (i === 0 || sorted[i - 1]?.status !== "INACTIVE");
-                      const hasMonthly = s.installments.some(p => p.description?.startsWith("MUAJI_") || p.description?.startsWith("TI_MUAJI_"));
-                      const hasFlex = s.installments.some(p => p.description?.startsWith("FLEX_"));
-                      const hasTwo = !hasMonthly && !hasFlex && s.installments.length >= 2;
-                      const rowNote = s.payment?.note ?? s.installments.find(p => p.note)?.note ?? null;
-                      const k1 = hasTwo ? s.installments[0] : null;
-                      const k2 = hasTwo ? s.installments[1] : null;
-                      const statusKey = p?.status || "PENDING";
+                      const rowNote = s.payment?.note ?? s.installments.find(x => x.note)?.note ?? null;
                       const basePrice = category?.defaultAmount ?? 0;
                       const expectedPrice = Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100));
                       const debt = p?.status === "PAID" ? 0 : p ? p.balance : expectedPrice;
-
-                      // Pro-rate për joaktivët
                       const prorated = isInactive && s.inactiveDate && basePrice > 0 && year > 0
                         ? calcProrated(basePrice, s.discountPct ?? 0, new Date(s.inactiveDate), schoolYearStart)
                         : null;
-
-                      const rowBg = isInactive
-                        ? "bg-slate-50/80 dark:bg-slate-800/20 opacity-70"
-                        : statusKey === "OVERDUE" ? "bg-red-50/40 dark:bg-red-900/10" : "";
-
+                      const total = isInactive && prorated ? prorated.amount : p ? p.finalAmount : expectedPrice;
+                      const paidAmt = p?.paidAmount ?? 0;
+                      const pct = total > 0 ? Math.min(100, Math.round((paidAmt / total) * 100)) : 0;
+                      const qs = quickStatusOf(s);
+                      const kind = planKind(s.installments as QpInstallment[]);
+                      const rows = realInstallments(s.installments as QpInstallment[]);
+                      const rowBg = isInactive ? "bg-slate-50/80 dark:bg-slate-800/20 opacity-70"
+                        : drawerId === s.id ? "bg-primary-50/70 dark:bg-primary-900/20"
+                        : qs === "OVERDUE" ? "bg-red-50/40 dark:bg-red-900/10" : "";
+                      const nowT = Date.now();
+                      const chip = (x: QpInstallment) =>
+                        x.paidAmount >= x.finalAmount - 0.001 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                        : x.paidAmount > 0 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                        : new Date(x.dueDate).getTime() < nowT ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                        : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300";
+                      const methodTxt = (m: string | null) => (m === "BANK" ? "Bankë" : m === "CASH" ? "Cash" : m ? getStatusLabel(m) : "");
                       return (
                         <React.Fragment key={s.id}>
                         {isFirstInactive && inactiveStudents.length > 0 && (
                           <tr>
-                            <td colSpan={13} className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800/60 border-t-2 border-slate-300 dark:border-slate-600">
+                            <td colSpan={8} className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800/60 border-t-2 border-slate-300 dark:border-slate-600">
                               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                                 ✕ Joaktiv — {inactiveStudents.length} nxënës · të përjashtuar nga statistikat dhe mesatarja
                               </span>
@@ -1072,33 +957,18 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                         )}
                         <tr className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${rowBg}`}>
                           <td className="table-cell text-slate-400 text-xs">{i + 1}</td>
+                          <td className="table-cell"><input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} className="rounded accent-primary-600" /></td>
                           <td className="table-cell">
-                            <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} className="rounded accent-primary-600" />
-                          </td>
-                          <td className="table-cell">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Link
-                                href={`/students/${s.id}`}
-                                title={s.timiInvest && (p?.paidAmount ?? 0) > 0 ? "Kujdes: ky nxënës është i lidhur me TIMI Invest dhe ka shumë të regjistruar si 'paguar' — verifikoni nëse është pagesë reale e pranuar nga shkolla, apo vetëm marrëveshja e financimit." : undefined}
-                                className={`font-semibold hover:text-primary-600 dark:hover:text-primary-400 ${
-                                  isInactive ? "text-slate-400 dark:text-slate-500 line-through"
-                                  : s.timiInvest && (p?.paidAmount ?? 0) > 0 ? "text-orange-600 dark:text-orange-400"
-                                  : "text-slate-900 dark:text-white"
-                                }`}
-                              >
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Link href={`/students/${s.id}`}
+                                title={s.timiInvest && paidAmt > 0 ? "Kujdes: ky nxënës është i lidhur me TIMI Invest dhe ka shumë të regjistruar si 'paguar' — verifikoni nëse është pagesë reale e pranuar nga shkolla, apo vetëm marrëveshja e financimit." : undefined}
+                                className={`font-semibold hover:text-primary-600 dark:hover:text-primary-400 ${isInactive ? "text-slate-400 dark:text-slate-500 line-through" : s.timiInvest && paidAmt > 0 ? "text-orange-600 dark:text-orange-400" : "text-slate-900 dark:text-white"}`}>
                                 {s.firstName} {s.lastName}
                               </Link>
-                              {s.parentName && (
-                                <span className="text-xs text-slate-400 font-normal">({s.parentName})</span>
-                              )}
+                              {s.class && <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-1.5 py-0.5 rounded text-[10px] font-semibold">{s.class.name}</span>}
                               {isInactive && (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-semibold">
-                                  ✕ Joaktiv
-                                  {s.inactiveDate && (
-                                    <span className="text-slate-400">
-                                      {formatDate(s.inactiveDate)}
-                                    </span>
-                                  )}
+                                  ✕ Joaktiv{s.inactiveDate && <span className="text-slate-400">{formatDate(s.inactiveDate)}</span>}
                                 </span>
                               )}
                               {timiInvestEnabled && s.timiInvest && (() => {
@@ -1110,211 +980,80 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                                 );
                               })()}
                               {s.oldDebt && (
-                                <button
-                                  type="button"
-                                  onClick={() => setOldDebtEditTarget(s)}
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-semibold hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
-                                  title="Modifiko ose fshi borxhin e vjetër"
-                                >
+                                <button type="button" onClick={() => setOldDebtEditTarget(s)} title="Modifiko ose fshi borxhin e vjetër"
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-semibold hover:bg-red-200 dark:hover:bg-red-900/50">
                                   ⚠ Borxh i vjetër: {formatCurrency(s.oldDebt.balance)}
                                 </button>
                               )}
+                              {rowNote && <span className="inline-flex" title={rowNote}><StickyNote className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0" /></span>}
                             </div>
-                            {hasMonthly && (
-                              <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-medium">
-                                <CalendarDays className="w-3 h-3" />
-                                {s.installments.some(p => p.description?.startsWith("TI_MUAJI_")) ? "TIMI · " : ""}{s.installments.length} muaj
-                              </span>
-                            )}
-                            {hasTwo && (
-                              <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded font-medium">
-                                <CalendarDays className="w-3 h-3" />
-                                2 këste
-                              </span>
-                            )}
-                            {hasFlex && (
-                              <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-1.5 py-0.5 rounded font-medium">
-                                <CalendarDays className="w-3 h-3" />
-                                {s.installments.length} pagesa
-                              </span>
-                            )}
-                            {rowNote && (
-                              <span className="ml-2 inline-flex" title={rowNote}>
-                                <StickyNote className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0" />
-                              </span>
+                            {s.parentName && <p className="text-xs text-slate-400 mt-0.5">Prindi: {s.parentName}</p>}
+                          </td>
+                          <td className="table-cell text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                            {PLAN_LABEL[kind]}{(kind === "MONTHLY" || kind === "TIMI") ? ` (${rows.length})` : ""}
+                            {s.paymentPlan && PAYMENT_PLAN_LABELS[s.paymentPlan] && (
+                              <p className="text-[10px] text-slate-400">Mënyra: {PAYMENT_PLAN_LABELS[s.paymentPlan]}</p>
                             )}
                           </td>
-                          <td className="table-cell">
-                            {s.class
-                              ? <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-2 py-0.5 rounded text-xs font-medium">{s.class.name}</span>
-                              : <span className="text-slate-300">—</span>}
+                          <td className="table-cell min-w-[190px]">
+                            <div className="flex items-baseline justify-between gap-2 text-xs">
+                              <span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(paidAmt)}</span>
+                              <span className="text-slate-400">nga {formatCurrency(total)}{(s.discountPct ?? 0) > 0 && !p ? ` (−${s.discountPct}%)` : ""}</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden my-1"><div className="h-full bg-green-500 rounded-full" style={{ width: `${pct}%` }} /></div>
+                            {debt > 0
+                              ? <p className="text-xs font-semibold text-red-600 dark:text-red-400">Borxh {formatCurrency(debt)}</p>
+                              : <p className="text-xs text-green-600">✓ Pa borxh</p>}
+                            {prorated && <p className="text-[10px] text-amber-600">{prorated.attended}/10 muaj (pro-rata)</p>}
                           </td>
-                          <td className="table-cell">
-                            <select
-                              value={s.paymentPlan ?? ""}
-                              onChange={e => savePaymentPlan(s.id, e.target.value)}
-                              onClick={e => e.stopPropagation()}
-                              className="text-xs border border-slate-200 dark:border-slate-600 rounded px-1.5 py-1 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-400 cursor-pointer"
-                            >
-                              <option value="">— Pazgjedhur —</option>
-                              {PAYMENT_PLANS.map(pl => <option key={pl.value} value={pl.value}>{pl.label}</option>)}
-                            </select>
-                          </td>
-                          <td className="table-cell font-medium text-slate-800 dark:text-slate-200">
-                            {isInactive && prorated ? (
-                              <div>
-                                <span className="font-semibold text-amber-600 dark:text-amber-400">
-                                  {formatCurrency(prorated.amount)}
-                                </span>
-                                <p className="text-[10px] text-slate-400">
-                                  {prorated.attended}/10 muaj
-                                  {prorated.effectivePrice !== prorated.amount && (
-                                    <span className="line-through ml-1">{formatCurrency(prorated.effectivePrice)}</span>
-                                  )}
-                                </p>
-                              </div>
-                            ) : p ? (
-                              formatCurrency(p.finalAmount)
-                            ) : basePrice > 0 ? (
-                              <div>
-                                <span className="font-semibold text-slate-700 dark:text-slate-200">
-                                  {formatCurrency(expectedPrice)}
-                                </span>
-                                {(s.discountPct ?? 0) > 0 && (
-                                  <>
-                                    <span className="ml-1 text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
-                                      -{s.discountPct}%
-                                    </span>
-                                    <p className="text-[10px] text-slate-400 line-through">{formatCurrency(basePrice)}</p>
-                                  </>
-                                )}
-                              </div>
-                            ) : <span className="text-slate-300">—</span>}
-                          </td>
-                          <td className="table-cell text-green-600 dark:text-green-400 font-medium">
-                            {p ? formatCurrency(p.paidAmount) : <span className="text-slate-300">—</span>}
-                          </td>
-                          <td className="table-cell">
-                            {p?.status === "PAID" ? (
-                              <span className="text-green-500 text-xs font-medium">✓ Pa borxh</span>
-                            ) : p && p.balance > 0 ? (
-                              <span className="text-red-600 dark:text-red-400 font-semibold">{formatCurrency(p.balance)}</span>
-                            ) : !p && expectedPrice > 0 ? (
-                              <span className="text-red-600 dark:text-red-400 font-semibold">{formatCurrency(expectedPrice)}</span>
-                            ) : (
+                          <td className="table-cell text-xs">
+                            {rows.length === 0 ? (
                               <span className="text-slate-300">—</span>
-                            )}
-                          </td>
-                          <td className="table-cell text-slate-500 dark:text-slate-400 text-xs">
-                            {hasTwo ? (
-                              <div className="space-y-0.5">
-                                {k1?.method && <div>K1: {getStatusLabel(k1.method)}</div>}
-                                {k2?.method && <div>K2: {getStatusLabel(k2.method)}</div>}
-                                {!k1?.method && !k2?.method && "—"}
-                              </div>
-                            ) : hasFlex || hasMonthly ? (
-                              paidMethodsOf(s).length ? paidMethodsOf(s).map(getStatusLabel).join(" + ") : "—"
-                            ) : (
-                              p?.method ? getStatusLabel(p.method) : "—"
-                            )}
-                          </td>
-                          <td className="table-cell text-slate-400 text-xs">
-                            {hasTwo && k1 && k2 ? (
-                              <div className="space-y-0.5">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-slate-400 w-6">K1:</span>
-                                  {k1.paidDate
-                                    ? <span className="text-green-600">{formatDate(k1.paidDate)}</span>
-                                    : <span className="text-red-400">Afati {formatDate(k1.dueDate)}</span>}
+                            ) : kind === "MONTHLY" || kind === "TIMI" ? (() => {
+                              const paidN = rows.filter(x => x.paidAmount >= x.finalAmount - 0.001).length;
+                              const next = rows.find(x => x.paidAmount < x.finalAmount - 0.001);
+                              return (
+                                <div className="space-y-0.5">
+                                  <div><span className="px-1.5 py-0.5 rounded font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{paidN}/{rows.length} ✓</span> <span className="text-slate-500">muaj paguar</span></div>
+                                  {next && <div><span className={`px-1.5 py-0.5 rounded font-semibold ${chip(next)}`}>{installmentLabel(next, 0, kind)}</span> <span className="text-slate-400">afati {formatDate(next.dueDate)}</span></div>}
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <span className="text-slate-400 w-6">K2:</span>
-                                  {k2.paidDate
-                                    ? <span className="text-green-600">{formatDate(k2.paidDate)}</span>
-                                    : <span className="text-red-400">Afati {formatDate(k2.dueDate)}</span>}
-                                </div>
+                              );
+                            })() : kind === "FLEX" || kind === "LEGACY_FLEX" ? (() => {
+                              const pays = rows.filter(x => x.paidAmount > 0);
+                              const last = pays[pays.length - 1];
+                              return (
+                                <div><span className="px-1.5 py-0.5 rounded font-semibold bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">{pays.length} pagesa</span>
+                                  {last?.paidDate && <span className="text-slate-400"> · e fundit {formatDate(last.paidDate)}{last.method ? ` · ${methodTxt(last.method)}` : ""}</span>}</div>
+                              );
+                            })() : (
+                              <div className="space-y-0.5">
+                                {rows.map((x, idx) => {
+                                  const full = x.paidAmount >= x.finalAmount - 0.001;
+                                  const lbl = installmentLabel(x, idx, kind);
+                                  return (
+                                    <div key={x.id} className="whitespace-nowrap">
+                                      <span className={`px-1.5 py-0.5 rounded font-semibold ${chip(x)}`}>{lbl}{full ? " ✓" : x.paidAmount > 0 ? " pjesërisht" : !full && new Date(x.dueDate).getTime() < nowT ? " · Vonuar" : ""}</span>{" "}
+                                      <span className="text-slate-400">{x.paidAmount > 0 && x.paidDate ? `${formatDate(x.paidDate)}${x.method ? ` · ${methodTxt(x.method)}` : ""}` : `afati ${formatDate(x.dueDate)}`}</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            ) : p?.paidDate ? (
-                              formatDate(p.paidDate)
-                            ) : p?.dueDate ? (
-                              <span className="text-red-400">Afati: {formatDate(p.dueDate)}</span>
-                            ) : "—"}
-                          </td>
-                          <td className="table-cell">
-                            {hasTwo && k1 && k2 ? (
-                              <div className="space-y-1">
-                                <span className={`badge text-[10px] ${getStatusColor(k1.status)}`}>
-                                  K1 {getStatusLabel(k1.status)}
-                                </span>
-                                <span className={`badge text-[10px] ${getStatusColor(k2.status)}`}>
-                                  K2 {getStatusLabel(k2.status)}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className={`badge ${getStatusColor(statusKey)}`}>
-                                {p ? getStatusLabel(statusKey) : "Pa pagesë"}
-                              </span>
                             )}
                           </td>
-                          <td className="table-cell text-right">
-                            <button
-                              onClick={() => setModal(s)}
-                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                                p?.status === "PAID"
-                                  ? "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
-                                  : "bg-primary-600 hover:bg-primary-700 text-white"
-                              }`}
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              {hasMonthly ? "Modifiko Muajt" : hasTwo ? "Modifiko Këste" : p ? (p.status === "PAID" ? "Modifiko" : "Plotëso") : "Shto"}
-                            </button>
-                          </td>
+                          <td className="table-cell"><span className={`badge ${QUICK_STYLE[qs].cls}`}>{QUICK_STYLE[qs].label}</span></td>
                           <td className="table-cell">
-                            <div className="flex items-center gap-1">
-                              {showCalculator && (
-                                <button
-                                  onClick={() => setCalcModal(s)}
-                                  title="Kalkulator i Shkollimit"
-                                  className="p-1.5 rounded-lg text-amber-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
-                                >
-                                  <Calculator className="w-4 h-4" />
-                                </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              {debt > 0 ? (
+                                <button onClick={() => setDrawerId(s.id)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary-600 hover:bg-primary-700 text-white whitespace-nowrap">Regjistro pagesë</button>
+                              ) : (
+                                <button onClick={() => setDrawerId(s.id)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 whitespace-nowrap">✓ Shiko</button>
                               )}
-                              <button
-                                onClick={() => setPrintModal(s)}
-                                title="Gjenero faturë"
-                                className="p-1.5 rounded-lg text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 dark:text-slate-500 dark:hover:text-primary-400 transition-colors"
-                              >
-                                <Printer className="w-4 h-4" />
+                              <button type="button" aria-label="Më shumë veprime" onClick={e => {
+                                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                setRowMenu(m => (m?.id === s.id ? null : { id: s.id, top: r.bottom + 4, right: window.innerWidth - r.right }));
+                              }} className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700">
+                                <MoreHorizontal className="w-4 h-4" />
                               </button>
-                              <Link
-                                href={`/students/${s.id}#sms`}
-                                title="Historiku, borxhi dhe SMS te prindi"
-                                className="p-1.5 rounded-lg text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500 dark:hover:text-violet-400 transition-colors"
-                              >
-                                <MessageSquare className="w-4 h-4" />
-                              </Link>
-                              <button
-                                onClick={() => generateNotificationsFor([s])}
-                                title="Gjenero njoftim"
-                                className="p-1.5 rounded-lg text-slate-300 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:text-slate-500 dark:hover:text-blue-400 transition-colors"
-                              >
-                                <Send className="w-4 h-4" />
-                              </button>
-                              {(() => {
-                                const receiptId = s.payment?.receiptNumber
-                                  ? s.payment.id
-                                  : s.installments.find(i => i.receiptNumber)?.id;
-                                return receiptId ? (
-                                  <button
-                                    onClick={() => setReceiptPaymentId(receiptId)}
-                                    title="Riprinto Dëshminë e Pagesës"
-                                    className="p-1.5 rounded-lg text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
-                                  >
-                                    <CheckCircle className="w-4 h-4" />
-                                  </button>
-                                ) : null;
-                              })()}
                             </div>
                           </td>
                         </tr>
@@ -1325,17 +1064,12 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
                   {sorted.length > 0 && (
                     <tfoot className="bg-slate-50 dark:bg-slate-800/50 border-t-2 border-slate-200 dark:border-slate-600">
                       <tr>
-                        <td className="table-cell text-xs font-bold text-slate-500 uppercase tracking-wide" colSpan={3}>
-                          Total ({sorted.length} nxënës)
+                        <td className="table-cell text-xs font-bold text-slate-500 uppercase tracking-wide" colSpan={4}>Total ({sorted.length} nxënës)</td>
+                        <td className="table-cell text-xs">
+                          <p className="font-bold text-emerald-600 dark:text-emerald-400">Paguar {formatCurrency(totalPaidVisible)}</p>
+                          <p className="font-bold text-red-600 dark:text-red-400">{totalDebtVisible > 0 ? `Borxh ${formatCurrency(totalDebtVisible)}` : "✓ Pa borxh"}</p>
                         </td>
-                        <td className="table-cell" />
-                        <td className="table-cell font-bold text-emerald-600 dark:text-emerald-400">
-                          {formatCurrency(totalPaidVisible)}
-                        </td>
-                        <td className="table-cell font-bold text-red-600 dark:text-red-400">
-                          {totalDebtVisible > 0 ? formatCurrency(totalDebtVisible) : <span className="text-emerald-500 text-xs">✓ Pa borxh</span>}
-                        </td>
-                        <td colSpan={4} />
+                        <td colSpan={3} />
                       </tr>
                     </tfoot>
                   )}
@@ -1373,6 +1107,71 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
         />
       )}
 
+      {(() => {
+        const ds = drawerId != null ? students.find(x => x.id === drawerId) : null;
+        if (!ds || !category) return null;
+        return (
+          <QuickPayDrawer
+            key={ds.id}
+            student={{ id: ds.id, firstName: ds.firstName, lastName: ds.lastName, parentName: ds.parentName, className: ds.class?.name ?? null, discountPct: ds.discountPct ?? 0, installments: ds.installments as QpInstallment[] }}
+            categoryId={category.id}
+            defaultAmount={category.defaultAmount ?? 0}
+            schoolYearStart={schoolYearStart}
+            allowNoPlan={!(isMonthly && month > 0)}
+            onClose={() => setDrawerId(null)}
+            onSaved={fetchData}
+            onOpenEditor={() => { setDrawerId(null); setModal(ds); }}
+            onPrintReceipt={id => setReceiptPaymentId(id)}
+            onSendSms={() => generateNotificationsFor([students.find(x => x.id === ds.id) ?? ds])}
+          />
+        );
+      })()}
+
+      {rowMenu && (() => {
+        const ms = students.find(x => x.id === rowMenu.id);
+        if (!ms) return null;
+        const receiptId = ms.payment?.receiptNumber ? ms.payment.id : ms.installments.find(x => x.receiptNumber)?.id;
+        const item = "w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2";
+        const close = () => setRowMenu(null);
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={close} />
+            <div className="fixed z-50 w-60 card py-1 shadow-xl" style={{ top: Math.min(rowMenu.top, window.innerHeight - 330), right: rowMenu.right }}>
+              <button className={item} onClick={() => { close(); setModal(ms); }}><Pencil className="w-4 h-4 text-slate-400" /> Modifiko këstet</button>
+              <button className={item} onClick={() => { close(); setPlanChangeFor({ id: ms.id, name: `${ms.firstName} ${ms.lastName}`, plan: ms.paymentPlan ?? "" }); }}><CalendarDays className="w-4 h-4 text-slate-400" /> Ndrysho mënyrën e pagesës</button>
+              <button className={item} onClick={() => { close(); setPrintModal(ms); }}><Printer className="w-4 h-4 text-slate-400" /> Gjenero faturë</button>
+              {receiptId && <button className={item} onClick={() => { close(); setReceiptPaymentId(receiptId); }}><CheckCircle className="w-4 h-4 text-emerald-500" /> Riprinto dëshminë e pagesës</button>}
+              {showCalculator && <button className={item} onClick={() => { close(); setCalcModal(ms); }}><Calculator className="w-4 h-4 text-amber-500" /> Kalkulatori i shkollimit</button>}
+              <button className={item} onClick={() => { close(); generateNotificationsFor([ms]); }}><Send className="w-4 h-4 text-slate-400" /> Gjenero njoftim (SMS)</button>
+              <Link className={item} href={`/students/${ms.id}#sms`} onClick={close}><MessageSquare className="w-4 h-4 text-slate-400" /> Historiku, shënimet dhe SMS</Link>
+              <Link className={item} href={`/students/${ms.id}`} onClick={close}><ExternalLink className="w-4 h-4 text-slate-400" /> Hap profilin</Link>
+            </div>
+          </>
+        );
+      })()}
+
+      {planChangeFor && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setPlanChangeFor(null)}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-slate-900 dark:text-white">Ndrysho mënyrën e pagesës</h3>
+            <p className="text-sm text-slate-500">{planChangeFor.name} — tani: <b>{PAYMENT_PLAN_LABELS[planChangeFor.plan] ?? "Pazgjedhur"}</b></p>
+            <select defaultValue={planChangeFor.plan} id="plan-change-select" className="form-input">
+              <option value="">— Pazgjedhur —</option>
+              {PAYMENT_PLANS.map(pl => <option key={pl.value} value={pl.value}>{pl.label}</option>)}
+            </select>
+            <p className="text-xs text-slate-400">Ndryshon vetëm etiketën "Mënyra e pagesës" — këstet dhe pagesat s'preken (ato ndryshohen te "Modifiko këstet").</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setPlanChangeFor(null)} className="btn-secondary">Anulo</button>
+              <button onClick={() => {
+                const v = (document.getElementById("plan-change-select") as HTMLSelectElement | null)?.value ?? "";
+                const t = planChangeFor; setPlanChangeFor(null);
+                if (v !== t.plan) savePaymentPlan(t.id, v);
+              }} className="btn-primary">Konfirmo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {printModal && (
         <InvoicePrintModal
           student={printModal}
@@ -1402,7 +1201,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
       {pickerOpen && (
         <StudentPickerModal
           students={students}
-          onSelect={(s) => { setPickerOpen(false); setModal(s); }}
+          onSelect={(s) => { setPickerOpen(false); setDrawerId(s.id); }}
           onClose={() => setPickerOpen(false)}
         />
       )}
