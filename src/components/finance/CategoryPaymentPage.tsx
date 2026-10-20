@@ -2143,11 +2143,25 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
         paidAmount: ex ? String(ex.paidAmount)  : "0",
         paidDate:   ex?.paidDate ? new Date(ex.paidDate).toISOString().split("T")[0] : today,
         dueDate:    ex?.dueDate  ? new Date(ex.dueDate).toISOString().split("T")[0]  : `${targetYear}-${String(targetMonth).padStart(2, "0")}-05`,
-        method:     ex?.method   ?? "",
+        // TIMI paguan gjithmonë me bankë — parazgjedhje "Bankë", por mund të ndryshohet
+        method:     ex?.method || "BANK",
       };
     });
+    // Rrumbullakimi: çmimi/12 (p.sh. 1.600/12 = 133,333…) × 12 = 1.599,96 — 0,04 € "humbnin"
+    // dhe dilnin si borxh. Diferenca e centëve (≤ 0,12 €) shkon te muaji i fundit pa pagesë.
+    let roundingFix = 0;
+    if (tiPrice != null) {
+      const sum = round2(rows.reduce((s, r) => s + (parseFloat(r.portion) || 0), 0));
+      const diff = round2(tiPrice - sum);
+      if (diff !== 0 && Math.abs(diff) <= 0.12) {
+        let idx = rows.length - 1;
+        while (idx > 0 && parseFloat(rows[idx].paidAmount || "0") > 0) idx--;
+        rows[idx] = { ...rows[idx], portion: String(round2((parseFloat(rows[idx].portion) || 0) + diff)) };
+        roundingFix = diff;
+      }
+    }
     const unmatchedPaid = carryOver.filter(p => p.paidAmount > 0 && !used.has(p.id) && p.description !== "FLEX_HEADER");
-    return { rows, unmatchedPaid };
+    return { rows, unmatchedPaid, roundingFix };
   });
   const [tForms, setTForms] = useState(tiInit.rows);
   function setT(idx: number, field: string, val: string) {
@@ -3066,6 +3080,11 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                   <TimiQuickPay studentId={student.id} year={year > 0 ? year : new Date().getFullYear()}
                     remaining={round2(Math.max(0, tiPrice - tForms.reduce((s, f) => s + parseFloat(f.paidAmount || "0"), 0)))}
                     monthly={round2(tiPrice / 12)} onDone={() => onSave(undefined)} />
+                )}
+                {isAlreadyTi && tiInit.roundingFix !== 0 && (
+                  <p className="rounded-xl px-3 py-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
+                    Rrumbullakimi i centëve u korrigjua ({tiInit.roundingFix > 0 ? "+" : ""}{formatCurrency(tiInit.roundingFix)} te muaji i fundit pa pagesë), që 12 muajt të bëjnë saktë {formatCurrency(tiPrice ?? 0)}. Shtyp &quot;Ruaj Muajt&quot; që të ruhet.
+                  </p>
                 )}
                 {tiInit.unmatchedPaid.length > 0 && (
                   <p className="rounded-xl px-3 py-2 text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300">
