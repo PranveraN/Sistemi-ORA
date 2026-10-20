@@ -17,6 +17,8 @@ import FinancialOverview from "@/components/dashboard/FinancialOverview";
 import YearPicker from "@/components/dashboard/YearPicker";
 import ShkollimiFinancialOverview from "@/components/dashboard/ShkollimiFinancialOverview";
 import CashBoxesTable from "@/components/dashboard/CashBoxesTable";
+
+const SHOW_CASH_BOXES = false;
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import { useModuleAccess } from "@/lib/useModuleAccess";
 
@@ -348,7 +350,9 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {mainTab === "permbledhje" && canAccess("/arka") && <CashBoxesTable />}
+        {/* Tabela "Arkat — sa duhet të jenë cash sot" u fsheh nga Dashboard-i me kërkesë të
+            Pranverës (20.10.2026); gjendja e arkave mbetet te "Numërimi i Arkave" (/arka). */}
+        {SHOW_CASH_BOXES && mainTab === "permbledhje" && canAccess("/arka") && <CashBoxesTable />}
 
         {mainTab === "permbledhje" && (
           <ShkollimiFinancialOverview year={year} yearType={yearType} />
