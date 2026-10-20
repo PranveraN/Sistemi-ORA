@@ -19,9 +19,9 @@ export interface CareItem {
   iepWarning: "overdue" | "soon" | null;
   startDate: string | null;
   endDate: string | null;
-  assistant: { id: number; name: string; phone: string | null; email: string | null } | null;
+  assistant: { id: number; name: string; phone: string | null; email: string | null; personal?: boolean } | null;
 }
-export interface CareAssistant { id: number; name: string; phone: string | null; classes: string[]; students: number }
+export interface CareAssistant { id: number; name: string; phone: string | null; personal?: boolean; classes: string[]; students: number }
 export interface CareData {
   canEdit: boolean;
   counts: { assistant: number; needs: number };
@@ -56,7 +56,7 @@ const typeTags = (i: CareItem) => (
 );
 
 function detailLine(i: CareItem): string {
-  if (i.assistant) return `Asistentja: ${i.assistant.name}`;
+  if (i.assistant) return `Asistentja: ${i.assistant.name}${i.assistant.personal ? " (personale)" : ""}`;
   if (i.iep) return `PEI${i.iepReviewDate ? ` · rishikim ${formatDate(i.iepReviewDate)}` : ""}`;
   return i.note ?? "";
 }
@@ -178,7 +178,7 @@ export function AssistantsCard({ data, onAssign }: { data: CareData; onAssign: (
         <ul className="divide-y divide-slate-100 dark:divide-slate-700/50">
           {data.assistants.map(a => (
             <li key={a.id} className="py-2">
-              <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{a.name}</p>
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{a.name}{a.personal && <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300">personale</span>}</p>
               <p className="text-xs text-slate-400">
                 {a.classes.length ? `Klasat ${a.classes.join(", ")}` : "Pa klasë"} · {a.students} nxënës{a.phone ? ` · ${a.phone}` : ""}
               </p>
@@ -208,7 +208,11 @@ export function SpecialCareForm({ item, onClose, onSaved, presetAssistant }: {
   const [iepReviewDate, setIepReviewDate] = useState(toDateInput(item?.iepReviewDate ?? null));
   const [startDate, setStartDate] = useState(toDateInput(item?.startDate ?? null) || new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState(toDateInput(item?.endDate ?? null));
-  const [assistantId, setAssistantId] = useState(item?.assistant ? String(item.assistant.id) : "");
+  const [assistantId, setAssistantId] = useState(item?.assistant && !item.assistant.personal ? String(item.assistant.id) : "");
+  // Asistentet zakonisht janë personale të nxënësit (jo nga stafi) — emri shkruhet me dorë
+  const [assistantMode, setAssistantMode] = useState<"personal" | "staff">(item?.assistant && !item.assistant.personal ? "staff" : "personal");
+  const [assistantName, setAssistantName] = useState(item?.assistant?.personal ? item.assistant.name : "");
+  const [assistantPhone, setAssistantPhone] = useState(item?.assistant?.personal ? item.assistant.phone ?? "" : "");
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -236,7 +240,9 @@ export function SpecialCareForm({ item, onClose, onSaved, presetAssistant }: {
       studentId: student.id, hasAssistant, specialNeeds, note: note.trim() || null,
       iep, iepReviewDate: iep ? iepReviewDate || null : null,
       startDate: startDate || null, endDate: endDate || null,
-      assistantStaffId: hasAssistant && assistantId ? Number(assistantId) : null,
+      assistantStaffId: hasAssistant && assistantMode === "staff" && assistantId ? Number(assistantId) : null,
+      assistantName: hasAssistant && assistantMode === "personal" ? assistantName.trim() || null : null,
+      assistantPhone: hasAssistant && assistantMode === "personal" ? assistantPhone.trim() || null : null,
     };
     try {
       const res = await fetch(item ? `/api/special-care/${item.id}` : "/api/special-care", {
@@ -296,11 +302,22 @@ export function SpecialCareForm({ item, onClose, onSaved, presetAssistant }: {
 
         {hasAssistant && (
           <div>
-            <label className="form-label">Asistenti/ja (nga lista e stafit)</label>
-            <select value={assistantId} onChange={e => setAssistantId(e.target.value)} className="form-input">
-              <option value="">— Pa caktuar ende —</option>
-              {staff.map(s => <option key={s.id} value={s.id}>{s.name}{s.position ? ` · ${s.position}` : ""}</option>)}
-            </select>
+            <label className="form-label">Asistenti/ja</label>
+            <div className="flex gap-4 mb-2 text-sm">
+              <label className="flex items-center gap-1.5"><input type="radio" checked={assistantMode === "personal"} onChange={() => setAssistantMode("personal")} /> Personale e nxënësit</label>
+              <label className="flex items-center gap-1.5"><input type="radio" checked={assistantMode === "staff"} onChange={() => setAssistantMode("staff")} /> Nga stafi i shkollës</label>
+            </div>
+            {assistantMode === "personal" ? (
+              <div className="grid grid-cols-[1fr_140px] gap-2">
+                <input value={assistantName} onChange={e => setAssistantName(e.target.value)} maxLength={120} className="form-input" placeholder="Emri dhe mbiemri" />
+                <input value={assistantPhone} onChange={e => setAssistantPhone(e.target.value)} maxLength={40} className="form-input" placeholder="Telefoni (opsional)" />
+              </div>
+            ) : (
+              <select value={assistantId} onChange={e => setAssistantId(e.target.value)} className="form-input">
+                <option value="">— Pa caktuar ende —</option>
+                {staff.map(s => <option key={s.id} value={s.id}>{s.name}{s.position ? ` · ${s.position}` : ""}</option>)}
+              </select>
+            )}
           </div>
         )}
 

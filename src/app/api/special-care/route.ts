@@ -65,18 +65,24 @@ export async function GET(req: NextRequest) {
         iepWarning,
         startDate: r.startDate?.toISOString() ?? null,
         endDate: r.endDate?.toISOString() ?? null,
-        assistant: r.assistant ? { id: r.assistant.id, name: r.assistant.emri, phone: r.assistant.telefoni, email: r.assistant.email } : null,
+        assistant: r.assistant
+          ? { id: r.assistant.id, name: r.assistant.emri, phone: r.assistant.telefoni, email: r.assistant.email, personal: false }
+          : r.assistantName ? { id: -r.id, name: r.assistantName, phone: r.assistantPhone, email: null, personal: true } : null,
       };
     });
 
   // Asistentët — me klasat ku punojnë dhe numrin e nxënësve
-  const byAssistant = new Map<number, { id: number; name: string; phone: string | null; classes: Set<string>; students: number }>();
+  // (asistentet personale grupohen sipas emrit, me id negative)
+  const byAssistant = new Map<string, { id: number; name: string; phone: string | null; personal: boolean; classes: Set<string>; students: number }>();
   for (const r of inYear) {
-    if (!r.assistant) continue;
-    const a = byAssistant.get(r.assistant.id) ?? { id: r.assistant.id, name: r.assistant.emri, phone: r.assistant.telefoni, classes: new Set<string>(), students: 0 };
+    const key = r.assistant ? `s${r.assistant.id}` : r.assistantName ? `p${r.assistantName.trim().toLowerCase()}` : null;
+    if (!key) continue;
+    const a = byAssistant.get(key) ?? (r.assistant
+      ? { id: r.assistant.id, name: r.assistant.emri, phone: r.assistant.telefoni, personal: false, classes: new Set<string>(), students: 0 }
+      : { id: -r.id, name: r.assistantName!.trim(), phone: r.assistantPhone, personal: true, classes: new Set<string>(), students: 0 });
     a.students++;
     if (r.student.class?.name) a.classes.add(r.student.class.name);
-    byAssistant.set(r.assistant.id, a);
+    byAssistant.set(key, a);
   }
 
   return NextResponse.json({
@@ -119,6 +125,8 @@ export async function POST(req: NextRequest) {
       startDate: parseDate(body.startDate) ?? new Date(),
       endDate: parseDate(body.endDate),
       assistantStaffId: body.assistantStaffId ? parseInt(body.assistantStaffId) : null,
+      assistantName: body.assistantName ? String(body.assistantName).trim().slice(0, 120) || null : null,
+      assistantPhone: body.assistantPhone ? String(body.assistantPhone).trim().slice(0, 40) || null : null,
     },
   });
   // Historiku — PA përmbajtjen e shënimit/llojit të nevojës

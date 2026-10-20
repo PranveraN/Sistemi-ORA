@@ -1619,6 +1619,9 @@ model StudentSpecialCare {
   endDate          DateTime?
   assistantStaffId Int?
   assistant        Staff?    @relation(fields: [assistantStaffId], references: [id], onDelete: SetNull)
+  // Asistente personale e nxënësit (jo nga stafi i shkollës) — emri shkruhet me dorë
+  assistantName    String?
+  assistantPhone   String?
   organizationId   Int       @default(1)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

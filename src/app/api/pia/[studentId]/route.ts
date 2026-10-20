@@ -44,7 +44,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ stud
     student: {
       ...student,
       className: student.class?.name ?? null,
-      assistantName: care?.assistant?.emri ?? null,
+      assistantName: care?.assistant?.emri ?? care?.assistantName ?? null,
       hasAssistant: care?.hasAssistant ?? false,
     },
     pia: pia ? {

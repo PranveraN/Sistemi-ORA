@@ -37,13 +37,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ("startDate" in body) data.startDate = parseDate(body.startDate);
   if ("endDate" in body) data.endDate = parseDate(body.endDate);
   if ("assistantStaffId" in body) data.assistantStaffId = body.assistantStaffId ? parseInt(body.assistantStaffId) : null;
+  if ("assistantName" in body) data.assistantName = body.assistantName ? String(body.assistantName).trim().slice(0, 120) || null : null;
+  if ("assistantPhone" in body) data.assistantPhone = body.assistantPhone ? String(body.assistantPhone).trim().slice(0, 40) || null : null;
 
   const hasA = "hasAssistant" in data ? data.hasAssistant : existing.hasAssistant;
   const needs = "specialNeeds" in data ? data.specialNeeds : existing.specialNeeds;
   if (!hasA && !needs) return NextResponse.json({ error: "Zgjidh të paktën një lloj" }, { status: 400 });
 
   await prisma.studentSpecialCare.update({ where: { id: existing.id }, data });
-  const assistantChanged = "assistantStaffId" in data && data.assistantStaffId !== existing.assistantStaffId;
+  const assistantChanged = ("assistantStaffId" in data && data.assistantStaffId !== existing.assistantStaffId)
+    || ("assistantName" in data && (data.assistantName ?? null) !== (existing.assistantName ?? null));
   await recordStudentEvent(session, {
     studentId: existing.studentId, type: "KUJDES_I_VECANTE",
     title: assistantChanged ? "Kujdes i veçantë: u ndryshua asistenti" : "Kujdes i veçantë: u përditësua",
