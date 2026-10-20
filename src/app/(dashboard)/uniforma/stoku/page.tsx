@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bell, Plus, AlertTriangle, ChevronDown, ChevronRight, Pencil, Trash2, X, Settings2, ClipboardCheck } from "lucide-react";
+import { ArrowLeft, Plus, ChevronDown, ChevronRight, Pencil, Trash2, X, Settings2, ClipboardCheck, Printer, Download } from "lucide-react";
 import { formatDate, formatDateTime } from "@/lib/utils";
-import { STATUS_LABELS, type ProductRow, type StockStatus } from "@/lib/uniStockCalc";
+import { STATUS_LABELS, DEFAULT_THRESHOLD, needsAttention, type ProductRow, type StockStatus } from "@/lib/uniStockCalc";
+import StockCatalogCard from "@/components/uniforma/StockCatalogCard";
+import { downloadOrderExcel, groupOrder, printOrder, type OrderLine, type OrderMeta } from "@/lib/uniformOrderExport";
+
+/** Sasia e synuar te "Sugjero kritikët" (porosit deri në kaq copë për numër). */
+const ORDER_TARGET = 20;
+const ORDER_DRAFT_KEY = "ora.uniformOrderDraft.v1";
 
 interface Entry { id: number; productId: number; size: string; quantity: number; date: string; note: string | null; kind: string }
 interface LowItem { productId: number; size: string; stock: number; status: StockStatus; name: string }
@@ -15,7 +21,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const STATUS_CLS: Record<StockStatus, string> = {
   OK: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
   NE_PRAG: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  NEN_PRAG: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  NEN_PRAG: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
   MBARUAR: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
   PA_HYRJE: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
 };
@@ -33,8 +39,8 @@ export default function StokuPage() {
   const [data, setData] = useState<StockData | null>(null);
   const [error, setError] = useState("");
   const [open, setOpen] = useState<Record<number, boolean>>({});
-  const [bellOpen, setBellOpen] = useState(false);
-  const formRef = useRef<HTMLDivElement>(null);
+  const [tab, setTab] = useState<"katalog" | "tabela" | "hyrjet">("katalog");
+  const [onlyCritical, setOnlyCritical] = useState(false);
 
   // Forma "Hyrje e re stoku"
   const [date, setDate] = useState(today());
@@ -48,6 +54,20 @@ export default function StokuPage() {
   const [countFor, setCountFor] = useState<ProductRow | null>(null);
   const [countPick, setCountPick] = useState(false);
 
+  // Mënyra e porosisë — draft vetëm në këtë shfletues (stoku s'ndryshon)
+  const [orderMode, setOrderMode] = useState(false);
+  const [order, setOrder] = useState<Record<string, number>>({});
+  const [exportOpen, setExportOpen] = useState<"excel" | "print" | null>(null);
+  useEffect(() => {
+    try { const raw = localStorage.getItem(ORDER_DRAFT_KEY); if (raw) setOrder(JSON.parse(raw) ?? {}); } catch { /* s'ka draft */ }
+  }, []);
+  const setOrderQty = (pid: number, size: string, v: number) => setOrder(o => {
+    const n = { ...o, [`${pid}|${size}`]: Math.max(0, Math.floor(v)) };
+    if (!n[`${pid}|${size}`]) delete n[`${pid}|${size}`];
+    try { localStorage.setItem(ORDER_DRAFT_KEY, JSON.stringify(n)); } catch { /* pa ruajtje */ }
+    return n;
+  });
+
   const load = () =>
     fetch("/api/uniforms/stock")
       .then(async r => { if (!r.ok) throw new Error("Gjendja e stokut s'u lexua."); return r.json(); })
@@ -60,6 +80,20 @@ export default function StokuPage() {
   const product = rows.find(r => r.productId === productId);
   const formTotal = useMemo(() => Object.values(qty).reduce((s, v) => s + (parseInt(v) > 0 ? parseInt(v) : 0), 0), [qty]);
   const productName = (id: number) => rows.find(r => r.productId === id)?.name ?? `Produkt #${id}`;
+
+  const orderLines: OrderLine[] = rows.flatMap(r => r.sizes.map(s => ({ product: r.name, size: s.size, stock: Math.max(0, s.stok), qty: order[`${r.productId}|${s.size}`] ?? 0 })));
+  const orderSum = groupOrder(orderLines);
+
+  function suggestCritical() {
+    for (const r of rows) for (const s of r.sizes) {
+      if (needsAttention(s.status)) setOrderQty(r.productId, s.size, Math.max(0, ORDER_TARGET - Math.max(0, s.stok)));
+    }
+  }
+  function clearOrder() {
+    if (orderSum.total && !confirm("Pastro të gjitha sasitë e porosisë?")) return;
+    setOrder({});
+    try { localStorage.removeItem(ORDER_DRAFT_KEY); } catch { /* */ }
+  }
 
   const saveEntry = async () => {
     if (!productId) return;
@@ -86,67 +120,104 @@ export default function StokuPage() {
     </div>
   );
 
+  const catalogRows = onlyCritical ? rows.filter(r => r.lowCount > 0) : rows;
+
   return (
-    <div className="p-6 space-y-5 animate-fade-in">
-      {/* Koka */}
-      <div className="flex items-center gap-3">
-        <Link href="/uniforma" className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-slate-500" />
+    <div className={`p-4 sm:p-6 space-y-4 animate-fade-in ${orderSum.total > 0 ? "pb-24" : ""}`}>
+      {/* Koka — një rresht */}
+      <div className="card px-4 py-3 flex flex-wrap items-center gap-3">
+        <Link href="/uniforma" className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Kthehu te Uniformat">
+          <ArrowLeft className="w-4 h-4 text-slate-500" />
         </Link>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Stoku i uniformave</h1>
-          <p className="text-sm text-slate-400 mt-0.5">Regjistro mallin që hyn — shitjet, borxhet, dorëzimet dhe arka nuk preken</p>
-        </div>
-        <div className="relative">
-          <button onClick={() => setBellOpen(o => !o)} className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Njoftimet e stokut">
-            <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
-            {data.low.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{data.low.length}</span>
-            )}
+        <h1 className="text-lg font-bold text-slate-900 dark:text-white">Uniformat</h1>
+        <span className="text-sm text-slate-400">{data.totalItems} copë · {rows.length} produkte</span>
+        {data.low.length > 0 && (
+          <button type="button" onClick={() => { setTab("katalog"); setOnlyCritical(v => !v); }}
+            className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${onlyCritical ? "bg-orange-500 border-orange-500 text-white" : "bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-900/30 dark:border-orange-800 dark:text-orange-300 hover:bg-orange-100"}`}
+            title={data.low.map(l => `${l.name} (${l.stock} copë)`).join(" · ")}>
+            ⚠ {data.low.length} numra kritikë{onlyCritical ? " ✕" : ""}
           </button>
-          {bellOpen && (
-            <div className="absolute right-0 mt-2 w-72 card p-3 z-30 shadow-xl">
-              <p className="text-xs font-bold text-slate-500 uppercase mb-2">Stok i ulët</p>
-              {data.low.length === 0 ? <p className="text-sm text-green-600">Asnjë numër në ose nën prag.</p> : (
-                <ul className="space-y-1 max-h-72 overflow-y-auto">
-                  {data.low.map(l => (
-                    <li key={`${l.productId}-${l.size}`} className="flex justify-between text-sm gap-2">
-                      <span className="text-slate-600 dark:text-slate-300">{l.name}</span>
-                      <span className={l.status === "NE_PRAG" ? "text-amber-600 font-semibold" : "text-red-600 font-semibold"}>{l.stock} copë</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+        )}
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
+          <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5 text-sm font-medium">
+            {([["katalog", "Katalogu"], ["tabela", "Tabela"], ["hyrjet", "Hyrjet"]] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setTab(k)}
+                className={`px-3 py-1 rounded-md ${tab === k ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{l}</button>
+            ))}
+          </div>
+          <button type="button" onClick={() => { setTab("katalog"); setOrderMode(v => !v); }} className={`btn-secondary text-sm ${orderMode ? "border-primary-400 text-primary-700 dark:text-primary-300" : ""}`}>
+            {orderMode ? "Mbyll porosinë" : "Krijo porosi"}
+          </button>
+          <button type="button" onClick={() => setTab("hyrjet")} className="btn-primary text-sm"><Plus className="w-4 h-4" /> Hyrje stoku</button>
+        </div>
+      </div>
+
+      {tab === "katalog" && (
+        <>
+          {orderMode && (
+            <div className="rounded-xl border border-primary-200 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-800 px-4 py-2.5 flex flex-wrap items-center gap-2 text-sm text-primary-800 dark:text-primary-200">
+              <span className="flex-1 min-w-[220px]">Mënyra e porosisë: shkruani sasinë poshtë çdo numri. <b>Stoku nuk ndryshon.</b></span>
+              <button type="button" onClick={suggestCritical} className="btn-secondary text-xs">Sugjero kritikët (deri në {ORDER_TARGET})</button>
+              <button type="button" onClick={clearOrder} className="btn-secondary text-xs">Pastro</button>
             </div>
           )}
-        </div>
-        <button onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth" })} className="btn-primary">
-          <Plus className="w-4 h-4" /> Hyrje stoku
-        </button>
-      </div>
-
-      {data.low.length > 0 && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 flex gap-2">
-          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>Stok i ulët: {data.low.map(l => `${l.name} (${l.stock} copë)`).join(" · ")}</span>
-        </div>
+          {onlyCritical && <p className="text-xs text-orange-600">Po shfaqen vetëm produktet me numra kritikë ose të mbaruar.</p>}
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))" }}>
+            {catalogRows.map(r => (
+              <StockCatalogCard key={r.productId} row={r} orderMode={orderMode}
+                qty={size => order[`${r.productId}|${size}`] ?? 0}
+                onQty={(size, v) => setOrderQty(r.productId, size, v)}
+                onPhotoChanged={load} />
+            ))}
+          </div>
+        </>
       )}
 
-      <p className="text-xs text-slate-400">
-        Stoku i ri nisi nga zero më {formatDateTime(data.startedAt)}. Shitjet e regjistruara para kësaj nuk llogariten te stoku.
-      </p>
+      {tab === "tabela" && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="card p-4"><p className="text-sm text-slate-500">Copë në stok</p><p className="text-2xl font-bold text-slate-900 dark:text-white">{data.totalItems}</p></div>
+            <div className="card p-4"><p className="text-sm text-slate-500">Produkte</p><p className="text-2xl font-bold text-slate-900 dark:text-white">{rows.length}</p></div>
+            <div className="card p-4"><p className="text-sm text-slate-500">Numra nën prag</p><p className={`text-2xl font-bold ${data.low.length ? "text-orange-600" : "text-green-600"}`}>{data.low.length}</p></div>
+          </div>
+          <div className="card p-4 overflow-x-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-slate-800 dark:text-white text-sm">Gjendja sipas produktit dhe numrit</h2>
+              <button onClick={() => setCountPick(true)} className="btn-ghost border border-slate-200 dark:border-slate-700 text-sm">
+                <ClipboardCheck className="w-4 h-4" /> Numërim stoku
+              </button>
+            </div>
+            <table className="w-full text-sm min-w-[620px]">
+              <thead>
+                <tr className="text-xs text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                  <th className="text-left py-2 font-semibold">Produkti / Numri</th>
+                  <th className="text-right py-2 font-semibold">Hyrë</th>
+                  <th className="text-right py-2 font-semibold">Shitur</th>
+                  <th className="text-right py-2 font-semibold">Stok</th>
+                  <th className="text-right py-2 font-semibold">Prag</th>
+                  <th className="text-left py-2 pl-4 font-semibold">Statusi</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <ProductRows key={r.productId} r={r} open={!!open[r.productId]}
+                    toggle={() => setOpen(o => ({ ...o, [r.productId]: !o[r.productId] }))}
+                    onSettings={() => setSettingsFor(r)} />
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs text-slate-400 mt-3">
+              &quot;Shitur&quot; lexohet nga shitjet ekzistuese pa i ndryshuar ato. Kritik = më pak se pragu (kur s&apos;është vendosur: 1–9 copë). Numrat &quot;Pa hyrje&quot; s&apos;kanë ende asnjë lëvizje.
+              {" "}Stoku i ri nisi nga zero më {formatDateTime(data.startedAt)}.
+            </p>
+          </div>
+        </>
+      )}
 
-      {/* Tri kartelat */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="card p-4"><p className="text-sm text-slate-500">Copë në stok</p><p className="text-2xl font-bold text-slate-900 dark:text-white">{data.totalItems}</p></div>
-        <div className="card p-4"><p className="text-sm text-slate-500">Produkte</p><p className="text-2xl font-bold text-slate-900 dark:text-white">{rows.length}</p></div>
-        <div className="card p-4"><p className="text-sm text-slate-500">Numra nën prag</p><p className={`text-2xl font-bold ${data.low.length ? "text-red-600" : "text-green-600"}`}>{data.low.length}</p></div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-5 items-start">
-        {/* Hyrje e re + hyrjet e fundit */}
-        <div className="space-y-5">
-          <div ref={formRef} className="card p-4 space-y-3">
+      {tab === "hyrjet" && (
+        <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5 items-start">
+          <div className="card p-4 space-y-3">
             <h2 className="font-semibold text-slate-800 dark:text-white text-sm">Hyrje e re stoku</h2>
             <div>
               <label className="label">Data</label>
@@ -184,7 +255,7 @@ export default function StokuPage() {
               <label className="label">Shënim</label>
               <input className="input" placeholder="Malli nga furnitori" value={note} onChange={e => setNote(e.target.value)} />
             </div>
-            <button onClick={saveEntry} disabled={saving || !productId || formTotal === 0} className="btn-ghost w-full justify-center border border-slate-200 dark:border-slate-700">
+            <button onClick={saveEntry} disabled={saving || !productId || formTotal === 0} className="btn-primary w-full justify-center">
               {saving ? "Duke ruajtur..." : "Ruaj hyrjen"}
             </button>
           </div>
@@ -192,7 +263,7 @@ export default function StokuPage() {
           <div className="card p-4">
             <h2 className="font-semibold text-slate-800 dark:text-white text-sm mb-3">Hyrjet e fundit</h2>
             {data.entries.length === 0 ? <p className="text-sm text-slate-400">Ende s&apos;ka hyrje.</p> : (
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[420px] overflow-y-auto">
+              <ul className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[560px] overflow-y-auto">
                 {data.entries.map(e => (
                   <li key={e.id} className="py-2 flex items-start gap-2 text-sm">
                     <div className="flex-1 min-w-0">
@@ -212,38 +283,24 @@ export default function StokuPage() {
             )}
           </div>
         </div>
+      )}
 
-        {/* Gjendja */}
-        <div className="card p-4 overflow-x-auto">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-slate-800 dark:text-white text-sm">Gjendja sipas produktit dhe numrit</h2>
-            <button onClick={() => setCountPick(true)} className="btn-ghost border border-slate-200 dark:border-slate-700 text-sm">
-              <ClipboardCheck className="w-4 h-4" /> Numërim stoku
-            </button>
+      {/* Shiriti i porosisë (ngjitës poshtë) */}
+      {orderSum.total > 0 && (
+        <div className="fixed bottom-0 inset-x-0 z-30 p-3 pointer-events-none">
+          <div className="pointer-events-auto max-w-5xl mx-auto rounded-2xl bg-slate-900 text-white shadow-2xl px-4 py-3 flex flex-wrap items-center gap-3">
+            <p className="flex-1 min-w-[220px] text-sm">
+              <b>Porosia: {orderSum.total} copë · {orderSum.count} numra</b>
+              <span className="text-slate-300"> · {orderSum.groups.map(g => `${g.product} ${g.total}`).join(" · ")}</span>
+            </p>
+            <button type="button" onClick={() => setExportOpen("print")} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-medium"><Printer className="w-4 h-4 inline -mt-0.5" /> Shiko si tabelë / Printo</button>
+            <button type="button" onClick={() => setExportOpen("excel")} className="px-3 py-1.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-sm font-semibold"><Download className="w-4 h-4 inline -mt-0.5" /> Shkarko Excel</button>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-slate-500 border-b border-slate-200 dark:border-slate-700">
-                <th className="text-left py-2 font-semibold">Produkti / Numri</th>
-                <th className="text-right py-2 font-semibold">Hyrë</th>
-                <th className="text-right py-2 font-semibold">Shitur</th>
-                <th className="text-right py-2 font-semibold">Stok</th>
-                <th className="text-right py-2 font-semibold">Prag</th>
-                <th className="text-left py-2 pl-4 font-semibold">Statusi</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <ProductRows key={r.productId} r={r} open={!!open[r.productId]}
-                  toggle={() => setOpen(o => ({ ...o, [r.productId]: !o[r.productId] }))}
-                  onSettings={() => setSettingsFor(r)} />
-              ))}
-            </tbody>
-          </table>
-          <p className="text-xs text-slate-400 mt-3">&quot;Shitur&quot; lexohet nga shitjet ekzistuese pa i ndryshuar ato. Numrat &quot;Pa hyrje&quot; s&apos;kanë ende asnjë lëvizje.</p>
         </div>
-      </div>
+      )}
+
+      {exportOpen && <OrderExportModal mode={exportOpen} onClose={() => setExportOpen(null)}
+        onDone={meta => { setExportOpen(null); if (exportOpen === "excel") downloadOrderExcel(orderLines, meta); else printOrder(orderLines, meta); }} />}
 
       {editEntry && <EditEntryModal entry={editEntry} name={productName(editEntry.productId)} onClose={() => setEditEntry(null)} onSaved={() => { setEditEntry(null); load(); }} />}
       {settingsFor && <SettingsModal row={settingsFor} onClose={() => setSettingsFor(null)} onSaved={() => { setSettingsFor(null); load(); }} />}
@@ -262,6 +319,27 @@ export default function StokuPage() {
       )}
       {countFor && <CountModal row={countFor} onClose={() => setCountFor(null)} onSaved={() => { setCountFor(null); load(); }} />}
     </div>
+  );
+}
+
+function OrderExportModal({ mode, onClose, onDone }: { mode: "excel" | "print"; onClose: () => void; onDone: (m: OrderMeta) => void }) {
+  const [date, setDate] = useState(today());
+  const [supplier, setSupplier] = useState("");
+  const [note, setNote] = useState("");
+  return (
+    <Modal title={mode === "excel" ? "Shkarko porosinë në Excel" : "Porosia — pamje për printim"} onClose={onClose}>
+      <div className="space-y-3">
+        <div><label className="label">Data</label><input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} /></div>
+        <div><label className="label">Furnitori (opsional)</label><input className="input" value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="p.sh. Arnoldi" /></div>
+        <div><label className="label">Shënimi (opsional)</label><input className="input" value={note} onChange={e => setNote(e.target.value)} /></div>
+        <div className="flex gap-2 justify-end pt-1">
+          <button onClick={onClose} className="btn-ghost">Anulo</button>
+          <button onClick={() => date && onDone({ date, supplier: supplier.trim(), note: note.trim() })} disabled={!date} className="btn-primary">
+            {mode === "excel" ? <><Download className="w-4 h-4" /> Shkarko</> : <><Printer className="w-4 h-4" /> Hap për printim</>}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -284,7 +362,7 @@ function ProductRows({ r, open, toggle, onSettings }: { r: ProductRow; open: boo
         <td className="text-right text-slate-400">—</td>
         <td className="pl-4">
           {r.lowCount > 0
-            ? <span className={`badge text-xs ${STATUS_CLS.NEN_PRAG}`}>{r.lowCount} {r.lowCount === 1 ? "numër" : "numra"} nën prag</span>
+            ? <span className={`badge text-xs ${STATUS_CLS.NEN_PRAG}`}>⚠ {r.lowCount} {r.lowCount === 1 ? "numër kritik" : "numra kritikë"}</span>
             : <span className={`badge text-xs ${r.hyre || r.shitur ? STATUS_CLS.OK : STATUS_CLS.PA_HYRJE}`}>{r.hyre || r.shitur ? "Në rregull" : "Pa hyrje"}</span>}
         </td>
         <td className="text-right">
@@ -296,8 +374,8 @@ function ProductRows({ r, open, toggle, onSettings }: { r: ProductRow; open: boo
           <td className="py-2 pl-8 text-slate-600 dark:text-slate-300">Nr. {s.size}</td>
           <td className="text-right">{s.hyre}</td>
           <td className="text-right">{s.shitur}</td>
-          <td className={`text-right ${s.stok <= 0 && s.status !== "PA_HYRJE" ? "text-red-600 font-semibold" : ""}`}>{s.stok}</td>
-          <td className="text-right">{s.prag || "—"}</td>
+          <td className={`text-right ${s.status === "MBARUAR" ? "text-red-600 font-semibold" : s.status === "NEN_PRAG" ? "text-orange-600 font-semibold" : ""}`}>{s.stok}</td>
+          <td className="text-right">{s.prag || <span className="text-slate-300" title="Pragu i parazgjedhur">{DEFAULT_THRESHOLD}</span>}</td>
           <td className="pl-4"><StatusBadge s={s.status} /></td>
           <td />
         </tr>

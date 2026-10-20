@@ -15,7 +15,7 @@ export async function getStockStart(): Promise<Date> {
 export async function getStock() {
   const startedAt = await getStockStart();
   const [products, productSizes, entries, sold, settings] = await Promise.all([
-    prisma.uniProduct.findMany({ where: { active: true }, select: { id: true, name: true, buyPrice: true }, orderBy: { name: "asc" } }),
+    prisma.uniProduct.findMany({ where: { active: true }, select: { id: true, name: true, buyPrice: true, sellPrice: true, photo: true }, orderBy: { name: "asc" } }),
     prisma.uniProductSize.findMany(),
     prisma.uniStockEntry.findMany({ select: { productId: true, size: true, quantity: true } }),
     prisma.uniSaleItem.findMany({

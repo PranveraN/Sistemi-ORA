@@ -9,7 +9,7 @@ export type StockStatus = "OK" | "NE_PRAG" | "NEN_PRAG" | "MBARUAR" | "PA_HYRJE"
 export const STATUS_LABELS: Record<StockStatus, string> = {
   OK: "Në rregull",
   NE_PRAG: "Në prag",
-  NEN_PRAG: "Nën prag",
+  NEN_PRAG: "Kritik",
   MBARUAR: "Mbaruar",
   PA_HYRJE: "Pa hyrje",
 };
@@ -27,6 +27,8 @@ export interface ProductRow {
   productId: number;
   name: string;
   buyPrice: number;
+  sellPrice?: number;
+  photo?: string | null;
   hyre: number;
   shitur: number;
   stok: number;
@@ -34,21 +36,27 @@ export interface ProductRow {
   sizes: SizeRow[];
 }
 
+/** Pragu kur s'është vendosur: kritik = 1–9 copë (kërkesë e Pranverës, 21.10.2026). */
+export const DEFAULT_THRESHOLD = 10;
+
 /**
- * Statusi i një numri. Një numër që s'ka pasur kurrë hyrje, shitje apo prag
- * mbetet "Pa hyrje" dhe nuk ngre alarm — përndryshe, në nisje, çdo numër do
- * të dilte "Mbaruar".
+ * Statusi i një numri:
+ *  • "Pa hyrje" — s'ka pasur kurrë hyrje as shitje (s'llogaritet kritik)
+ *  • "Mbaruar"  — 0 copë (ose më pak) pasi ka pasur lëvizje
+ *  • "Kritik"   — më pak se pragu (pragu i vendosur, ose 10 kur është bosh)
+ *  • "Në rregull"
+ * ("NE_PRAG" s'prodhohet më; mbetet te tipi vetëm për përputhshmëri.)
  */
-export function sizeStatus(hyre: number, shitur: number, prag: number): StockStatus {
+export function sizeStatus(hyre: number, shitur: number, prag: number, moved = hyre !== 0 || shitur !== 0): StockStatus {
   const stok = hyre - shitur;
-  if (hyre === 0 && shitur === 0 && prag === 0) return "PA_HYRJE";
+  // "moved": ka pasur të paktën një hyrje/numërim/shitje (hyrja 5 + numërimi −5 = 0 → Mbaruar, jo "Pa hyrje")
+  if (!moved) return "PA_HYRJE";
   if (stok <= 0) return "MBARUAR";
-  if (stok < prag) return "NEN_PRAG";
-  if (stok === prag) return "NE_PRAG";
+  if (stok < (prag > 0 ? prag : DEFAULT_THRESHOLD)) return "NEN_PRAG";
   return "OK";
 }
 
-/** Njoftim kur stoku bie në ose nën prag (përfshirë mbarimin). */
+/** Kritik ose Mbaruar — njëlloj kudo (katalogu, tabela, pilula, "Numra nën prag", statistikat). */
 export const needsAttention = (s: StockStatus) => s === "NE_PRAG" || s === "NEN_PRAG" || s === "MBARUAR";
 
 const sizeOrder = (list: string[]) => (a: string, b: string) => {
@@ -58,7 +66,7 @@ const sizeOrder = (list: string[]) => (a: string, b: string) => {
 };
 
 export function buildStock(input: {
-  products: { id: number; name: string; buyPrice: number }[];
+  products: { id: number; name: string; buyPrice: number; sellPrice?: number; photo?: string | null }[];
   productSizes: { productId: number; size: string; sortOrder: number }[];
   entries: { productId: number; size: string; quantity: number }[];
   sold: { productId: number; size: string | null; quantity: number }[];
@@ -68,6 +76,8 @@ export function buildStock(input: {
   const hyre = new Map<string, number>();
   const shitur = new Map<string, number>();
   const prag = new Map<string, number>();
+  const moved = new Set<string>();
+  for (const e of input.entries) moved.add(key(e.productId, e.size));
   for (const e of input.entries) hyre.set(key(e.productId, e.size), (hyre.get(key(e.productId, e.size)) ?? 0) + e.quantity);
   for (const s of input.sold) {
     const size = (s.size ?? "").trim() || "—";
@@ -89,12 +99,14 @@ export function buildStock(input: {
       const h = hyre.get(key(p.id, size)) ?? 0;
       const sh = shitur.get(key(p.id, size)) ?? 0;
       const pr = prag.get(key(p.id, size)) ?? 0;
-      return { size, hyre: h, shitur: sh, stok: h - sh, prag: pr, status: sizeStatus(h, sh, pr) };
+      return { size, hyre: h, shitur: sh, stok: h - sh, prag: pr, status: sizeStatus(h, sh, pr, moved.has(key(p.id, size)) || sh !== 0) };
     });
     return {
       productId: p.id,
       name: p.name,
       buyPrice: p.buyPrice,
+      sellPrice: p.sellPrice,
+      photo: p.photo ?? null,
       hyre: sizes.reduce((s, x) => s + x.hyre, 0),
       shitur: sizes.reduce((s, x) => s + x.shitur, 0),
       stok: sizes.reduce((s, x) => s + x.stok, 0),
