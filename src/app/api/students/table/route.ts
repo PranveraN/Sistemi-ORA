@@ -96,8 +96,11 @@ export async function GET(req: NextRequest) {
   /* ── Renditja (shqip) ── */
   const byName = (a: typeof rows[0], b: typeof rows[0]) =>
     collator.compare(a.firstName, b.firstName) || collator.compare(a.lastName, b.lastName);
+  // Parazgjedhja: sipas klasës (1A, 1B … 9B; pa klasë në fund), pastaj sipas alfabetit
+  const byClass = (a: typeof rows[0], b: typeof rows[0]) =>
+    !a.className && !b.className ? 0 : !a.className ? 1 : !b.className ? -1 : collator.compare(a.className, b.className);
   const cmp: Record<string, (a: typeof rows[0], b: typeof rows[0]) => number> = {
-    name: byName,
+    name: (a, b) => byClass(a, b) || byName(a, b),
     parent: (a, b) => collator.compare(a.parentName ?? "", b.parentName ?? ""),
     pay: (a, b) => (a.finalPrice ? a.paid / a.finalPrice : 0) - (b.finalPrice ? b.paid / b.finalPrice : 0),
     debt: (a, b) => a.balance - b.balance,
