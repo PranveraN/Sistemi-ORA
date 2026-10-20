@@ -7,7 +7,7 @@ import {
   Users, CreditCard, TrendingUp, AlertCircle,
   Clock, FileText, History, Receipt,
   TrendingDown, UserPlus, CalendarClock,
-  ArrowRightLeft, ChevronRight,
+  ArrowRightLeft, ChevronRight, Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import OfertaModal from "@/components/OfertaModal";
@@ -17,8 +17,6 @@ import FinancialOverview from "@/components/dashboard/FinancialOverview";
 import YearPicker from "@/components/dashboard/YearPicker";
 import ShkollimiFinancialOverview from "@/components/dashboard/ShkollimiFinancialOverview";
 import CashBoxesTable from "@/components/dashboard/CashBoxesTable";
-
-const SHOW_CASH_BOXES = false;
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import { useModuleAccess } from "@/lib/useModuleAccess";
 
@@ -71,6 +69,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showOferta, setShowOferta] = useState(false);
+  const [showCashBoxes, setShowCashBoxes] = useState(false);
   const [ofertaView, setOfertaView] = useState<"form" | "history">("form");
   const [showTimiInvest, setShowTimiInvest] = useState(false);
   const [timiInvestEnabled, setTimiInvestEnabled] = useState(true);
@@ -350,9 +349,19 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Tabela "Arkat — sa duhet të jenë cash sot" u fsheh nga Dashboard-i me kërkesë të
-            Pranverës (20.10.2026); gjendja e arkave mbetet te "Numërimi i Arkave" (/arka). */}
-        {SHOW_CASH_BOXES && mainTab === "permbledhje" && canAccess("/arka") && <CashBoxesTable />}
+        {/* Tabela "Arkat — sa duhet të jenë cash sot": e fshehur si parazgjedhje (kërkesë e
+            Pranverës, 20.10.2026) — hapet/mbyllet me ikonën e vogël, pa tekst, në të djathtë. */}
+        {mainTab === "permbledhje" && canAccess("/arka") && (
+          <>
+            <div className="flex justify-end -mb-2">
+              <button type="button" onClick={() => setShowCashBoxes(v => !v)} aria-label="Arkat"
+                className={`p-1 rounded transition-colors ${showCashBoxes ? "text-slate-400" : "text-slate-200 hover:text-slate-400 dark:text-slate-700 dark:hover:text-slate-500"}`}>
+                <Wallet className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {showCashBoxes && <CashBoxesTable />}
+          </>
+        )}
 
         {mainTab === "permbledhje" && (
           <ShkollimiFinancialOverview year={year} yearType={yearType} />
