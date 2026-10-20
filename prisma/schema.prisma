@@ -1659,6 +1659,31 @@ model PiaReview {
   @@index([piaId])
 }
 
+// Evidencat e PIA-s: materiale, teste, punime të nxënësit (skedarë). Lidhen me
+// nxënësin + vitin (jo detyrimisht me planin). "Fshirja" vetëm i fsheh
+// (deletedAt) — skedari mbetet si histori. Skedarët: <dbDir>/pia-files.
+model PiaFile {
+  id               Int       @id @default(autoincrement())
+  organizationId   Int       @default(1)
+  studentId        Int
+  academicYear     Int
+  date             DateTime  // kur u bë testi/puna
+  category         String    // TEST | MATERIAL | PUNIM | RAPORT | TJETER
+  title            String
+  goal             String?   // "R1".."R4" (opsionale)
+  note             String?
+  fileName         String    // emri i sigurt në disk
+  originalFileName String
+  mimeType         String
+  size             Int
+  uploadedByName   String?
+  deletedAt        DateTime?
+  deletedByName    String?
+  createdAt        DateTime  @default(now())
+
+  @@index([studentId, academicYear])
+}
+
 // Fotografi e klasave për çdo vit shkollor (mësuesi, kapaciteti, numri i
 // nxënësve) — ruhet në kalimin e vitit, që vitet e kaluara të shihen te Klasat.
 model ClassYearSnapshot {

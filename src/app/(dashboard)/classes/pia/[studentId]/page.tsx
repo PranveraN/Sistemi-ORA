@@ -11,6 +11,7 @@ import {
   emptyPia, emptyReview, type PiaData, type PiaReviewData,
 } from "@/lib/pia";
 import { buildPiaPrintHtml, type PiaStudent } from "@/lib/piaPrint";
+import PiaEvidence from "@/components/classes/PiaEvidence";
 
 interface Review { id: number; date: string; updatedByName: string | null; data: PiaReviewData }
 interface Resp {
@@ -251,6 +252,8 @@ function PiaInner() {
           </div>
         )}
       </div>
+
+      <PiaEvidence studentId={params.studentId} year={year} canEdit={!ro} />
 
       {/* 05–06 Vlerësimet */}
       <div className="card p-5 space-y-3">
