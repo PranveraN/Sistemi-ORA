@@ -42,6 +42,8 @@ export default function PiaEvidence({ studentId, year, canEdit }: { studentId: s
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { setError(d.error || "S'u lexuan evidencat."); return; }
     setFiles(d.files); setError("");
+    // Nga "Kujdes i veçantë" → Evidencat (#evidencat): lëviz te ky seksion pasi ngarkohet
+    if (window.location.hash === "#evidencat") setTimeout(() => document.getElementById("evidencat")?.scrollIntoView({ behavior: "smooth" }), 50);
   }, [studentId, year]);
   useEffect(() => { load(); }, [load]);
 
@@ -70,7 +72,7 @@ export default function PiaEvidence({ studentId, year, canEdit }: { studentId: s
   const shown = (files ?? []).filter(f => !filter || f.category === filter || f.goal === filter);
 
   return (
-    <div className="card p-5 space-y-4">
+    <div id="evidencat" className="card p-5 space-y-4 scroll-mt-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><Paperclip className="w-4 h-4 text-amber-500" /> Evidencat — materiale, teste dhe punime</h2>
         {files && files.length > 0 && (

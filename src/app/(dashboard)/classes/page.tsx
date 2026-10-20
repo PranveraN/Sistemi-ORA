@@ -14,7 +14,9 @@ import ClassCard, { type OverviewClass } from "@/components/classes/ClassCard";
 import ClassesTable from "@/components/classes/ClassesTable";
 import { EditClassModal } from "@/components/classes/ClassMenu";
 import PromotionWizard from "@/components/classes/PromotionWizard";
-import { SpecialCareCard, AssistantsCard, SpecialCareForm, useSpecialCare } from "@/components/classes/SpecialCarePanel";
+import { AssistantsCard, SpecialCareForm, SpecialCareSection, useSpecialCare } from "@/components/classes/SpecialCarePanel";
+import { capacityInfo } from "@/components/classes/ClassCard";
+import Link from "next/link";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 
 interface Overview {
@@ -56,6 +58,8 @@ export default function ClassesPage() {
   // ?wizard=1 — hapet direkt nga "Mbyllja e Vitit" te paneli i Sekretarisë
   const [showWizard, setShowWizard] = useState(() => sp.get("wizard") === "1");
   const [assignAssistant, setAssignAssistant] = useState(false);
+  // Pamja kompakte (klasat si shirit + "Kujdes i veçantë" në gjithë gjerësinë) — "Shiko të gjitha" kalon te pamja e plotë
+  const [fullView, setFullView] = useState(false);
 
   const load = useCallback(async () => {
     setError("");
@@ -77,6 +81,7 @@ export default function ClassesPage() {
   const editable = data?.mode === "current" && !readOnlyRole;
   const care = useSpecialCare(effectiveYear || 2026);
   const showSidebar = !!data?.specialCareVisible && data.mode === "current" && care.allowed && !!care.data;
+  const compact = showSidebar && !fullView;
 
   /* ── Numrat (vetëm klasat aktive) ── */
   const classes = data?.classes ?? [];
@@ -215,8 +220,67 @@ export default function ClassesPage() {
           </div>
         )}
 
-        {data && data.mode !== "future" && (
+        {data && data.mode !== "future" && compact && care.data && (
           <>
+            {/* ── 2. Klasat — shirit kompakt ── */}
+            <div className="card p-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-2 justify-between">
+                <p className="text-sm text-slate-500">
+                  <b className="text-slate-900 dark:text-white text-base">Klasat {effectiveYear}–{effectiveYear + 1}</b>
+                  {" "}· {stats.active} aktive · {stats.students} nxënës
+                  {stats.over > 0 && <> · <span className="text-red-600 font-medium">{stats.over} mbi kapacitet</span></>}
+                  {stats.noTeacher > 0 && <> · <span className="text-orange-600 font-medium">{stats.noTeacher} pa mësues</span></>}
+                </p>
+                <div className="flex gap-2">
+                  {!readOnlyRole && <button onClick={() => setShowForm(true)} className="btn-primary text-sm"><Plus className="w-4 h-4" /> Shto klasë</button>}
+                  <button onClick={() => setFullView(true)} className="btn-secondary text-sm">Shiko të gjitha</button>
+                </div>
+              </div>
+              {loading ? (
+                <p className="text-sm text-slate-400 py-4">Duke ngarkuar...</p>
+              ) : error ? (
+                <p className="text-sm text-red-500">{error}</p>
+              ) : (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {activeClasses.slice().sort((a, b) => collator.compare(a.name, b.name)).map(c => {
+                    const ci = capacityInfo(c.students, c.effectiveCapacity);
+                    return (
+                      <Link key={c.id} href={`/classes/${c.id}?y=${effectiveYear}`} title={`${c.name}${c.teacher ? ` · ${c.teacher}` : ""} — ${ci.text}`}
+                        className={`shrink-0 w-[130px] rounded-xl border p-2.5 hover:shadow-md transition-shadow bg-white dark:bg-slate-800 ${ci.over ? "border-red-300 dark:border-red-800" : "border-slate-200 dark:border-slate-700"}`}>
+                        <div className="flex items-baseline justify-between">
+                          <span className="font-bold text-slate-900 dark:text-white">{c.name}</span>
+                          <span className={`text-xs font-semibold ${ci.tone}`}>{c.students}/{c.effectiveCapacity}</span>
+                        </div>
+                        <div className="mt-1.5 h-1 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
+                          <div className={`h-full rounded-full ${ci.bar}`} style={{ width: `${ci.pct}%` }} />
+                        </div>
+                        <p className="mt-1.5 text-[11px] text-slate-400 truncate">
+                          {data.debtVisible ? `${c.debt} borxh · ` : ""}{c.specialCare ?? 0} kujdes
+                        </p>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+              {(data.unassigned ?? 0) > 0 && (
+                <p className="text-xs text-orange-600 flex items-center gap-1.5"><Info className="w-3.5 h-3.5" /> {data.unassigned} nxënës aktivë s&apos;kanë klasë të caktuar.</p>
+              )}
+            </div>
+
+            {/* ── 3. Kujdes i veçantë — seksioni kryesor ── */}
+            <SpecialCareSection data={care.data} year={effectiveYear || 2026} onAssign={() => setAssignAssistant(true)}
+              onChanged={() => { care.reload(); load(); }} />
+
+            {/* ── 4. Asistentët ── */}
+            <AssistantsCard data={care.data} onAssign={() => setAssignAssistant(true)} />
+          </>
+        )}
+
+        {data && data.mode !== "future" && !compact && (
+          <>
+            {showSidebar && (
+              <button onClick={() => setFullView(false)} className="text-sm text-primary-600 font-medium hover:underline">← Pamja kompakte (me Kujdesin e veçantë)</button>
+            )}
             {/* ── 2. Kartat përmbledhëse ── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
               {statCards.map((c, i) => {
@@ -268,8 +332,8 @@ export default function ClassesPage() {
               <p className="text-xs text-orange-600 flex items-center gap-1.5"><Info className="w-3.5 h-3.5" /> {data.unassigned} nxënës aktivë s&apos;kanë klasë të caktuar.</p>
             )}
 
-            {/* ── 4/5. Klasat + kolona anësore ── */}
-            <div className={`grid gap-4 ${showSidebar ? "lg:grid-cols-[1fr_340px]" : ""}`}>
+            {/* ── 4. Klasat (pamja e plotë) — Kujdesi i veçantë është te pamja kompakte ── */}
+            <div className="grid gap-4">
               <div className="space-y-5 min-w-0">
                 {loading ? (
                   <p className="text-sm text-slate-400 text-center py-12">Duke ngarkuar...</p>
@@ -298,13 +362,6 @@ export default function ClassesPage() {
                   ))
                 )}
               </div>
-
-              {showSidebar && care.data && (
-                <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
-                  <SpecialCareCard data={care.data} onChanged={() => { care.reload(); load(); }} year={effectiveYear || 2026} />
-                  <AssistantsCard data={care.data} onAssign={() => setAssignAssistant(true)} />
-                </aside>
-              )}
             </div>
           </>
         )}

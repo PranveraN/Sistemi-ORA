@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { HeartHandshake, Plus, Pencil, AlertTriangle, X, Loader2, Search, Trash2, UserRound, ClipboardList } from "lucide-react";
+import { HeartHandshake, Plus, Pencil, AlertTriangle, X, Loader2, Search, Trash2, UserRound, ClipboardList, Paperclip } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 export interface CareItem {
@@ -19,6 +19,8 @@ export interface CareItem {
   iepWarning: "overdue" | "soon" | null;
   startDate: string | null;
   endDate: string | null;
+  hasPia?: boolean;
+  evidenceCount?: number;
   assistant: { id: number; name: string; phone: string | null; email: string | null; personal?: boolean } | null;
 }
 export interface CareAssistant { id: number; name: string; phone: string | null; personal?: boolean; classes: string[]; students: number }
@@ -353,6 +355,144 @@ export function SpecialCareForm({ item, onClose, onSaved, presetAssistant }: {
         </div>
         <p className="text-[11px] text-slate-400">Të dhëna të ndjeshme — i shohin vetëm drejtoria dhe pedagogia. Historiku i nxënësit regjistron vetëm faktin e ndryshimit, jo përmbajtjen.</p>
       </form>
+    </div>
+  );
+}
+
+// ── Seksioni i plotë "Kujdes i veçantë" (faqja Klasat) ─────────────────────
+// Vetëm paraqitje: të njëjtat të dhëna nga /api/special-care. "Pa asistent" =
+// nxënës me flamurin "Me asistent" që s'kanë ende asistente të lidhur (nga
+// stafi ose me emër personal) — llogaritet vetëm për shfaqje, s'ndryshon asgjë.
+export function SpecialCareSection({ data, onChanged, year, onAssign }: {
+  data: CareData; onChanged: () => void; year: number; onAssign: () => void;
+}) {
+  const [tab, setTab] = useState<"all" | "assistant" | "needs" | "noAssistant">("all");
+  const [cls, setCls] = useState("");
+  const [editing, setEditing] = useState<CareItem | "new" | null>(null);
+
+  const noAssistant = (i: CareItem) => i.hasAssistant && !i.assistant;
+  const classes = useMemo(() => [...new Set(data.items.map(i => i.className).filter((x): x is string => !!x))]
+    .sort((a, b) => a.localeCompare(b, "sq", { numeric: true })), [data.items]);
+  const inClass = data.items.filter(i => !cls || i.className === cls);
+  const rows = inClass
+    .filter(i => tab === "assistant" ? i.hasAssistant : tab === "needs" ? i.specialNeeds : tab === "noAssistant" ? noAssistant(i) : true)
+    .sort((a, b) => (a.className ?? "").localeCompare(b.className ?? "", "sq", { numeric: true }) || a.studentName.localeCompare(b.studentName, "sq"));
+  const counts = {
+    assistant: inClass.filter(i => i.hasAssistant).length,
+    needs: inClass.filter(i => i.specialNeeds).length,
+    pia: inClass.filter(i => i.hasPia).length,
+    pei: inClass.filter(i => i.iep).length,
+    noAssistant: inClass.filter(noAssistant).length,
+  };
+  const piaHref = (i: CareItem, hash = "") => `/classes/pia/${i.studentId}?year=${year}${hash}`;
+  const warnings = inClass.filter(i => i.iepWarning).length;
+  const toggle = (k: typeof tab) => setTab(t => (t === k ? "all" : k));
+
+  const stat = (value: React.ReactNode, label: string, tone: string, key?: typeof tab) => (
+    <button type="button" onClick={key ? () => toggle(key) : undefined} disabled={!key}
+      className={`rounded-xl p-3 text-left transition-all border-2 ${tone} ${key && tab === key ? "border-primary-500" : "border-transparent"} ${key ? "hover:brightness-95" : "cursor-default"}`}>
+      <p className="text-2xl font-bold">{value}</p>
+      <p className="text-xs text-slate-600 dark:text-slate-300">{label}</p>
+    </button>
+  );
+
+  return (
+    <div className="card p-4 sm:p-5 space-y-4">
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2"><HeartHandshake className="w-5 h-5 text-blue-500" /> Kujdes i veçantë</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={cls} onChange={e => setCls(e.target.value)} className="form-input w-40 py-1.5 text-sm" aria-label="Klasa">
+            <option value="">Klasa: Të gjitha</option>
+            {classes.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          {data.canEdit && <button type="button" onClick={onAssign} className="btn-secondary text-sm"><Plus className="w-4 h-4" /> Cakto asistent</button>}
+          {data.canEdit && <button type="button" onClick={() => setEditing("new")} className="btn-primary text-sm"><Plus className="w-4 h-4" /> Shto nxënës</button>}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+        {stat(counts.assistant, "Me asistent", "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300", "assistant")}
+        {stat(counts.needs, "Nevoja të veçanta", "bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300", "needs")}
+        {stat(<>{counts.pia} <span className="text-base font-semibold opacity-70">/ {counts.pei}</span></>, "PIA / PEI", "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300")}
+        {stat(counts.noAssistant, "Pa asistent të caktuar", "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300", "noAssistant")}
+      </div>
+      {warnings > 0 && (
+        <p className="text-xs text-orange-600 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> {warnings} PEI me rishikim të kaluar ose brenda 7 ditëve</p>
+      )}
+
+      <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-full sm:w-fit overflow-x-auto">
+        {([["all", "Të gjithë"], ["assistant", "Me asistent"], ["needs", "Nevoja të veçanta"], ["noAssistant", "Pa asistent"]] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setTab(k)}
+            className={`px-3 py-1 rounded-md text-xs font-medium whitespace-nowrap ${tab === k ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[880px]">
+          <thead>
+            <tr className="text-xs text-slate-500 border-b border-slate-200 dark:border-slate-700">
+              <th className="text-left font-semibold py-2 px-3">Nxënësi</th>
+              <th className="text-left font-semibold py-2 px-2">Klasa</th>
+              <th className="text-left font-semibold py-2 px-2">Lloji</th>
+              <th className="text-left font-semibold py-2 px-2">Plani</th>
+              <th className="text-left font-semibold py-2 px-2">Evidencat</th>
+              <th className="text-left font-semibold py-2 px-2">Asistenti</th>
+              <th className="text-left font-semibold py-2 px-2">Shënim</th>
+              <th className="py-2 px-3"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+            {rows.length === 0 && <tr><td colSpan={8} className="py-6 text-center text-xs text-slate-400">Asnjë nxënës në këtë listë.</td></tr>}
+            {rows.map(i => (
+              <tr key={i.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                <td className="py-2.5 px-3 font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">{i.studentName}</td>
+                <td className="py-2.5 px-2 text-slate-600 dark:text-slate-300">{i.className ?? "—"}</td>
+                <td className="py-2.5 px-2"><div className="flex flex-wrap gap-1">{typeTags(i)}</div></td>
+                <td className="py-2.5 px-2">
+                  <div className="flex flex-wrap gap-1">
+                    <Link href={piaHref(i)} title={i.hasPia ? "Hap PIA" : "Krijo PIA"}
+                      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${i.hasPia ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" : "bg-slate-100 text-slate-400 dark:bg-slate-800"}`}>
+                      <ClipboardList className="w-3 h-3" /> PIA{!i.hasPia && " +"}
+                    </Link>
+                    {i.iep && (
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${i.iepWarning ? "bg-orange-100 text-orange-700" : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}
+                        title={i.iepReviewDate ? `Rishikim: ${formatDate(i.iepReviewDate)}` : undefined}>PEI</span>
+                    )}
+                  </div>
+                </td>
+                <td className="py-2.5 px-2">
+                  <Link href={piaHref(i, "#evidencat")} title="Testet, materialet dhe punimet e nxënësit"
+                    className={`inline-flex items-center gap-1 text-xs ${i.evidenceCount ? "text-primary-600 font-semibold" : "text-slate-400 hover:text-primary-600"}`}>
+                    <Paperclip className="w-3.5 h-3.5" /> {i.evidenceCount ? i.evidenceCount : "Ngarko"}
+                  </Link>
+                </td>
+                <td className="py-2.5 px-2 whitespace-nowrap">
+                  {i.assistant
+                    ? <span className="text-slate-700 dark:text-slate-200">{i.assistant.name}{i.assistant.personal && <span className="text-[10px] text-slate-400"> · personale</span>}</span>
+                    : i.hasAssistant ? <span className="text-orange-600 font-medium">Pa caktuar</span> : <span className="text-slate-300">—</span>}
+                </td>
+                <td className="py-2.5 px-2 text-xs text-slate-500 max-w-[200px] truncate" title={i.note ?? undefined}>{i.note || ""}</td>
+                <td className="py-2.5 px-3">
+                  <div className="flex items-center justify-end gap-1">
+                    {data.canEdit && (
+                      <button type="button" onClick={() => setEditing(i)} title="Ndrysho" aria-label={`Ndrysho kujdesin e veçantë për ${i.studentName}`}
+                        className="p-1.5 rounded text-slate-400 hover:text-primary-600 hover:bg-slate-100 dark:hover:bg-slate-700"><Pencil className="w-3.5 h-3.5" /></button>
+                    )}
+                    <Link href={`/students/${i.studentId}`} className="btn-secondary text-xs py-1 px-2.5 whitespace-nowrap">Hap profilin</Link>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <SpecialCareForm item={editing === "new" ? null : editing} onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); onChanged(); }} />
+      )}
     </div>
   );
 }

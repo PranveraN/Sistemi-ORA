@@ -43,6 +43,15 @@ export async function GET(req: NextRequest) {
   });
   const inYear = rows.filter(r => activeInAcademicYear(r, year));
 
+  // PIA dhe evidencat e vitit (vetëm lexim) — për kolonën "Plani" dhe "Evidencat"
+  const careIds = inYear.map(r => r.studentId);
+  const [pias, evid] = careIds.length ? await Promise.all([
+    prisma.studentPia.findMany({ where: { studentId: { in: careIds }, academicYear: year }, select: { studentId: true } }),
+    prisma.piaFile.groupBy({ by: ["studentId"], where: { studentId: { in: careIds }, academicYear: year, deletedAt: null }, _count: { _all: true } }),
+  ]) : [[], []];
+  const hasPia = new Set(pias.map(p => p.studentId));
+  const evidCount = new Map(evid.map(e => [e.studentId, e._count._all]));
+
   const now = Date.now();
   const items = inYear
     .filter(r => filter === "assistant" ? r.hasAssistant : filter === "needs" ? r.specialNeeds : true)
@@ -65,6 +74,8 @@ export async function GET(req: NextRequest) {
         iepWarning,
         startDate: r.startDate?.toISOString() ?? null,
         endDate: r.endDate?.toISOString() ?? null,
+        hasPia: hasPia.has(r.student.id),
+        evidenceCount: evidCount.get(r.student.id) ?? 0,
         assistant: r.assistant
           ? { id: r.assistant.id, name: r.assistant.emri, phone: r.assistant.telefoni, email: r.assistant.email, personal: false }
           : r.assistantName ? { id: -r.id, name: r.assistantName, phone: r.assistantPhone, email: null, personal: true } : null,
