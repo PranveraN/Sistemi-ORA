@@ -1698,6 +1698,32 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
 
   // Detect existing installment type
   const isAlreadyTi = installments.some(p => p.description?.startsWith(TI_PREFIX));
+  // Rreshta TIMI të dyfishtë (i njëjti TI_MUAJI_N më shumë se një herë) — mbahet ai me më shumë të paguar
+  // (pastaj më i vjetri); të tjerët tregohen si dyfishime. Rasti: ruajtje e përsëritur pas "gabim serveri".
+  const tiDuplicates: Payment[] = (() => {
+    const seen = new Set<string>();
+    const extra: Payment[] = [];
+    for (const p of installments.filter(x => x.description?.startsWith(TI_PREFIX)).sort((a, b) => b.paidAmount - a.paidAmount || a.id - b.id)) {
+      if (seen.has(p.description!)) extra.push(p); else seen.add(p.description!);
+    }
+    return extra.sort((a, b) => parseInt(a.description!.slice(TI_PREFIX.length)) - parseInt(b.description!.slice(TI_PREFIX.length)) || a.id - b.id);
+  })();
+  const [dupBusy, setDupBusy] = useState(false);
+  async function removeTiDuplicates() {
+    const paidSum = tiDuplicates.reduce((s, p) => s + p.paidAmount, 0);
+    if (!confirm(`Fshi ${tiDuplicates.length} rreshta TIMI të dyfishtë (${formatCurrency(tiDuplicates.reduce((s, p) => s + p.finalAmount, 0))}${paidSum > 0 ? `, nga të cilat "paguar" ${formatCurrency(paidSum)}` : ""})?
+
+Mbetet një rresht për çdo muaj. Arsyeja ruhet te gjurma e auditimit.`)) return;
+    setDupBusy(true);
+    let ok = 0;
+    for (const p of tiDuplicates) {
+      const r = await fetch(`/api/payments/${p.id}`, { method: "DELETE", headers: reasonHeaders("Rreshta TIMI të dyfishtë nga ruajtja e përsëritur pas gabimit të serverit") });
+      if (r.ok) ok++;
+    }
+    setDupBusy(false);
+    if (ok < tiDuplicates.length) alert(`U fshinë ${ok} nga ${tiDuplicates.length}. Hape përsëri dritaren dhe kontrollo.`);
+    onSave(undefined);
+  }
   const isAlreadyMonthly = !isAlreadyTi && installments.some(p => p.description?.startsWith("MUAJI_"));
   // Plani mujor ose ai i TIMI Invest — të dy sillen njësoj për pjesën tjetër të dritares
   const isMonthlyLike = isAlreadyMonthly || isAlreadyTi;
@@ -2424,13 +2450,18 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
       }
     } catch {
       setSaving(false);
-      setSaveError("Gabim rrjeti — provo përsëri. Kontrollo nëse ndonjë pjesë u ruajt tashmë përpara se të rihapësh.");
+      // S'lejohet riprovimi me të dhënat e vjetra të dritares — mund të krijonte rreshta të dyfishtë
+      alert("Gabim rrjeti — disa ndryshime mund të jenë ruajtur. Dritarja u mbyll dhe lista u rifreskua: hape përsëri dhe kontrollo para se të ruash.");
+      onSave(undefined);
       return;
     }
 
     setSaving(false);
     if (failed) {
-      setSaveError("Disa nga ndryshimet nuk u ruajtën (gabim serveri) — kontrollo Historikun e pagesave dhe provo përsëri.");
+      // Pjesa që u ruajt ekziston tani në server; një "Ruaj" i dytë në këtë dritare (me të dhënat e vjetra)
+      // do t'i krijonte sërish → dyfishime (rasti Davud Dërmaku: 3 × 12 muaj = 6.000 €). Prandaj rifreskohet.
+      alert("Disa nga ndryshimet nuk u ruajtën (gabim serveri). Dritarja u mbyll dhe lista u rifreskua — hape përsëri, kontrollo muajt dhe ruaj vetëm ato që mungojnë.");
+      onSave(undefined);
       return;
     }
     onSave(withPrint ? receiptPaymentId : undefined);
@@ -2914,6 +2945,19 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                     </p>
                   );
                 })()}
+                {tiDuplicates.length > 0 && (
+                  <div className="rounded-xl px-3 py-2.5 text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 space-y-1.5">
+                    <p className="font-semibold">⚠ {tiDuplicates.length} rreshta TIMI të dyfishtë — prandaj çmimi del {formatCurrency(installments.reduce((s, p) => s + p.amount, 0))} dhe pagesat duken më shumë se ç&apos;janë.</p>
+                    <ul className="space-y-0.5">
+                      {tiDuplicates.map(p => (
+                        <li key={p.id}>• {TI_MONTHS_LBL[parseInt(p.description!.slice(TI_PREFIX.length)) - 1] ?? p.description}: {formatCurrency(p.finalAmount)}{p.paidAmount > 0 ? ` · paguar ${formatCurrency(p.paidAmount)}` : ""}{p.receiptNumber ? ` · ${p.receiptNumber}` : ""}</li>
+                      ))}
+                    </ul>
+                    <button type="button" onClick={removeTiDuplicates} disabled={dupBusy} className="px-2.5 py-1 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-60">
+                      {dupBusy ? "Duke fshirë…" : `Fshi dyfishimet (${tiDuplicates.length})`}
+                    </button>
+                  </div>
+                )}
                 {isAlreadyTi && tiInit.roundingFix !== 0 && (
                   <p className="rounded-xl px-3 py-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
                     Rrumbullakimi i centëve u korrigjua ({tiInit.roundingFix > 0 ? "+" : ""}{formatCurrency(tiInit.roundingFix)} te muaji i fundit pa pagesë), që 12 muajt të bëjnë saktë {formatCurrency(tiPrice ?? 0)}. Shtyp &quot;Ruaj Muajt&quot; që të ruhet.
