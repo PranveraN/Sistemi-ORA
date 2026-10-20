@@ -1580,9 +1580,9 @@ function monthYearFromDateStr(dateStr: string): { month: number; year: number } 
 // Shkruhet shuma që hyri në bankë; çmimi i plotë (÷ (1 − komisioni)) mbush muajt
 // TIMI me radhë, komisioni regjistrohet si shpenzim — e njëjta logjikë si te
 // TIMI Invest → "Pagesat nga TIMI" (një transaksion, pa "Pago" muaj për muaj).
-interface TimiPageseRow { id: number; data: string; shumaCents: number; brutoCents: number; komisionCents: number; ndarja: { studentId: number; cents: number }[] }
+interface TimiPageseRow { id: number; data: string; shumaCents: number; brutoCents: number; komisionCents: number; vitiShkollor: number; ndarja: { studentId: number; cents: number }[] }
 
-function TimiQuickPay({ studentId, year, remaining, monthly, onDone }: { studentId: number; year: number; remaining: number; monthly: number; onDone: () => void }) {
+function TimiQuickPay({ studentId, year, remaining, monthly, paidTotal, onDone }: { studentId: number; year: number; remaining: number; monthly: number; paidTotal: number; onDone: () => void }) {
   const today = new Date().toISOString().split("T")[0];
   const [pct, setPct] = useState<number | null>(null);
   const [list, setList] = useState<TimiPageseRow[]>([]);
@@ -1602,6 +1602,8 @@ function TimiQuickPay({ studentId, year, remaining, monthly, onDone }: { student
   }, [studentId, year]);
 
   const k = pct ?? 4.66;
+  const fromTimi = round2(list.filter(p => p.vitiShkollor === year).reduce((s, p) => s + (p.ndarja.find(n => n.studentId === studentId)?.cents ?? 0), 0) / 100);
+  const manualPaid = pct == null ? 0 : round2(paidTotal - fromTimi);
   const bankAmt = parseFloat(bank.replace(",", ".")) || 0;
   const bruto = round2(bankAmt / (1 - k / 100));
   const fromBank = (gross: number) => setBank(String(round2(gross * (1 - k / 100))));
@@ -1631,6 +1633,12 @@ function TimiQuickPay({ studentId, year, remaining, monthly, onDone }: { student
   return (
     <div className="rounded-xl border-2 border-primary-200 dark:border-primary-800 p-3 space-y-3">
       <p className="text-sm font-semibold text-slate-800 dark:text-white">Regjistro pagesë nga TIMI</p>
+      {manualPaid > 0.5 && (
+        <p className="rounded-lg px-2.5 py-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
+          ⚠ {formatCurrency(manualPaid)} nga {formatCurrency(paidTotal)} janë shënuar si të paguara me dorë (jo përmes &quot;Regjistro pagesë nga TIMI&quot;) — për to <b>s&apos;është regjistruar komisioni 4,66%</b>.
+          Nëse janë para nga TIMI: kthe &quot;Paguar&quot; në 0 te ata muaj, shtyp &quot;Ruaj Muajt&quot;, pastaj regjistroji këtu me shumën nga banka.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="text-xs text-slate-500">Data (kur hyri në bankë)</label>
@@ -2878,8 +2886,34 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                 {student.timiInvest && tiPrice != null && (
                   <TimiQuickPay studentId={student.id} year={year > 0 ? year : new Date().getFullYear()}
                     remaining={round2(Math.max(0, tiPrice - tForms.reduce((s, f) => s + parseFloat(f.paidAmount || "0"), 0)))}
-                    monthly={round2(tiPrice / 12)} onDone={() => onSave(undefined)} />
+                    monthly={round2(tiPrice / 12)} paidTotal={round2(totalTPaid)} onDone={() => onSave(undefined)} />
                 )}
+                {(() => {
+                  // Tepricë nga rrumbullakimi (p.sh. 12 × 166,67 = 2.000,04 € te çmimi 2.000 €) — ndreqet vetëm me klikim + "Ruaj Muajt"
+                  const excess = round2(totalTPaid - (tiPrice ?? totalTAmount));
+                  if (!(excess > 0 && excess <= 0.12)) return null;
+                  const fix = () => setTForms(f => {
+                    let left = excess;
+                    const out = f.map(r => {
+                      const over = round2((parseFloat(r.paidAmount || "0") || 0) - (parseFloat(r.portion || "0") || 0));
+                      if (left <= 0 || over <= 0) return r;
+                      const take = Math.min(over, left); left = round2(left - take);
+                      return { ...r, paidAmount: String(round2(parseFloat(r.paidAmount) - take)) };
+                    });
+                    for (let i = out.length - 1; i >= 0 && left > 0; i--) {
+                      const p = parseFloat(out[i].paidAmount || "0") || 0;
+                      if (p >= left) { out[i] = { ...out[i], paidAmount: String(round2(p - left)) }; left = 0; }
+                    }
+                    return out;
+                  });
+                  return (
+                    <p className="rounded-xl px-3 py-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 flex flex-wrap items-center gap-2">
+                      <span className="flex-1">Paguar {formatCurrency(totalTPaid)} — {formatCurrency(excess)} më shumë se çmimi {formatCurrency(tiPrice ?? totalTAmount)}, nga rrumbullakimi i muajve.</span>
+                      <button type="button" onClick={fix} className="px-2 py-1 rounded-lg bg-amber-600 text-white font-semibold">Ndreq (−{formatCurrency(excess)})</button>
+                      <span className="w-full text-[11px]">Pastaj shtyp &quot;Ruaj Muajt&quot;.</span>
+                    </p>
+                  );
+                })()}
                 {isAlreadyTi && tiInit.roundingFix !== 0 && (
                   <p className="rounded-xl px-3 py-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
                     Rrumbullakimi i centëve u korrigjua ({tiInit.roundingFix > 0 ? "+" : ""}{formatCurrency(tiInit.roundingFix)} te muaji i fundit pa pagesë), që 12 muajt të bëjnë saktë {formatCurrency(tiPrice ?? 0)}. Shtyp &quot;Ruaj Muajt&quot; që të ruhet.
