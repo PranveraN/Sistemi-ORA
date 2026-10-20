@@ -1756,6 +1756,7 @@ Mbetet një rresht për çdo muaj. Arsyeja ruhet te gjurma e auditimit.`)) retur
     isAlreadyTi ? "timi" : isAlreadyMonthly ? "monthly" : isAlreadyFlex ? "flex" : isAlreadyTwo ? "two" : "single"
   );
   const [saving, setSaving] = useState(false);
+  const saveLockRef = useRef(false);
   const [saveError, setSaveError] = useState("");
   // "Çmimi Bazë" kyçet parazgjedhur pasi ka këste reale (shih komentin te
   // `hasExistingInstallmentPlan`), por administrata duhet mundësi për ta
@@ -2140,6 +2141,13 @@ Mbetet një rresht për çdo muaj. Arsyeja ruhet te gjurma e auditimit.`)) retur
   }
 
   async function handleSave(withPrint = false) {
+    // Klikimi i dyfishtë: "saving" (state) përditësohet vonë, ndaj ruajtja e dytë niste me të njëjtat të dhëna
+    if (saveLockRef.current) return;
+    saveLockRef.current = true;
+    try { await handleSaveInner(withPrint); } finally { saveLockRef.current = false; }
+  }
+
+  async function handleSaveInner(withPrint: boolean) {
     const paidRows: { paid: string; method: string }[] =
       mode === "single"  ? [{ paid: sForm.paidAmount, method: sForm.method }] :
       mode === "two"     ? [{ paid: k1Form.paidAmount, method: k1Form.method }, { paid: k2Form.paidAmount, method: k2Form.method }] :

@@ -4,7 +4,17 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { alignPeriodToDue } from "@/lib/academicYear";
-import { withReceiptNumber } from "@/lib/receiptNumber";
+import { nextReceiptNumber } from "@/lib/receiptNumber";
+
+// Rreshtat e një plani (muaj/këst) janë unikë për nxënës + kategori + vit shkollor.
+// Pa këtë, klikimi i dyfishtë te "Ruaj" ose ruajtja e përsëritur pas një gabimi
+// krijonin muajt sërish (Davud Dërmaku 3 × 12, Pars Buja 34 rreshta TIMI → çmimi 6.000 €).
+const PLAN_ROW = /^(TI_MUAJI_|MUAJI_|KESTI_)\d+$|^FLEX_HEADER$/; // FLEX_PAY_N jo: numrat zhvendosen kur fshihet një pagesë
+class DuplicatePlanRow extends Error {}
+function schoolYearRange(due: Date): { gte: Date; lt: Date } {
+  const start = due.getMonth() + 1 >= 9 ? due.getFullYear() : due.getFullYear() - 1;
+  return { gte: new Date(start, 8, 1), lt: new Date(start + 1, 8, 1) };
+}
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -92,7 +102,19 @@ export async function POST(req: NextRequest) {
     const categoryIdNum = parseInt(body.categoryId);
     const category = await prisma.paymentCategory.findUnique({ where: { id: categoryIdNum }, select: { name: true } });
 
-    const create = (receiptNumber: string | undefined) => prisma.payment.create({
+    const description: string | null = body.description || null;
+    // Kontrolli dhe krijimi në NJË transaksion — transaksionet mbajnë radhën e shkrimeve
+    // (src/lib/prisma.ts), ndaj dy kërkesa njëkohësisht s'mund ta kalojnë kontrollin të dyja.
+    const payment = await prisma.$transaction(async tx => {
+      if (description && PLAN_ROW.test(description)) {
+        const dup = await tx.payment.findFirst({
+          where: { studentId: studentIdNum, categoryId: categoryIdNum, description, dueDate: schoolYearRange(new Date(body.dueDate)) },
+          select: { id: true },
+        });
+        if (dup) throw new DuplicatePlanRow();
+      }
+      const receiptNumber = paidAmount > 0 ? await nextReceiptNumber(orgId) : undefined;
+      return tx.payment.create({
       data: {
         studentId: studentIdNum,
         categoryId: categoryIdNum,
@@ -109,15 +131,15 @@ export async function POST(req: NextRequest) {
         balance,
         method: body.method || null,
         status,
-        description: body.description || null,
+        description,
         note: body.note || null,
         // muaji s'mund t'i takojë një viti shkollor më të hershëm se Afati (shih alignPeriodToDue)
         ...alignPeriodToDue(body.month ? parseInt(body.month) : null, body.year ? parseInt(body.year) : new Date().getFullYear(), new Date(body.dueDate)),
         receiptNumber,
       },
       include: { student: { select: { firstName: true, lastName: true } } },
+      });
     });
-    const payment = paidAmount > 0 ? await withReceiptNumber(orgId, create) : await create(undefined);
 
     const userId = parseInt((session?.user as { id?: string } | undefined)?.id ?? "0");
     if (userId > 0) {
@@ -147,6 +169,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(payment, { status: 201 });
   } catch (err: unknown) {
+    if (err instanceof DuplicatePlanRow) {
+      return NextResponse.json({ error: "Ky muaj/këst ekziston tashmë për këtë nxënës — rifresko dhe kontrollo (s'u krijua sërish)." }, { status: 409 });
+    }
     const msg = err instanceof Error ? err.message : "Gabim i brendshëm";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
