@@ -2926,9 +2926,24 @@ function PaymentModal({ student, category, month, year, onClose, onSave, overrid
                 )}
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">12 muaj (shtator–gusht)</p>
-                  <button onClick={splitEvenlyTi} className="text-xs text-primary-600 hover:underline">
-                    Ndaj njëlloj ({totalFinal > 0 ? formatCurrency(Math.round(totalFinal / 12 * 100) / 100) : "0 €"}/muaj)
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {/* Shënon të gjithë muajt si të paguar njëherësh (Paguar = Shuma e muajit, Bankë) — ruhet vetëm me "Ruaj Muajt" */}
+                    <button type="button" onClick={() => {
+                      const unpaid = tForms.filter(f => (parseFloat(f.paidAmount || "0") || 0) !== (parseFloat(f.portion || "0") || 0)).length;
+                      if (!unpaid) return;
+                      if (!confirm(`Shëno të ${unpaid} muajt si të paguar plotësisht (Bankë, ${formatDate(today)})?\n\nKujdes: kështu s'regjistrohet komisioni 4,66% — për paratë që hyjnë nga TIMI përdor "Regjistro pagesë nga TIMI" me shumën nga banka.\nRuhet vetëm kur shtyp "Ruaj Muajt".`)) return;
+                      setTForms(f => f.map(r => {
+                        const portion = parseFloat(r.portion || "0") || 0;
+                        if ((parseFloat(r.paidAmount || "0") || 0) === portion) return r;
+                        return { ...r, paidAmount: String(portion), method: r.method || "BANK", paidDate: (parseFloat(r.paidAmount || "0") || 0) > 0 ? r.paidDate : today };
+                      }));
+                    }} className="text-xs text-green-600 dark:text-green-400 font-semibold hover:underline">
+                      ✓ Paguaj të gjitha
+                    </button>
+                    <button onClick={splitEvenlyTi} className="text-xs text-primary-600 hover:underline">
+                      Ndaj njëlloj ({totalFinal > 0 ? formatCurrency(Math.round(totalFinal / 12 * 100) / 100) : "0 €"}/muaj)
+                    </button>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
