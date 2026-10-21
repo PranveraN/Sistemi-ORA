@@ -178,6 +178,7 @@ function exportUshqimiGridExcel(students: StudentRow[], year: number) {
       if (!payment) return "";
       if (payment.description === SKIPPED_MARKER) return "Ndërprerë";
       if (payment.method === "BANK") return `Bankë (${payment.finalAmount})`;
+      if (payment.method === "KOMPENSIM") return `Kompensim (${payment.finalAmount})`;
       return payment.finalAmount;
     });
     const totalPlan = PERIOD_BUCKETS.reduce((sum, period) => {
@@ -837,7 +838,7 @@ export default function UshqimiPage() {
           const periodStats = PERIOD_BUCKETS.map(() => ({ started: 0, interrupted: 0, free: 0, billed: 0, paid: 0, debt: 0 }));
           const interruptedIds = new Set<number>();
           const freeIds = new Set<number>();
-          let paidBank = 0, paidCash = 0;
+          let paidBank = 0, paidCash = 0, paidKomp = 0;
 
           for (const s of yearStudents) {
             let prevReal = false;
@@ -856,6 +857,7 @@ export default function UshqimiPage() {
                 periodStats[i].paid   += payment.paidAmount;
                 periodStats[i].debt   += payment.balance;
                 if (payment.method === "BANK") paidBank += payment.paidAmount;
+                else if (payment.method === "KOMPENSIM") paidKomp += payment.paidAmount;
                 else paidCash += payment.paidAmount;
               }
               prevReal = isReal;
@@ -885,7 +887,7 @@ export default function UshqimiPage() {
                 <div className="card p-4">
                   <p className="text-xs text-slate-400 mb-1">Paguar gjithsej</p>
                   <p className="text-xl font-bold text-green-600">{formatCurrency(totalPaidR)}</p>
-                  <p className="text-xs text-slate-400 mt-1">Bankë {formatCurrency(paidBank)} · Cash {formatCurrency(paidCash)}</p>
+                  <p className="text-xs text-slate-400 mt-1">Bankë {formatCurrency(paidBank)} · Cash {formatCurrency(paidCash)}{paidKomp > 0 ? ` · Kompensim ${formatCurrency(paidKomp)}` : ""}</p>
                 </div>
                 <div className="card p-4">
                   <p className="text-xs text-slate-400 mb-1">Borxhe</p>
@@ -1470,6 +1472,8 @@ export default function UshqimiPage() {
                                   ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100"
                                   : payment?.method === "BANK"
                                   ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-100"
+                                  : payment?.method === "KOMPENSIM"
+                                  ? "bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 hover:bg-teal-100"
                                   : payment && payment.balance > 0
                                   ? "text-red-600 dark:text-red-400 font-bold hover:bg-slate-50 dark:hover:bg-slate-700"
                                   : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
@@ -1481,6 +1485,8 @@ export default function UshqimiPage() {
                                 ? "Falas"
                                 : payment?.method === "BANK"
                                 ? "Bankë"
+                                : payment?.method === "KOMPENSIM"
+                                ? "Kompensim"
                                 : payment
                                 ? formatCurrency(payment.finalAmount)
                                 : "—"}
@@ -2056,7 +2062,9 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
                 <option value="BANK">Bankë</option>
                 <option value="CARD">Kartelë</option>
                 <option value="ONLINE">Online</option>
+                <option value="KOMPENSIM">Kompensim (marrëveshje)</option>
               </select>
+              {method === "KOMPENSIM" && <p className="text-[11px] text-slate-500 mt-1">E paguar me kompensim — nxënësi s&apos;ka borxh, por paratë s&apos;hyjnë as në arkë, as në bankë.</p>}
             </div>
             <div>
               <label className="form-label">Afati i Pagesës</label>
