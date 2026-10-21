@@ -97,7 +97,9 @@ export async function GET(req: NextRequest) {
       // E njëjta llogaritje përdoret edhe nga asistenti "Ora" (src/lib/tuitionMessageStatus.ts)
       const r = await computeTuitionMessageStatuses(students, year);
       tuitionDueDate = r.tuitionDueDate;
-      for (const [id, st] of r.statuses) results.set(id, st);
+      // Te SMS-të: "Pa paguar fare" = asnjë pagesë, edhe kur afati ka kaluar (më parë dilnin si
+      // "Me vonesë" dhe "Pa paguar fare" mbetej gjithmonë 0); "Me vonesë" = kanë paguar diçka, por janë vonë.
+      for (const [id, st] of r.statuses) results.set(id, st.status === "OVERDUE" && st.paid <= 0.005 ? { ...st, status: "UNPAID" } : st);
     } else {
       // Ushqimi / eShkollori — kush s'ka asnjë rresht s'e ka shërbimin (përjashtohet)
       for (const s of students) {

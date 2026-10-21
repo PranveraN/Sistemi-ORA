@@ -31,7 +31,7 @@ export const PAYMENT_CATEGORY_FOR_TYPE: Partial<Record<MessageType, string>> = {
 export const TUITION_STATUSES: { key: TuitionStatus; label: string }[] = [
   { key: "TIMI_INVEST", label: "Timi Invest" },
   { key: "PAID",        label: "Paguar plotësisht" },
-  { key: "OVERDUE",     label: "Me vonesë" },
+  { key: "OVERDUE",     label: "Me vonesë (kanë paguar pjesë)" },
   { key: "PARTIAL",     label: "Pjesërisht – kësti i dytë" },
   { key: "UNPAID",      label: "Pa paguar fare" },
 ];
