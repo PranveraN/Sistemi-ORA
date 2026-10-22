@@ -162,6 +162,7 @@ function exportStudentsExcel(
   month: number,
   year: number,
   isMonthly: boolean,
+  basePrice: number,
 ) {
   const wb = XLSX.utils.book_new();
   const today = formatDate(new Date());
@@ -181,9 +182,10 @@ function exportStudentsExcel(
       s.firstName,
       s.lastName,
       s.class?.name ?? "—",
-      s.payment?.finalAmount ?? 0,
+      // Pa asnjë pagesë: shuma/borxhi = çmimi i pritur (si te tabela), jo 0
+      s.payment?.finalAmount ?? Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100)),
       s.payment?.paidAmount ?? 0,
-      s.payment?.balance ?? 0,
+      s.payment ? s.payment.balance : Math.round(basePrice * (1 - (s.discountPct ?? 0) / 100)),
       s.payment
         ? (s.payment.status === "PAID" ? "Paguar"
           : s.payment.status === "PARTIAL" ? "Pjesërisht"
@@ -584,7 +586,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           )}
 
           <button
-            onClick={() => exportStudentsExcel(sortedActives, stats, title, month, resolvedYear, isMonthly)} // vetëm aktivët — joaktivët dilnin te lista e borxheve
+            onClick={() => exportStudentsExcel(sortedActives, stats, title, month, resolvedYear, isMonthly, category?.defaultAmount ?? 0)} // vetëm aktivët — joaktivët dilnin te lista e borxheve
             className="btn-secondary text-sm"
             title="Exporto në Excel"
           >
