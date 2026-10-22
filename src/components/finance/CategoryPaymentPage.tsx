@@ -584,7 +584,7 @@ export default function CategoryPaymentPage({ categoryName, title, icon, color, 
           )}
 
           <button
-            onClick={() => exportStudentsExcel(sorted, stats, title, month, resolvedYear, isMonthly)}
+            onClick={() => exportStudentsExcel(sortedActives, stats, title, month, resolvedYear, isMonthly)} // vetëm aktivët — joaktivët dilnin te lista e borxheve
             className="btn-secondary text-sm"
             title="Exporto në Excel"
           >
