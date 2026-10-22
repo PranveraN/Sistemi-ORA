@@ -7,6 +7,14 @@ import { formatDate } from "@/lib/utils";
 export async function POST() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // ÇAKTIVIZUAR (raporti i inspektimit 21.10.2026): bashkonte/fshinte nxënësit vetëm
+  // sipas emër+mbiemër — do të shkatërronte fëmijë të ndryshëm me emër të njëjtë
+  // (Lum Krasniqi 6A/7A, Muhamed Shaqiri 1A/4A). S'e përdor asnjë faqe. Hapet vetëm
+  // nga Super Admin DHE me ALLOW_CLEANUP_DUPLICATES=1 në server, për raste të veçanta.
+  const role = (session.user as { role?: string }).role;
+  if (role !== "SUPERADMIN" || process.env.ALLOW_CLEANUP_DUPLICATES !== "1") {
+    return NextResponse.json({ error: "Ky veprim është çaktivizuar — bashkonte nxënës të ndryshëm me emër të njëjtë." }, { status: 403 });
+  }
 
   // Gjej të gjithë nxënësit e dublikuar sipas emrit+mbiemrit
   const dupRows = await prisma.$queryRawUnsafe<{ firstName: string; lastName: string; cnt: number; ids: string }[]>(`

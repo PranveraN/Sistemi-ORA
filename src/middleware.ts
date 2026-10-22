@@ -29,6 +29,22 @@ const API_MODULE_PREFIXES: { prefix: string; moduleKey: string }[] = [
   { prefix: "/api/eshkollori",         moduleKey: "eshkollori" },
 ];
 
+// API-të financiare TË PËRBASHKËTA (s'mund të futen te API_MODULE_PREFIXES, sepse
+// i lexojnë shumë module) — SHKRIMI (POST/PUT/PATCH/DELETE) lejohet vetëm për rolet
+// që kanë të paktën një nga modulet që i ndryshojnë realisht nga faqet. Leximi mbetet
+// i lirë. Më parë p.sh. Pedagogia (pa Shkollimin) mund të ndryshonte pagesat me
+// thirrje direkte në API (raporti i inspektimit 21.10.2026).
+const API_WRITE_MODULES: { prefix: string; modules: string[] }[] = [
+  { prefix: "/api/payments",                   modules: ["shkollimi", "ushqimi", "eshkollori", "payments"] },
+  { prefix: "/api/category-payments",          modules: ["shkollimi", "ushqimi", "eshkollori", "payments"] },
+  { prefix: "/api/payment-handovers",          modules: ["shkollimi", "ushqimi", "eshkollori", "payments", "dorezimet"] },
+  { prefix: "/api/expenses",                   modules: ["shkollimi", "ushqimi", "eshkollori", "dorezimet", "shpenzime"] },
+  { prefix: "/api/hyrat",                      modules: ["hyrat"] },
+  { prefix: "/api/settings/enrollment-fields", modules: ["settings"] },
+  { prefix: "/api/enrollment-form-fields",     modules: ["settings"] },
+];
+const underPrefix = (pathname: string, prefix: string) => pathname === prefix || pathname.startsWith(`${prefix}/`);
+
 // Fshirjet e rekordeve financiare kërkojnë arsye (header-i X-Audit-Reason, i
 // dërguar nga askDeleteReason/reasonHeaders te src/lib/auditReason.ts). Arsyeja
 // ruhet te gjurma e auditimit (FinAuditLog) nga shtresa te src/lib/prisma.ts.
@@ -106,6 +122,11 @@ export default auth((req) => {
       const match = API_MODULE_PREFIXES.find(m => nextUrl.pathname.startsWith(m.prefix));
       if (match && !allowedModules.includes(match.moduleKey)) {
         return NextResponse.json({ error: "Nuk ke leje për këtë modul." }, { status: 403 });
+      }
+      const isWrite = !["GET", "HEAD", "OPTIONS"].includes(req.method);
+      const w = isWrite ? API_WRITE_MODULES.find(m => underPrefix(nextUrl.pathname, m.prefix)) : undefined;
+      if (w && !w.modules.some(k => allowedModules.includes(k))) {
+        return NextResponse.json({ error: "Nuk ke leje për këtë veprim." }, { status: 403 });
       }
     }
 
