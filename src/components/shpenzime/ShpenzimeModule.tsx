@@ -10,6 +10,7 @@ import { Plus, Trash2, Edit, X, Save, Settings, TrendingDown, Calendar, BarChart
 import { MONTHS } from "@/lib/utils";
 import * as XLSX from "xlsx";
 import SchoolYearSelect, { schoolYearLabel, schoolYearOfDate } from "@/components/finance/SchoolYearSelect";
+import { DEFAULT_ACADEMIC_YEAR } from "@/lib/academicYear";
 
 interface Kategori {
   id: number;
@@ -136,7 +137,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
   const [form, setForm] = useState({
     kategoriId: "", shuma: "", pershkrim: "", marres: "",
     data: now.toISOString().split("T")[0], metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true,
-    nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "", vitiShkollor: null as number | null,
+    nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "", vitiShkollor: DEFAULT_ACADEMIC_YEAR as number | null, // parazgjedhje: viti aktual (kërkesë e Pranverës)
   });
   const [sipartnerSuggestions, setSipartnerSuggestions] = useState<Sipartner[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -334,7 +335,7 @@ export default function ShpenzimeModule({ embedded = false, month: pMonth, year:
 
   function openNew() {
     setEditId(null);
-    setForm({ kategoriId: kategorite[0]?.id ? String(kategorite[0].id) : "", shuma: "", pershkrim: "", marres: "", data: now.toISOString().split("T")[0], metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true, nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "", vitiShkollor: null });
+    setForm({ kategoriId: kategorite[0]?.id ? String(kategorite[0].id) : "", shuma: "", pershkrim: "", marres: "", data: now.toISOString().split("T")[0], metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true, nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "", vitiShkollor: DEFAULT_ACADEMIC_YEAR });
     setSipartnerSuggestions([]);
     setShowSuggestions(false);
     setShowModal(true);
@@ -656,7 +657,7 @@ Shpenzimi do të dalë te ai muaj. A je e sigurt?`)) return;
       kategoriId: String(cellModal.kategoriId), shuma: "", pershkrim: "", marres: "",
       data: new Date(cellModal.year, cellModal.month - 1, 1).toISOString().split("T")[0],
       metoda: "CASH", referenca: "", docType: "KUPON", lloji: "ZYRE", paguar: true,
-      nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "", vitiShkollor: null,
+      nrFature: "", emriBiznesit: "", nrFiskal: "", dataDokumentit: "", vitiShkollor: DEFAULT_ACADEMIC_YEAR,
     });
     setSipartnerSuggestions([]);
     setShowSuggestions(false);
