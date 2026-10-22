@@ -28,8 +28,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.parentName   !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET parentName=?, updatedAt=? WHERE id=?`,   body.parentName, now, sid);
   if (body.parentPhone  !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET parentPhone=?, updatedAt=? WHERE id=?`,  body.parentPhone, now, sid);
   if (body.regularPrice !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET regularPrice=?, updatedAt=? WHERE id=?`, parseFloat(body.regularPrice), now, sid);
-  if (body.discountPct  !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET discountPct=?, updatedAt=? WHERE id=?`,  parseFloat(body.discountPct), now, sid);
-  if (body.manualDiscAmt !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET manualDiscAmt=?, updatedAt=? WHERE id=?`, parseFloat(body.manualDiscAmt), now, sid);
+  if (body.discountPct  !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET discountPct=?, updatedAt=? WHERE id=?`,  parseFloat(body.discountPct) || 0, now, sid);
+  if (body.manualDiscAmt !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET manualDiscAmt=?, updatedAt=? WHERE id=?`, parseFloat(body.manualDiscAmt) || 0, now, sid);
   if (body.notes        !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET notes=?, updatedAt=? WHERE id=?`,        body.notes, now, sid);
   if (body.active       !== undefined) await prisma.$executeRawUnsafe(`UPDATE TimiInvestStudent SET active=?, updatedAt=? WHERE id=?`,       body.active ? 1 : 0, now, sid);
   if (body.stage        !== undefined && ["PROFATURE", "NE_PROCES", "KRYER"].includes(body.stage))

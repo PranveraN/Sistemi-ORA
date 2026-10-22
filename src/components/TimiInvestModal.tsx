@@ -386,8 +386,10 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
     const r = await okOrAlert(fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({
       ...studentForm,
       regularPrice:    parseFloat(studentForm.regularPrice),
-      discountPct:     parseFloat(studentForm.discountPct),
-      studentId:       studentForm.linkedStudentId ? parseInt(studentForm.linkedStudentId) : null,
+      // Fusha e zbrazët = 0 (më parë NaN → "Ruajtja dështoi" kur fshihej zbritja)
+      discountPct:     parseFloat(studentForm.discountPct) || 0,
+      manualDiscAmt:   parseFloat(studentForm.manualDiscAmt) || 0,
+      studentId:      studentForm.linkedStudentId ? parseInt(studentForm.linkedStudentId) : null,
     }) }), "Ruajtja dështoi.");
     if (!r) return; // forma mbetet e hapur — të dhënat e shkruara s'humbin
     setShowStudentForm(false);
