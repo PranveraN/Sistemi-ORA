@@ -10,11 +10,11 @@ import { moduleForPath, firstAllowedPath, isConfigurableRole } from "@/lib/modul
 // /api/students, /api/category-payments, /api/payments, /api/expenses,
 // /api/categories) — një rregull i tillë do të bllokonte thirrje legjitime
 // nga module të tjera të lejuara.
-const API_MODULE_PREFIXES: { prefix: string; moduleKey: string }[] = [
+const API_MODULE_PREFIXES: { prefix: string; moduleKey: string | string[] }[] = [
   { prefix: "/api/investime",          moduleKey: "investime" },
   { prefix: "/api/arka",               moduleKey: "arka" },
   { prefix: "/api/auditimi",           moduleKey: "auditimi" },
-  { prefix: "/api/timi-invest",        moduleKey: "investime" },
+  { prefix: "/api/timi-invest",        moduleKey: ["investime", "timi"] }, // popup-i (Investimet) + moduli i ri TIMI INVEST
   { prefix: "/api/arkiva",             moduleKey: "arkiva" },
   { prefix: "/api/shpenzime",          moduleKey: "shpenzime" },
   { prefix: "/api/librat",             moduleKey: "librat" },
@@ -120,7 +120,7 @@ export default auth((req) => {
 
     if (!isAuthApi && isLoggedIn && role && isConfigurableRole(role)) {
       const match = API_MODULE_PREFIXES.find(m => nextUrl.pathname.startsWith(m.prefix));
-      if (match && !allowedModules.includes(match.moduleKey)) {
+      if (match && ![match.moduleKey].flat().some(k => allowedModules.includes(k))) {
         return NextResponse.json({ error: "Nuk ke leje për këtë modul." }, { status: 403 });
       }
       const isWrite = !["GET", "HEAD", "OPTIONS"].includes(req.method);

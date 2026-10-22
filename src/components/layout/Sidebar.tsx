@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, FileText,
   GraduationCap, BarChart3, Settings, BookOpen,
   ChevronLeft, ChevronRight, UtensilsCrossed,
-  Shirt, BookMarked, NotebookPen, ClipboardList, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip, Sparkles, Vault, ShieldCheck,
+  Shirt, BookMarked, NotebookPen, ClipboardList, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip, Sparkles, Vault, ShieldCheck, Landmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -39,6 +39,7 @@ const navSections = [
       { href: "/librat",    icon: BookOpen,        label: "Librat Angl.", roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/eshkollori",icon: BookMarked,      label: "Eshkollori", roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/invoices",  icon: FileText,        label: "Faturat",    roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/timi-invest", icon: Landmark,      label: "TIMI Invest", roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/dorezimet", icon: ArrowRightLeft,  label: "Dorëzimet",  roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/hyrat",     icon: TrendingUp,     label: "Të Hyrat",   roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/bilanci",    icon: Scale,          label: "Bilanci",      roles: ["ADMIN", "FINANCE"] as Role[] },

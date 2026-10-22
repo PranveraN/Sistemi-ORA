@@ -229,11 +229,16 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;padding:20
 /* ════════════════════════════════════════════════════════════
    MAIN COMPONENT
 ════════════════════════════════════════════════════════════ */
-type View = "list" | "invoices" | "create" | "pagesat";
+export type TimiView = "list" | "invoices" | "create" | "pagesat";
+type View = TimiView;
 
-export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
+// embedded: brenda faqes së modulit TIMI INVEST (/timi-invest/...) — pa sfond, pa titull
+// e pa skeda (navigimi bëhet nga menyja e modulit). Pa këto props: popup-i si më parë.
+export default function TimiInvestModal({ onClose, embedded = false, initialView = "list", views }: {
+  onClose: () => void; embedded?: boolean; initialView?: View; views?: View[];
+}) {
   const mouseDownOnBackdrop = useRef(false);
-  const [view, setView] = useState<View>("list");
+  const [view, setView] = useState<View>(initialView);
   const [students, setStudents] = useState<TimiStudent[]>([]);
   const [invoices, setInvoices] = useState<TimiInvoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -627,13 +632,13 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
   /* ════════════════════ RENDER ════════════════════ */
   return (
     <>
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-      onMouseDown={(e) => { mouseDownOnBackdrop.current = e.target === e.currentTarget; }}
-      onClick={(e) => { if (mouseDownOnBackdrop.current && e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className={embedded ? "" : "fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"}
+      onMouseDown={embedded ? undefined : (e) => { mouseDownOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={embedded ? undefined : (e) => { if (mouseDownOnBackdrop.current && e.target === e.currentTarget) onClose(); }}>
+      <div className={embedded ? "bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 w-full flex flex-col" : "bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col"} onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0 bg-amber-50 dark:bg-amber-900/10 rounded-t-2xl">
+        {!embedded && <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0 bg-amber-50 dark:bg-amber-900/10 rounded-t-2xl">
           <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
             <span className="text-white font-black text-xs leading-none text-center">TIMI<br/>INV</span>
           </div>
@@ -644,11 +649,11 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <X className="w-4 h-4 text-slate-400" />
           </button>
-        </div>
+        </div>}
 
         {/* Tab bar */}
-        <div className="flex items-center gap-1 px-4 pt-3 pb-0 flex-shrink-0">
-          {([["list","Nxënësit",<Users className="w-3.5 h-3.5" key="u"/>],["invoices","Faturat",<History className="w-3.5 h-3.5" key="h"/>],["create","Krijo Profaturë",<FileText className="w-3.5 h-3.5" key="f"/>],["pagesat","Pagesat nga TIMI",<Landmark className="w-3.5 h-3.5" key="p"/>]] as [View, string, ReactNode][]).map(([v, label, icon]) => (
+        {(!embedded || (views && views.length > 1)) && <div className="flex items-center gap-1 px-4 pt-3 pb-0 flex-shrink-0">
+          {([["list","Nxënësit",<Users className="w-3.5 h-3.5" key="u"/>],["invoices","Faturat",<History className="w-3.5 h-3.5" key="h"/>],["create","Krijo Profaturë",<FileText className="w-3.5 h-3.5" key="f"/>],["pagesat","Pagesat nga TIMI",<Landmark className="w-3.5 h-3.5" key="p"/>]] as [View, string, ReactNode][]).filter(([v]) => !embedded || !views || views.includes(v)).map(([v, label, icon]) => (
             <button key={v} onClick={() => setView(v)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-t-lg text-sm font-medium border-b-2 transition-all ${
                 view === v
@@ -663,9 +668,9 @@ export default function TimiInvestModal({ onClose }: { onClose: () => void }) {
               )}
             </button>
           ))}
-        </div>
+        </div>}
 
-        <div className="overflow-y-auto flex-1 p-5">
+        <div className={embedded ? "flex-1 p-5" : "overflow-y-auto flex-1 p-5"}>
 
           {/* ════ VIEW: STUDENT LIST ════ */}
           {view === "list" && (

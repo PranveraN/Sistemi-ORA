@@ -42,6 +42,7 @@ export const MODULES: ModuleDef[] = [
   { key: "arkiva",          label: "Arkiva",                    pathPrefixes: ["/arkiva"] },
   { key: "fletorja",        label: "Fletorja",                  pathPrefixes: ["/fletorja"] },
   { key: "investime",       label: "Investimet",                pathPrefixes: ["/investime"] },
+  { key: "timi",            label: "TIMI Invest",               pathPrefixes: ["/timi-invest"] },
   { key: "arka",            label: "Numërimi i Arkave",         pathPrefixes: ["/arka"] },
   { key: "auditimi",        label: "Auditimi",                  pathPrefixes: ["/auditimi"] },
   { key: "historiku",       label: "Historiku (Audit Log)",     pathPrefixes: ["/historiku"] },
@@ -74,7 +75,7 @@ export type ConfigurableRole = (typeof CONFIGURABLE_ROLES)[number];
 const FINANCE_MODULES = [
   "shkollimi", "eshkollori", "ushqimi", "uniforma", "librat",
   "payments", "invoices", "faturat-rregullta", "kerkesat", "materiale",
-  "shpenzime", "dorezimet", "hyrat", "bilanci", "investime", "reports", "arka",
+  "shpenzime", "dorezimet", "hyrat", "bilanci", "investime", "reports", "arka", "timi",
 ];
 const SECRETARY_MODULES = ["sms", "sekretaria", "dokumentet"];
 const SHARED_MODULES = ["dashboard", "students", "families", "levizjet", "regjistrimet", "classes", "arkiva", "fletorja"];
