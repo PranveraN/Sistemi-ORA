@@ -11,7 +11,7 @@ import { currentSchoolYearStart } from "@/lib/academicYear";
 // Fëmijëve u llogaritet shuma bruto (÷ (1 − 4,66%)), komisioni del si shpenzim i shkollës.
 // Logjika: src/lib/timiPagesat.ts · API: /api/timi-invest/pagesat
 
-interface Femije { tiId: number; studentId: number; emri: string; klasa: string | null; prindi: string; statusi: string; cmimiCents: number; ngaTimiCents: number; paguarCents: number; mbetetCents: number; faza: string }
+interface Femije { tiId: number; studentId: number; emri: string; klasa: string | null; prindi: string; statusi: string; cmimiCents: number; ngaTimiCents: number; paguarCents: number; mbetetCents: number; faza: string; meDoreCents?: number }
 interface Pagese { id: number; data: string; shumaCents: number; brutoCents: number; komisionCents: number; komisionPct: number; referenca: string | null; prindi: string | null; shenim: string | null; createdByName: string | null; ndarja: { studentId: number; emri: string; cents: number }[] }
 interface Data { viti: number; femijet: Femije[]; pagesat: Pagese[]; komisionPct: number }
 interface Profature { id: number; number: string; parentName: string; timiStudentIds?: string | null }
@@ -87,7 +87,11 @@ export default function TimiPagesatPanel() {
                     <td className="px-3 py-1.5 font-medium text-slate-800 dark:text-slate-100">{f.emri} <span className="text-xs text-slate-400">{f.klasa ?? ""}</span></td>
                     <td className="px-3 py-1.5 text-slate-500">{f.prindi}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{eur(f.cmimiCents)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{f.ngaTimiCents ? eur(f.ngaTimiCents) : "—"}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-emerald-700 dark:text-emerald-400">
+                      {f.ngaTimiCents ? eur(f.ngaTimiCents) : (f.meDoreCents ?? 0) > 0 ? null : "—"}
+                      {/* Muajt e shënuar me dorë (para formularit "Pagesat nga TIMI") — vetëm pamje */}
+                      {(f.meDoreCents ?? 0) > 0 && <span className="block text-slate-500 dark:text-slate-400" title="Muaj TIMI të shënuar me dorë si të paguar (bankë), jo përmes Pagesat nga TIMI">{eur(f.meDoreCents!)} <span className="text-[10px]">(me dorë)</span></span>}
+                    </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{eur(f.paguarCents)}</td>
                     <td className={`px-3 py-1.5 text-right tabular-nums font-semibold ${f.mbetetCents > 0 ? "text-red-700 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400"}`}>{f.mbetetCents > 0 ? eur(f.mbetetCents) : "✓"}</td>
                     <td className="px-3 py-1.5 text-xs text-slate-500">{FAZA[f.faza] ?? f.faza}</td>

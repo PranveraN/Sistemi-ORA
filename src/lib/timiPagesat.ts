@@ -219,6 +219,8 @@ export async function fshiTimiPagese(db: Db, orgId: number, actor: { name: strin
 export interface FemijeTimi {
   tiId: number; studentId: number; emri: string; klasa: string | null; prindi: string; statusi: string;
   cmimiCents: number; ngaTimiCents: number; paguarCents: number; mbetetCents: number; faza: string;
+  /** Muaj TIMI të shënuar me dorë si të paguar (me bankë), jo përmes "Pagesat nga TIMI" — p.sh. Grupi A (qershor–gusht). Vetëm për pamje. */
+  meDoreCents: number;
 }
 
 /** Për secilin fëmijë TIMI: çmimi, sa ka paguar TIMI (bruto), sa është paguar gjithsej, sa mbetet. */
@@ -229,10 +231,12 @@ export async function permbledhjaTimi(db: Db, orgId: number, viti: number) {
     db.timiPagese.findMany({ where: { organizationId: orgId, deletedAt: null }, orderBy: [{ data: "desc" }, { id: "desc" }] }),
   ]);
   const ids = links.map(l => l.studentId!);
-  const [studs, pays] = await Promise.all([
+  const [studs, pays, tiPays] = await Promise.all([
     db.student.findMany({ where: { id: { in: ids } }, select: { id: true, firstName: true, lastName: true, parentName: true, status: true, class: { select: { name: true } } } }),
     cat ? db.payment.groupBy({ by: ["studentId"], where: { organizationId: orgId, categoryId: cat.id, studentId: { in: ids }, OR: yearMonths(viti) }, _sum: { paidAmount: true } }) : Promise.resolve([]),
+    cat ? db.payment.groupBy({ by: ["studentId"], where: { organizationId: orgId, categoryId: cat.id, studentId: { in: ids }, description: { startsWith: "TI_MUAJI_" }, method: { in: ["BANK", "CARD", "ONLINE"] }, OR: yearMonths(viti) }, _sum: { paidAmount: true } }) : Promise.resolve([]),
   ]);
+  const tiBank = new Map(tiPays.map(p => [p.studentId, e2c(p._sum.paidAmount ?? 0)]));
   const ngaTimi = new Map<number, number>();
   for (const p of pagesat.filter(p => p.vitiShkollor === viti)) for (const f of JSON.parse(p.ndarja) as NdarjaFemije[]) ngaTimi.set(f.studentId, (ngaTimi.get(f.studentId) ?? 0) + f.cents);
   const paid = new Map(pays.map(p => [p.studentId, e2c(p._sum.paidAmount ?? 0)]));
@@ -244,6 +248,7 @@ export async function permbledhjaTimi(db: Db, orgId: number, viti: number) {
       tiId: l.id, studentId: s.id, emri: `${s.firstName} ${s.lastName}`.replace(/\s+/g, " ").trim(), klasa: s.class?.name ?? null,
       prindi: l.parentName || s.parentName || "", statusi: s.status, cmimiCents: cmimi, ngaTimiCents: ngaTimi.get(s.id) ?? 0,
       paguarCents: pg, mbetetCents: Math.max(0, cmimi - pg), faza: l.stage,
+      meDoreCents: Math.max(0, (tiBank.get(s.id) ?? 0) - (ngaTimi.get(s.id) ?? 0)),
     }];
   }).sort((a, b) => a.emri.localeCompare(b.emri));
   return { viti, femijet, pagesat: pagesat.map(p => ({ ...p, ndarja: JSON.parse(p.ndarja) as NdarjaFemije[] })) };
