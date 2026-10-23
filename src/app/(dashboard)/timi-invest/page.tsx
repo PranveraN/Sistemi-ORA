@@ -37,6 +37,13 @@ const COLS = [
 ] as const;
 type ColKey = (typeof COLS)[number]["key"];
 const PAGE = 25;
+// Rregulli i fazës (i njëjti si rifreskoFazen te src/lib/timiPagesat.ts): pa pagesë → Profaturë,
+// ka filluar → Në proces, e shlyer (brenda 0,50 €) → E kryer. Pezulluar/Anuluar s'preken kurrë.
+function fazaSipasPagesave(r: { faza: string; paguarCents: number; cmimiCents: number }): string {
+  if (r.faza === "PEZULLUAR" || r.faza === "ANULUAR") return r.faza;
+  if (r.cmimiCents > 0 && r.paguarCents >= r.cmimiCents - 50) return "KRYER";
+  return r.paguarCents > 0 ? "NE_PROCES" : "PROFATURE";
+}
 const eur = (c: number) => formatCurrency(c / 100);
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const LS_COLS = "timi-pasqyra-cols";
@@ -55,20 +62,34 @@ export default function TimiPasqyraPage() {
   const [cols, setCols] = useState<Set<ColKey>>(new Set(COLS.map(c => c.key)));
   const [showCols, setShowCols] = useState(false);
   const [updated, setUpdated] = useState<Date | null>(null);
+  const [reload, setReload] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [showRregullo, setShowRregullo] = useState(false);
+  const [perjashto, setPerjashto] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     try { const v = localStorage.getItem(LS_COLS); if (v) setCols(new Set(JSON.parse(v))); } catch { /* pa localStorage */ }
   }, []);
   useEffect(() => {
     let off = false;
-    setRows(null); setError("");
+    if (!reload) setRows(null);
+    setError("");
     fetch(`/api/timi-invest/pasqyra?viti=${viti}`)
       .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Gabim"); return d; })
       .then(d => { if (!off) { setRows(d.rreshtat); setUpdated(new Date()); } })
       .catch(e => { if (!off) setError(e.message); });
     return () => { off = true; };
-  }, [viti]);
+  }, [viti, reload]);
   useEffect(() => { setPage(1); }, [q, klasa, cmimi, chip, family, viti]);
+
+  async function ndryshoFazat(ndryshime: { tiId: number; stage: string }[], arsye: string) {
+    if (!ndryshime.length) return;
+    setBusy(true);
+    const r = await fetch("/api/timi-invest/fazat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ndryshime, arsye }) });
+    setBusy(false);
+    if (!r.ok) { alert((await r.json().catch(() => ({}))).error || "Ndryshimi i fazës dështoi."); return; }
+    setReload(x => x + 1);
+  }
 
   function toggleCol(k: ColKey) {
     setCols(prev => {
@@ -149,6 +170,7 @@ export default function TimiPasqyraPage() {
   }
 
   const allOnPageSelected = view.length > 0 && view.every(r => sel.has(r.tiId));
+  const propozime = all.filter(r => r.statusi === "ACTIVE" && fazaSipasPagesave(r) !== r.faza);
   const pct = (a: number) => (tot.cmimi > 0 ? (a / tot.cmimi) * 100 : 0);
 
   return (
@@ -162,6 +184,11 @@ export default function TimiPasqyraPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {rows && propozime.length > 0 && (
+            <button onClick={() => { setPerjashto(new Set()); setShowRregullo(true); }} className="btn-secondary !border-amber-300 !text-amber-800 dark:!text-amber-300">
+              Rregullo fazat sipas pagesave ({propozime.length})
+            </button>
+          )}
           <button onClick={() => exportExcel()} disabled={!rows} className="btn-secondary"><Download className="w-4 h-4" />Eksporto Excel</button>
           <Link href="/timi-invest/pagesat" className="btn-primary !bg-amber-500 hover:!bg-amber-600">+ Regjistro pagesë nga TIMI</Link>
         </div>
@@ -260,7 +287,16 @@ export default function TimiPasqyraPage() {
           <span className="text-sm font-semibold text-violet-800 dark:text-violet-200 px-2">{sel.size} të zgjedhur</span>
           <button onClick={() => exportExcel(all.filter(r => sel.has(r.tiId)))} className="btn-secondary !py-1.5 !text-xs"><Download className="w-3.5 h-3.5" />Eksporto</button>
           <button onClick={() => setSel(new Set())} className="text-xs text-slate-500 hover:underline px-2">Hiq zgjedhjen</button>
-          <span className="text-[11px] text-slate-400">Veprimet e tjera (faza, profaturë, pagesë në grup, SMS) vijnë në fazat e ardhshme.</span>
+          <select disabled={busy} defaultValue="" className="form-input !w-auto !py-1 !text-xs"
+            onChange={e => {
+              const st = e.target.value; e.target.value = ""; if (!st) return;
+              if (!confirm(`Ndrysho fazën në "${FAZA[st]?.label ?? st}" për ${sel.size} fëmijë?`)) return;
+              ndryshoFazat([...sel].map(tiId => ({ tiId, stage: st })), "Ndryshim në grup nga Pasqyra").then(() => setSel(new Set()));
+            }}>
+            <option value="">Ndrysho fazën…</option>
+            {Object.entries(FAZA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <span className="text-[11px] text-slate-400">Profaturë, pagesë në grup dhe SMS vijnë në fazat e ardhshme.</span>
         </div>
       )}
 
@@ -352,7 +388,11 @@ export default function TimiPasqyraPage() {
                         )}
                         {cols.has("faza") && (
                           <td className="px-3 py-2">
-                            <span className={`badge ${FAZA[r.faza]?.cls ?? "bg-slate-100 text-slate-600"}`}>{FAZA[r.faza]?.label ?? r.faza}</span>
+                            <select disabled={busy} value={r.faza} title="Ndrysho fazën (ruhet te Historiku)"
+                              onChange={e => ndryshoFazat([{ tiId: r.tiId, stage: e.target.value }], "Ndryshim manual nga Pasqyra")}
+                              className={`badge border-0 cursor-pointer pr-1 ${FAZA[r.faza]?.cls ?? "bg-slate-100 text-slate-600"}`}>
+                              {Object.entries(FAZA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                            </select>
                           </td>
                         )}
                         <td className="px-3 py-2">
@@ -396,6 +436,51 @@ export default function TimiPasqyraPage() {
           </div>
         )}
       </div>
+      {showRregullo && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowRregullo(false)}>
+          <div className="card w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+              <h2 className="font-semibold text-slate-900 dark:text-white">Rregullo fazat sipas pagesave</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                <b>Profaturë</b> = s&apos;ka asnjë pagesë · <b>Në proces</b> = ka filluar pagesat · <b>E kryer</b> = e ka shlyer çmimin.
+                Pezulluar/Anuluar s&apos;preken. Hiqni ✓ te ata që s&apos;doni t&apos;i ndryshoni. Asnjë pagesë s&apos;ndryshon.
+              </p>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/60 sticky top-0">
+                  <tr><th className="px-3 py-2 w-8" /><th className="px-3 py-2 text-left">Fëmija</th><th className="px-3 py-2 text-right">Paguar / Çmimi</th><th className="px-3 py-2 text-left">Faza tani</th><th className="px-3 py-2 text-left">Bëhet</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
+                  {propozime.map(r => {
+                    const re = fazaSipasPagesave(r);
+                    return (
+                      <tr key={r.tiId} className={perjashto.has(r.tiId) ? "opacity-40" : ""}>
+                        <td className="px-3 py-1.5"><input type="checkbox" checked={!perjashto.has(r.tiId)} onChange={() => setPerjashto(p => { const n = new Set(p); if (n.has(r.tiId)) n.delete(r.tiId); else n.add(r.tiId); return n; })} /></td>
+                        <td className="px-3 py-1.5">{r.emri} <span className="text-xs text-slate-400">{r.klasa ?? ""}</span></td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-xs">{eur(r.paguarCents)} / {eur(r.cmimiCents)}</td>
+                        <td className="px-3 py-1.5"><span className={`badge ${FAZA[r.faza]?.cls ?? ""}`}>{FAZA[r.faza]?.label ?? r.faza}</span></td>
+                        <td className="px-3 py-1.5"><span className={`badge ${FAZA[re]?.cls ?? ""}`}>→ {FAZA[re]?.label ?? re}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-500">{propozime.length - perjashto.size} ndryshime do të zbatohen · ruhen te Historiku</span>
+              <div className="flex gap-2">
+                <button onClick={() => setShowRregullo(false)} className="btn-secondary">Anulo</button>
+                <button disabled={busy || propozime.length === perjashto.size} className="btn-primary"
+                  onClick={async () => { await ndryshoFazat(propozime.filter(r => !perjashto.has(r.tiId)).map(r => ({ tiId: r.tiId, stage: fazaSipasPagesave(r) })), "Rregullim sipas pagesave (Pasqyra)"); setShowRregullo(false); }}>
+                  Apliko
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <p className="text-[11px] text-slate-400">
         Të dhënat lexohen nga e njëjta tabelë pagesash si Shkollimi dhe skeda &quot;Pagesat nga TIMI&quot; — asgjë s&apos;dyfishohet. &quot;Me dorë&quot; = muaj TIMI të shënuar si të paguar me bankë para formularit &quot;Pagesat nga TIMI&quot; (p.sh. qershor–gusht); janë tashmë brenda &quot;Paguar gjithsej&quot;.
       </p>
