@@ -22,7 +22,7 @@ interface TimiStudent {
   discountPct: number;
   manualDiscAmt: number;
   active: boolean;
-  stage: "PROFATURE" | "NE_PROCES" | "KRYER";
+  stage: "PROFATURE" | "NE_PROCES" | "KRYER" | "PEZULLUAR" | "ANULUAR";
   notes: string | null;
   studentId: number | null;
 }
@@ -31,6 +31,8 @@ const STAGE_META: Record<TimiStudent["stage"], { label: string; dot: string; bad
   PROFATURE: { label: "Profaturë", dot: "🔵", badge: "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" },
   NE_PROCES: { label: "Në Proces", dot: "🟡", badge: "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" },
   KRYER:     { label: "E Kryer",   dot: "🟢", badge: "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" },
+  PEZULLUAR: { label: "Pezulluar", dot: "⏸️", badge: "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300" },
+  ANULUAR:   { label: "Anuluar",   dot: "⛔", badge: "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400" },
 };
 
 interface ProfatureItem {
@@ -387,6 +389,20 @@ export default function TimiInvestModal({ onClose, embedded = false, initialView
 
   async function saveStudent() {
     const method = editStudent ? "PUT" : "POST";
+    // Ndryshimi i çmimit/zbritjes kërkon arsye (ruhet te Historiku i modulit TIMI)
+    let reason: string | undefined;
+    if (editStudent) {
+      const num = (v: string) => parseFloat(v) || 0;
+      const priceChanged = num(studentForm.regularPrice) !== editStudent.regularPrice
+        || num(studentForm.discountPct) !== editStudent.discountPct
+        || num(studentForm.manualDiscAmt) !== (editStudent.manualDiscAmt ?? 0);
+      if (priceChanged) {
+        const r = window.prompt("Po ndryshoni çmimin ose zbritjen. Shkruani arsyen (e detyrueshme — ruhet në historik):");
+        if (r === null) return;
+        if (r.trim().length < 3) { alert("Arsyeja duhet të ketë të paktën 3 shenja."); return; }
+        reason = r.trim();
+      }
+    }
     const url    = editStudent ? `/api/timi-invest/students/${editStudent.id}` : "/api/timi-invest/students";
     const r = await okOrAlert(fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({
       ...studentForm,
@@ -395,6 +411,7 @@ export default function TimiInvestModal({ onClose, embedded = false, initialView
       discountPct:     parseFloat(studentForm.discountPct) || 0,
       manualDiscAmt:   parseFloat(studentForm.manualDiscAmt) || 0,
       studentId:      studentForm.linkedStudentId ? parseInt(studentForm.linkedStudentId) : null,
+      ...(reason ? { reason } : {}),
     }) }), "Ruajtja dështoi.");
     if (!r) return; // forma mbetet e hapur — të dhënat e shkruara s'humbin
     setShowStudentForm(false);
@@ -618,6 +635,8 @@ export default function TimiInvestModal({ onClose, embedded = false, initialView
     PROFATURE: students.filter(s => s.stage === "PROFATURE").length,
     NE_PROCES: students.filter(s => s.stage === "NE_PROCES").length,
     KRYER:     students.filter(s => s.stage === "KRYER").length,
+    PEZULLUAR: students.filter(s => s.stage === "PEZULLUAR").length,
+    ANULUAR:   students.filter(s => s.stage === "ANULUAR").length,
   };
 
   const filteredInvoices = invoiceListQuery.trim()
@@ -684,7 +703,8 @@ export default function TimiInvestModal({ onClose, embedded = false, initialView
                   <p className="text-xs text-slate-400">Të Gjithë</p>
                   <p className="text-lg font-bold text-slate-700 dark:text-slate-200">{students.length}</p>
                 </button>
-                {(Object.keys(STAGE_META) as TimiStudent["stage"][]).map(stage => (
+                {/* Pezulluar/Anuluar shfaqen vetëm kur ka fëmijë në to (pamja e vjetër s'ndryshon) */}
+                {(Object.keys(STAGE_META) as TimiStudent["stage"][]).filter(st => !["PEZULLUAR", "ANULUAR"].includes(st) || stageCounts[st] > 0).map(stage => (
                   <button
                     key={stage}
                     onClick={() => setStageFilter(stage)}

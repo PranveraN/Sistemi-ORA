@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { computeTiExpectedPrice } from "@/lib/timiInvestPricing";
 import { withAuditReason } from "@/lib/audit/context";
+import { logTimi, type TimiActor } from "@/lib/timiAudit";
 
 // Pagesat nga TIMI Invest — çfarëdo shume, kurdo (e plotë ose pjesë-pjesë, 10 ose 12 muaj:
 // varet nga marrëveshja e prindit me TIMI). Shkolla regjistron vetëm atë që hyn në bankë.
@@ -102,6 +103,8 @@ async function kestetTimi(tx: Tx, orgId: number, categoryId: number, studentId: 
 async function rifreskoFazen(tx: Tx, orgId: number, categoryId: number, studentId: number, viti: number) {
   const link = await tx.timiInvestStudent.findFirst({ where: { studentId, active: true } });
   if (!link) return;
+  // Fazat manuale "Pezulluar" / "Anuluar" (moduli TIMI, Faza 2) s'ndryshohen vetë nga pagesat
+  if (link.stage === "PEZULLUAR" || link.stage === "ANULUAR") return;
   const paid = (await tx.payment.aggregate({ where: { organizationId: orgId, categoryId, studentId, OR: yearMonths(viti) }, _sum: { paidAmount: true } }))._sum.paidAmount ?? 0;
   const price = computeTiExpectedPrice(link);
   const stage = paid >= price - 0.5 ? "KRYER" : paid > 0 ? "NE_PROCES" : link.stage === "KRYER" ? "NE_PROCES" : link.stage;
@@ -191,17 +194,34 @@ export async function krijoTimiPagese(db: Db, orgId: number, actor: { id: number
   });
 }
 
-/** Kthen mbrapsht një pagesë TIMI: ul pagesat te këstet, fshin (logjikisht) komisionin. */
-export async function fshiTimiPagese(db: Db, orgId: number, actor: { name: string | null }, id: number) {
-  const p = await db.timiPagese.findFirst({ where: { id, organizationId: orgId, deletedAt: null } });
+interface SnapRresht { id: number; paidAmount: number; paidDate: string | null; method: string | null; status: string; balance: number; receiptNumber: string | null }
+interface Snapshot { rreshtat: SnapRresht[]; faza: { tiId: number; stage: string }[] }
+
+/**
+ * STORNO e një pagese nga TIMI (Faza 2): ul pagesat te këstet, anulon (logjikisht) komisionin
+ * dhe e shënon pagesën si të stornuar — asgjë s'fshihet fizikisht. Ruhet "fotografia" e muajve
+ * dhe e fazave para stornos, që "Rikthe" t'i kthejë saktësisht. Gjithçka në një transaksion.
+ */
+export async function fshiTimiPagese(db: Db, orgId: number, actor: { id?: number | null; name: string | null }, id: number, arsye?: string | null) {
+  const p = await db.timiPagese.findFirst({ where: { id, organizationId: orgId } });
   if (!p) throw new TimiError("Pagesa s'u gjet.");
+  if (p.deletedAt) throw new TimiError("Kjo pagesë është stornuar tashmë.");
   const ndarja = JSON.parse(p.ndarja) as NdarjaFemije[];
   const cat = await db.paymentCategory.findFirst({ where: { name: "Shkollimi", organizationId: orgId }, select: { id: true } });
+  const a: TimiActor = { id: actor.id ?? null, name: actor.name };
   await db.$transaction(async tx => {
+    // Kontroll i dytë brenda transaksionit (radha e shkrimeve) — kundër stornos së dyfishtë
+    const fresh = await tx.timiPagese.findUnique({ where: { id }, select: { deletedAt: true } });
+    if (fresh?.deletedAt) throw new TimiError("Kjo pagesë është stornuar tashmë.");
+    const snap: Snapshot = { rreshtat: [], faza: [] };
+    const tiOf = new Map<number, number>();
     for (const f of ndarja) {
+      const link = await tx.timiInvestStudent.findFirst({ where: { studentId: f.studentId, active: true }, select: { id: true, stage: true } });
+      if (link) { snap.faza.push({ tiId: link.id, stage: link.stage }); tiOf.set(f.studentId, link.id); }
       for (const r of f.rreshtat) {
-        const row = await tx.payment.findUnique({ where: { id: r.paymentId }, select: { paidAmount: true, finalAmount: true, dueDate: true, paidDate: true, method: true } });
+        const row = await tx.payment.findUnique({ where: { id: r.paymentId }, select: { paidAmount: true, finalAmount: true, dueDate: true, paidDate: true, method: true, status: true, balance: true, receiptNumber: true } });
         if (!row) continue;
+        snap.rreshtat.push({ id: r.paymentId, paidAmount: row.paidAmount, paidDate: row.paidDate?.toISOString() ?? null, method: row.method, status: row.status, balance: row.balance, receiptNumber: row.receiptNumber });
         const paid = Math.max(0, c2e(e2c(row.paidAmount) - r.cents));
         await tx.payment.update({
           where: { id: r.paymentId },
@@ -211,7 +231,55 @@ export async function fshiTimiPagese(db: Db, orgId: number, actor: { name: strin
       if (cat) await rifreskoFazen(tx, orgId, cat.id, f.studentId, p.vitiShkollor);
     }
     if (p.shpenzimId) await tx.shpenzim.update({ where: { id: p.shpenzimId }, data: { deletedAt: new Date(), deletedByName: actor.name } });
-    await tx.timiPagese.update({ where: { id }, data: { deletedAt: new Date(), deletedByName: actor.name } });
+    await tx.timiPagese.update({ where: { id }, data: { deletedAt: new Date(), deletedByName: actor.name, stornoArsye: arsye?.trim() || null, stornoSnapshot: JSON.stringify(snap) } });
+    await logTimi(tx, orgId, a, ndarja.map(f => ({
+      action: "STORNO" as const, entity: "TimiPagese" as const, entityId: id, studentId: f.studentId,
+      tiId: tiOf.get(f.studentId) ?? null,
+      field: "pagesa", oldValue: `${c2e(f.cents)} € (${p.referenca ?? "pa ref."}, ${p.data.toISOString().slice(0, 10)})`, newValue: "e stornuar", reason: arsye,
+    })));
+  });
+  return p;
+}
+
+/**
+ * RIKTHE një pagesë të stornuar: i kthen muajt, komisionin dhe fazat SAKTËSISHT si ishin para
+ * stornos (nga fotografia). Refuzohet nëse pagesa s'është e stornuar, s'ka fotografi (u fshi
+ * para Fazës 2), ose nëse muajt janë ndryshuar pas stornos (që të mos mbishkruhet pagesë tjetër).
+ */
+export async function rikthejTimiPagese(db: Db, orgId: number, actor: TimiActor, id: number, arsye?: string | null) {
+  const p = await db.timiPagese.findFirst({ where: { id, organizationId: orgId } });
+  if (!p) throw new TimiError("Pagesa s'u gjet.");
+  if (!p.deletedAt) throw new TimiError("Kjo pagesë s'është e stornuar — s'ka çka të rikthehet.");
+  if (!p.stornoSnapshot) throw new TimiError("Kjo pagesë u fshi para versionit me Storno/Rikthe — s'mund të rikthehet automatikisht. Regjistrojeni sërish nëse duhet.");
+  const snap = JSON.parse(p.stornoSnapshot) as Snapshot;
+  const ndarja = JSON.parse(p.ndarja) as NdarjaFemije[];
+  const centsByRow = new Map<number, number>();
+  for (const f of ndarja) for (const r of f.rreshtat) centsByRow.set(r.paymentId, (centsByRow.get(r.paymentId) ?? 0) + r.cents);
+  await db.$transaction(async tx => {
+    const fresh = await tx.timiPagese.findUnique({ where: { id }, select: { deletedAt: true } });
+    if (!fresh?.deletedAt) throw new TimiError("Kjo pagesë është rikthyer tashmë.");
+    for (const s0 of snap.rreshtat) {
+      const row = await tx.payment.findUnique({ where: { id: s0.id }, select: { paidAmount: true } });
+      const pritet = Math.max(0, e2c(s0.paidAmount) - (centsByRow.get(s0.id) ?? 0));
+      if (!row || e2c(row.paidAmount) !== pritet) {
+        throw new TimiError("Muajt e kësaj pagese janë ndryshuar pas stornos (p.sh. u regjistrua pagesë tjetër) — s'mund të rikthehet automatikisht pa mbishkruar atë ndryshim. Kontrolloni muajt te Shkollimi.");
+      }
+    }
+    for (const s0 of snap.rreshtat) {
+      await tx.payment.update({
+        where: { id: s0.id },
+        data: { paidAmount: s0.paidAmount, paidDate: s0.paidDate ? new Date(s0.paidDate) : null, method: s0.method, status: s0.status, balance: s0.balance, receiptNumber: s0.receiptNumber },
+      });
+    }
+    for (const fz of snap.faza) await tx.timiInvestStudent.update({ where: { id: fz.tiId }, data: { stage: fz.stage } });
+    const tiOf = new Map<number, number>();
+    for (const f of ndarja) { const l = await tx.timiInvestStudent.findFirst({ where: { studentId: f.studentId, active: true }, select: { id: true } }); if (l) tiOf.set(f.studentId, l.id); }
+    if (p.shpenzimId) await tx.shpenzim.update({ where: { id: p.shpenzimId }, data: { deletedAt: null, deletedByName: null } });
+    await tx.timiPagese.update({ where: { id }, data: { deletedAt: null, deletedByName: null, rikthyerAt: new Date(), rikthyerByName: actor.name } });
+    await logTimi(tx, orgId, actor, ndarja.map(f => ({
+      action: "RIKTHE" as const, entity: "TimiPagese" as const, entityId: id, studentId: f.studentId, tiId: tiOf.get(f.studentId) ?? null,
+      field: "pagesa", oldValue: "e stornuar", newValue: `${c2e(f.cents)} € (${p.referenca ?? "pa ref."}, ${p.data.toISOString().slice(0, 10)})`, reason: arsye,
+    })));
   });
   return p;
 }

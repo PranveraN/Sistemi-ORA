@@ -23,6 +23,8 @@ const FAZA: Record<string, { label: string; cls: string }> = {
   NE_PROCES: { label: "Në proces", cls: "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
   PROFATURE: { label: "Profaturë", cls: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
   KRYER:     { label: "E kryer",   cls: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  PEZULLUAR: { label: "Pezulluar", cls: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
+  ANULUAR:   { label: "Anuluar",   cls: "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
 };
 const VEM: Record<Vemendje, string> = {
   DYFISH: "Dyfish?", TEPRICE: "Tepricë", PROFATURE_30: "Profaturë > 30 ditë", FAZA: "Faza s'përputhet",
@@ -309,7 +311,7 @@ export default function TimiPasqyraPage() {
                           <input type="checkbox" checked={sel.has(r.tiId)} onChange={() => setSel(prev => { const n = new Set(prev); if (n.has(r.tiId)) n.delete(r.tiId); else n.add(r.tiId); return n; })} />
                         </td>
                         <td className="px-3 py-2">
-                          <span className="font-semibold text-slate-800 dark:text-slate-100">{r.emri}</span>
+                          <Link href={`/timi-invest/femijet/${r.tiId}`} className="font-semibold text-slate-800 dark:text-slate-100 hover:text-primary-600 hover:underline">{r.emri}</Link>
                           <span className="ml-1.5 text-xs text-slate-400">{r.klasa ?? ""}</span>
                           {r.vemendje.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-0.5">

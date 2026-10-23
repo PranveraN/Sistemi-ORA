@@ -1359,8 +1359,35 @@ model TimiPagese {
   createdById    Int?
   createdByName  String?
   createdAt      DateTime  @default(now())
-  deletedAt      DateTime?
-  deletedByName  String?
+  deletedAt      DateTime? // = storno_at (pagesa mbetet në bazë, vetëm s'llogaritet)
+  deletedByName  String?   // = storno_by
+  // Faza 2 e modulit TIMI (vetëm shtesë, të gjitha nullable): arsyeja e stornos dhe
+  // "fotografia" e muajve/komisionit para stornos — që "Rikthe" t'i kthejë saktësisht.
+  stornoArsye    String?
+  stornoSnapshot String?   // JSON: { rreshtat: [{id, paidAmount, paidDate, method, status, balance, receiptNumber}], faza: [{tiId, stage}] }
+  rikthyerAt     DateTime?
+  rikthyerByName String?
+}
+
+// Moduli TIMI INVEST — historiku i ndryshimeve (Faza 2). Vetëm shtohet, s'ndryshohet.
+model TimiAuditLog {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @default(1)
+  createdAt      DateTime @default(now())
+  userId         Int?
+  userName       String?
+  action         String   // CREATE | UPDATE | DELETE | STORNO | RIKTHE
+  entity         String   // TimiInvestStudent | TimiPagese
+  entityId       Int
+  tiId           Int?     // TimiInvestStudent.id (për kartelën e fëmijës)
+  studentId      Int?
+  field          String?
+  oldValue       String?
+  newValue       String?
+  reason         String?
+
+  @@index([tiId])
+  @@index([entity, entityId])
 }
 
 model TimiInvestInvoice {

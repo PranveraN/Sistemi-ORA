@@ -94,7 +94,8 @@ export async function pasqyraTimi(db: PrismaClient, orgId: number, viti: number)
     const dite = prof ? Math.floor((now - prof.data.getTime()) / DAY) : null;
     if (f.faza === "PROFATURE" && f.paguarCents === 0 && dite != null && dite > 30) v.push("PROFATURE_30");
     // Faza që s'përputhet me shifrat (e njëjta rregull si rifreskoFazen, pa e ndryshuar)
-    if ((f.faza === "KRYER" && f.paguarCents < f.cmimiCents - 50) || (f.faza !== "KRYER" && f.cmimiCents > 0 && f.paguarCents >= f.cmimiCents - 50)) v.push("FAZA");
+    const manuale = f.faza === "PEZULLUAR" || f.faza === "ANULUAR"; // faza të vendosura me dorë
+    if (!manuale && ((f.faza === "KRYER" && f.paguarCents < f.cmimiCents - 50) || (f.faza !== "KRYER" && f.cmimiCents > 0 && f.paguarCents >= f.cmimiCents - 50))) v.push("FAZA");
     return {
       ...f,
       fundit: lastByStudent.get(f.studentId) ?? null,
