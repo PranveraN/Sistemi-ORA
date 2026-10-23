@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Header from "@/components/layout/Header";
-import { LayoutDashboard, Users, Landmark, FileText, Scale, BarChart3, History, Settings } from "lucide-react";
+import { LayoutDashboard, Users, Landmark, FileText, Scale, BarChart3, History, Settings, Copy } from "lucide-react";
 
 // Moduli TIMI INVEST — navigimi i brendshëm (Faza 1). Popup-i i vjetër te Dashboard-i
 // mbetet i pandryshuar dhe funksional deri në kalimin përfundimtar (Faza 5).
@@ -13,6 +13,7 @@ const NAV = [
   { href: "/timi-invest/pagesat",    label: "Pagesat nga TIMI",    icon: Landmark },
   { href: "/timi-invest/profaturat", label: "Profaturat & faturat", icon: FileText },
   { href: "/timi-invest/rakordimi",  label: "Rakordimi me TIMI",   icon: Scale },
+  { href: "/timi-invest/dyfishimet", label: "Dyfishimet",          icon: Copy },
   { href: "/timi-invest/raportet",   label: "Raportet & eksportet", icon: BarChart3 },
   { href: "/timi-invest/historiku",  label: "Historiku",           icon: History },
   { href: "/timi-invest/cilesimet",  label: "Cilësimet",           icon: Settings },

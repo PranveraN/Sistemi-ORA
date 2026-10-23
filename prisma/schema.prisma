@@ -1336,6 +1336,29 @@ model TimiInvestStudent {
   notes        String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  // Faza 4 (vetëm shtesë): bashkimi i dyfishimeve — rreshti i dytë s'fshihet, vetëm
+  // çaktivizohet (active=false) dhe shënohet me kë u bashkua. Mund të kthehet.
+  bashkuarMe   Int?
+  bashkuarAt   DateTime?
+}
+
+// Rakordimi mujor me ekstraktin e bankës (moduli TIMI, Faza 4). Një rresht për muaj kalendarik.
+model TimiRakordim {
+  id             Int       @id @default(autoincrement())
+  organizationId Int       @default(1)
+  viti           Int       // viti kalendarik (p.sh. 2026)
+  muaji          Int       // 1..12
+  rreshtat       String    @default("[]") // JSON: rreshtat TIMI nga ekstrakti [{ data, cents, pershkrim }]
+  emriSkedarit   String?
+  ngarkuarAt     DateTime?
+  ngarkuarNga    String?
+  shenimet       String    @default("{}") // JSON: { "<çelësi i rreshtit>": "arsyeja pse është në rregull" }
+  statusi        String    @default("HAPUR") // HAPUR | MBYLLUR
+  mbyllurAt      DateTime?
+  mbyllurNga     String?
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([organizationId, viti, muaji])
 }
 
 // Pagesë që hyri në bankë nga TIMI Invest (e plotë ose pjesë-pjesë, çfarëdo shume).

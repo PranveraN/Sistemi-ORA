@@ -296,7 +296,8 @@ export default function TimiPasqyraPage() {
             <option value="">Ndrysho fazën…</option>
             {Object.entries(FAZA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
-          <span className="text-[11px] text-slate-400">Profaturë, pagesë në grup dhe SMS vijnë në fazat e ardhshme.</span>
+          <button onClick={() => { const ids = [...new Set(all.filter(r => sel.has(r.tiId)).map(r => r.studentId))]; window.location.href = `/sms?students=${ids.join(",")}`; }} className="btn-secondary !py-1.5 !text-xs">Dërgo SMS prindërve</button>
+          <Link href="/timi-invest/pagesat/e-re" className="btn-secondary !py-1.5 !text-xs">Pagesë në grup</Link>
         </div>
       )}
 
@@ -351,7 +352,11 @@ export default function TimiPasqyraPage() {
                           <span className="ml-1.5 text-xs text-slate-400">{r.klasa ?? ""}</span>
                           {r.vemendje.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-0.5">
-                              {r.vemendje.map(v => (
+                              {r.vemendje.map(v => v === "DYFISH" ? (
+                                <Link key={v} href="/timi-invest/dyfishimet" className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-px rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 hover:underline">
+                                  <AlertTriangle className="w-2.5 h-2.5" />{VEM[v]}
+                                </Link>
+                              ) : (
                                 <span key={v} className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-px rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                                   <AlertTriangle className="w-2.5 h-2.5" />{VEM[v]}
                                 </span>

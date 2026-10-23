@@ -37,7 +37,8 @@ function Magjistari() {
   const [draftId, setDraftId] = useState<number | null>(draftParam);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  const [tr, setTr] = useState({ data: today(), shuma: "", banka: "BKT", referenca: "", prindi: "", shenim: "", viti: currentSchoolYearStart(), komisionPct: TIMI_KOMISION_PCT, dokumenti: "", dokumentiEmri: "" });
+  // Nga rakordimi: ?shuma=&data=&referenca=&prindi= (rresht i ekstraktit që s'është në Orë)
+  const [tr, setTr] = useState({ data: sp.get("data") || today(), shuma: sp.get("shuma") || "", banka: "BKT", referenca: sp.get("referenca") || "", prindi: sp.get("prindi") || "", shenim: "", viti: currentSchoolYearStart(), komisionPct: TIMI_KOMISION_PCT, dokumenti: "", dokumentiEmri: "" });
   const [femijet, setFemijet] = useState<Femije[] | null>(null);
   const [zgj, setZgj] = useState<Zgjedhur[]>([]);
   const [menyra, setMenyra] = useState<Menyra>("KESTI");
@@ -172,15 +173,22 @@ function Magjistari() {
     setMsg("Drafti u ruajt — s'prek asnjë pagesë. Mund ta vazhdoni më vonë te \"Pagesat nga TIMI\".");
   }
 
-  async function ruaj() {
+  async function ruaj(arsyeMuajMbyllur?: string) {
     if (!gati2) return;
     setBusy(true); setMsg("");
     const r = await fetch("/api/timi-invest/pagesat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: tr.data, shuma: shumaCents / 100, komisionPct: tr.komisionPct, vitiShkollor: tr.viti, referenca: tr.referenca, prindi: tr.prindi, shenim: tr.shenim, banka: tr.banka, dokumenti: tr.dokumenti || null, dokumentiEmri: tr.dokumentiEmri || null, draftId, femijet: rreshtat.map(r => ({ studentId: r.z.studentId, shuma: r.cents / 100 })) }),
+      body: JSON.stringify({ arsyeMuajMbyllur, data: tr.data, shuma: shumaCents / 100, komisionPct: tr.komisionPct, vitiShkollor: tr.viti, referenca: tr.referenca, prindi: tr.prindi, shenim: tr.shenim, banka: tr.banka, dokumenti: tr.dokumenti || null, dokumentiEmri: tr.dokumentiEmri || null, draftId, femijet: rreshtat.map(r => ({ studentId: r.z.studentId, shuma: r.cents / 100 })) }),
     });
     const d = await r.json().catch(() => ({}));
     setBusy(false);
+    if (r.status === 409 && d.code === "MUAJ_MBYLLUR") {
+      const a = window.prompt(`${d.error}
+
+Arsyeja (ruhet te Historiku):`);
+      if (a && a.trim().length >= 3) return ruaj(a.trim());
+      setMsg("Pagesa s'u ruajt — muaji është i mbyllur te rakordimi."); return;
+    }
     if (!r.ok) { setMsg(d.error || "Ruajtja dështoi — asgjë s'u ndryshua."); return; }
     router.push("/timi-invest/pagesat?ruajtur=" + d.id);
   }
@@ -383,7 +391,7 @@ function Magjistari() {
                 <div className="flex gap-2">
                   <button onClick={() => setHapi(2)} className="btn-secondary">← Mbrapa</button>
                   <button disabled={busy} onClick={ruajDraft} className="btn-secondary"><Save className="w-4 h-4" />Ruaj si draft</button>
-                  <button disabled={busy || !gati2} onClick={ruaj} className="btn-primary">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Ruaj pagesën</button>
+                  <button disabled={busy || !gati2} onClick={() => ruaj()} className="btn-primary">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Ruaj pagesën</button>
                 </div>
               </div>
             </div>

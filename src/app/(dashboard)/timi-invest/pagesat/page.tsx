@@ -97,7 +97,17 @@ function Pagesat() {
         </div>
       </div>
 
-      {sp.get("ruajtur") && <div className="card p-3 text-sm bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-200 border-emerald-200">✓ Pagesa u ruajt (#{sp.get("ruajtur")}). Muajt e fëmijëve dhe komisioni u përditësuan.</div>}
+      {sp.get("ruajtur") && (() => {
+        const t = all.find(x => x.id === Number(sp.get("ruajtur")));
+        return (
+          <div className="card p-3 text-sm bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-200 border-emerald-200 flex flex-wrap items-center justify-between gap-2">
+            <span>✓ Pagesa u ruajt (#{sp.get("ruajtur")}). Muajt e fëmijëve dhe komisioni u përditësuan.</span>
+            {t && t.femijet.length > 0 && (
+              <a className="btn-secondary !py-1 !text-xs" href={`/sms?students=${t.femijet.map(f => f.studentId).join(",")}&text=${encodeURIComponent(`I nderuar prind, TIMI Invest ka kryer pagesën e shkollimit më ${formatDate(t.data)}. Faleminderit, Akademia Ora`)}`}>Njofto prindin me SMS</a>
+            )}
+          </div>
+        );
+      })()}
       {err && <div className="card p-3 text-sm text-red-600">{err}</div>}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

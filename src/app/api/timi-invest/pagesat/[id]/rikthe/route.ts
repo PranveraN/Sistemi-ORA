@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
 import { rikthejTimiPagese, TimiError } from "@/lib/timiPagesat";
 import { reasonFrom } from "@/lib/timiAudit";
+import { muajMbyllur } from "@/lib/timiRakordim";
 
 const ALLOWED_ROLES = ["ADMIN", "SUPERADMIN", "FINANCE"];
 
@@ -18,8 +19,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const arsye = reasonFrom(null, typeof b.arsye === "string" ? b.arsye : "");
   if (!arsye || arsye.length < 3) return NextResponse.json({ error: "Shkruani arsyen e rikthimit (të paktën 3 shenja)." }, { status: 400 });
   const { id } = await params;
+  const ekz = await prisma.timiPagese.findFirst({ where: { id: parseInt(id) || 0, organizationId: u.organizationId ?? 1 }, select: { data: true } });
+  const mbyllur = ekz ? await muajMbyllur(prisma, u.organizationId ?? 1, ekz.data) : null;
   try {
-    const p = await rikthejTimiPagese(prisma, u.organizationId ?? 1, { id: parseInt(u.id ?? "") || null, name: u.name ?? null }, parseInt(id) || 0, arsye);
+    const p = await rikthejTimiPagese(prisma, u.organizationId ?? 1, { id: parseInt(u.id ?? "") || null, name: u.name ?? null }, parseInt(id) || 0, mbyllur ? `[muaj i mbyllur ${String(mbyllur.muaji).padStart(2, "0")}/${mbyllur.viti}] ${arsye}` : arsye);
     await logAction(session, "UPDATE", "TimiPagese", p.id, `Riktheu pagesën nga TIMI ${(p.shumaCents / 100).toFixed(2)} € (${p.referenca ?? "pa ref."}) — arsyeja: ${arsye}`);
     return NextResponse.json({ ok: true });
   } catch (e) {

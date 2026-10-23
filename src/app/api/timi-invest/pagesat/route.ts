@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
 import { currentSchoolYearStart } from "@/lib/academicYear";
 import { SAFE_TIMI_DOC } from "@/lib/timi-doc-storage";
+import { muajMbyllur } from "@/lib/timiRakordim";
+import { logTimi } from "@/lib/timiAudit";
 import { krijoTimiPagese, permbledhjaTimi, TimiError, TIMI_KOMISION_PCT, brutoNgaShuma } from "@/lib/timiPagesat";
 
 // Pagesat nga TIMI Invest (src/lib/timiPagesat.ts).
@@ -45,6 +47,13 @@ export async function POST(req: NextRequest) {
   if (femijet.length === 1 && (femijet[0]?.shuma == null || femijet[0]?.shuma === "")) {
     femijet[0] = { ...femijet[0], shuma: brutoNgaShuma(cents(b.shuma), komisionPct) / 100 };
   }
+  // Muaj i mbyllur te rakordimi → lejohet vetëm me arsye (ruhet te Historiku)
+  const dataTr = /^\d{4}-\d{2}-\d{2}$/.test(String(b.data ?? "")) ? new Date(`${b.data}T00:00:00Z`) : null;
+  const mbyllur = dataTr ? await muajMbyllur(prisma, orgId, dataTr) : null;
+  const arsyeMbyllur = typeof b.arsyeMuajMbyllur === "string" ? b.arsyeMuajMbyllur.trim() : "";
+  if (mbyllur && arsyeMbyllur.length < 3) {
+    return NextResponse.json({ error: `Muaji ${String(mbyllur.muaji).padStart(2, "0")}/${mbyllur.viti} është i mbyllur te rakordimi. Shkruani arsyen për ta regjistruar këtë pagesë.`, code: "MUAJ_MBYLLUR" }, { status: 409 });
+  }
   try {
     const p = await krijoTimiPagese(prisma, orgId, actor, {
       data: String(b.data ?? ""),
@@ -61,6 +70,7 @@ export async function POST(req: NextRequest) {
       dokumentiEmri: typeof b.dokumentiEmri === "string" ? b.dokumentiEmri.slice(0, 200) : null,
       draftId: Number.isInteger(b.draftId) ? b.draftId : null,
     });
+    if (mbyllur) await logTimi(prisma, orgId, actor, [{ action: "CREATE", entity: "TimiPagese", entityId: p.id, field: "muaj i mbyllur", newValue: `${(p.shumaCents / 100).toFixed(2)} € (${p.data.toISOString().slice(0, 10)})`, reason: arsyeMbyllur }]);
     await logAction(session, "CREATE", "TimiPagese", p.id,
       `Pagesë nga TIMI ${(p.shumaCents / 100).toFixed(2)} € (${p.referenca ?? "pa ref."}) — për fëmijët ${(p.brutoCents / 100).toFixed(2)} €, komisioni ${(p.komisionCents / 100).toFixed(2)} €`);
     return NextResponse.json(p, { status: 201 });
