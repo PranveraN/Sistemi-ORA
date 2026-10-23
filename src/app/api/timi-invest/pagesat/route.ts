@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
 import { currentSchoolYearStart } from "@/lib/academicYear";
+import { SAFE_TIMI_DOC } from "@/lib/timi-doc-storage";
 import { krijoTimiPagese, permbledhjaTimi, TimiError, TIMI_KOMISION_PCT, brutoNgaShuma } from "@/lib/timiPagesat";
 
 // Pagesat nga TIMI Invest (src/lib/timiPagesat.ts).
@@ -54,6 +55,11 @@ export async function POST(req: NextRequest) {
       prindi: typeof b.prindi === "string" ? b.prindi.slice(0, 150) : null,
       shenim: typeof b.shenim === "string" ? b.shenim.slice(0, 500) : null,
       femijet: femijet.length ? femijet.map((f: { studentId: unknown; shuma: unknown }) => ({ studentId: parseInt(String(f.studentId)), cents: cents(f.shuma) })) : [],
+      // Faza 3 (magjistari): banka, dokumenti, drafti
+      banka: typeof b.banka === "string" ? b.banka.slice(0, 100) : null,
+      dokumenti: typeof b.dokumenti === "string" && SAFE_TIMI_DOC.test(b.dokumenti) ? b.dokumenti : null,
+      dokumentiEmri: typeof b.dokumentiEmri === "string" ? b.dokumentiEmri.slice(0, 200) : null,
+      draftId: Number.isInteger(b.draftId) ? b.draftId : null,
     });
     await logAction(session, "CREATE", "TimiPagese", p.id,
       `Pagesë nga TIMI ${(p.shumaCents / 100).toFixed(2)} € (${p.referenca ?? "pa ref."}) — për fëmijët ${(p.brutoCents / 100).toFixed(2)} €, komisioni ${(p.komisionCents / 100).toFixed(2)} €`);

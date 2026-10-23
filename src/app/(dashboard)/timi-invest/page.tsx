@@ -190,7 +190,7 @@ export default function TimiPasqyraPage() {
             </button>
           )}
           <button onClick={() => exportExcel()} disabled={!rows} className="btn-secondary"><Download className="w-4 h-4" />Eksporto Excel</button>
-          <Link href="/timi-invest/pagesat" className="btn-primary !bg-amber-500 hover:!bg-amber-600">+ Regjistro pagesë nga TIMI</Link>
+          <Link href="/timi-invest/pagesat/e-re" className="btn-primary !bg-amber-500 hover:!bg-amber-600">+ Regjistro pagesë nga TIMI</Link>
         </div>
       </div>
 

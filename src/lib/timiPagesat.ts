@@ -107,7 +107,8 @@ async function rifreskoFazen(tx: Tx, orgId: number, categoryId: number, studentI
   if (link.stage === "PEZULLUAR" || link.stage === "ANULUAR") return;
   const paid = (await tx.payment.aggregate({ where: { organizationId: orgId, categoryId, studentId, OR: yearMonths(viti) }, _sum: { paidAmount: true } }))._sum.paidAmount ?? 0;
   const price = computeTiExpectedPrice(link);
-  const stage = paid >= price - 0.5 ? "KRYER" : paid > 0 ? "NE_PROCES" : link.stage === "KRYER" ? "NE_PROCES" : link.stage;
+  // Rregulli (Pranvera, 23.10): pa pagesë → Profaturë · ka filluar → Në proces · e shlyer → E kryer
+  const stage = paid >= price - 0.5 ? "KRYER" : paid > 0 ? "NE_PROCES" : "PROFATURE";
   if (stage !== link.stage) await tx.timiInvestStudent.update({ where: { id: link.id }, data: { stage } });
 }
 
@@ -115,6 +116,8 @@ export interface TimiPageseInput {
   data: string; shumaCents: number; komisionPct: number; vitiShkollor: number;
   referenca?: string | null; prindi?: string | null; shenim?: string | null;
   femijet: { studentId: number; cents: number }[];
+  /** Faza 3 (magjistari): banka, dokumenti i transferit dhe drafti që po ruhet si pagesë. */
+  banka?: string | null; dokumenti?: string | null; dokumentiEmri?: string | null; draftId?: number | null;
 }
 
 export async function krijoTimiPagese(db: Db, orgId: number, actor: { id: number | null; name: string | null }, inp: TimiPageseInput) {
@@ -184,14 +187,42 @@ export async function krijoTimiPagese(db: Db, orgId: number, actor: { id: number
       shpenzimId = sh.id;
     }
 
-    return tx.timiPagese.create({
-      data: {
-        organizationId: orgId, data: date, shumaCents: inp.shumaCents, brutoCents: bruto, komisionCents: komision, komisionPct: inp.komisionPct,
-        vitiShkollor: inp.vitiShkollor, referenca: inp.referenca?.trim() || null, prindi: inp.prindi?.trim() || null, shenim: inp.shenim?.trim() || null,
-        ndarja: JSON.stringify(ndarja), shpenzimId, createdById: actor.id, createdByName: actor.name,
-      },
-    });
+    const fields = {
+      organizationId: orgId, data: date, shumaCents: inp.shumaCents, brutoCents: bruto, komisionCents: komision, komisionPct: inp.komisionPct,
+      vitiShkollor: inp.vitiShkollor, referenca: inp.referenca?.trim() || null, prindi: inp.prindi?.trim() || null, shenim: inp.shenim?.trim() || null,
+      ndarja: JSON.stringify(ndarja), shpenzimId, createdById: actor.id, createdByName: actor.name,
+      banka: inp.banka?.trim() || null, dokumenti: inp.dokumenti || null, dokumentiEmri: inp.dokumentiEmri || null, statusi: "RUAJTUR",
+    };
+    // Nga një draft: i njëjti rresht bëhet pagesë (s'krijohet i dyti)
+    if (inp.draftId) {
+      const d = await tx.timiPagese.findFirst({ where: { id: inp.draftId, organizationId: orgId } });
+      if (!d || d.statusi !== "DRAFT" || d.deletedAt) throw new TimiError("Drafti s'u gjet ose është ruajtur tashmë.");
+      return tx.timiPagese.update({ where: { id: d.id }, data: { ...fields, draftData: null } });
+    }
+    return tx.timiPagese.create({ data: fields });
   });
+}
+
+/**
+ * DRAFT i një transferi (Faza 3) — ruan vetëm të dhënat e magjistarit. S'prek asnjë muaj,
+ * s'krijon komision dhe s'numërohet askund (të gjitha llogaritjet lexojnë vetëm statusi = RUAJTUR).
+ */
+export async function ruajDraftTimi(db: Db, orgId: number, actor: { id: number | null; name: string | null }, inp: TimiPageseInput & { draftData: unknown }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(inp.data)) throw new TimiError("Data e pavlefshme.");
+  const shuma = Number.isInteger(inp.shumaCents) && inp.shumaCents > 0 ? inp.shumaCents : 0;
+  const bruto = shuma ? brutoNgaShuma(shuma, inp.komisionPct) : 0;
+  const fields = {
+    organizationId: orgId, data: new Date(`${inp.data}T00:00:00Z`), shumaCents: shuma, brutoCents: bruto, komisionCents: bruto - shuma, komisionPct: inp.komisionPct,
+    vitiShkollor: inp.vitiShkollor, referenca: inp.referenca?.trim() || null, prindi: inp.prindi?.trim() || null, shenim: inp.shenim?.trim() || null,
+    ndarja: "[]", banka: inp.banka?.trim() || null, dokumenti: inp.dokumenti || null, dokumentiEmri: inp.dokumentiEmri || null,
+    statusi: "DRAFT", draftData: JSON.stringify(inp.draftData ?? null), createdById: actor.id, createdByName: actor.name,
+  };
+  if (inp.draftId) {
+    const d = await db.timiPagese.findFirst({ where: { id: inp.draftId, organizationId: orgId } });
+    if (!d || d.statusi !== "DRAFT" || d.deletedAt) throw new TimiError("Drafti s'u gjet ose është ruajtur tashmë.");
+    return db.timiPagese.update({ where: { id: d.id }, data: fields });
+  }
+  return db.timiPagese.create({ data: fields });
 }
 
 interface SnapRresht { id: number; paidAmount: number; paidDate: string | null; method: string | null; status: string; balance: number; receiptNumber: string | null }
@@ -206,6 +237,10 @@ export async function fshiTimiPagese(db: Db, orgId: number, actor: { id?: number
   const p = await db.timiPagese.findFirst({ where: { id, organizationId: orgId } });
   if (!p) throw new TimiError("Pagesa s'u gjet.");
   if (p.deletedAt) throw new TimiError("Kjo pagesë është stornuar tashmë.");
+  if (p.statusi === "DRAFT") {
+    await db.timiPagese.update({ where: { id }, data: { deletedAt: new Date(), deletedByName: actor.name, stornoArsye: arsye?.trim() || null } });
+    return p;
+  }
   const ndarja = JSON.parse(p.ndarja) as NdarjaFemije[];
   const cat = await db.paymentCategory.findFirst({ where: { name: "Shkollimi", organizationId: orgId }, select: { id: true } });
   const a: TimiActor = { id: actor.id ?? null, name: actor.name };
@@ -250,6 +285,7 @@ export async function rikthejTimiPagese(db: Db, orgId: number, actor: TimiActor,
   const p = await db.timiPagese.findFirst({ where: { id, organizationId: orgId } });
   if (!p) throw new TimiError("Pagesa s'u gjet.");
   if (!p.deletedAt) throw new TimiError("Kjo pagesë s'është e stornuar — s'ka çka të rikthehet.");
+  if (p.statusi === "DRAFT") throw new TimiError("Draftet e fshira s'rikthehen — krijoni një draft të ri.");
   if (!p.stornoSnapshot) throw new TimiError("Kjo pagesë u fshi para versionit me Storno/Rikthe — s'mund të rikthehet automatikisht. Regjistrojeni sërish nëse duhet.");
   const snap = JSON.parse(p.stornoSnapshot) as Snapshot;
   const ndarja = JSON.parse(p.ndarja) as NdarjaFemije[];
@@ -296,7 +332,7 @@ export async function permbledhjaTimi(db: Db, orgId: number, viti: number) {
   const [links, cat, pagesat] = await Promise.all([
     db.timiInvestStudent.findMany({ where: { active: true, studentId: { not: null } } }),
     db.paymentCategory.findFirst({ where: { name: "Shkollimi", organizationId: orgId }, select: { id: true } }),
-    db.timiPagese.findMany({ where: { organizationId: orgId, deletedAt: null }, orderBy: [{ data: "desc" }, { id: "desc" }] }),
+    db.timiPagese.findMany({ where: { organizationId: orgId, deletedAt: null, statusi: "RUAJTUR" }, orderBy: [{ data: "desc" }, { id: "desc" }] }),
   ]);
   const ids = links.map(l => l.studentId!);
   const [studs, pays, tiPays] = await Promise.all([

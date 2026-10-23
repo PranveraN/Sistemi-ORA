@@ -1367,6 +1367,13 @@ model TimiPagese {
   stornoSnapshot String?   // JSON: { rreshtat: [{id, paidAmount, paidDate, method, status, balance, receiptNumber}], faza: [{tiId, stage}] }
   rikthyerAt     DateTime?
   rikthyerByName String?
+  // Faza 3 (vetëm shtesë): transferi në grup — banka, dokumenti i ngarkuar dhe statusi.
+  // Pagesat ekzistuese marrin "RUAJTUR" nga default-i. Një DRAFT s'prek asnjë muaj e s'numërohet.
+  banka          String?
+  dokumenti      String?   // emri i skedarit në disk (data/timi-docs)
+  dokumentiEmri  String?   // emri origjinal i skedarit
+  statusi        String    @default("RUAJTUR") // DRAFT | RUAJTUR
+  draftData      String?   // JSON: ndarja e propozuar e draftit (para ruajtjes)
 }
 
 // Moduli TIMI INVEST — historiku i ndryshimeve (Faza 2). Vetëm shtohet, s'ndryshohet.

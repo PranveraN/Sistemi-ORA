@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ tiId
   const rresht = link.studentId ? (await pasqyraTimi(prisma, orgId, viti)).rreshtat.find(r => r.tiId === tiId) ?? null : null;
 
   // Pagesat nga TIMI që e përfshijnë këtë fëmijë — edhe të stornuarat (shfaqen të vizatuara)
-  const pagesat = link.studentId ? (await prisma.timiPagese.findMany({ where: { organizationId: orgId }, orderBy: [{ data: "desc" }, { id: "desc" }] }))
+  const pagesat = link.studentId ? (await prisma.timiPagese.findMany({ where: { organizationId: orgId, statusi: "RUAJTUR" }, orderBy: [{ data: "desc" }, { id: "desc" }] }))
     .map(p => ({ p, f: (JSON.parse(p.ndarja) as NdarjaFemije[]).find(x => x.studentId === link.studentId) }))
     .filter(x => x.f)
     .map(({ p, f }) => ({
