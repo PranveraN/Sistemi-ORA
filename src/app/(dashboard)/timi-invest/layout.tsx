@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import TimiInvestModal from "@/components/TimiInvestModal";
 import { usePathname } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { LayoutDashboard, Users, Landmark, FileText, Scale, BarChart3, History, Settings, Copy } from "lucide-react";
@@ -21,6 +23,8 @@ const NAV = [
 
 export default function TimiInvestLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // Faza 5: popup-i i vjetër mbetet i hapshëm nga këtu (rrugë rezervë) derisa Pranvera të konfirmojë heqjen
+  const [popup, setPopup] = useState(false);
   return (
     <>
       <Header title="TIMI Invest" />
@@ -49,10 +53,14 @@ export default function TimiInvestLayout({ children }: { children: React.ReactNo
                 );
               })}
             </nav>
+            <button onClick={() => setPopup(true)} className="mt-2 w-full text-left px-3 py-1.5 text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+              Pamja e vjetër (popup)
+            </button>
           </div>
         </aside>
         <main className="flex-1 min-w-0">{children}</main>
       </div>
+      {popup && <TimiInvestModal onClose={() => setPopup(false)} />}
     </>
   );
 }

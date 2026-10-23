@@ -148,8 +148,13 @@ export default function DashboardPage() {
               { icon: FileText,   label: "Krijo Ofertë & Parafaturë", color: "text-primary-600 dark:text-primary-400", bg: "bg-primary-50 dark:bg-primary-900/30", onClick: () => { setOfertaView("form"); setShowOferta(true); } },
               { icon: History,    label: "Historiku i Ofertave",      color: "text-slate-500 dark:text-slate-400",     bg: "bg-slate-100 dark:bg-slate-700/60",    onClick: () => { setOfertaView("history"); setShowOferta(true); } },
               { icon: Receipt,    label: "Faturat e Rregullta",       color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/30", href: "/faturat-rregullta" },
-              // TIMI Invest ka API-n e vet të kufizuar te moduli "investime" (shih middleware.ts)
-              ...(timiInvestEnabled && canAccess("/investime") ? [{ icon: CreditCard, label: "TIMI INVEST", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/30", onClick: () => setShowTimiInvest(true) }] : []),
+              // TIMI Invest (Faza 5): çon te moduli i ri /timi-invest. Kush s'e ka modulin e ri por ka
+              // "Investimet" vazhdon me popup-in e vjetër (API /api/timi-invest lejon të dyja, shih middleware.ts).
+              ...(timiInvestEnabled && canAccess("/timi-invest")
+                ? [{ icon: CreditCard, label: "TIMI INVEST", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/30", href: "/timi-invest" }]
+                : timiInvestEnabled && canAccess("/investime")
+                  ? [{ icon: CreditCard, label: "TIMI INVEST", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/30", onClick: () => setShowTimiInvest(true) }]
+                  : []),
             ].filter(a => !a.href || canAccess(a.href)).map((a, i) => {
               const Icon = a.icon;
               const content = (
