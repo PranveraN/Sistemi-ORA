@@ -20,6 +20,15 @@ interface StaffMember {
   kodi: string | null;
   tipi: string | null;
   status: string;
+  adresa: string | null;
+  dataFillimit: string | null;
+  contractEndDate: string | null;
+}
+
+// ISO nga API (YYYY-MM-DD…) → DD/MM/YYYY; prerje teksti, pa Date, që dita të mos zhvendoset nga zona kohore
+function fmtStaffDate(iso: string | null): string {
+  const m = iso?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
 
 interface ContractData {
@@ -97,10 +106,10 @@ function ContractOrarPlote({ staff, onClose, initialData }: { staff: StaffMember
     emri: staff.emri || "",
     nrPersonal: staff.nrPersonal || "",
     profesioni: staff.lenda || "",
-    adresa: "",
-    dataFillimit: "",
-    dataMbarimit: "",
-    dataFillimitPune: "",
+    adresa: staff.adresa || "",
+    dataFillimit: fmtStaffDate(staff.dataFillimit),
+    dataMbarimit: fmtStaffDate(staff.contractEndDate),
+    dataFillimitPune: fmtStaffDate(staff.dataFillimit),
     pagaBruto: staff.totalBruto ? String(staff.totalBruto) : "",
     nrLlogarise: staff.nrLlogarise || "",
     banka: staff.banka || "",
@@ -370,12 +379,12 @@ function ContractOrarPjesshme({ staff, onClose, initialData }: { staff: StaffMem
     emri: staff.emri || "",
     nrPersonal: staff.nrPersonal || "",
     profesioni: staff.lenda || "",
-    adresa: "",
+    adresa: staff.adresa || "",
     diteJave: "",
     oreJave: "",
-    dataFillimit: "",
-    dataMbarimit: "",
-    dataFillimitPune: "",
+    dataFillimit: fmtStaffDate(staff.dataFillimit),
+    dataMbarimit: fmtStaffDate(staff.contractEndDate),
+    dataFillimitPune: fmtStaffDate(staff.dataFillimit),
     cmimOres: staff.cmimOres ? String(staff.cmimOres) : "",
     nrLlogarise: staff.nrLlogarise || "",
     banka: staff.banka || "",
