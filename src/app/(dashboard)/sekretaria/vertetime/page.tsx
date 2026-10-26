@@ -202,7 +202,14 @@ const CERT_TYPES: CertType[] = [
 
 // ── print ────────────────────────────────────────────────────────────────────
 
-function buildPrintHtml(nr: string, certDate: string, body: string, autoPrint = true): string {
+/** Vula e shkollës sipas personit: nxënësit e klasave 1–5 → CU, 6–9 → CL; stafi → CL (si te kontratat). */
+function stampFor(p: Person | null): string {
+  if (!p || isStaff(p)) return "/vula-cl.png";
+  const lvl = parseInt((p.class?.level || "").replace("Klasa ", "")) || 0;
+  return lvl >= 1 && lvl <= 5 ? "/vula-cu.png" : "/vula-cl.png";
+}
+
+function buildPrintHtml(nr: string, certDate: string, body: string, autoPrint = true, stamp = "/vula-cl.png"): string {
   const origin = window.location.origin;
   const paras = body.split("\n\n").filter(Boolean);
   return `<!DOCTYPE html>
@@ -222,7 +229,9 @@ function buildPrintHtml(nr: string, certDate: string, body: string, autoPrint = 
   .ttl{text-align:center;font-weight:bold;font-size:15pt;text-decoration:underline;margin:28px 0 32px;}
   .body{flex:1;}
   .body p{font-size:11.5pt;line-height:1.85;text-align:justify;margin-bottom:16px;}
-  .sig{margin-top:52px;}
+  .sig{margin-top:52px;position:relative;}
+  .sig-img{position:absolute;left:40px;bottom:-75px;height:160px;width:auto;}
+  .sig-stamp{position:absolute;left:calc(50% - 55px);bottom:-40px;height:110px;width:110px;}
   .sig p{font-size:11pt;margin-bottom:8px;}
   .sig-line{width:190px;border-bottom:1px solid #000;}
   .ftr{margin-top:52px;padding-top:10px;border-top:0.5px solid #bbb;font-size:9pt;color:#555;line-height:1.7;}
@@ -252,6 +261,8 @@ function buildPrintHtml(nr: string, certDate: string, body: string, autoPrint = 
   <div class="sig">
     <p>Shkolla "Akademia Ora"</p>
     <div class="sig-line"></div>
+    <img class="sig-img" src="${origin}/Nenshkrimi.png" alt=""/>
+    <img class="sig-stamp" src="${origin}${stamp}" alt=""/>
   </div>
   <div class="ftr">
     Për informata shtesë, mund të na kontaktoni në:<br>
@@ -332,7 +343,7 @@ export default function Vertetime() {
   };
   const handlePrint = () => {
     const w = window.open("", "_blank", "width=860,height=700");
-    if (w) { w.document.write(buildPrintHtml(nr, certDate, body)); w.document.close(); }
+    if (w) { w.document.write(buildPrintHtml(nr, certDate, body, true, stampFor(persons.find(x => x.id === selId) ?? null))); w.document.close(); }
     logToArchive();
   };
   const selPerson = persons.find(x => x.id === selId) ?? null;
@@ -530,9 +541,12 @@ export default function Vertetime() {
                 </div>
 
                 {/* Signature */}
-                <div style={{ marginTop: "52px" }}>
+                <div style={{ marginTop: "52px", position: "relative" }}>
                   <div style={{ fontSize: "10.5pt", marginBottom: "8px" }}>Shkolla &quot;Akademia Ora&quot;</div>
                   <div style={{ width: "190px", borderBottom: "1px solid #000" }} />
+                  {/* Nënshkrimi i drejtorit + vula — pozicion absolut, si në printim */}
+                  <img src="/Nenshkrimi.png" alt="" style={{ position: "absolute", left: "40px", bottom: "-75px", height: "160px", width: "auto", pointerEvents: "none" }} />
+                  <img src={stampFor(selPerson)} alt="" style={{ position: "absolute", left: "calc(50% - 55px)", bottom: "-40px", height: "110px", width: "110px", maxWidth: "none", pointerEvents: "none" }} />
                 </div>
 
                 {/* Footer */}
@@ -560,7 +574,7 @@ Me respekt,
 Shkolla "Akademia Ora"`}
           filename={`Vertetim${selName ? ` ${selName}` : ""}${nr ? ` ${nr.replaceAll("/", "-")}` : ""}`}
           label={`${active.label}${selName ? ` — ${selName}` : ""}`}
-          getHtml={() => buildPrintHtml(nr, certDate, body, false)}
+          getHtml={() => buildPrintHtml(nr, certDate, body, false, stampFor(selPerson))}
           onClose={() => setEmailOpen(false)}
           onSent={to => logToArchive(to)}
         />

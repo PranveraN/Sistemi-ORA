@@ -391,9 +391,17 @@ function FletekalimCLModal({ student, onClose, initialData }: { student: Student
                 <div style={{ fontWeight: "bold", textDecoration: "underline" }}>Kujdestari i klasës</div>
                 <div style={{ borderBottom: "1px solid #000", width: "140px", marginTop: "20px" }}></div>
               </div>
+              {/* Vula e shkollës në mes — pozicion absolut, që faqja të mos ndryshojë */}
+              <div style={{ position: "relative", width: 0 }}>
+                <img src="/vula-cl.png" alt="" style={{ position: "absolute", left: "-48px", top: "-22px", height: "96px", width: "96px", maxWidth: "none", pointerEvents: "none", userSelect: "none" }} />
+              </div>
               <div>
                 <div style={{ fontWeight: "bold", textDecoration: "underline" }}>Drejtori i shkollës</div>
-                <div style={{ borderBottom: "1px solid #000", width: "140px", marginTop: "20px" }}></div>
+                {/* Nënshkrimi i drejtorit mbi vijë — pozicion absolut, që faqja të mos ndryshojë */}
+                <div style={{ position: "relative" }}>
+                  <img src="/Nenshkrimi.png" alt="" style={{ position: "absolute", left: "20px", bottom: "-80px", height: "150px", width: "auto", pointerEvents: "none", userSelect: "none" }} />
+                  <div style={{ borderBottom: "1px solid #000", width: "140px", marginTop: "20px" }}></div>
+                </div>
               </div>
             </div>
           </div>
@@ -890,9 +898,17 @@ function FletekalimCUModal({ student, onClose, initialData }: { student: Student
                 <div style={{fontWeight:"bold",textDecoration:"underline"}}>Kujdestari i klasës</div>
                 <div style={{borderBottom:"1px solid #000",width:"140px",marginTop:"18px"}} />
               </div>
+              {/* Vula e shkollës në mes — pozicion absolut, që faqja të mos ndryshojë */}
+              <div style={{ position: "relative", width: 0 }}>
+                <img src="/vula-cu.png" alt="" style={{ position: "absolute", left: "-48px", top: "-22px", height: "96px", width: "96px", maxWidth: "none", pointerEvents: "none", userSelect: "none" }} />
+              </div>
               <div>
                 <div style={{fontWeight:"bold",textDecoration:"underline"}}>Drejtori i shkollës</div>
-                <div style={{borderBottom:"1px solid #000",width:"140px",marginTop:"18px"}} />
+                {/* Nënshkrimi i drejtorit mbi vijë — pozicion absolut, që faqja të mos ndryshojë */}
+                <div style={{ position: "relative" }}>
+                  <img src="/Nenshkrimi.png" alt="" style={{ position: "absolute", left: "20px", bottom: "-80px", height: "150px", width: "auto", pointerEvents: "none", userSelect: "none" }} />
+                  <div style={{borderBottom:"1px solid #000",width:"140px",marginTop:"18px"}} />
+                </div>
               </div>
             </div>
           </div>
@@ -1250,9 +1266,17 @@ function VërtëtimCLModal({ student, onClose, initialData }: { student: Student
                   <div style={{fontWeight:"bold",textDecoration:"underline"}}>Kujdestari i klasës</div>
                   <div style={{borderBottom:"1px solid #000",width:"150px",marginTop:"22px"}}/>
                 </div>
+                {/* Vula e shkollës në mes — pozicion absolut, që faqja të mos ndryshojë */}
+                <div style={{ position: "relative", width: 0 }}>
+                  <img src="/vula-cl.png" alt="" style={{ position: "absolute", left: "-48px", top: "-22px", height: "96px", width: "96px", maxWidth: "none", pointerEvents: "none", userSelect: "none" }} />
+                </div>
                 <div>
                   <div style={{fontWeight:"bold",textDecoration:"underline"}}>Drejtori i shkollës</div>
-                  <div style={{borderBottom:"1px solid #000",width:"150px",marginTop:"22px"}}/>
+                  {/* Nënshkrimi i drejtorit mbi vijë — pozicion absolut, që faqja të mos ndryshojë */}
+                  <div style={{ position: "relative" }}>
+                    <img src="/Nenshkrimi.png" alt="" style={{ position: "absolute", left: "20px", bottom: "-80px", height: "150px", width: "auto", pointerEvents: "none", userSelect: "none" }} />
+                    <div style={{borderBottom:"1px solid #000",width:"150px",marginTop:"22px"}}/>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1563,9 +1587,17 @@ function PasqyreNotaveCUModal({ student, onClose, initialData }: { student: Stud
                   <div style={{fontWeight:"bold",textDecoration:"underline"}}>Kujdestari i klasës</div>
                   <div style={{borderBottom:"1px solid #000",width:"150px",marginTop:"24px"}}/>
                 </div>
+                {/* Vula e shkollës në mes — pozicion absolut, që faqja të mos ndryshojë */}
+                <div style={{ position: "relative", width: 0 }}>
+                  <img src="/vula-cu.png" alt="" style={{ position: "absolute", left: "-48px", top: "-22px", height: "96px", width: "96px", maxWidth: "none", pointerEvents: "none", userSelect: "none" }} />
+                </div>
                 <div>
                   <div style={{fontWeight:"bold",textDecoration:"underline"}}>Drejtori i shkollës</div>
-                  <div style={{borderBottom:"1px solid #000",width:"150px",marginTop:"24px"}}/>
+                  {/* Nënshkrimi i drejtorit mbi vijë — pozicion absolut, që faqja të mos ndryshojë */}
+                  <div style={{ position: "relative" }}>
+                    <img src="/Nenshkrimi.png" alt="" style={{ position: "absolute", left: "20px", bottom: "-80px", height: "150px", width: "auto", pointerEvents: "none", userSelect: "none" }} />
+                    <div style={{borderBottom:"1px solid #000",width:"150px",marginTop:"24px"}}/>
+                  </div>
                 </div>
               </div>
             </div>
