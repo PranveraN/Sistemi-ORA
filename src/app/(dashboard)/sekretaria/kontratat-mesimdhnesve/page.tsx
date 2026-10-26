@@ -24,6 +24,24 @@ interface StaffMember {
   adresa: string | null;
   dataFillimit: string | null;
   contractEndDate: string | null;
+  llojiKontrates: string | null;
+}
+
+// Stafi me pagesë me orë merr gjithmonë kontratën me orar të pjesshëm (çmimi i orës, jo pagë fikse)
+const isHourly = (s: StaffMember) => s.llojiKontrates === "Me Orë" || s.llojiKontrates === "Gjysmë Orari";
+
+/** Fushat e kontratës që merren nga kartela e stafit dhe mungojnë (ditët/orët në javë plotësohen me dorë). */
+function missingContractFields(s: StaffMember, kind: "plote" | "pjesshme"): string[] {
+  const checks: [string, unknown][] = [
+    ["nr. personal", s.nrPersonal],
+    ["adresa", s.adresa],
+    ["data e fillimit", s.dataFillimit],
+    ["data e mbarimit", s.contractEndDate],
+    [kind === "pjesshme" ? "çmimi i orës" : "paga", kind === "pjesshme" ? s.cmimOres : s.totalBruto],
+    ["llogaria bankare", s.nrLlogarise],
+    ["banka", s.banka],
+  ];
+  return checks.filter(([, v]) => v == null || String(v).trim() === "").map(([label]) => label);
 }
 
 // ISO nga API (YYYY-MM-DD…) → DD/MM/YYYY; prerje teksti, pa Date, që dita të mos zhvendoset nga zona kohore
@@ -318,13 +336,22 @@ function ContractOrarPlote({ staff, onClose, initialData, bodyOnly }: { staff: S
                   <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }}></div>
                   <div style={{ fontSize: "9.5pt" }}>Nënshkrimi</div>
                 </td>
-                <td style={{ border: "none", width: "8%" }}></td>
+                <td style={{ border: "none", width: "8%", verticalAlign: "bottom" }}>
+                      {/* Vula e shkollës (CL) në mes — pozicion absolut, që faqja të mos ndryshojë */}
+                      <div style={{ position: "relative", height: 0 }}>
+                        <img src="/vula-cl.png" alt="" style={{ position: "absolute", left: "50%", bottom: "-20px", transform: "translateX(-50%)", height: "120px", width: "120px", maxWidth: "none", pointerEvents: "none", userSelect: "none" }} />
+                      </div>
+                    </td>
                 <td style={{ border: "none", width: "46%", verticalAlign: "bottom" }}>
                   <div style={{ fontSize: "10.5pt", marginBottom: "40px" }}>
                     <strong>Drejtori i shkollës "Akademia Ora":</strong><br />
                     <strong>Valon Hoxha</strong>
                   </div>
-                  <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }}></div>
+                  {/* Nënshkrimi i drejtorit mbi vijë — pozicion absolut, që faqja të mos ndryshojë */}
+                  <div style={{ position: "relative" }}>
+                    <img src="/Nenshkrimi.png" alt="" style={{ position: "absolute", left: "28%", bottom: "-90px", height: "200px", width: "auto", pointerEvents: "none", userSelect: "none" }} />
+                    <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }}></div>
+                  </div>
                   <div style={{ fontSize: "9.5pt" }}>Nënshkrimi</div>
                 </td>
               </tr>
@@ -605,13 +632,22 @@ function ContractOrarPjesshme({ staff, onClose, initialData, bodyOnly }: { staff
                   <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }}></div>
                   <div style={{ fontSize: "9.5pt" }}>Nënshkrimi</div>
                 </td>
-                <td style={{ border: "none", width: "8%" }}></td>
+                <td style={{ border: "none", width: "8%", verticalAlign: "bottom" }}>
+                      {/* Vula e shkollës (CL) në mes — pozicion absolut, që faqja të mos ndryshojë */}
+                      <div style={{ position: "relative", height: 0 }}>
+                        <img src="/vula-cl.png" alt="" style={{ position: "absolute", left: "50%", bottom: "-20px", transform: "translateX(-50%)", height: "120px", width: "120px", maxWidth: "none", pointerEvents: "none", userSelect: "none" }} />
+                      </div>
+                    </td>
                 <td style={{ border: "none", width: "46%", verticalAlign: "bottom" }}>
                   <div style={{ fontSize: "10.5pt", marginBottom: "40px" }}>
                     <strong>Drejtori i shkollës "Akademia Ora":</strong><br />
                     <strong>Valon Hoxha</strong>
                   </div>
-                  <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }}></div>
+                  {/* Nënshkrimi i drejtorit mbi vijë — pozicion absolut, që faqja të mos ndryshojë */}
+                  <div style={{ position: "relative" }}>
+                    <img src="/Nenshkrimi.png" alt="" style={{ position: "absolute", left: "28%", bottom: "-90px", height: "200px", width: "auto", pointerEvents: "none", userSelect: "none" }} />
+                    <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }}></div>
+                  </div>
                   <div style={{ fontSize: "9.5pt" }}>Nënshkrimi</div>
                 </td>
               </tr>
@@ -680,6 +716,7 @@ function printContracts(title: string, contracts: string[], copies: number) {
 export default function KontratetMesimdhnesve() {
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [bulk, setBulk] = useState<{ list: StaffMember[]; copies: number } | null>(null);
+  const [pendingBulk, setPendingBulk] = useState<{ copies: number; total: number; issues: { name: string; fields: string[] }[] } | null>(null);
   const bulkRef = useRef<HTMLDivElement>(null);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -710,7 +747,11 @@ export default function KontratetMesimdhnesve() {
         setActiveCard(kind === "pjesshme" ? "pjesshme" : "plote");
       } else if (staffId) {
         const m = await openStaff(staffId);
-        if (m) setSelected(m);
+        if (m) {
+          setSelected(m);
+          // ?open=1 (nga profili te Stafi): hap direkt kontratën e llojit të tij
+          if (p.get("open") === "1") setActiveCard(isHourly(m) ? "pjesshme" : "plote");
+        }
       }
     })();
   }, []);
@@ -754,21 +795,46 @@ export default function KontratetMesimdhnesve() {
     if (allChecked) filtered.forEach(s => n.delete(s.id)); else filtered.forEach(s => n.add(s.id));
     return n;
   });
-  // Kontratat e zgjedhura vizatohen të fshehura (flushSync), merret HTML-ja dhe printimi hapet brenda klikimit
-  // (që browseri të mos e bllokojë dritaren si popup)
+  // E hapur nga profili te Stafi (?from=stafi): mbyllja të kthen te ai profil
+  const closeContract = () => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("from") === "stafi" && selected) {
+      window.location.href = `/sekretaria/stafi?staffId=${selected.id}`;
+      return;
+    }
+    setSelected(null);
+    setInitialData(undefined);
+  };
+
+  // Para printimit në grup: kush ka fusha bosh te kartela (dalin bosh edhe në kontratë)
   const startBulk = (copies: number) => {
     const list = staff.filter(s => checked.has(s.id));
     if (!list.length || !activeCard) return;
-    const kind = activeCard;
+    const issues = list
+      .map(s => ({ name: s.emri, fields: missingContractFields(s, isHourly(s) ? "pjesshme" : activeCard) }))
+      .filter(i => i.fields.length > 0);
+    if (issues.length) setPendingBulk({ copies, total: list.length, issues });
+    else doBulk(copies);
+  };
+
+  // Kontratat e zgjedhura vizatohen të fshehura (flushSync), merret HTML-ja dhe printimi hapet brenda klikimit
+  // (që browseri të mos e bllokojë dritaren si popup)
+  const doBulk = (copies: number) => {
+    const list = staff.filter(s => checked.has(s.id));
+    if (!list.length || !activeCard) return;
+    const kindOf = (s: StaffMember) => (isHourly(s) ? "pjesshme" : activeCard);
     flushSync(() => setBulk({ list, copies }));
     const parts = Array.from(bulkRef.current?.querySelectorAll<HTMLElement>("[data-bulk-contract]") ?? []).map(el => el.innerHTML);
     setBulk(null);
     if (!parts.length) return;
-    printContracts(kind === "pjesshme" ? "Kontrata — Orar i Pjesshëm" : "Kontrata — Orar i Plotë", parts, copies);
-    list.forEach(s => logSekretariaDocument({
-      type: "KONTRATE_MESIMDHENES", staffId: s.id, personName: s.emri,
-      data: kind === "pjesshme" ? { kind, ...partDefaults(s) } : { kind, ...plotDefaults(s) },
-    }));
+    printContracts("Kontratat e mësimdhënësve", parts, copies);
+    list.forEach(s => {
+      const kind = kindOf(s);
+      logSekretariaDocument({
+        type: "KONTRATE_MESIMDHENES", staffId: s.id, personName: s.emri,
+        data: kind === "pjesshme" ? { kind, ...partDefaults(s) } : { kind, ...plotDefaults(s) },
+      });
+    });
   };
 
   if (!activeCard) {
@@ -874,7 +940,14 @@ export default function KontratetMesimdhnesve() {
                       <input type="checkbox" checked={checked.has(s.id)} onChange={() => toggle(s.id)} aria-label={`Zgjidh ${s.emri}`} className="w-4 h-4 accent-violet-600" />
                     </td>
                     <td className="px-4 py-3 text-slate-400 text-xs">{(page - 1) * limit + i + 1}</td>
-                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-white">{s.emri}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-white">
+                      {s.emri}
+                      {s.llojiKontrates && (
+                        <span className={`ml-2 px-1.5 py-0.5 rounded text-[11px] font-medium ${isHourly(s) ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
+                          {isHourly(s) ? "Me orë" : s.llojiKontrates}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-500">{s.lenda || "—"}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -884,7 +957,7 @@ export default function KontratetMesimdhnesve() {
                         "bg-slate-100 text-slate-500"
                       }`}>{s.tipi || "—"}</span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{s.totalBruto ? `${s.totalBruto} €` : "—"}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{isHourly(s) ? (s.cmimOres ? `${s.cmimOres} €/orë` : "—") : s.totalBruto ? `${s.totalBruto} €` : "—"}</td>
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => setSelected(s)}
@@ -931,22 +1004,47 @@ export default function KontratetMesimdhnesve() {
           </div>
         </div>
       )}
+      {pendingBulk && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setPendingBulk(null)}>
+          <div role="dialog" aria-modal="true" aria-label="Fusha bosh në kontrata" className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <p className="font-semibold text-slate-800 dark:text-white">
+              {pendingBulk.issues.length} nga {pendingBulk.total} kontrata kanë fusha bosh
+            </p>
+            <p className="text-sm text-slate-500">Këto fusha mungojnë te kartela e stafit, prandaj dalin bosh edhe në kontratë. Mund t&apos;i plotësosh te Stafi para printimit.</p>
+            <ul className="max-h-[50vh] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
+              {pendingBulk.issues.map(i => (
+                <li key={i.name} className="px-3 py-2 text-sm">
+                  <span className="font-medium text-slate-800 dark:text-white">{i.name}</span>
+                  <span className="block text-xs text-amber-700 dark:text-amber-400">{i.fields.join(", ")}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={() => setPendingBulk(null)} className="btn-secondary text-sm">Anulo</button>
+              <button onClick={() => { const c = pendingBulk.copies; setPendingBulk(null); doBulk(c); }} className="btn-primary text-sm">
+                <Printer className="w-4 h-4" /> Printo gjithsesi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {bulk && (
         <div ref={bulkRef} aria-hidden="true" style={{ position: "fixed", left: "-10000px", top: 0, width: "900px" }}>
           {bulk.list.map(s => (
             <div key={s.id} data-bulk-contract>
-              {activeCard === "pjesshme"
+              {activeCard === "pjesshme" || isHourly(s)
                 ? <ContractOrarPjesshme staff={s} bodyOnly onClose={() => {}} />
                 : <ContractOrarPlote staff={s} bodyOnly onClose={() => {}} />}
             </div>
           ))}
         </div>
       )}
-      {selected && activeCard === "plote" && (
-        <ContractOrarPlote staff={selected} initialData={initialData} onClose={() => { setSelected(null); setInitialData(undefined); }} />
+      {/* Një kontratë e rihapur nga arkivi (initialData) mbetet e llojit që u printua */}
+      {selected && activeCard === "plote" && (initialData || !isHourly(selected)) && (
+        <ContractOrarPlote staff={selected} initialData={initialData} onClose={closeContract} />
       )}
-      {selected && activeCard === "pjesshme" && (
-        <ContractOrarPjesshme staff={selected} initialData={initialData} onClose={() => { setSelected(null); setInitialData(undefined); }} />
+      {selected && (activeCard === "pjesshme" || (activeCard === "plote" && !initialData && isHourly(selected))) && (
+        <ContractOrarPjesshme staff={selected} initialData={initialData} onClose={closeContract} />
       )}
     </>
   );
