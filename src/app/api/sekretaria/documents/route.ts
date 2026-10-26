@@ -11,6 +11,25 @@ import { invalidateSekretariaSummary } from "@/lib/sekretariaSummary";
 // t'i ketë dokumentet e veta të regjistruara.
 const LOGGABLE = new Set(["VERTETIM_NXENES", "VERTETIM_MESIMDHENES", "VERTETIM_ASISTENTE", "KONTRATE_NXENES", "KONTRATE_MESIMDHENES"]);
 
+// Historiku i dokumenteve të një punonjësi (?staffId=X) — vetëm lexim, pa fushën `data`,
+// për panelin e Stafit.
+export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!sessionHasModule(session, "sekretaria")) return NextResponse.json({ error: "Nuk ke leje për këtë modul." }, { status: 403 });
+
+  const staffId = parseInt(req.nextUrl.searchParams.get("staffId") ?? "");
+  if (!staffId) return NextResponse.json({ error: "Mungon staffId." }, { status: 400 });
+
+  const docs = await prisma.docArchive.findMany({
+    where: { staffId, type: { in: [...LOGGABLE] } },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    select: { id: true, type: true, createdAt: true, generatedBy: true },
+  });
+  return NextResponse.json(docs.map(d => ({ ...d, label: DOC_TYPES[d.type]?.label ?? d.type, module: DOC_TYPES[d.type]?.module ?? null })));
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
