@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Loader2, Info } from "lucide-react";
+import { X, Loader2, Info, UserPlus } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { EXEMPTION_REASONS } from "@/lib/feeLedger";
 import type { EsStudent } from "./types";
@@ -53,16 +53,33 @@ async function post(url: string, body: unknown, method = "POST"): Promise<{ ok: 
 const parseAmt = (v: string) => parseFloat(v.replace(/\s|€/g, "").replace(",", "."));
 
 /* ── "+ Pagesë" / "Regjistro pagesë" ───────────────────────────────── */
+type Synim = { key: string; label: string; max: number; debtId: number | undefined };
+const synimet = (s: EsStudent, year: number): Synim[] => [
+  ...(s.debt > 0 ? [{ key: "Y", label: `Viti ${yl(year)} — borxhi ${formatCurrency(s.debt)}`, max: s.debt, debtId: undefined as number | undefined }] : []),
+  ...s.oldDebts.map(o => ({ key: `D${o.id}`, label: `Borxhi i vjetër ${yl(o.year)} — ${formatCurrency(o.amount)}`, max: o.amount, debtId: o.id })),
+];
+const normEmri = (v: string | null) => (v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+// Vëllezër/motra të shtuar në të njëjtën pagesë — secili ruhet si pagesë e vet (i njëjti API)
+interface Shtese { s: EsStudent; target: string; amount: string }
 export function PaymentModal({ student, students, year, debtId, onClose, onSaved }: {
   student: EsStudent | null; students: EsStudent[]; year: number; debtId?: number; onClose: () => void; onSaved: () => void;
 }) {
   const [picked, setPicked] = useState<EsStudent | null>(student);
   const [query, setQuery] = useState("");
   const s = picked;
-  const targets = s ? [
-    ...(s.debt > 0 ? [{ key: "Y", label: `Viti ${yl(year)} — borxhi ${formatCurrency(s.debt)}`, max: s.debt, debtId: undefined as number | undefined }] : []),
-    ...s.oldDebts.map(o => ({ key: `D${o.id}`, label: `Borxhi i vjetër ${yl(o.year)} — ${formatCurrency(o.amount)}`, max: o.amount, debtId: o.id })),
-  ] : [];
+  const targets = s ? synimet(s, year) : [];
+  const [shtesa, setShtesa] = useState<Shtese[]>([]);
+  const [kerkoTjeter, setKerkoTjeter] = useState("");
+  const shtoTe = (x: EsStudent) => {
+    const t0 = synimet(x, year)[0];
+    if (!t0 || shtesa.some(e => e.s.id === x.id) || x.id === s?.id) return;
+    setShtesa(p => [...p, { s: x, target: t0.key, amount: String(t0.max).replace(".", ",") }]);
+    setKerkoTjeter("");
+  };
+  // Propozim: fëmijët e tjerë të të njëjtit prind që kanë borxh
+  const vellezer = s && s.parent ? students.filter(x => x.id !== s.id && normEmri(x.parent) === normEmri(s.parent) && synimet(x, year).length > 0 && !shtesa.some(e => e.s.id === x.id)) : [];
+  const tjeret = kerkoTjeter.trim() ? students.filter(x => x.id !== s?.id && !shtesa.some(e => e.s.id === x.id) && synimet(x, year).length > 0
+    && `${x.name} ${x.parent ?? ""}`.toLowerCase().includes(kerkoTjeter.trim().toLowerCase())).slice(0, 6) : [];
   const [target, setTarget] = useState(debtId ? `D${debtId}` : "Y");
   const t = targets.find(x => x.key === target) ?? targets[0];
   const [amount, setAmount] = useState("");
@@ -78,10 +95,26 @@ export function PaymentModal({ student, students, year, debtId, onClose, onSaved
     const amt = parseAmt(amount);
     if (!(amt > 0)) { setError("Shkruani shumën e pagesës."); return; }
     if (!method) { setError("Zgjidhni mënyrën e pagesës (Cash ose Bankë)."); return; }
+    const lista = [{ s, debtId: t.debtId, amt }, ...shtesa.map(e => {
+      const tt = synimet(e.s, year).find(x => x.key === e.target) ?? synimet(e.s, year)[0];
+      return { s: e.s, debtId: tt?.debtId, amt: parseAmt(e.amount) };
+    })];
+    const pa = lista.find(x => !(x.amt > 0));
+    if (pa) { setError(`Shkruani shumën për ${pa.s.name}.`); return; }
     setBusy(true); setError("");
-    const r = await post("/api/eshkollori/payment", { studentId: s.id, year, amount: amt, method, date, debtId: t.debtId });
+    const ruajtur: string[] = [];
+    for (const x of lista) {
+      const r = await post("/api/eshkollori/payment", { studentId: x.s.id, year, amount: x.amt, method, date, debtId: x.debtId });
+      if (!r.ok) {
+        setBusy(false);
+        setError(`${x.s.name}: ${r.error}` + (ruajtur.length ? ` — u ruajtën tashmë: ${ruajtur.join(", ")} (mos i regjistroni sërish).` : ""));
+        if (ruajtur.length) onSaved();
+        return;
+      }
+      ruajtur.push(x.s.name);
+    }
     setBusy(false);
-    if (r.ok) { onSaved(); onClose(); } else setError(r.error!);
+    onSaved(); onClose();
   }
 
   const matches = query.trim()
@@ -93,7 +126,7 @@ export function PaymentModal({ student, students, year, debtId, onClose, onSaved
       onClose={onClose} busy={busy}
       footer={<>
         <button type="button" onClick={onClose} disabled={busy} className="btn-secondary justify-center">Anulo</button>
-        <button type="button" onClick={save} disabled={busy || !s || !t} className="btn-primary justify-center">{busy && <Loader2 className="w-4 h-4 animate-spin" />} Regjistro pagesën</button>
+        <button type="button" onClick={save} disabled={busy || !s || !t} className="btn-primary justify-center">{busy && <Loader2 className="w-4 h-4 animate-spin" />} {shtesa.length ? `Regjistro ${shtesa.length + 1} pagesat` : "Regjistro pagesën"}</button>
       </>}>
       {!s ? (
         <div>
@@ -143,6 +176,51 @@ export function PaymentModal({ student, students, year, debtId, onClose, onSaved
               ))}
             </div>
           </fieldset>
+
+          {/* Vëllezër / motra në të njëjtën pagesë */}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5"><UserPlus className="w-4 h-4" />Paguan edhe për vëlla/motër?</p>
+            {shtesa.map((e, i) => {
+              const tt = synimet(e.s, year);
+              return (
+                <div key={e.s.id} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center text-sm">
+                  <div className="min-w-0">
+                    <b className="text-slate-900 dark:text-white">{e.s.name}</b> <span className="text-xs text-slate-500">{e.s.className}</span>
+                    {tt.length > 1 ? (
+                      <select value={e.target} onChange={ev => setShtesa(p => p.map((x, j) => j === i ? { ...x, target: ev.target.value, amount: String((tt.find(y => y.key === ev.target.value)?.max ?? 0)).replace(".", ",") } : x))}
+                        className="form-input !py-1 !text-xs mt-1">
+                        {tt.map(y => <option key={y.key} value={y.key}>{y.label}</option>)}
+                      </select>
+                    ) : <p className="text-xs text-slate-500">{tt[0]?.label}</p>}
+                  </div>
+                  <input inputMode="decimal" aria-label={`Shuma për ${e.s.name}`} value={e.amount} onChange={ev => setShtesa(p => p.map((x, j) => j === i ? { ...x, amount: ev.target.value } : x))} className="form-input !w-24 text-right" />
+                  <button type="button" onClick={() => setShtesa(p => p.filter((_, j) => j !== i))} aria-label="Hiq" className="p-1 text-slate-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                </div>
+              );
+            })}
+            {vellezer.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {vellezer.map(v => (
+                  <button key={v.id} type="button" onClick={() => shtoTe(v)} className="text-xs px-2.5 py-1 rounded-full border border-primary-300 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                    + {v.name} <span className="text-slate-400">({formatCurrency(v.debt + v.oldDebt)})</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <input value={kerkoTjeter} onChange={e => setKerkoTjeter(e.target.value)} className="form-input !py-1.5 !text-sm" placeholder="Kërko një nxënës tjetër për ta shtuar…" autoComplete="off" />
+            {tjeret.length > 0 && (
+              <ul className="divide-y divide-slate-100 dark:divide-slate-700">
+                {tjeret.map(m => (
+                  <li key={m.id}><button type="button" onClick={() => shtoTe(m)} className="w-full text-left px-2 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg">
+                    <b className="text-slate-900 dark:text-white">{m.name}</b> <span className="text-slate-500">{m.className} · borxhi {formatCurrency(m.debt + m.oldDebt)}</span>
+                  </button></li>
+                ))}
+              </ul>
+            )}
+            {shtesa.length > 0 && (
+              <p className="text-sm text-right text-slate-600 dark:text-slate-300">Gjithsej: <b>{formatCurrency((parseAmt(amount) || 0) + shtesa.reduce((a, e) => a + (parseAmt(e.amount) || 0), 0))}</b> · {shtesa.length + 1} pagesa</p>
+            )}
+          </div>
         </>
       )}
       <Err msg={error} />
