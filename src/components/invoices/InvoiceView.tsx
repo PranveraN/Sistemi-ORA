@@ -198,7 +198,10 @@ tr:nth-child(even) td { background: #f8fafc; }
 .notes-text { font-size: 10px; color: #475569; }
 .footer { border-top: 1px solid #e2e8f0; padding-top: 10px; text-align: center; }
 .footer p { font-size: 8px; color: #94a3b8; }
-.sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 30px; }
+.sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 30px; position: relative; }
+.sig-school { position: relative; }
+.sig-sign { position: absolute; left: 50%; top: -30px; transform: translateX(-50%); height: 105px; width: auto; }
+.sig-stamp { position: absolute; left: 50%; top: -38px; transform: translateX(-50%); width: 100px; height: 100px; }
 .sig-line { border-top: 1px solid #94a3b8; margin-top: 20px; margin-bottom: 3px; }
 .sig-lbl { font-size: 8px; color: #64748b; text-align: center; }
 </style></head><body>
@@ -257,7 +260,8 @@ tr:nth-child(even) td { background: #f8fafc; }
 ${notesBlock}
 <div class="sig-grid">
   <div><div class="sig-line"></div><div class="sig-lbl">Nënshkrimi i nxënësit / prindit</div></div>
-  <div><div class="sig-line"></div><div class="sig-lbl">Vula dhe nënshkrimi i shkollës</div></div>
+  <div class="sig-school"><img src="${origin}/nenshkrimi-fature.png" class="sig-sign" alt="" onerror="this.style.display='none'"/><div class="sig-line"></div><div class="sig-lbl">Vula dhe nënshkrimi i shkollës</div></div>
+  <img src="${origin}/vula-cl.png" class="sig-stamp" alt="" onerror="this.style.display='none'"/>
 </div>
 <div class="footer"><p>Akademia Ora &bull; ${new Date().getFullYear()}</p></div>
 <script>window.onload=()=>window.print()</script>

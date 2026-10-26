@@ -10,10 +10,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   const body = await req.json();
-  const email = String(body.email || "").trim();
-  if (!email || !email.includes("@")) {
+  // Email-i i prindit dhe/ose një adresë tjetër (p.sh. kompania që paguan). Secili dërgohet
+  // veçmas, që marrësit të mos e shohin adresën e njëri-tjetrit. Të paktën njëri duhet.
+  const parentEmail = String(body.email || "").trim();
+  const extraEmail = String(body.extraEmail || "").trim();
+  if ((parentEmail && !parentEmail.includes("@")) || (extraEmail && !extraEmail.includes("@")) || (!parentEmail && !extraEmail)) {
     return NextResponse.json({ error: "Email i pavlefshëm" }, { status: 400 });
   }
+  // Marrësi kryesor: prindi; pa prind → vetëm adresa tjetër
+  const email = parentEmail || extraEmail;
+  const copyEmail = parentEmail && extraEmail && extraEmail.toLowerCase() !== parentEmail.toLowerCase() ? extraEmail : "";
 
   const invoice = await prisma.invoice.findUnique({
     where: { id: parseInt(id) },
@@ -58,17 +64,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       <p style="margin-top:20px;">Faleminderit,<br/>Akademia Ora</p>
     </div>`;
 
-  const result = await sendEmail(email, `${typeLabel} #${invoice.number} — Akademia Ora`, html);
+  const subject = `${typeLabel} #${invoice.number} — Akademia Ora`;
+  const result = await sendEmail(email, subject, html);
   if (!result.ok) {
     return NextResponse.json({ error: result.error || "Dërgimi dështoi" }, { status: 500 });
   }
+  const extraResult = copyEmail ? await sendEmail(copyEmail, subject, html) : null;
 
   if (invoice.status === "DRAFT") {
     await prisma.invoice.update({ where: { id: invoice.id }, data: { status: "SENT" } });
   }
 
   await logAction(session, "UPDATE", "Invoice", invoice.id,
-    `Dërgoi ${typeLabel.toLowerCase()}n ${invoice.number} (${invoice.student.firstName} ${invoice.student.lastName}) me email te ${email}`);
+    `Dërgoi ${typeLabel.toLowerCase()}n ${invoice.number} (${invoice.student.firstName} ${invoice.student.lastName}) me email te ${email}${extraResult?.ok ? ` dhe kopje te ${copyEmail}` : ""}`);
 
+  if (extraResult && !extraResult.ok) {
+    return NextResponse.json({ ok: true, warning: `U dërgua te prindi, por kopja te ${copyEmail} dështoi: ${extraResult.error || "gabim i panjohur"}` });
+  }
   return NextResponse.json({ ok: true });
 }

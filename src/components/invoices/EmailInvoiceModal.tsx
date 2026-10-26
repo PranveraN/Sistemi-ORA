@@ -14,23 +14,42 @@ interface Props {
 // Ripërdoret te lista e faturave DHE te vetë fatura — email-i i zgjidhur
 // automatikisht (babai/nëna) shfaqet gjithmonë i para-mbushur, por i
 // editueshëm, që stafi ta verifikojë/korrigjojë para se të dërgojë realisht.
+// Adresat shtesë të përdorura më parë (vetëm në këtë browser) — për t'i zgjedhur shpejt
+const EXTRA_KEY = "fatura.emailShtese";
+function loadExtraList(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(EXTRA_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch { return []; }
+}
+
 export default function EmailInvoiceModal({ invoiceId, invoiceNumber, defaultEmail, onClose, onSent }: Props) {
   const [email, setEmail] = useState(defaultEmail ?? "");
+  const [extraOn, setExtraOn] = useState(false);
+  const [extraList] = useState<string[]>(() => (typeof window === "undefined" ? [] : loadExtraList()));
+  const [extraEmail, setExtraEmail] = useState(() => extraList[0] ?? "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSend() {
     setError("");
-    if (!email.trim() || !email.includes("@")) { setError("Shkruaj një email të vlefshëm."); return; }
+    const extra = extraOn ? extraEmail.trim() : "";
+    if (extraOn && !extra.includes("@")) { setError("Shkruaj një email të vlefshëm për kopjen."); return; }
+    // Email-i i prindit mund të lihet bosh kur dërgohet vetëm te adresa tjetër
+    if (email.trim() ? !email.includes("@") : !extra) { setError("Shkruaj një email të vlefshëm."); return; }
     setSending(true);
     const res = await fetch(`/api/invoices/${invoiceId}/email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim() }),
+      body: JSON.stringify({ email: email.trim(), ...(extra ? { extraEmail: extra } : {}) }),
     });
     const d = await res.json().catch(() => ({}));
     setSending(false);
     if (!res.ok) { setError(d.error || "Dërgimi dështoi."); return; }
+    if (extra) {
+      try { localStorage.setItem(EXTRA_KEY, JSON.stringify([extra, ...extraList.filter(x => x !== extra)].slice(0, 5))); } catch { /* s'ka rëndësi */ }
+    }
+    if (d.warning) alert(d.warning);
     onSent();
   }
 
@@ -52,7 +71,7 @@ export default function EmailInvoiceModal({ invoiceId, invoiceNumber, defaultEma
             </div>
           )}
           <div>
-            <label className="form-label">Email i prindit — verifikoje para se të dërgosh</label>
+            <label className="form-label">Email i prindit — verifikoje para se të dërgosh{extraOn ? " (mund ta lësh bosh)" : ""}</label>
             <input
               type="email"
               value={email}
@@ -62,7 +81,30 @@ export default function EmailInvoiceModal({ invoiceId, invoiceNumber, defaultEma
               autoFocus
             />
           </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          <div>
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" checked={extraOn} onChange={e => setExtraOn(e.target.checked)} className="w-4 h-4 accent-violet-600" />
+              Dërgo kopje edhe te një email tjetër
+            </label>
+            {extraOn && (
+              <>
+                <input
+                  type="email"
+                  list="fatura-email-shtese"
+                  value={extraEmail}
+                  onChange={e => setExtraEmail(e.target.value)}
+                  className="form-input mt-2"
+                  placeholder="p.sh. kompania@email.com"
+                  aria-label="Email shtesë"
+                />
+                <datalist id="fatura-email-shtese">
+                  {extraList.map(x => <option key={x} value={x} />)}
+                </datalist>
+                <p className="text-xs text-slate-400 mt-1">Dërgohet si email i veçantë — prindi nuk e sheh këtë adresë.</p>
+              </>
+            )}
+          </div>
+          {error &&<p className="text-sm text-red-500">{error}</p>}
         </div>
 
         <div className="flex gap-3 p-5 pt-0">
