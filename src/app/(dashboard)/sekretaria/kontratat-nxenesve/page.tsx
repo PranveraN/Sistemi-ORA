@@ -8,6 +8,7 @@ import { STUDENT_CONTRACT_OPTIONS, STUDENT_CONTRACT_PENDING } from "@/lib/sekret
 import { Search, FileSignature, X, Printer, ChevronLeft, ChevronRight, Plus, FileDown, FileText } from "lucide-react";
 import React from "react";
 import { schoolYearText } from "@/lib/academicYear";
+import { askPrintBranding, applyPrintBranding } from "@/lib/printBranding";
 
 interface Student {
   id: number;
@@ -506,13 +507,15 @@ function ContractModal({ student, onClose, onStatusChange }: { student: Student;
     URL.revokeObjectURL(url);
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const branding = await askPrintBranding();
+    if (!branding) return;
     logContract("printim");
     const content = document.getElementById("contract-content")?.innerHTML;
     if (!content) return;
     const w = window.open("", "_blank", "width=960,height=800");
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    w.document.write(applyPrintBranding(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Kontratë — ${student.firstName} ${student.lastName}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -554,7 +557,7 @@ function ContractModal({ student, onClose, onStatusChange }: { student: Student;
 <div class="contract-copy">${content}</div>
 <div class="copy-separator"></div>
 <div class="contract-copy">${content}</div>
-</body></html>`);
+</body></html>`, branding));
     w.document.close();
     setTimeout(() => { w.print(); }, 600);
   };

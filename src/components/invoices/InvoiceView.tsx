@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import EmailInvoiceModal from "./EmailInvoiceModal";
+import { askPrintBranding, applyPrintBranding } from "@/lib/printBranding";
 
 interface InvoiceItem {
   id: number;
@@ -118,7 +119,9 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
     router.push(`/invoices/${data.id}`);
   }
 
-  function printInvoice() {
+  async function printInvoice() {
+    const branding = await askPrintBranding();
+    if (!branding) return;
     const origin = window.location.origin;
     const typeLabel = invoice.type === "INVOICE" ? "FATURË" : invoice.type === "PROFORMA" ? "PROFATURË" : "OFERTË";
     const itemRows = invoice.items.map(item => {
@@ -269,7 +272,7 @@ ${notesBlock}
 
     const w = window.open("", "_blank", "width=820,height=1100");
     if (!w) return;
-    w.document.write(html);
+    w.document.write(applyPrintBranding(html, branding));
     w.document.close();
   }
 

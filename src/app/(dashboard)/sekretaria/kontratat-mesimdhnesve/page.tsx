@@ -5,6 +5,7 @@ import { flushSync } from "react-dom";
 import Header from "@/components/layout/Header";
 import { logSekretariaDocument, loadSekretariaDocument } from "@/lib/sekretariaDocLog";
 import { Search, X, Printer, ChevronLeft, ChevronRight, FilePen, Clock, FileText } from "lucide-react";
+import { askPrintBranding, applyPrintBranding, type PrintBranding } from "@/lib/printBranding";
 
 interface StaffMember {
   id: number;
@@ -146,19 +147,21 @@ function ContractOrarPlote({ staff, onClose, initialData, bodyOnly }: { staff: S
   const backdropRef = useRef(false);
 
   // copies > 1: kopjet në një dokument, secila nga faqe e re → printohet 1 kopje dhe faqet dalin me radhë (1→fund, 1→fund)
-  const handlePrint = (copies = 1) => {
+  const handlePrint = async (copies = 1) => {
+    const branding = await askPrintBranding();
+    if (!branding) return;
     const content = document.getElementById("staff-contract-content")?.innerHTML;
     if (!content) return;
     const w = window.open("", "_blank", "width=960,height=800");
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    w.document.write(applyPrintBranding(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Kontratë — ${staff.emri}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Times New Roman', serif; font-size: 10.5pt; color: #000; background: #fff; }
   @page { size: A4; margin: 18mm 18mm 18mm 18mm; }
   input { border: none !important; background: transparent !important; font-family: inherit; font-size: inherit; padding: 0 2px; outline: none; display: inline; min-width: 0; }
-</style></head><body>${Array.from({ length: copies }, (_, i) => `<div style="${i ? "break-before:page;page-break-before:always;" : ""}">${content}</div>`).join("")}</body></html>`);
+</style></head><body>${Array.from({ length: copies }, (_, i) => `<div style="${i ? "break-before:page;page-break-before:always;" : ""}">${content}</div>`).join("")}</body></html>`, branding));
     w.document.close();
     setTimeout(() => w.print(), 600);
     logSekretariaDocument({ type: "KONTRATE_MESIMDHENES", staffId: staff.id, personName: staff.emri, data: { kind: "plote", ...d } });
@@ -440,20 +443,22 @@ function ContractOrarPjesshme({ staff, onClose, initialData, bodyOnly }: { staff
   const backdropRef = useRef(false);
 
   // copies > 1: kopjet në një dokument, secila nga faqe e re → printohet 1 kopje dhe faqet dalin me radhë (1→fund, 1→fund)
-  const handlePrint = (copies = 1) => {
+  const handlePrint = async (copies = 1) => {
+    const branding = await askPrintBranding();
+    if (!branding) return;
     const content = document.getElementById("staff-part-contract-content")?.innerHTML;
     if (!content) return;
     const w = window.open("", "_blank", "width=960,height=800");
     if (!w) return;
     w.document.open();
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    w.document.write(applyPrintBranding(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Kontratë Gjysmë Orari — ${staff.emri}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Times New Roman', serif; font-size: 10.5pt; color: #000; background: #fff; }
   @page { size: A4; margin: 18mm 18mm 18mm 18mm; }
   input { border: none !important; background: transparent !important; font-family: inherit; font-size: inherit; padding: 0 2px; outline: none; display: inline; min-width: 0; }
-</style></head><body>${Array.from({ length: copies }, (_, i) => `<div style="${i ? "break-before:page;page-break-before:always;" : ""}">${content}</div>`).join("")}</body></html>`);
+</style></head><body>${Array.from({ length: copies }, (_, i) => `<div style="${i ? "break-before:page;page-break-before:always;" : ""}">${content}</div>`).join("")}</body></html>`, branding));
     w.document.close();
     setTimeout(() => w.print(), 600);
     logSekretariaDocument({ type: "KONTRATE_MESIMDHENES", staffId: staff.id, personName: staff.emri, data: { kind: "pjesshme", ...d } });
@@ -696,19 +701,19 @@ function ContractOrarPjesshme({ staff, onClose, initialData, bodyOnly }: { staff
 }
 
 // Disa kontrata në një dokument: secila (dhe secila kopje) nga faqe e re, kopjet e një kontrate njëra pas tjetrës
-function printContracts(title: string, contracts: string[], copies: number) {
+function printContracts(title: string, contracts: string[], copies: number, branding: PrintBranding) {
   const pages = contracts.flatMap(c => Array.from({ length: copies }, () => c));
   const w = window.open("", "_blank", "width=960,height=800");
   if (!w) return;
   w.document.open();
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+  w.document.write(applyPrintBranding(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>${title}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Times New Roman', serif; font-size: 10.5pt; color: #000; background: #fff; }
   @page { size: A4; margin: 18mm 18mm 18mm 18mm; }
   input { border: none !important; background: transparent !important; font-family: inherit; font-size: inherit; padding: 0 2px; outline: none; display: inline; min-width: 0; }
-</style></head><body>${pages.map((c, i) => `<div style="${i ? "break-before:page;page-break-before:always;" : ""}">${c}</div>`).join("")}</body></html>`);
+</style></head><body>${pages.map((c, i) => `<div style="${i ? "break-before:page;page-break-before:always;" : ""}">${c}</div>`).join("")}</body></html>`, branding));
   w.document.close();
   setTimeout(() => w.print(), 600);
 }
@@ -819,7 +824,9 @@ export default function KontratetMesimdhnesve() {
 
   // Kontratat e zgjedhura vizatohen të fshehura (flushSync), merret HTML-ja dhe printimi hapet brenda klikimit
   // (që browseri të mos e bllokojë dritaren si popup)
-  const doBulk = (copies: number) => {
+  const doBulk = async (copies: number) => {
+    const branding = await askPrintBranding();
+    if (!branding) return;
     const list = staff.filter(s => checked.has(s.id));
     if (!list.length || !activeCard) return;
     const kindOf = (s: StaffMember) => (isHourly(s) ? "pjesshme" : activeCard);
@@ -827,7 +834,7 @@ export default function KontratetMesimdhnesve() {
     const parts = Array.from(bulkRef.current?.querySelectorAll<HTMLElement>("[data-bulk-contract]") ?? []).map(el => el.innerHTML);
     setBulk(null);
     if (!parts.length) return;
-    printContracts("Kontratat e mësimdhënësve", parts, copies);
+    printContracts("Kontratat e mësimdhënësve", parts, copies, branding);
     list.forEach(s => {
       const kind = kindOf(s);
       logSekretariaDocument({

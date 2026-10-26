@@ -12,6 +12,7 @@ import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, getDateRange, type YearType } from "@/lib/academicYear";
 import * as XLSX from "xlsx";
 import FamilyReceiptPrintModal from "@/components/finance/FamilyReceiptPrintModal";
+import { askPrintBranding, applyPrintBranding } from "@/lib/printBranding";
 
 /* ── Types ─────────────────────────────────────────────── */
 interface Product {
@@ -186,7 +187,9 @@ td { padding:3px 6px; border-bottom:1px solid #e2e8f0; }
 .copy-label { display:inline-block; margin-top:6px; font-size:7.5px; font-weight:700; color:#fff; background:#475569; padding:2px 7px; border-radius:3px; letter-spacing:.06em; text-transform:uppercase; }
 `;
 
-function printReceipt(sale: Sale) {
+async function printReceipt(sale: Sale) {
+  const branding = await askPrintBranding();
+  if (!branding) return;
   const origin = window.location.origin;
   const html1  = buildBookReceiptHTML(sale, "prind",   origin);
   const html2  = buildBookReceiptHTML(sale, "shkolla", origin);
@@ -194,7 +197,7 @@ function printReceipt(sale: Sale) {
   const w = window.open("", "_blank", "width=820,height=1200");
   if (!w) return;
 
-  w.document.write(`<!DOCTYPE html><html lang="sq"><head>
+  w.document.write(applyPrintBranding(`<!DOCTYPE html><html lang="sq"><head>
 <meta charset="UTF-8"/>
 <title>Fletëpagesë ${sale.receiptNumber || ""}</title>
 <style>${RECEIPT_STYLE}</style></head><body>
@@ -204,7 +207,7 @@ function printReceipt(sale: Sale) {
   ${html2}
 </div>
 <script>window.onload=()=>window.print()</script>
-</body></html>`);
+</body></html>`, branding));
   w.document.close();
 }
 
@@ -213,6 +216,8 @@ function printReceipt(sale: Sale) {
 // vet (2 kopje), një print job i vetëm në vend që të hapen N dritare.
 async function printAllReceipts(list: Sale[]) {
   if (list.length === 0) return;
+  const branding = await askPrintBranding();
+  if (!branding) return;
   const origin = window.location.origin;
 
   // Lista e "Shitjet" s'i mban artikujt (`items`) — merren vetëm ato që mungojnë.
@@ -232,13 +237,13 @@ async function printAllReceipts(list: Sale[]) {
   const w = window.open("", "_blank", "width=820,height=1200");
   if (!w) return;
 
-  w.document.write(`<!DOCTYPE html><html lang="sq"><head>
+  w.document.write(applyPrintBranding(`<!DOCTYPE html><html lang="sq"><head>
 <meta charset="UTF-8"/>
 <title>Fletëpagesat (${full.length})</title>
 <style>${RECEIPT_STYLE}</style></head><body>
 ${pages}
 <script>window.onload=()=>window.print()</script>
-</body></html>`);
+</body></html>`, branding));
   w.document.close();
 }
 

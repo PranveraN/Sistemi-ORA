@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, Printer, Loader2 } from "lucide-react";
 import { MONTHS, USHQIMI_PERIOD_LABELS, formatDate } from "@/lib/utils";
+import { askPrintBranding, applyPrintBranding } from "@/lib/printBranding";
 
 interface ReceiptData {
   receiptNumber: string | null;
@@ -153,8 +154,10 @@ export default function PaymentReceiptModal({ paymentId, onClose }: Props) {
       .finally(() => setLoading(false));
   }, [paymentId]);
 
-  function handlePrint() {
+  async function handlePrint() {
     if (!data) return;
+    const branding = await askPrintBranding();
+    if (!branding) return;
     const origin = window.location.origin;
     const html1 = buildReceiptHTML(data, "prind", origin);
     const html2 = buildReceiptHTML(data, "shkolla", origin);
@@ -162,7 +165,7 @@ export default function PaymentReceiptModal({ paymentId, onClose }: Props) {
     const win = window.open("", "_blank", "width=820,height=1200");
     if (!win) return;
 
-    win.document.write(`<!DOCTYPE html><html lang="sq"><head>
+    win.document.write(applyPrintBranding(`<!DOCTYPE html><html lang="sq"><head>
 <meta charset="UTF-8"/>
 <title>Dëshmi Pagese ${data.receiptNumber || ""}</title>
 <style>
@@ -225,7 +228,7 @@ html, body { height:100%; font-family: Arial, Helvetica, sans-serif; background:
   ${html2}
 </div>
 <script>window.onload=()=>{window.print();}</script>
-</body></html>`);
+</body></html>`, branding));
     win.document.close();
   }
 

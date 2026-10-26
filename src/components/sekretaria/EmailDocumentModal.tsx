@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X, Send, Loader2, Check, Mail } from "lucide-react";
 import { htmlPageToPdfBase64 } from "@/lib/htmlToPdf";
+import { PrintBrandingFields, applyPrintBranding, loadPrintBranding, savePrintBranding, type PrintBranding } from "@/lib/printBranding";
 
 // "Dërgo me email" për dokumentet e Sekretarisë: shkruan email-in → dokumenti
 // (i njëjti si te "Printo") bëhet PDF dhe dërgohet si bashkëngjitje.
@@ -16,6 +17,7 @@ export default function EmailDocumentModal({ defaultTo, defaultSubject, defaultM
   const [step, setStep] = useState<"" | "pdf" | "send">("");
   const [error, setError] = useState("");
   const [done, setDone] = useState<string | null>(null);
+  const [branding, setBranding] = useState<PrintBranding>(loadPrintBranding);
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -23,7 +25,8 @@ export default function EmailDocumentModal({ defaultTo, defaultSubject, defaultM
     setError("");
     try {
       setStep("pdf");
-      const pdfBase64 = await htmlPageToPdfBase64(getHtml());
+      savePrintBranding(branding);
+      const pdfBase64 = await htmlPageToPdfBase64(applyPrintBranding(getHtml(), branding));
       setStep("send");
       const r = await fetch("/api/sekretaria/email-document", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -70,6 +73,7 @@ export default function EmailDocumentModal({ defaultTo, defaultSubject, defaultM
               <span className="form-label">Mesazhi</span>
               <textarea className="form-input" rows={4} value={message} onChange={e => setMessage(e.target.value)} />
             </label>
+            <PrintBrandingFields value={branding} onChange={setBranding} />
             {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
             <button type="submit" disabled={busy} className="btn-primary w-full justify-center">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

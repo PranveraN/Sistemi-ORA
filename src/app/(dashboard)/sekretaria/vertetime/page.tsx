@@ -11,6 +11,7 @@ import EmailDocumentModal from "@/components/sekretaria/EmailDocumentModal";
 import { formatDate } from "@/lib/utils";
 import { schoolYearText } from "@/lib/academicYear";
 import { logSekretariaDocument, loadSekretariaDocument } from "@/lib/sekretariaDocLog";
+import { askPrintBranding, applyPrintBranding } from "@/lib/printBranding";
 
 const ARCHIVE_TYPE: Record<CertTypeId, "VERTETIM_NXENES" | "VERTETIM_MESIMDHENES" | "VERTETIM_ASISTENTE"> = {
   nxenes: "VERTETIM_NXENES", mesimdhenes: "VERTETIM_MESIMDHENES", asistente: "VERTETIM_ASISTENTE",
@@ -341,9 +342,11 @@ export default function Vertetime() {
       });
     }
   };
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const branding = await askPrintBranding();
+    if (!branding) return;
     const w = window.open("", "_blank", "width=860,height=700");
-    if (w) { w.document.write(buildPrintHtml(nr, certDate, body, true, stampFor(persons.find(x => x.id === selId) ?? null))); w.document.close(); }
+    if (w) { w.document.write(applyPrintBranding(buildPrintHtml(nr, certDate, body, true, stampFor(persons.find(x => x.id === selId) ?? null)), branding)); w.document.close(); }
     logToArchive();
   };
   const selPerson = persons.find(x => x.id === selId) ?? null;

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Printer, Plus, CreditCard, Package, Calendar, Phone, User } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { askPrintBranding, applyPrintBranding } from "@/lib/printBranding";
 
 interface SaleItem {
   id: number;
@@ -117,12 +118,14 @@ function buildUniformReceiptHTML(sale: Sale, copy: "prind" | "shkolla"): string 
 </div>`;
 }
 
-function printReceipt(sale: Sale) {
+async function printReceipt(sale: Sale) {
+  const branding = await askPrintBranding();
+  if (!branding) return;
   const win = window.open("", "_blank", "width=820,height=1200");
   if (!win) return;
   const html1 = buildUniformReceiptHTML(sale, "prind");
   const html2 = buildUniformReceiptHTML(sale, "shkolla");
-  win.document.write(`<!DOCTYPE html><html lang="sq"><head>
+  win.document.write(applyPrintBranding(`<!DOCTYPE html><html lang="sq"><head>
 <meta charset="UTF-8"/>
 <title>Dëftesë #${sale.id}</title>
 <style>
@@ -177,7 +180,7 @@ html, body { height:100%; font-family:Arial,Helvetica,sans-serif; background:#ff
   ${html2}
 </div>
 <script>window.onload=()=>{window.print();}<\/script>
-</body></html>`);
+</body></html>`, branding));
   win.document.close();
 }
 

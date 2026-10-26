@@ -7,6 +7,7 @@ import {
   ChevronLeft, ChevronRight, X, Printer,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { askPrintBranding, applyPrintBranding } from "@/lib/printBranding";
 
 /* ─── Types ─────────────────────────────────────────────── */
 interface Student {
@@ -176,7 +177,9 @@ function FletekalimCLModal({ student, onClose, initialData }: { student: Student
 
   const backdropRef = useRef(false);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const branding = await askPrintBranding();
+    if (!branding) return;
     // Sync React-controlled input values to DOM attributes before innerHTML capture
     ["fk-page1", "fk-page2"].forEach(id => {
       document.getElementById(id)?.querySelectorAll("input").forEach(inp => {
@@ -190,7 +193,7 @@ function FletekalimCLModal({ student, onClose, initialData }: { student: Student
     if (!w) return;
     const base = window.location.origin;
     w.document.open();
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    w.document.write(applyPrintBranding(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <base href="${base}/">
 <title>Fletëkalim — ${student.firstName} ${student.lastName}</title>
 <style>
@@ -205,7 +208,7 @@ function FletekalimCLModal({ student, onClose, initialData }: { student: Student
 </style></head><body>
 <div class="page">${p1}</div>
 <div class="page">${p2}</div>
-</body></html>`);
+</body></html>`, branding));
     w.document.close();
     setTimeout(() => w.print(), 600);
     // Save to archive (fire-and-forget)
@@ -668,7 +671,9 @@ function FletekalimCUModal({ student, onClose, initialData }: { student: Student
 
   const backdropRef = useRef(false);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const branding = await askPrintBranding();
+    if (!branding) return;
     ["fkcu-page1","fkcu-page2"].forEach(id => {
       document.getElementById(id)?.querySelectorAll("input").forEach(inp => {
         (inp as HTMLInputElement).setAttribute("value", (inp as HTMLInputElement).value);
@@ -692,7 +697,7 @@ function FletekalimCUModal({ student, onClose, initialData }: { student: Student
       }),
     }).catch(() => {});
     w.document.open();
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    w.document.write(applyPrintBranding(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <base href="${window.location.origin}/">
 <title>Fletëkalim CU — ${student.firstName} ${student.lastName}</title>
 <style>
@@ -714,7 +719,7 @@ function FletekalimCUModal({ student, onClose, initialData }: { student: Student
 </style></head><body>
 <div class="page">${p1}</div>
 <div class="page">${p2}</div>
-</body></html>`);
+</body></html>`, branding));
     w.document.close();
     setTimeout(()=>w.print(),600);
   };
@@ -1050,7 +1055,9 @@ function VërtëtimCLModal({ student, onClose, initialData }: { student: Student
 
   const backdropRef = useRef(false);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const branding = await askPrintBranding();
+    if (!branding) return;
     document.getElementById("vcl-page1")?.querySelectorAll("input").forEach(inp => {
       inp.setAttribute("value", (inp as HTMLInputElement).value);
     });
@@ -1071,7 +1078,7 @@ function VërtëtimCLModal({ student, onClose, initialData }: { student: Student
       }),
     }).catch(() => {});
     w.document.open();
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    w.document.write(applyPrintBranding(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <base href="${window.location.origin}/">
 <title>Vërtetim — ${student.firstName} ${student.lastName}</title>
 <style>
@@ -1085,7 +1092,7 @@ function VërtëtimCLModal({ student, onClose, initialData }: { student: Student
   .page{width:100%;display:block}
 </style></head><body>
 <div class="page">${p1}</div>
-</body></html>`);
+</body></html>`, branding));
     w.document.close();
     setTimeout(()=>w.print(),600);
   };
@@ -1365,7 +1372,9 @@ function PasqyreNotaveCUModal({ student, onClose, initialData }: { student: Stud
 
   const backdropRef = useRef(false);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const branding = await askPrintBranding();
+    if (!branding) return;
     document.getElementById("pn-page1")?.querySelectorAll("input").forEach(inp => {
       inp.setAttribute("value", (inp as HTMLInputElement).value);
     });
@@ -1386,7 +1395,7 @@ function PasqyreNotaveCUModal({ student, onClose, initialData }: { student: Stud
       }),
     }).catch(() => {});
     w.document.open();
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    w.document.write(applyPrintBranding(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <base href="${window.location.origin}/">
 <title>Pasqyrë e Notave — ${student.firstName} ${student.lastName}</title>
 <style>
@@ -1400,7 +1409,7 @@ function PasqyreNotaveCUModal({ student, onClose, initialData }: { student: Stud
   .page{width:100%;display:block}
 </style></head><body>
 <div class="page">${p1}</div>
-</body></html>`);
+</body></html>`, branding));
     w.document.close();
     setTimeout(()=>w.print(),600);
   };
