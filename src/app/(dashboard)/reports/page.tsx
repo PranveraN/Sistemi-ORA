@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import Header from "@/components/layout/Header";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from "recharts";
-import { Download, FileBarChart, AlertCircle, GraduationCap, Receipt } from "lucide-react";
+import { Download, FileBarChart, AlertCircle, GraduationCap, Receipt, Layers } from "lucide-react";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
 
 const REPORT_TYPES = [
@@ -158,6 +159,10 @@ export default function ReportsPage() {
                 {rt.label}
               </button>
             ))}
+            {/* Të gjitha të hyrat + shpenzimet, të gjitha kategoritë — faqe më vete */}
+            <Link href="/reports/pergjithshem" className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white dark:bg-slate-800 text-primary-700 dark:text-primary-300 border border-primary-300 dark:border-primary-700 hover:bg-primary-50 dark:hover:bg-primary-900/20">
+              <Layers className="w-4 h-4" />Raporti i përgjithshëm
+            </Link>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
