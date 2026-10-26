@@ -120,7 +120,8 @@ function ContractOrarPlote({ staff, onClose, initialData }: { staff: StaffMember
   const set = (k: keyof ContractData) => (v: string) => setD(p => ({ ...p, [k]: v }));
   const backdropRef = useRef(false);
 
-  const handlePrint = () => {
+  // copies > 1: kopjet në një dokument, secila nga faqe e re → printohet 1 kopje dhe faqet dalin me radhë (1→fund, 1→fund)
+  const handlePrint = (copies = 1) => {
     const content = document.getElementById("staff-contract-content")?.innerHTML;
     if (!content) return;
     const w = window.open("", "_blank", "width=960,height=800");
@@ -132,7 +133,7 @@ function ContractOrarPlote({ staff, onClose, initialData }: { staff: StaffMember
   body { font-family: 'Times New Roman', serif; font-size: 10.5pt; color: #000; background: #fff; }
   @page { size: A4; margin: 18mm 18mm 18mm 18mm; }
   input { border: none !important; background: transparent !important; font-family: inherit; font-size: inherit; padding: 0 2px; outline: none; display: inline; min-width: 0; }
-</style></head><body>${content}</body></html>`);
+</style></head><body>${Array.from({ length: copies }, (_, i) => `<div style="${i ? "break-before:page;page-break-before:always;" : ""}">${content}</div>`).join("")}</body></html>`);
     w.document.close();
     setTimeout(() => w.print(), 600);
     logSekretariaDocument({ type: "KONTRATE_MESIMDHENES", staffId: staff.id, personName: staff.emri, data: { kind: "plote", ...d } });
@@ -152,9 +153,13 @@ function ContractOrarPlote({ staff, onClose, initialData }: { staff: StaffMember
             Kontratë me Orar të Plotë — {staff.emri}
           </h2>
           <div className="flex items-center gap-2">
-            <button onClick={handlePrint}
+            <button onClick={() => handlePrint(1)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg">
               <Printer className="w-3.5 h-3.5" /> Print
+            </button>
+            <button onClick={() => handlePrint(2)} title="Dy kopje me radhë: kopja e parë e plotë, pastaj e dyta. Në dritaren e printimit lër 1 kopje."
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg">
+              <Printer className="w-3.5 h-3.5" /> Print 2 kopje
             </button>
             <button onClick={onClose} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">
               <X className="w-4 h-4 text-slate-500" />
@@ -395,7 +400,8 @@ function ContractOrarPjesshme({ staff, onClose, initialData }: { staff: StaffMem
   const set = (k: keyof PartContractData) => (v: string) => setD(p => ({ ...p, [k]: v }));
   const backdropRef = useRef(false);
 
-  const handlePrint = () => {
+  // copies > 1: kopjet në një dokument, secila nga faqe e re → printohet 1 kopje dhe faqet dalin me radhë (1→fund, 1→fund)
+  const handlePrint = (copies = 1) => {
     const content = document.getElementById("staff-part-contract-content")?.innerHTML;
     if (!content) return;
     const w = window.open("", "_blank", "width=960,height=800");
@@ -408,7 +414,7 @@ function ContractOrarPjesshme({ staff, onClose, initialData }: { staff: StaffMem
   body { font-family: 'Times New Roman', serif; font-size: 10.5pt; color: #000; background: #fff; }
   @page { size: A4; margin: 18mm 18mm 18mm 18mm; }
   input { border: none !important; background: transparent !important; font-family: inherit; font-size: inherit; padding: 0 2px; outline: none; display: inline; min-width: 0; }
-</style></head><body>${content}</body></html>`);
+</style></head><body>${Array.from({ length: copies }, (_, i) => `<div style="${i ? "break-before:page;page-break-before:always;" : ""}">${content}</div>`).join("")}</body></html>`);
     w.document.close();
     setTimeout(() => w.print(), 600);
     logSekretariaDocument({ type: "KONTRATE_MESIMDHENES", staffId: staff.id, personName: staff.emri, data: { kind: "pjesshme", ...d } });
@@ -428,9 +434,13 @@ function ContractOrarPjesshme({ staff, onClose, initialData }: { staff: StaffMem
             Kontratë me Orar të Pjesshëm — {staff.emri}
           </h2>
           <div className="flex items-center gap-2">
-            <button onClick={handlePrint}
+            <button onClick={() => handlePrint(1)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg">
               <Printer className="w-3.5 h-3.5" /> Print
+            </button>
+            <button onClick={() => handlePrint(2)} title="Dy kopje me radhë: kopja e parë e plotë, pastaj e dyta. Në dritaren e printimit lër 1 kopje."
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg">
+              <Printer className="w-3.5 h-3.5" /> Print 2 kopje
             </button>
             <button onClick={onClose} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">
               <X className="w-4 h-4 text-slate-500" />
