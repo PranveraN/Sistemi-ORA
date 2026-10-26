@@ -145,7 +145,7 @@ function buildReceiptHTML(d: FamilyReceiptData, copy: "prind" | "shkolla", origi
       <div class="sig-lbl">Nënshkrimi i prindit</div>
     </div>
     <div class="stamp-box">
-      <div class="sig-line"></div>
+      <div class="school-sign-wrap"><img class="school-sign" src="${window.location.origin}/nenshkrimi-fature.png" alt="" onerror="this.style.display='none'"/></div><div class="sig-line"></div>
       <div class="sig-lbl">Vula dhe nënshkrimi i shkollës</div>
     </div>
   </div>
@@ -188,6 +188,9 @@ export default function FamilyReceiptPrintModal({ familyReceiptId, onClose }: Pr
 html, body { height:100%; font-family: Arial, Helvetica, sans-serif; background:#fff; color:#000; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 .page { width:100%; height:100%; display:flex; flex-direction:column; }
 .receipt { flex:1 1 0; min-height:0; padding:9mm 13mm 7mm; overflow:hidden; }
+.cut-stamp { position:absolute; left:50%; top:-56px; transform:translateX(-50%); width:112px; height:112px; z-index:5; }
+.school-sign-wrap { position:relative; height:0; }
+.school-sign { position:absolute; right:5%; top:-10px; height:95px; width:auto; z-index:4; }
 .cut-line {
   flex:0 0 auto; border:none; border-top:1px dashed #888;
   margin:3mm 13mm; position:relative; text-align:center;
@@ -231,7 +234,7 @@ html, body { height:100%; font-family: Arial, Helvetica, sans-serif; background:
 </style></head><body>
 <div class="page">
   ${html1}
-  <div class="cut-line"></div>
+  <div class="cut-line"><img class="cut-stamp" src="${window.location.origin}/vula-cl.png" alt="" onerror="this.style.display='none'"/></div>
   ${html2}
 </div>
 <script>window.onload=()=>{window.print();}</script>
