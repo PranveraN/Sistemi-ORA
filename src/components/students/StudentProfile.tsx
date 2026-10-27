@@ -5,6 +5,7 @@ import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils";
+import { currentSchoolYearStart } from "@/lib/academicYear";
 import { ChevronLeft, Edit, CreditCard, FileText, Phone, MapPin, User, GraduationCap, Users, Trash2, Printer, Lock, Save, Loader2, StickyNote, MessageSquare, Send, Wand2, Camera, FileCheck2 } from "lucide-react";
 import { buildObligationMessage, buildSummaryMessage, type Obligation } from "@/lib/notificationTemplates";
 import { useModuleAccess } from "@/lib/useModuleAccess";
@@ -121,6 +122,18 @@ function salesToGroup(categoryName: string, sales: { totalAmount: number; paidAm
     dueDate: null,
   };
 }
+
+// Viti shkollor (fillimi, p.sh. 2026 = 2026–27) — i njëjti rregull si te lista e pagesave
+// (ProfilePaymentRows): muaji/viti i pagesës; pa muaj → data e afatit / e shitjes.
+function ayStartOfDay(iso: string): number {
+  const [y, m] = new Date(iso).toLocaleDateString("en-CA", { timeZone: "Europe/Belgrade" }).split("-").map(Number);
+  return m >= 9 ? y : y - 1;
+}
+function ayStartOfPayment(p: Payment): number {
+  if (p.month != null && p.year != null) return p.month >= 9 ? p.year : p.year - 1;
+  return ayStartOfDay(p.dueDate);
+}
+const ayText = (start: number) => `${start}–${String(start + 1).slice(2)}`;
 
 interface Invoice {
   id: number;
@@ -314,6 +327,31 @@ export default function StudentProfile({ student }: { student: Student }) {
   // shfaqet më poshtë kartelë për kartelë.
   const totalDebt = categoryGroups.reduce((sum, g) => sum + g.balance, 0);
   const totalPaid = categoryGroups.reduce((sum, g) => sum + g.paidAmount, 0);
+
+  // Kartat lart sipas vitit shkollor (parazgjedhje: viti aktual) — më poshtë kategoritë,
+  // SMS dhe historiku i printuar mbeten si më parë (të gjitha vitet).
+  const groupsForYear = (ay: number) => [
+    ...groupPaymentsByCategory(payments.filter(p => ayStartOfPayment(p) === ay)),
+    ...[salesToGroup("Librat e Anglishtes", student.bookSales.filter(s => ayStartOfDay(s.saleDate) === ay)),
+        salesToGroup("Uniforma", student.uniSales.filter(s => ayStartOfDay(s.saleDate) === ay))].filter((g): g is CategoryPaymentGroup => !!g),
+  ];
+  const currentAy = currentSchoolYearStart();
+  const dataYears = [...new Set([
+    ...payments.map(ayStartOfPayment),
+    ...student.bookSales.map(s => ayStartOfDay(s.saleDate)),
+    ...student.uniSales.map(s => ayStartOfDay(s.saleDate)),
+  ])];
+  const yearOptions = [...new Set([currentAy, ...dataYears])].sort((a, b) => b - a);
+  const [cardYear, setCardYear] = useState<number | "all">(currentAy);
+  const cardGroups = cardYear === "all" ? categoryGroups.filter(g => !g.noData) : groupsForYear(cardYear);
+  const cardPaid = cardGroups.reduce((s, g) => s + g.paidAmount, 0);
+  const cardDebt = cardGroups.reduce((s, g) => s + g.balance, 0);
+  const cardShkollimi = cardGroups.find(g => g.categoryName === "Shkollimi");
+  // Vitet e tjera me pagesa ose borxh — që të mos humbasin nga sytë kur shihet një vit
+  const otherYears = cardYear === "all" ? [] : dataYears.filter(y => y !== cardYear).sort((a, b) => a - b).map(y => {
+    const g = groupsForYear(y);
+    return { y, paid: g.reduce((s, x) => s + x.paidAmount, 0), debt: g.reduce((s, x) => s + x.balance, 0) };
+  }).filter(o => o.paid > 0 || o.debt > 0);
 
   // SMS te prindi — direkt nga profili, pa dalë te faqja e përgjithshme /sms,
   // që stafi financiar të ketë historikun/borxhin dhe dërgimin e mesazhit
@@ -610,16 +648,28 @@ export default function StudentProfile({ student }: { student: Student }) {
         </button>
       </div>
 
-      {/* Stats */}
+      {/* Stats — sipas vitit shkollor */}
+      <div className="flex flex-wrap items-center gap-2 -mb-1">
+        <label htmlFor="card-year" className="text-xs text-slate-500">Viti shkollor:</label>
+        <select
+          id="card-year"
+          value={cardYear}
+          onChange={e => setCardYear(e.target.value === "all" ? "all" : Number(e.target.value))}
+          className="input w-auto py-1 text-sm"
+        >
+          {yearOptions.map(y => <option key={y} value={y}>{ayText(y)}{y === currentAy ? " (aktual)" : ""}</option>)}
+          <option value="all">Të gjitha vitet</option>
+        </select>
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="card p-4">
           <p className="text-xs text-slate-400 mb-1">Totali Paguar</p>
-          <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatCurrency(totalPaid)}</p>
+          <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatCurrency(cardPaid)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-slate-400 mb-1">Borxhi i Mbetur</p>
-          <p className={`text-xl font-bold ${totalDebt > 0 ? "text-red-600 dark:text-red-400" : "text-slate-400"}`}>
-            {formatCurrency(totalDebt)}
+          <p className={`text-xl font-bold ${cardDebt > 0 ? "text-red-600 dark:text-red-400" : "text-slate-400"}`}>
+            {formatCurrency(cardDebt)}
           </p>
         </div>
         <div className="card p-4">
@@ -640,14 +690,16 @@ export default function StudentProfile({ student }: { student: Student }) {
               onKeyDown={e => { if (e.key === "Enter") commitEditPrice(); if (e.key === "Escape") setEditingPrice(false); }}
             />
           ) : hasShkollimiPlan ? (
-            canAccess("/shkollimi") ? (
+            cardYear !== "all" && !cardShkollimi ? (
+              <p className="text-xl font-bold text-slate-400" title={`S'ka shkollim të regjistruar për ${ayText(cardYear)}`}>—</p>
+            ) : canAccess("/shkollimi") ? (
               <Link href="/shkollimi" className="group flex items-center gap-1.5" title="Ka pagesë reale te Shkollimi — modifikoje shumën atje">
-                <span className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors">{formatCurrency(finalPrice)}</span>
+                <span className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors">{formatCurrency(cardYear === "all" ? finalPrice : cardShkollimi!.finalAmount)}</span>
                 <Lock className="w-3.5 h-3.5 text-slate-300" />
               </Link>
             ) : (
               <div className="flex items-center gap-1.5" title="Ka pagesë reale te Shkollimi">
-                <span className="text-xl font-bold text-slate-900 dark:text-white">{formatCurrency(finalPrice)}</span>
+                <span className="text-xl font-bold text-slate-900 dark:text-white">{formatCurrency(cardYear === "all" ? finalPrice : cardShkollimi!.finalAmount)}</span>
                 <Lock className="w-3.5 h-3.5 text-slate-300" />
               </div>
             )
@@ -663,6 +715,16 @@ export default function StudentProfile({ student }: { student: Student }) {
           )}
         </div>
       </div>
+      {otherYears.length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 -mt-2 text-xs text-slate-500 dark:text-slate-400">
+          {otherYears.map(o => (
+            <button key={o.y} type="button" onClick={() => setCardYear(o.y)} className="hover:text-primary-600 hover:underline text-left">
+              ⓘ {ayText(o.y)}{o.y > currentAy ? " (parapagim)" : ""}: paguar {formatCurrency(o.paid)}
+              {o.debt > 0 ? <> · <span className="text-red-600 dark:text-red-400">mbeten {formatCurrency(o.debt)}</span></> : " · pa borxh"}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Personal Info */}
