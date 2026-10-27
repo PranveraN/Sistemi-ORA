@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, FileText,
   GraduationCap, BarChart3, Settings, BookOpen,
   ChevronLeft, ChevronRight, UtensilsCrossed,
-  Shirt, BookMarked, NotebookPen, ClipboardList, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip, Sparkles, Vault, ShieldCheck, Landmark,
+  Shirt, BookMarked, NotebookPen, ClipboardList, TrendingUp, Scale, Home, Archive, Building2, History, Package, Boxes, MessageSquare, ArrowRightLeft, Repeat, ClipboardCheck, Paperclip, Sparkles, Vault, ShieldCheck, Landmark, DoorOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -26,6 +26,7 @@ const navSections = [
       { href: "/classes",   icon: GraduationCap,   label: "Klasat",     roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[] },
       { href: "/levizjet",  icon: Repeat,          label: "Lëvizjet e Nxënësve", roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[] },
       { href: "/regjistrimet", icon: ClipboardCheck, label: "Regjistrimet", roles: ["ADMIN", "FINANCE", "SECRETARY", "PEDAGOGIA"] as Role[] },
+      { href: "/lirimet",   icon: DoorOpen,        label: "Lirimet",    roles: ["ADMIN", "SECRETARY"] as Role[] },
       { href: "/families",  icon: Home,            label: "Familjet",   roles: ["ADMIN", "FINANCE", "SECRETARY"] as Role[] },
     ],
   },

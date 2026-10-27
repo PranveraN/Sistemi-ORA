@@ -27,6 +27,7 @@ const API_MODULE_PREFIXES: { prefix: string; moduleKey: string | string[] }[] = 
   { prefix: "/api/staff",              moduleKey: "sekretaria" },
   { prefix: "/api/sekretaria",         moduleKey: "sekretaria" },
   { prefix: "/api/eshkollori",         moduleKey: "eshkollori" },
+  { prefix: "/api/lirimet",            moduleKey: "lirimet" },
 ];
 
 // API-të financiare TË PËRBASHKËTA (s'mund të futen te API_MODULE_PREFIXES, sepse
@@ -118,6 +119,12 @@ export default auth((req) => {
       return NextResponse.json({ error: "Nuk ke leje për këtë veprim." }, { status: 403 });
     }
 
+    // Kujdestaret (moduli i lirimit) — VETËM API-të e veta. Çdo API tjetër (pagesa,
+    // financa, nxënës, klasa, SMS...) refuzohet këtu, para se të arrijë te route-i.
+    if (!isAuthApi && isLoggedIn && role === "KUJDESTARE" && !underPrefix(nextUrl.pathname, "/api/kujdestare")) {
+      return NextResponse.json({ error: "Nuk keni qasje." }, { status: 403 });
+    }
+
     if (!isAuthApi && isLoggedIn && role && isConfigurableRole(role)) {
       const match = API_MODULE_PREFIXES.find(m => nextUrl.pathname.startsWith(m.prefix));
       if (match && ![match.moduleKey].flat().some(k => allowedModules.includes(k))) {
@@ -138,18 +145,39 @@ export default auth((req) => {
   const isTeacherArea = nextUrl.pathname.startsWith("/kerkesa-material");
   const isTeacherPublicPage = nextUrl.pathname === "/kerkesa-material/regjistrohu";
   const isEnrollmentPublicPage = nextUrl.pathname === "/apliko";
+  const isLirimiPublicPage = nextUrl.pathname === "/lirimi";
+  const isKujdestareArea = nextUrl.pathname === "/kujdestare" || nextUrl.pathname.startsWith("/kujdestare/");
+  // Linku nga SMS-ja i kujdestares (/kujdestare/kerkesa/ID): pa login → ruhet për pas kyçjes
+  const kujdestareNext = req.cookies.get("lirim_next")?.value;
+  const toKujdestare = () => {
+    const dest = kujdestareNext && /^\/kujdestare(\/[\w/-]*)?$/.test(kujdestareNext) ? kujdestareNext : "/kujdestare";
+    const res = NextResponse.redirect(new URL(dest, nextUrl));
+    if (kujdestareNext) res.cookies.delete("lirim_next");
+    return res;
+  };
 
   if (isLoginPage && isLoggedIn) {
     if (role === "SUPERADMIN") return NextResponse.redirect(new URL("/superadmin", nextUrl));
     if (role === "TEACHER") return NextResponse.redirect(new URL("/kerkesa-material", nextUrl));
+    if (role === "KUJDESTARE") return toKujdestare();
     if (role && isConfigurableRole(role)) {
       return NextResponse.redirect(new URL(firstAllowedPath(allowedModules) ?? "/dashboard", nextUrl));
     }
     return NextResponse.redirect(new URL("/dashboard", nextUrl));
   }
 
-  if (!isLoginPage && !isTeacherPublicPage && !isEnrollmentPublicPage && !isLoggedIn) {
-    return NextResponse.redirect(new URL("/login", nextUrl));
+  if (!isLoginPage && !isTeacherPublicPage && !isEnrollmentPublicPage && !isLirimiPublicPage && !isLoggedIn) {
+    const res = NextResponse.redirect(new URL("/login", nextUrl));
+    if (isKujdestareArea && nextUrl.pathname !== "/kujdestare") {
+      res.cookies.set("lirim_next", nextUrl.pathname, { maxAge: 30 * 60, path: "/", httpOnly: true, sameSite: "lax" });
+    }
+    return res;
+  }
+
+  // Kujdestaret shohin VETËM zonën e tyre (/kujdestare) — çdo faqe tjetër: "Nuk keni qasje".
+  if (isLoggedIn && role === "KUJDESTARE" && !isKujdestareArea) {
+    if (nextUrl.pathname === "/" || kujdestareNext) return toKujdestare();
+    return NextResponse.redirect(new URL("/kujdestare?pa-qasje=1", nextUrl));
   }
 
   if (isSuperAdminPage && role !== "SUPERADMIN") {

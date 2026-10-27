@@ -23,5 +23,13 @@ export async function register() {
     } catch (err) {
       console.error("[auditimi] planifikuesi s'u nis:", err);
     }
+
+    // Lirimi i nxënësit: SMS te administrata për kërkesat pa përgjigje (30 min)
+    try {
+      const { startLirimiScheduler } = await import("@/lib/lirimiScheduler");
+      startLirimiScheduler();
+    } catch (err) {
+      console.error("[lirimi] planifikuesi s'u nis:", err);
+    }
   }
 }

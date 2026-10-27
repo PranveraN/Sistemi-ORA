@@ -2144,3 +2144,69 @@ model CashTransfer {
 
   @@index([box, date])
 }
+
+// ── Lirimi i nxënësit (kërkesë e prindit për lirim më herët) ─────────────────
+// Modul i veçantë: tabela të reja, pa relacione me tabelat ekzistuese (vetëm ID),
+// që asnjë model ekzistues të mos ndryshojë.
+
+model LirimKerkese {
+  id                 Int       @id @default(autoincrement())
+  organizationId     Int       @default(1)
+  studentId          Int
+  classId            Int?      // klasa e nxënësit në momentin e kërkesës
+  data               String    // YYYY-MM-DD
+  ora                String    // HH:MM
+  arsyeja            String    // MJEKU, FAMILJARE, SEMUNDJE, TJETER
+  shpjegim           String?
+  marresEmri         String
+  marresLidhja       String    // NENA, BABAI, TJETER
+  telefoni           String    // telefoni i prindit që e dërgoi (vetëm shifra, p.sh. 044123456)
+  statusi            String    @default("NE_PRITJE") // NE_PRITJE, APROVUAR, REFUZUAR, ANULUAR
+  arsyeRefuzimi      String?
+  vendosiId          Int?
+  vendosiEmri        String?
+  vendosurAt         DateTime?
+  adminNjoftuarAt    DateTime? // SMS te administrata kur kujdestarja s'përgjigjet brenda 30 min
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([organizationId, classId, statusi])
+  @@index([organizationId, data])
+  @@index([telefoni, createdAt])
+}
+
+model LirimLog {
+  id         Int      @id @default(autoincrement())
+  kerkeseId  Int
+  veprimi    String   // KRIJIM, ANULIM, APROVIM, REFUZIM, NDRYSHIM, SMS
+  pershkrim  String?
+  kush       String?  // emri i përdoruesit ose "Prindi (044…)"
+  userId     Int?
+  createdAt  DateTime @default(now())
+
+  @@index([kerkeseId])
+}
+
+model LirimKod {
+  id         Int      @id @default(autoincrement())
+  telefoni   String
+  kodHash    String
+  skadon     DateTime
+  perdorur   Boolean  @default(false)
+  tentativa  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([telefoni, createdAt])
+}
+
+model KujdestareKlasa {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @default(1)
+  userId         Int      @unique // User me rol KUJDESTARE
+  classId        Int
+  telefoni       String?  // për SMS-të e kërkesave të reja
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([classId])
+}

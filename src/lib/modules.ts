@@ -30,6 +30,7 @@ export const MODULES: ModuleDef[] = [
   { key: "sms",             label: "SMS",                       pathPrefixes: ["/sms"] },
   { key: "classes",         label: "Klasat",                    pathPrefixes: ["/classes"] },
   { key: "regjistrimet",    label: "Regjistrimet (Aplikimet)",  pathPrefixes: ["/regjistrimet"] },
+  { key: "lirimet",         label: "Lirimet e Nxënësve",        pathPrefixes: ["/lirimet"] },
   { key: "levizjet",        label: "Lëvizjet e Nxënësve",        pathPrefixes: ["/levizjet"] },
   { key: "shpenzime",       label: "Shpenzimet e Përgjithshme", pathPrefixes: ["/shpenzime"] },
   { key: "dorezimet",       label: "Dorëzimet",                 pathPrefixes: ["/dorezimet"] },
@@ -77,7 +78,7 @@ const FINANCE_MODULES = [
   "payments", "invoices", "faturat-rregullta", "kerkesat", "materiale",
   "shpenzime", "dorezimet", "hyrat", "bilanci", "investime", "reports", "arka", "timi",
 ];
-const SECRETARY_MODULES = ["sms", "sekretaria", "dokumentet"];
+const SECRETARY_MODULES = ["sms", "sekretaria", "dokumentet", "lirimet"];
 const SHARED_MODULES = ["dashboard", "students", "families", "levizjet", "regjistrimet", "classes", "arkiva", "fletorja"];
 const PEDAGOGIA_MODULES = ["classes", "regjistrimet", "levizjet"];
 // Auditori: vetëm lexim në modulet financiare (shkrimin e bllokon middleware) + Auditimi

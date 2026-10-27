@@ -70,6 +70,7 @@ export const QUICK_TEMPLATES: { label: string; text: string }[] = [
   { label: "Kujtesë borxhi", text: "Përshëndetje, I nderuar prind, Ju kujtojmë se {emri} ka ende borxh të papaguar. Ju lutem kontaktoni shkollën për rregullim. Faleminderit, Akademia Ora" },
   { label: "Fletëkalim", text: "Përshëndetje, I nderuar prind, Shpresoj se jeni mirë, Ju lutem që ta sillni fletëkalimin nga shkolla e mëparshme për {emri}, Faleminderit për bashkëpunimin, Akademia Ora" },
   { label: "Njoftim i përgjithshëm", text: "Përshëndetje, I nderuar prind, " },
+  { label: "Lirimi online", text: "I nderuar prind, tani mund të kërkoni lirimin e fëmijës nga shkolla online: https://admin.akademiaora.com/lirimi Akademia Ora" },
 ];
 
 export function templateFor(type: MessageType, statuses: MessageStatus[]): string | null {
