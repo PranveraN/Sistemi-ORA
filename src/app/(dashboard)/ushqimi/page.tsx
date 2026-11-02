@@ -538,6 +538,7 @@ export default function UshqimiPage() {
 
   // View mode
   const [showOnlyEnrolled, setShowOnlyEnrolled] = useState(true);
+  const [onlyCurrent, setOnlyCurrent] = useState(false);
 
   // Year-wide data for the income grid (5 periods at once, independent of `month`)
   const [yearStudents, setYearStudents] = useState<StudentRow[]>([]);
@@ -576,6 +577,30 @@ export default function UshqimiPage() {
   // nxënësit "Falas"/"Ndërprerë" të mos numërohen gabimisht si "Vonuar".
   const enrolled    = yearStudents.filter(s => s.installments.length > 0).length;
   const notEnrolled = yearStudents.length - enrolled;
+  // "Aktualisht" (vetëm filtër shikimi — s'ndryshon asnjë të dhënë): nxënësi që e ka
+  // ushqimin në periudhën aktuale. Shihet periudha aktuale (ose, nëse s'është krijuar
+  // ende, periudha e fundit para saj); nëse ajo është "Ndërprerë", s'numërohet.
+  // "Falas" numërohet (nxënësi e ndjek). "Me ushqim" mbetet numri i tërë vitit.
+  const currentPeriodIdx = (() => {
+    const now = new Date();
+    const m = now.getMonth() + 1;
+    const byMonth = PERIOD_BUCKETS.findIndex(p => p.months.includes(m));
+    const idxNow = byMonth >= 0 ? byMonth : PERIOD_BUCKETS.length - 1; // Korrik/Gusht → Maj/Qershor
+    if (yearType !== "academic") return idxNow;
+    const currentAY = m >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+    if (effectiveYear < currentAY) return PERIOD_BUCKETS.length - 1;
+    if (effectiveYear > currentAY) return 0;
+    return idxNow;
+  })();
+  const isCurrentlyEating = (s: StudentRow) => {
+    if (s.installments.length === 0) return false;
+    for (let i = currentPeriodIdx; i >= 0; i--) {
+      const p = findPeriodPayment(s.installments, PERIOD_BUCKETS[i].months);
+      if (p) return p.description !== SKIPPED_MARKER;
+    }
+    return false;
+  };
+  const currentlyEating = yearStudents.filter(isCurrentlyEating).length;
   const realInfoById = new Map(yearStudents.map(s => [s.id, computeRealPaymentInfo(s.installments)]));
   const paid    = yearStudents.filter(s => realInfoById.get(s.id)?.status === "PAID").length;
   const overdue = yearStudents.filter(s => realInfoById.get(s.id)?.status === "OVERDUE").length;
@@ -711,7 +736,9 @@ export default function UshqimiPage() {
     return order.indexOf(realInfoById.get(a.id)?.status || "PENDING") - order.indexOf(realInfoById.get(b.id)?.status || "PENDING");
   });
 
-  const byEnrollment = showOnlyEnrolled ? sorted.filter(s => s.installments.length > 0) : sorted;
+  const byEnrollment = onlyCurrent
+    ? sorted.filter(isCurrentlyEating)
+    : showOnlyEnrolled ? sorted.filter(s => s.installments.length > 0) : sorted;
   const displayed = cycleFilter ? byEnrollment.filter(s => getCycle(s.class?.name) === cycleFilter) : byEnrollment;
 
   // Njoftimet për Ushqimin mblidhen për TËRË vitin (5 periudhat), jo për një
@@ -1260,14 +1287,22 @@ export default function UshqimiPage() {
             {/* View toggle */}
             <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 text-sm">
               <button
-                onClick={() => setShowOnlyEnrolled(true)}
-                className={`px-3 py-1.5 rounded-lg font-medium transition-all ${showOnlyEnrolled ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                onClick={() => { setShowOnlyEnrolled(true); setOnlyCurrent(false); }}
+                title="Të gjithë nxënësit që kanë pasur ushqim këtë vit (edhe ata që kanë ndërprerë)"
+                className={`px-3 py-1.5 rounded-lg font-medium transition-all ${showOnlyEnrolled && !onlyCurrent ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
               >
                 Me ushqim <span className="ml-1 text-xs font-bold text-primary-600">{enrolled}</span>
               </button>
               <button
-                onClick={() => setShowOnlyEnrolled(false)}
-                className={`px-3 py-1.5 rounded-lg font-medium transition-all ${!showOnlyEnrolled ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                onClick={() => { setShowOnlyEnrolled(true); setOnlyCurrent(true); }}
+                title={`Vetëm ata që e kanë ushqimin në periudhën ${PERIOD_BUCKETS[currentPeriodIdx].label} (pa të ndërprerët)`}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-all ${onlyCurrent ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+              >
+                Aktualisht <span className="ml-1 text-xs font-bold text-emerald-600">{currentlyEating}</span>
+              </button>
+              <button
+                onClick={() => { setShowOnlyEnrolled(false); setOnlyCurrent(false); }}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-all ${!showOnlyEnrolled && !onlyCurrent ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
               >
                 Të gjithë <span className="ml-1 text-xs font-bold text-slate-400">{yearStudents.length}</span>
               </button>
