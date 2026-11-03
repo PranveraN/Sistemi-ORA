@@ -145,7 +145,8 @@ export default auth((req) => {
   const isTeacherArea = nextUrl.pathname.startsWith("/kerkesa-material");
   const isTeacherPublicPage = nextUrl.pathname === "/kerkesa-material/regjistrohu";
   const isEnrollmentPublicPage = nextUrl.pathname === "/apliko";
-  const isLirimiPublicPage = nextUrl.pathname === "/lirimi";
+  // /lirimi = forma e prindit; /lirimi/v/<token> = linku i vendimit për kujdestarin (nga SMS-ja)
+  const isLirimiPublicPage = nextUrl.pathname === "/lirimi" || nextUrl.pathname.startsWith("/lirimi/v/");
   const isKujdestareArea = nextUrl.pathname === "/kujdestare" || nextUrl.pathname.startsWith("/kujdestare/");
   // Linku nga SMS-ja i kujdestares (/kujdestare/kerkesa/ID): pa login → ruhet për pas kyçjes
   const kujdestareNext = req.cookies.get("lirim_next")?.value;
@@ -173,6 +174,10 @@ export default auth((req) => {
     }
     return res;
   }
+
+  // Faqet publike të lirimit hapen njësoj edhe për të kyçurit (p.sh. mësuesi i kyçur
+  // te portali i materialeve e hap linkun e vendimit nga SMS-ja në të njëjtin telefon).
+  if (isLirimiPublicPage) return NextResponse.next();
 
   // Kujdestaret shohin VETËM zonën e tyre (/kujdestare) — çdo faqe tjetër: "Nuk keni qasje".
   if (isLoggedIn && role === "KUJDESTARE" && !isKujdestareArea) {

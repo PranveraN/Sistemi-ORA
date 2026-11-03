@@ -1744,8 +1744,9 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
     setSubPeriod(sp);
     setDays(sp === "full" ? periodDays : Math.round(periodDays / 2));
   }
+  // Periudhë "Ndërprerë"/"Falas" (shuma 0) → çmimi parazgjedhur, jo 0 € / ditë.
   const [pricePerDay, setPricePerDay] = useState(
-    existing && days > 0 ? Math.round((existing.finalAmount / days) * 100) / 100 : prices["2_shujta_ditë"]
+    existing && existing.finalAmount > 0 && days > 0 ? Math.round((existing.finalAmount / days) * 100) / 100 : prices["2_shujta_ditë"]
   );
   const [paidAmount,  setPaidAmount]  = useState(String(existing?.paidAmount ?? ""));
   const [method,      setMethod]      = useState(existing?.method ?? "CASH");
@@ -1901,6 +1902,47 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
 
   const markSkipped = () => markAs(SKIPPED_MARKER);
   const markFree    = () => markAs(FREE_MARKER);
+
+  // Rifillo pas ndërprerjes: periudha kthehet normale me ditët dhe çmimin
+  // parazgjedhur (pa pagesë ende) — vetëm kjo periudhë; të tjerat s'preken.
+  async function rifillo() {
+    if (!existing) return;
+    const d = periodDays;
+    const cmimi = prices["2_shujta_ditë"];
+    const shuma = Math.round(d * cmimi * 100) / 100;
+    const label = bucket?.label ?? MONTHS[month - 1];
+    if (!confirm(`Rifillo ushqimin për ${student.firstName} ${student.lastName} — ${label} ${year}: ${d} ditë × ${formatCurrency(cmimi)} = ${formatCurrency(shuma)} (pa pagesë ende). Vazhdo?`)) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      const cats = await fetch("/api/categories").then(x => x.json()).catch(() => []);
+      const catId = (cats as { name: string; id: number }[]).find(c => c.name === "Ushqimi")?.id ?? 2;
+      const r = await fetch(`/api/payments/${existing.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: student.id, categoryId: catId,
+          amount: shuma, discount: 0, discountType: null, scholarship: 0,
+          finalAmount: shuma, paidAmount: 0,
+          method, dueDate, paidDate: null,
+          month, year,
+          description: `${d} ditë × ${formatCurrency(cmimi)} — ${label} ${year}`,
+          note: note || null,
+        }),
+      });
+      setSaving(false);
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        setSaveError(e.error || `Rifillimi dështoi (gabim ${r.status})`);
+        return;
+      }
+    } catch {
+      setSaving(false);
+      setSaveError("Gabim rrjeti — provo përsëri.");
+      return;
+    }
+    onSave(undefined);
+  }
 
   // Disa familje paguajnë krejt vitin (5 periudhat) përnjëherë — llogarit çfarë
   // mbetet pa u paguar në secilën periudhë dhe i mbyll të gjitha njëherësh, duke
@@ -2189,7 +2231,15 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
 
         {isSkipped && (
           <div className="mx-5 mb-3 p-3 bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-600 dark:text-slate-300">
-            Kjo periudhë është shënuar si <strong>Ndërprerë</strong> (nxënësi s&apos;e ndoqi). Plotëso ditë/çmim dhe ruaj për ta rikthyer si periudhë normale.
+            Kjo periudhë është shënuar si <strong>Ndërprerë</strong> (nxënësi s&apos;e ndoqi). Kliko <strong>Rifillo</strong> për ta rikthyer si periudhë normale (ose ndrysho ditët/çmimin dhe ruaj).
+            <button
+              onClick={rifillo}
+              disabled={saving}
+              className="mt-2 w-full btn-primary justify-center bg-emerald-600 hover:bg-emerald-700"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              Rifillo ushqimin — {periodDays} ditë × {formatCurrency(prices["2_shujta_ditë"])}
+            </button>
           </div>
         )}
         {isFree && (

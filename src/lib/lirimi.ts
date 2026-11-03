@@ -162,14 +162,41 @@ export async function emriNxenesit(studentId: number) {
   return { emri: s ? `${s.firstName} ${s.lastName}`.replace(/\s+/g, " ").trim() : `#${studentId}`, klasa: s?.class?.name ?? "" };
 }
 
-/** Njofton kujdestaren/kujdestaret e klasës për një kërkesë të re. */
+// ── Linku i vendimit për kujdestarin nga Stafi (pa llogari) ────────────────
+// I nënshkruar me HMAC: lidh kërkesën me anëtarin e stafit. Vlen vetëm sa kohë
+// kërkesa është "Në pritje" dhe ai është ende kujdestar i asaj klase.
+
+export function krijoVendimToken(kerkeseId: number, staffId: number): string {
+  const payload = `v.${kerkeseId}.${staffId}`;
+  const sig = crypto.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 22);
+  return `${kerkeseId}-${staffId}-${sig}`;
+}
+
+export function lexoVendimToken(token: string | null | undefined): { kerkeseId: number; staffId: number } | null {
+  const m = /^(\d+)-(\d+)-([\w-]{22})$/.exec(token ?? "");
+  if (!m) return null;
+  const expected = krijoVendimToken(Number(m[1]), Number(m[2])).split("-").slice(2).join("-");
+  if (!crypto.timingSafeEqual(Buffer.from(m[3]), Buffer.from(expected))) return null;
+  return { kerkeseId: Number(m[1]), staffId: Number(m[2]) };
+}
+
+/** Njofton kujdestarin e klasës (nga Stafi, me link vendimi) dhe kujdestaret me llogari (si më parë). */
 export async function njoftoKujdestaren(k: { id: number; studentId: number; classId: number | null; data: string; ora: string; arsyeja: string; shpjegim: string | null }, base: string) {
   const { emri, klasa } = await emriNxenesit(k.studentId);
   const arsye = `${ARSYET[k.arsyeja] ?? k.arsyeja}${k.shpjegim ? ` – ${k.shpjegim}` : ""}`;
-  const msg = `Kërkesë lirimi: ${emri}, ${klasa}, ${fmtDay(k.data)} në ${k.ora}. Arsyeja: ${arsye}. Hap: ${base}/kujdestare/kerkesa/${k.id}`;
-  const kujdestaret = k.classId ? await prisma.kujdestareKlasa.findMany({ where: { classId: k.classId } }) : [];
-  if (!kujdestaret.length) { await logLirim(k.id, "SMS", "S'ka kujdestare të caktuar për këtë klasë — s'u dërgua SMS", "Sistemi"); return; }
-  for (const kd of kujdestaret) await smsLirim(k.id, kd.telefoni, msg, "kujdestarja");
+  const teksti = `Kërkesë lirimi: ${emri}, ${klasa}, ${fmtDay(k.data)} në ${k.ora}. Arsyeja: ${arsye}.`;
+  const [stafi, kujdestaret] = k.classId
+    ? await Promise.all([
+        prisma.lirimKujdestar.findMany({ where: { classId: k.classId } }),
+        prisma.kujdestareKlasa.findMany({ where: { classId: k.classId } }),
+      ])
+    : [[], []];
+  if (!stafi.length && !kujdestaret.length) { await logLirim(k.id, "SMS", "S'ka kujdestar të caktuar për këtë klasë — s'u dërgua SMS", "Sistemi"); return; }
+  for (const lk of stafi) {
+    const s = await prisma.staff.findUnique({ where: { id: lk.staffId }, select: { emri: true, telefoni: true } });
+    await smsLirim(k.id, s?.telefoni, `${teksti} Aprovo/Refuzo: ${base}/lirimi/v/${krijoVendimToken(k.id, lk.staffId)}`, `kujdestari ${s?.emri ?? ""}`.trim());
+  }
+  for (const kd of kujdestaret) await smsLirim(k.id, kd.telefoni, `${teksti} Hap: ${base}/kujdestare/kerkesa/${k.id}`, "kujdestarja");
 }
 
 /** SMS te prindi për vendimin. */

@@ -2210,3 +2210,16 @@ model KujdestareKlasa {
 
   @@index([classId])
 }
+// Kujdestari i klasës për lirimet — anëtar i STAFIT (pa llogari/login). SMS-ja shkon
+// te telefoni i tij nga Stafi, me një link të sigurt për Aprovo/Refuzo. Një për klasë.
+model LirimKujdestar {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @default(1)
+  staffId        Int
+  classId        Int      @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([staffId])
+}
+

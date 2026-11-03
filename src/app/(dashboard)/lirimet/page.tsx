@@ -201,8 +201,73 @@ function Detaje({ id, onClose, onChanged }: { id: number; onClose: () => void; o
   );
 }
 
-/* ── Kujdestaret: llogaritë, klasa, telefoni ────────────────── */
+/* ── Kujdestaret nga Stafi (pa llogari): klasa → mësuesi, telefoni nga Stafi ── */
+type StafOpt = { id: number; emri: string; telefoni: string | null; pozita: string | null; lenda: string | null };
+type Lidhje = { id: number; classId: number; klasa: string; staffId: number; emri: string; telefoni: string | null; aktiv: boolean };
 function Kujdestaret({ klasat }: { klasat: Klasa[] }) {
+  const [data, setData] = useState<{ lidhjet: Lidhje[]; stafi: StafOpt[] } | null>(null);
+  const [busyClass, setBusyClass] = useState<number | null>(null);
+  const load = () => fetch("/api/lirimet/kujdestaret-stafi").then(r => r.json())
+    .then(d => setData(d?.lidhjet ? d : { lidhjet: [], stafi: [] })).catch(() => setData({ lidhjet: [], stafi: [] }));
+  useEffect(() => { void load(); }, []);
+
+  async function cakto(classId: number, staffId: string) {
+    setBusyClass(classId);
+    const r = staffId
+      ? await fetch("/api/lirimet/kujdestaret-stafi", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ classId, staffId: Number(staffId) }) })
+      : await fetch(`/api/lirimet/kujdestaret-stafi?classId=${classId}`, { method: "DELETE" });
+    const d = await r.json().catch(() => ({}));
+    setBusyClass(null);
+    if (!r.ok) alert(d.error || "Ruajtja dështoi."); else await load();
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="card p-4 text-sm text-slate-600 dark:text-slate-300">
+        Zgjidh <strong>mësuesin kujdestar</strong> nga Stafi për çdo klasë. Kur prindi dërgon kërkesë, mësuesi merr <strong>SMS në telefonin e tij</strong> (nga Stafi) me një link për <strong>Aprovo / Refuzo</strong> — pa llogari e pa fjalëkalim. Historiku mbetet këtu te administrata.
+        {data && <span className="block mt-1 text-xs text-slate-500">{data.lidhjet.length} nga {klasat.length} klasa kanë kujdestar.</span>}
+      </div>
+      <div className="card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs uppercase text-slate-500 bg-slate-50 dark:bg-slate-800">
+            <tr><th className="px-4 py-2 w-24">Klasa</th><th className="px-4 py-2">Kujdestari (nga Stafi)</th><th className="px-4 py-2">Telefoni për SMS</th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+            {data === null ? <tr><td colSpan={3} className="px-4 py-5 text-slate-500">Duke ngarkuar…</td></tr>
+              : klasat.map(c => {
+                const l = data.lidhjet.find(x => x.classId === c.id);
+                return (
+                  <tr key={c.id}>
+                    <td className="px-4 py-2 font-medium">{c.name}</td>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <select className="input py-1 max-w-xs" value={l?.staffId ?? ""} disabled={busyClass === c.id}
+                          onChange={e => cakto(c.id, e.target.value)} aria-label={`Kujdestari i klasës ${c.name}`}>
+                          <option value="">— pa kujdestar —</option>
+                          {l && !l.aktiv && <option value={l.staffId}>{l.emri} (jo aktiv)</option>}
+                          {data.stafi.map(s => <option key={s.id} value={s.id}>{s.emri}{s.lenda ? ` · ${s.lenda}` : ""}</option>)}
+                        </select>
+                        {busyClass === c.id && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2">
+                      {!l ? <span className="text-slate-400">—</span>
+                        : l.telefoni ? <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{l.telefoni}</span>
+                        : <span className="text-amber-700">Mungon — shtoje te Stafi</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+      <LlogariteKujdestare klasat={klasat} />
+    </div>
+  );
+}
+
+/* ── Llogaritë e vjetra të kujdestareve (me login) — shfaqen vetëm nëse ekzistojnë ── */
+function LlogariteKujdestare({ klasat }: { klasat: Klasa[] }) {
   const [list, setList] = useState<Kujdestare[] | null>(null);
   const [shto, setShto] = useState(false);
   const [f, setF] = useState({ emri: "", email: "", password: "", classId: "", telefoni: "" });
@@ -225,9 +290,14 @@ function Kujdestaret({ klasat }: { klasat: Klasa[] }) {
     if (!r.ok) alert(d.error || "Ndryshimi dështoi."); else await load();
   }
 
+  // Mënyra e re (nga Stafi, pa llogari) e zëvendëson këtë; llogaritë ekzistuese mbeten të menaxhueshme.
+  if (!list || list.length === 0) return null;
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end"><button onClick={() => setShto(s => !s)} className="btn-primary"><Plus className="w-4 h-4" /> Shto kujdestare</button></div>
+    <div className="space-y-3 pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Llogaritë e vjetra të kujdestareve (me login)</h3>
+        <button onClick={() => setShto(s => !s)} className="btn-secondary text-xs"><Plus className="w-4 h-4" /> Shto llogari</button>
+      </div>
       {shto && (
         <div className="card p-4 grid sm:grid-cols-2 gap-3">
           <label className="block"><span className="form-label">Emri i plotë</span><input className="input" value={f.emri} onChange={e => setF({ ...f, emri: e.target.value })} /></label>
