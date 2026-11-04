@@ -127,6 +127,19 @@ export default function SettingsPage() {
         </div>
 
         {tab === "shkolla"     && <SchoolSection />}
+        {tab === "shkolla"     && (
+          // Kalendari i ditëve të mësimit ruhet te Ushqimi → Kalkulatori (një vend i vetëm), këtu vetëm lidhja
+          <a href="/ushqimi#ditet-e-mesimit" className="card p-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+            <div className="w-9 h-9 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
+              <CalendarRange className="w-5 h-5 text-indigo-500" />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-slate-900 dark:text-white text-sm">Ditët e mësimit (Ushqimi)</p>
+              <p className="text-xs text-slate-400">Ditët e çdo muaji për vitin shkollor — plotësohen te Ushqimi → Kalkulatori i Çmimeve.</p>
+            </div>
+            <span className="text-xs text-primary-600 font-medium">Hap →</span>
+          </a>
+        )}
         {tab === "kategorite"  && <CategoriesSection />}
         {tab === "klasat"      && <ClassesSection />}
         {tab === "shpenzime"   && <ExpenseCatsSection />}

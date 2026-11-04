@@ -28,7 +28,11 @@ interface ReceiptData {
 interface Props {
   paymentId: number;
   onClose: () => void;
+  // Rreshta opsionalë sqarues (p.sh. Ushqimi mujor: "Pagesë për: Tetor 2026 — 80,00 €")
+  shtese?: string[];
 }
+
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
 const SCHOOL = {
   name:    'Akademia Ora',
@@ -75,7 +79,7 @@ function periodLabel(month: number | null, year: number | null, description: str
   return "";
 }
 
-function buildReceiptHTML(d: ReceiptData, copy: "prind" | "shkolla", origin: string): string {
+function buildReceiptHTML(d: ReceiptData, copy: "prind" | "shkolla", origin: string, shtese?: string[]): string {
   const period   = periodLabel(d.month, d.year, d.description, d.category);
   const dateStr  = d.paidDate
     ? formatDate(d.paidDate)
@@ -109,6 +113,7 @@ function buildReceiptHTML(d: ReceiptData, copy: "prind" | "shkolla", origin: str
     ${d.invoiceNumber ? `<div class="info-row"><span class="lbl">Nr. Faturës</span><span class="val mono">${d.invoiceNumber}</span></div>` : ""}
     <div class="info-row"><span class="lbl">Mënyra</span><span class="val">${methodLabel(d.method)}</span></div>
   </div>
+  ${shtese?.length ? `<div class="info-grid">${shtese.map(t => `<div class="info-row" style="grid-column:1/-1"><span class="val">${escapeHtml(t)}</span></div>`).join("")}</div>` : ""}
 
   <div class="amounts-box">
     <div class="amount-row"><span>Shuma totale e faturës</span><span>&euro; ${fmt(d.finalAmount)}</span></div>
@@ -138,7 +143,7 @@ function buildReceiptHTML(d: ReceiptData, copy: "prind" | "shkolla", origin: str
 </div>`;
 }
 
-export default function PaymentReceiptModal({ paymentId, onClose }: Props) {
+export default function PaymentReceiptModal({ paymentId, onClose, shtese }: Props) {
   const [data, setData]       = useState<ReceiptData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -159,8 +164,8 @@ export default function PaymentReceiptModal({ paymentId, onClose }: Props) {
     const branding = await askPrintBranding();
     if (!branding) return;
     const origin = window.location.origin;
-    const html1 = buildReceiptHTML(data, "prind", origin);
-    const html2 = buildReceiptHTML(data, "shkolla", origin);
+    const html1 = buildReceiptHTML(data, "prind", origin, shtese);
+    const html2 = buildReceiptHTML(data, "shkolla", origin, shtese);
 
     const win = window.open("", "_blank", "width=820,height=1200");
     if (!win) return;
@@ -282,6 +287,12 @@ html, body { height:100%; font-family: Arial, Helvetica, sans-serif; background:
                   </p>
                 </div>
               </div>
+
+              {shtese?.length ? (
+                <div className="p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 text-violet-800 dark:text-violet-200 text-sm space-y-0.5">
+                  {shtese.map(t => <p key={t}>{t}</p>)}
+                </div>
+              ) : null}
 
               {/* Amounts */}
               <div className="space-y-2 p-4 border border-slate-200 dark:border-slate-700 rounded-xl">

@@ -1,11 +1,15 @@
 ﻿"use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { askDeleteReason, reasonHeaders } from "@/lib/auditReason";
 import Header from "@/components/layout/Header";
 import Link from "next/link";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
+import {
+  type PlanState, type UshqimiPlan, type Kest,
+  planForPeriod, kesteMujore, kaVonese, afatiAktual, kesteTeMbuluara, periudhaEParePaFilluar, isMujorAnywhere,
+} from "@/lib/ushqimiPlan";
 import { CYCLES, getCycle, isGrade1 } from "@/lib/school-cycles";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
 import { BADGE_CSS, buildBadgeCardHTML } from "@/lib/badge-html";
@@ -14,7 +18,7 @@ import {
   Search, CheckCircle, AlertCircle, Plus, X, Save,
   Users, Loader2, Printer, Calculator, ChevronDown, ChevronUp, Info,
   TrendingUp, TrendingDown, ArrowLeftRight, Phone, BarChart3, Download, FileUp, IdCard, Trash2, Receipt, Send, Bot,
-  Wallet,
+  Wallet, CalendarDays,
 } from "lucide-react";
 import InvoicePrintModal from "@/components/finance/InvoicePrintModal";
 import ExpensesSection from "@/components/finance/ExpensesSection";
@@ -149,22 +153,28 @@ const FREE_MARKER = "Falas";
 // njeh fare këtë konventë — për një nxënës me periudha VETËM Falas/Ndërprerë,
 // `s.payment.status` del "Vonuar" (paidAmount=0 literalisht, edhe pse s'ka
 // asnjë detyrim real), duke shtrembëruar kartelat "Paguar"/"Vonuar" etj.
-function computeRealPaymentInfo(installments: Payment[]): { status: string; paidAmount: number; balance: number } {
-  let finalAmount = 0, paidAmount = 0, anyBilled = false, anyOverdue = false;
+// `mujorVonese` (opsionale): për periudhat me plan Mujor kthen true/false sipas
+// afatit të KËSTIT (kësti i tetorit s'është me vonesë para 31.10); null = Dymujor
+// (vlen rregulli i vjetër, i pandryshuar).
+function computeRealPaymentInfo(installments: Payment[], mujorVonese?: (periodIdx: number, p: Payment) => boolean | null): { status: string; paidAmount: number; balance: number } {
+  let finalAmount = 0, paidAmount = 0, anyBilled = false, anyOverdue = false, anyMujorOverdue = false;
   const now = new Date();
-  for (const period of PERIOD_BUCKETS) {
+  PERIOD_BUCKETS.forEach((period, i) => {
     const p = findPeriodPayment(installments, period.months);
-    if (!p) continue;
-    if (p.description === SKIPPED_MARKER || p.description === FREE_MARKER) continue;
+    if (!p) return;
+    if (p.description === SKIPPED_MARKER || p.description === FREE_MARKER) return;
     anyBilled = true;
     finalAmount += p.finalAmount;
     paidAmount  += p.paidAmount;
-    if (new Date(p.dueDate) < now && p.paidAmount === 0) anyOverdue = true;
-  }
+    const mv = mujorVonese?.(i, p) ?? null;
+    if (mv !== null) { if (mv) anyMujorOverdue = true; }
+    else if (new Date(p.dueDate) < now && p.paidAmount === 0) anyOverdue = true;
+  });
   const balance = Math.max(0, finalAmount - paidAmount);
   let status: string;
   if (!anyBilled) status = "PENDING";
   else if (finalAmount > 0 && paidAmount >= finalAmount) status = "PAID";
+  else if (anyMujorOverdue) status = "OVERDUE";
   else if (paidAmount > 0) status = "PARTIAL";
   else if (anyOverdue) status = "OVERDUE";
   else status = "PENDING";
@@ -324,11 +334,49 @@ ${BADGE_CSS}
 
 type StatFilter = "all" | "paid" | "overdue" | "pending" | "revenue" | "debt";
 
+// Kolonat e ditëve: të gjithë · Klasa e parë · "Zbritje e paparashikueshme"
+type DayCol = "days" | "klasaDays" | "zbritjeDays";
+
+// Një periudhë me më pak ditë se kalendari (shih rastetKalendari te faqja)
+interface RastKalendari {
+  s: StudentRow; i: number; p: Payment;
+  ditet: number; kal: number; rate: number; detRi: number;
+  calYear: number; split: [number, number] | null;
+}
+
 interface Period {
   name: string;
   days: number;
   klasaDays: number;
   zbritjeDays: number;
+  // Kalendari: ditët e mësimit për secilin nga dy muajt e periudhës (p.sh. days [22, 20]).
+  // Kur janë plotësuar të dy, totali i kolonës = shuma e tyre.
+  muaj?: Record<DayCol, (number | null)[]>;
+}
+
+// Ndarja mujore e një kolone, vetëm kur janë plotësuar të dy muajt.
+function splitOf(p: Period | undefined, col: DayCol): [number, number] | null {
+  const a = p?.muaj?.[col]?.[0], b = p?.muaj?.[col]?.[1];
+  return a != null && b != null ? [a, b] : null;
+}
+
+// Ndryshon ditët e një muaji; totali i periudhës rillogaritet kur të dy muajt kanë vlerë.
+function withMonthDays(p: Period, col: DayCol, idx: 0 | 1, v: number | null): Period {
+  const base = p.muaj ?? { days: [null, null], klasaDays: [null, null], zbritjeDays: [null, null] };
+  const muaj = { days: [...base.days], klasaDays: [...base.klasaDays], zbritjeDays: [...base.zbritjeDays] };
+  muaj[col][idx] = v;
+  const a = muaj[col][0], b = muaj[col][1];
+  return { ...p, muaj, ...(a != null && b != null ? { [col]: a + b } : {}) };
+}
+
+// Kolona e ditëve që vlen për nxënësin, e vendosur te `days` (dhe te `muaj.days`):
+// "Zbritje" për të shënuarit (kur > 0), Klasa e parë për klasat 1, përndryshe të gjithë.
+function periodsForTrack(periods: Period[], tagged: boolean, grade1: boolean): Period[] {
+  return periods.map(p => {
+    const col: DayCol = tagged && p.zbritjeDays > 0 ? "zbritjeDays" : grade1 ? "klasaDays" : "days";
+    if (col === "days") return p;
+    return { ...p, days: p[col], muaj: p.muaj ? { ...p.muaj, days: p.muaj[col] } : undefined };
+  });
 }
 
 const DEFAULT_PERIODS: Period[] = [
@@ -406,6 +454,8 @@ export default function UshqimiPage() {
   // Shënimi i nxënësve (p.sh. "Zbritje e paparashikueshme") për vitin e zgjedhur
   const [tags, setTags] = useState<Map<number, string>>(new Map());
   const [tagBusy, setTagBusy] = useState(false);
+  // Plani i pagesës së ushqimit (Dymujor/Mujor) për vitin e zgjedhur
+  const [planet, setPlanet] = useState<Map<number, PlanState>>(new Map());
 
   useEffect(() => {
     fetch("/api/classes").then(r => r.json()).then((data: Class[]) => {
@@ -459,6 +509,9 @@ export default function UshqimiPage() {
     fetch(`/api/ushqimi/tags?year=${year}`).then(r => (r.ok ? r.json() : [])).then((rows: { studentId: number; label: string }[]) => {
       if (!cancelled) setTags(new Map(rows.map(t => [t.studentId, t.label])));
     }).catch(() => {});
+    fetch(`/api/ushqimi/plani?year=${year}`).then(r => (r.ok ? r.json() : {})).then((m: Record<string, PlanState>) => {
+      if (!cancelled) setPlanet(new Map(Object.entries(m).map(([k, v]) => [parseInt(k), v])));
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, [year]);
 
@@ -487,11 +540,104 @@ export default function UshqimiPage() {
     if (!res.ok) { alert("Heqja dështoi."); return; }
     setTags(prev => { const n = new Map(prev); ids.forEach(id => n.delete(id)); return n; });
   }
-  // Për nxënësit e shënuar: ditët e kolonës "Zbritje e paparashikueshme" (kur janë > 0)
-  function periodsFor(studentId: number): Period[] {
-    if (!tags.has(studentId)) return periods;
-    return periods.map(p => (p.zbritjeDays > 0 ? { ...p, days: p.zbritjeDays } : p));
+  // Për nxënësit e shënuar: ditët e kolonës "Zbritje e paparashikueshme" (kur janë > 0);
+  // për Klasën e parë: kolona "Klasa e parë" (fillojnë më vonë → më pak ditë).
+  function periodsFor(student: { id: number; class?: { name: string } | null }): Period[] {
+    return periodsForTrack(periods, tags.has(student.id), isGrade1(student.class?.name));
   }
+
+  // Ruan planin (Dymujor/Mujor) nga periudha `nga` e tutje; periudhat para saj s'preken.
+  async function ruajPlanin(studentId: number, plan: UshqimiPlan, nga: number): Promise<boolean> {
+    const res = await fetch("/api/ushqimi/plani", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year, studentId, plan, nga }) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ruajtja e planit dështoi."); return false; }
+    const st: PlanState = await res.json();
+    setPlanet(prev => new Map(prev).set(studentId, st));
+    return true;
+  }
+
+  // Butoni te rreshti: ndryshon planin vetëm për periudhat që s'kanë filluar ende.
+  async function nderroPlaninNgaRreshti(s: StudentRow) {
+    const nga = periudhaEParePaFilluar(PERIOD_BUCKETS.map(p => p.months), effectiveYear);
+    const tani = planForPeriod(planet.get(s.id), Math.min(nga, PERIOD_BUCKETS.length - 1));
+    const iRi: UshqimiPlan = tani === "MUJOR" ? "DYMUJOR" : "MUJOR";
+    if (nga >= PERIOD_BUCKETS.length) {
+      alert("Të gjitha periudhat e këtij viti kanë filluar. Plani për një periudhë të filluar ndryshohet nga dritarja e pagesës së asaj periudhe.");
+      return;
+    }
+    if (!confirm(`${s.firstName} ${s.lastName}: kalo në plan ${iRi === "MUJOR" ? "MUJOR (pagesë çdo muaj, me dy këste)" : "DYMUJOR"} nga ${PERIOD_BUCKETS[nga].label} e tutje?\n\nPeriudhat që kanë filluar mbeten siç janë. Pagesat dhe detyrimet s'ndryshojnë.`)) return;
+    await ruajPlanin(s.id, iRi, nga);
+  }
+
+  // Këstet mujore të një periudhe (vetëm kur plani i asaj periudhe është Mujor) — llogaritje
+  // vetëm për shfaqje/vonesa; detyrimi mbetet një rresht i vetëm.
+  function kesteFor(s: { id: number; class?: { name: string } | null }, i: number, p: Payment | null | undefined): Kest[] | null {
+    if (!p || p.description === SKIPPED_MARKER || p.description === FREE_MARKER) return null;
+    if (planForPeriod(planet.get(s.id), i) !== "MUJOR") return null;
+    const m = (p.description || "").match(/^(\d+)\s*ditë/);
+    const rate = priceRateForClass(s.class?.name) || 1;
+    const days = m ? parseInt(m[1]) : Math.round(p.finalAmount / rate);
+    return kesteMujore({
+      months: PERIOD_BUCKETS[i].months as [number, number],
+      calYear: periodCalYear(PERIOD_BUCKETS[i].canonicalMonth),
+      split: splitOf(periodsFor(s)[i], "days"),
+      days, finalAmount: p.finalAmount, paidAmount: p.paidAmount,
+    });
+  }
+  // Rastet ku ditët e shënuara të një periudhe janë më pak se kalendari (p.sh. prind
+  // mujor i regjistruar vetëm për një muaj) — vetëm lexim; ndreqen vetëm të zgjedhurat.
+  function rastetKalendari(): RastKalendari[] {
+    const out: RastKalendari[] = [];
+    for (const s of yearStudents) {
+      const tp = periodsFor(s);
+      PERIOD_BUCKETS.forEach((period, i) => {
+        const p = findPeriodPayment(s.installments, period.months);
+        if (!p || p.description === SKIPPED_MARKER || p.description === FREE_MARKER) return;
+        const rate = priceRateForClass(s.class?.name);
+        const m = (p.description || "").match(/^(\d+)\s*ditë/);
+        const ditet = m ? parseInt(m[1]) : Math.round(p.finalAmount / (rate || 1));
+        const kal = tp[i]?.days ?? 0;
+        if (!kal || ditet >= kal) return;
+        out.push({ s, i, p, ditet, kal, rate, detRi: Math.round(kal * rate * 100) / 100, calYear: periodCalYear(period.canonicalMonth), split: splitOf(tp[i], "days") });
+      });
+    }
+    return out;
+  }
+  const [rastetOpen, setRastetOpen] = useState(false);
+
+  async function ndreqRastet(rastet: RastKalendari[]) {
+    const cats = await fetch("/api/categories").then(r => r.json()).catch(() => []);
+    const catId = (cats as { name: string; id: number }[]).find(c => c.name === "Ushqimi")?.id;
+    if (!catId) { alert("Kategoria Ushqimi s'u gjet."); return; }
+    const ymdL = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const deshtuan: string[] = [];
+    for (const r of rastet) {
+      const period = PERIOD_BUCKETS[r.i];
+      const keste = kesteMujore({ months: period.months as [number, number], calYear: r.calYear, split: r.split, days: r.kal, finalAmount: r.detRi, paidAmount: r.p.paidAmount });
+      const res = await fetch(`/api/payments/${r.p.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: r.s.id, categoryId: catId,
+          amount: r.detRi, discount: 0, discountType: null, scholarship: 0,
+          finalAmount: r.detRi, paidAmount: r.p.paidAmount,
+          method: r.p.method ?? "CASH",
+          dueDate: ymdL(afatiAktual(keste)),
+          paidDate: r.p.paidAmount > 0 && r.p.paidDate ? new Date(r.p.paidDate).toISOString().split("T")[0] : null,
+          month: period.canonicalMonth, year: r.calYear,
+          description: `${r.kal} ditë × ${formatCurrency(r.rate)} — ${period.label} ${r.calYear}`,
+          note: `${r.p.note ? `${r.p.note} · ` : ""}Ndrequr nga kalendari (${r.ditet} → ${r.kal} ditë), plan Mujor`,
+        }),
+      });
+      if (!res.ok || !(await ruajPlanin(r.s.id, "MUJOR", r.i))) deshtuan.push(`${r.s.firstName} ${r.s.lastName}`);
+    }
+    await fetchYearData();
+    alert(deshtuan.length ? `U ndreqën ${rastet.length - deshtuan.length}; dështuan: ${deshtuan.join(", ")}` : `U ndreqën ${rastet.length} raste.`);
+  }
+
+  const mujorVoneseFor = (s: StudentRow) => (i: number, p: Payment) => {
+    const k = kesteFor(s, i, p);
+    return k ? kaVonese(k) : null;
+  };
 
   async function handleSavePrice2Meals() {
     setSavingPrice(true);
@@ -548,6 +694,8 @@ export default function UshqimiPage() {
   const [payModal, setPayModal] = useState<{ student: StudentRow; month: number; existingPayment: Payment | null } | null>(null);
   const [printModal,       setPrintModal]        = useState<StudentRow | null>(null);
   const [receiptPaymentId, setReceiptPaymentId] = useState<number | null>(null);
+  // Rreshta shtesë te kuponi (plani Mujor: "Pagesë për: Tetor 2026 — 80 €", "Mbetet nga periudha …")
+  const [receiptShtese, setReceiptShtese] = useState<string[] | undefined>();
   const [statFilter,  setStatFilter]  = useState<StatFilter | null>(null);
   const [enrollModal, setEnrollModal] = useState(false);
   const [calcModal,   setCalcModal]   = useState<StudentRow | null>(null);
@@ -601,7 +749,8 @@ export default function UshqimiPage() {
     return false;
   };
   const currentlyEating = yearStudents.filter(isCurrentlyEating).length;
-  const realInfoById = new Map(yearStudents.map(s => [s.id, computeRealPaymentInfo(s.installments)]));
+  const realInfoById = new Map(yearStudents.map(s => [s.id, computeRealPaymentInfo(s.installments, mujorVoneseFor(s))]));
+  const rastetKal = yearType === "academic" ? rastetKalendari() : [];
   const paid    = yearStudents.filter(s => realInfoById.get(s.id)?.status === "PAID").length;
   const overdue = yearStudents.filter(s => realInfoById.get(s.id)?.status === "OVERDUE").length;
   const pending = yearStudents.filter(s => realInfoById.get(s.id)?.status === "PENDING").length;
@@ -690,8 +839,9 @@ export default function UshqimiPage() {
     if (!missing.length) return;
 
     const rate = priceRateForClass(s.class?.name);
+    const trackPeriods = periodsFor(s);
     const results = await Promise.all(missing.map(({ period, i }) => {
-      const days = periods[i]?.days ?? workingDays;
+      const days = trackPeriods[i]?.days ?? workingDays;
       const finalAmount = Math.round(days * rate * 100) / 100;
       const calYear = periodCalYear(period.canonicalMonth);
       const dueDate = new Date(calYear, period.canonicalMonth - 1, 5).toISOString().split("T")[0];
@@ -766,12 +916,46 @@ export default function UshqimiPage() {
     };
   }
 
+  // Nxënësi mujor: kësti i parë i papaguar që ka kaluar afatin ose skadon brenda `diteParaAfatit` ditëve.
+  function kestiPerKujtese(s: StudentRow, diteParaAfatit: number): Kest | null {
+    const kufiri = new Date(); kufiri.setDate(kufiri.getDate() + diteParaAfatit);
+    for (let i = 0; i < PERIOD_BUCKETS.length; i++) {
+      const k = kesteFor(s, i, findPeriodPayment(s.installments, PERIOD_BUCKETS[i].months));
+      const x = k?.find(z => z.statusi !== "PAGUAR");
+      if (x && x.afati <= kufiri) return x;
+    }
+    return null;
+  }
+  function mesazhKesti(s: StudentRow, k: Kest) {
+    const mbetja = formatCurrency(k.shuma - k.paguar).replace(/\s*€$/, "");
+    return `I nderuar prind, ju kujtojmë këstin e ushqimit për ${s.firstName} ${s.lastName}${s.class ? ` (${s.class.name})` : ""} — ${MONTHS[k.muaji - 1]} ${k.vit}: ${mbetja} €, me afat ${formatDate(k.afati.toISOString())}. Faleminderit! Akademia Ora`;
+  }
+
+  // Kujtesa për këstet mujore që skadojnë brenda 5 ditëve (ose kanë skaduar) — kalon te
+  // pamja paraprake e njoftimeve; asgjë s'dërgohet pa u konfirmuar aty.
+  function generateMonthlyReminders() {
+    const recipients: NotificationRecipient[] = [];
+    for (const s of displayed) {
+      if (s.status !== "ACTIVE" || !s.parentPhone) continue;
+      const k = kestiPerKujtese(s, 5);
+      if (k) recipients.push({ phone: s.parentPhone, name: `${s.firstName} ${s.lastName} (prindi)`, studentId: s.id, message: mesazhKesti(s, k) });
+    }
+    if (!recipients.length) { window.alert("Asnjë nxënës mujor s'ka këst që skadon brenda 5 ditëve (ose të vonuar)."); return; }
+    setNotifyRecipients(recipients);
+  }
+
   function generateNotificationsFor(rows: StudentRow[]) {
     const schoolYearLabel = yearType === "academic" ? `${effectiveYear}–${effectiveYear + 1}` : null;
     const recipients: NotificationRecipient[] = [];
     let skipped = 0;
     for (const s of rows) {
       if (!s.parentPhone) continue;
+      // Nxënësi mujor me këst që skadon/ka skaduar → kujtesë për KËSTIN (dymujorët si më parë)
+      const kesti = kestiPerKujtese(s, 5);
+      if (kesti) {
+        recipients.push({ phone: s.parentPhone, name: `${s.firstName} ${s.lastName} (prindi)`, studentId: s.id, message: mesazhKesti(s, kesti) });
+        continue;
+      }
       const obligation = computeFoodObligation(s.installments, schoolYearLabel);
       if (obligation.totalAmount <= 0) { skipped++; continue; }
       const msg = buildObligationMessage({ firstName: s.firstName, lastName: s.lastName, className: s.class?.name ?? null }, obligation);
@@ -1109,6 +1293,68 @@ export default function UshqimiPage() {
                 <span className="text-slate-400">Kolona &quot;Zbritje e paparashikueshme&quot; përdoret për nxënësit e shënuar me të.</span>
               </div>
 
+              {/* Kalendari: ditët e mësimit sipas muajit — totali i periudhës = shuma e dy muajve */}
+              <div id="ditet-e-mesimit" className="px-5 pb-4">
+                <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/50 overflow-hidden">
+                  <div className="px-3 py-2 bg-indigo-50 dark:bg-indigo-900/20 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-indigo-800 dark:text-indigo-300 flex items-center gap-1.5">
+                      <CalendarDays className="w-3.5 h-3.5" /> Ditët e mësimit sipas muajit — {year > 0 ? `${year}–${year + 1}` : "—"}
+                    </p>
+                    <p className="text-[11px] text-indigo-600/80 dark:text-indigo-300/70">
+                      Plotësohet një herë në vit. Ditët e periudhës = shuma e dy muajve; dritarja e pagesës i merr vetë.
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-[11px] text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-700">
+                          <th className="text-left px-3 py-1.5 font-semibold">Muaji</th>
+                          <th className="px-3 py-1.5 font-semibold text-center">Të gjithë</th>
+                          <th className="px-3 py-1.5 font-semibold text-center">Klasa e parë</th>
+                          <th className="px-3 py-1.5 font-semibold text-center">Zbritje e paparashikueshme</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {periods.map((p, i) => (PERIOD_BUCKETS[i]?.months ?? []).map((m, k) => (
+                          <tr key={`${p.name}-${m}`} className={`${k === 1 ? "border-b border-slate-200 dark:border-slate-700" : ""}`}>
+                            <td className="px-3 py-1 text-slate-700 dark:text-slate-200">
+                              {MONTHS[m - 1]}
+                              {k === 0 && <span className="ml-1.5 text-[10px] text-slate-400">({p.name})</span>}
+                            </td>
+                            {(["days", "klasaDays", "zbritjeDays"] as DayCol[]).map(col => {
+                              const v = p.muaj?.[col]?.[k];
+                              const sp = splitOf(p, col);
+                              return (
+                                <td key={col} className="px-3 py-1 text-center">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <input type="number" value={v ?? ""} placeholder="—"
+                                      onChange={e => {
+                                        const raw = e.target.value;
+                                        const val = raw === "" ? null : Math.max(0, Math.min(31, parseInt(raw) || 0));
+                                        setPeriods(prev => prev.map((x, j) => j === i ? withMonthDays(x, col, k as 0 | 1, val) : x));
+                                      }}
+                                      className="w-14 text-center border border-slate-200 dark:border-slate-600 rounded-lg px-1.5 py-0.5 text-sm bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                      min="0" max="31" />
+                                    {k === 1 && (
+                                      <span className={`text-[11px] w-14 text-left ${sp ? "text-indigo-600 dark:text-indigo-300 font-semibold" : "text-slate-300"}`}>
+                                        {sp ? `= ${sp[0] + sp[1]}` : `(${p[col]})`}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        )))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="px-3 py-1.5 text-[11px] text-slate-400 border-t border-slate-100 dark:border-slate-700">
+                    Kolona &quot;Zbritje&quot;: lëre bosh (ose 0) kur s&apos;ka zbritje në atë periudhë. Pa kalendar të plotësuar, vlen totali i vjetër (në kllapa). Mos harro &quot;Ruaj ditët&quot; më sipër.
+                  </p>
+                </div>
+              </div>
+
               {/* Periods table */}
               <div className="overflow-x-auto px-5 pb-4">
                 <table className="w-full text-sm border-collapse">
@@ -1138,8 +1384,10 @@ export default function UshqimiPage() {
                           </td>
                           <td className="px-3 py-2.5 text-center">
                             <input type="number" value={p.days}
+                              readOnly={!!splitOf(p, "days")}
+                              title={splitOf(p, "days") ? `Nga kalendari: ${splitOf(p, "days")!.join(" + ")}` : undefined}
                               onChange={e => setPeriods(prev => prev.map((x, j) => j === i ? { ...x, days: parseInt(e.target.value) || 0 } : x))}
-                              className="w-14 text-center border border-slate-200 dark:border-slate-600 rounded-lg px-1.5 py-1 text-sm bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              className={`w-14 text-center border border-slate-200 dark:border-slate-600 rounded-lg px-1.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${splitOf(p, "days") ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300" : "bg-white dark:bg-slate-700"}`}
                               min="0" max="60" />
                           </td>
                           <td className="px-3 py-2.5 text-center text-slate-500">{price2Meals}€</td>
@@ -1149,8 +1397,10 @@ export default function UshqimiPage() {
                           <td className="px-3 py-2.5 text-center">
                             <div className="flex items-center justify-center gap-1.5">
                               <input type="number" value={p.klasaDays}
+                                readOnly={!!splitOf(p, "klasaDays")}
+                                title={splitOf(p, "klasaDays") ? `Nga kalendari: ${splitOf(p, "klasaDays")!.join(" + ")}` : undefined}
                                 onChange={e => setPeriods(prev => prev.map((x, j) => j === i ? { ...x, klasaDays: parseInt(e.target.value) || 0 } : x))}
-                                className="w-14 text-center border border-slate-200 dark:border-slate-600 rounded-lg px-1.5 py-1 text-sm bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                className={`w-14 text-center border border-slate-200 dark:border-slate-600 rounded-lg px-1.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${splitOf(p, "klasaDays") ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300" : "bg-white dark:bg-slate-700"}`}
                                 min="0" max="60" />
                               <span className="font-bold text-primary-600 dark:text-primary-400 text-sm w-16 text-left">{formatCurrency(klasa)}</span>
                             </div>
@@ -1158,8 +1408,10 @@ export default function UshqimiPage() {
                           <td className="px-3 py-2.5 text-center">
                             <div className="flex items-center justify-center gap-1.5">
                               <input type="number" value={p.zbritjeDays}
+                                readOnly={!!splitOf(p, "zbritjeDays")}
+                                title={splitOf(p, "zbritjeDays") ? `Nga kalendari: ${splitOf(p, "zbritjeDays")!.join(" + ")}` : undefined}
                                 onChange={e => setPeriods(prev => prev.map((x, j) => j === i ? { ...x, zbritjeDays: parseInt(e.target.value) || 0 } : x))}
-                                className="w-14 text-center border border-slate-200 dark:border-slate-600 rounded-lg px-1.5 py-1 text-sm bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                className={`w-14 text-center border border-slate-200 dark:border-slate-600 rounded-lg px-1.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${splitOf(p, "zbritjeDays") ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300" : "bg-white dark:bg-slate-700"}`}
                                 min="0" max="60" />
                               <span className="font-bold text-slate-600 dark:text-slate-300 text-sm w-16 text-left">
                                 {p.zbritjeDays > 0 ? formatCurrency(zbritje) : "—"}
@@ -1385,6 +1637,16 @@ export default function UshqimiPage() {
           <button onClick={generateAutoNotifications} className="btn-secondary text-sm shrink-0">
             <Bot className="w-4 h-4" /> Gjenero automatikisht
           </button>
+          {rastetKal.length > 0 && (
+            <button onClick={() => setRastetOpen(true)} className="btn-secondary text-sm shrink-0" title="Periudha me më pak ditë se kalendari (p.sh. prind mujor i regjistruar vetëm për një muaj)">
+              <AlertCircle className="w-4 h-4 text-amber-500" /> Rastet nga kalendari ({rastetKal.length})
+            </button>
+          )}
+          {[...planet.values()].some(isMujorAnywhere) && (
+            <button onClick={generateMonthlyReminders} className="btn-secondary text-sm shrink-0" title="Nxënësit mujorë me këst që skadon brenda 5 ditëve ose të vonuar">
+              <CalendarDays className="w-4 h-4 text-violet-500" /> Kujtesa mujore
+            </button>
+          )}
           {enrolled > 0 && (
             <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden flex min-w-24 max-w-48">
               <div className="bg-green-500 h-full" style={{ width: `${(paid    / enrolled) * 100}%` }} />
@@ -1461,7 +1723,9 @@ export default function UshqimiPage() {
                   const totalPlan = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.finalAmount || 0), 0);
                   const totalPaid = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.paidAmount  || 0), 0);
                   const totalDebtRow = rowPeriods.reduce((sum, rp) => sum + (rp.payment?.balance   || 0), 0);
-                  const anyOverdue = rowPeriods.some(rp => rp.payment?.status === "OVERDUE");
+                  const rowKeste = rowPeriods.map((rp, pi) => kesteFor(s, pi, rp.payment));
+                  const anyOverdue = rowPeriods.some((rp, pi) => rowKeste[pi] ? kaVonese(rowKeste[pi]!) : rp.payment?.status === "OVERDUE");
+                  const mujor = isMujorAnywhere(planet.get(s.id));
                   return (
                     <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${anyOverdue ? "bg-red-50/40 dark:bg-red-900/10" : ""}`}>
                       <td className="table-cell">
@@ -1474,6 +1738,11 @@ export default function UshqimiPage() {
                         </Link>
                         {s.parentName && (
                           <span className="text-xs text-slate-400 font-normal"> ({s.parentName})</span>
+                        )}
+                        {mujor && (
+                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300" title="Plani i pagesës: Mujor (dy këste për periudhë)">
+                            Mujor
+                          </span>
                         )}
                         {tags.has(s.id) && (
                           <span className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title="Përdor ditët e kolonës 'Zbritje e paparashikueshme'">
@@ -1489,7 +1758,10 @@ export default function UshqimiPage() {
                       <td className="table-cell font-semibold">
                         {totalPlan > 0 ? formatCurrency(totalPlan) : <span className="text-slate-300">—</span>}
                       </td>
-                      {rowPeriods.map(({ period, payment }) => {
+                      {rowPeriods.map(({ period, payment }, pi) => {
+                        const keste = rowKeste[pi];
+                        const kestVonuar = keste?.find(k => k.statusi === "ME_VONESE");
+                        const kestRradhes = keste?.find(k => k.statusi !== "PAGUAR");
                         const skipped = payment?.description === SKIPPED_MARKER;
                         const free    = payment?.description === FREE_MARKER;
                         // E paguar pjesërisht: tregohet edhe sa mbetet (me të kuqe) — "Bankë" vetëm e fshihte borxhin
@@ -1526,6 +1798,13 @@ export default function UshqimiPage() {
                                 ? formatCurrency(payment.finalAmount)
                                 : "—"}
                               {mbetet > 0.005 && <span className="block text-[11px] font-bold text-red-600 dark:text-red-400">mbetet {formatCurrency(mbetet)}</span>}
+                              {keste && (
+                                <span className={`block text-[10px] font-semibold ${kestVonuar ? "text-red-600 dark:text-red-400" : "text-violet-600 dark:text-violet-300"}`}>
+                                  {kestVonuar
+                                    ? `${MONTHS[kestVonuar.muaji - 1]}: me vonesë`
+                                    : kestRradhes ? `Mujor · ${MONTHS[kestRradhes.muaji - 1]} ${formatCurrency(kestRradhes.shuma - kestRradhes.paguar)}` : "Mujor · paguar"}
+                                </span>
+                              )}
                             </button>
                           </td>
                         );
@@ -1548,6 +1827,13 @@ export default function UshqimiPage() {
                             className="p-1.5 rounded-lg text-amber-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
                           >
                             <Calculator className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => nderroPlaninNgaRreshti(s)}
+                            title={`Plani i pagesës: ${mujor ? "Mujor" : "Dymujor"} — kliko për ta ndryshuar (vlen për periudhat që s'kanë filluar)`}
+                            className={`p-1.5 rounded-lg transition-colors ${mujor ? "text-violet-500 hover:text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-900/20" : "text-slate-300 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 dark:text-slate-500"}`}
+                          >
+                            <CalendarDays className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setPrintModal(s)}
@@ -1612,13 +1898,16 @@ export default function UshqimiPage() {
           month={payModal.month} year={periodCalYear(payModal.month)}
           prices={calcPrices(priceRateForClass(payModal.student.class?.name), workingDays, monthsPerYear)}
           workingDays={workingDays}
-          periods={periodsFor(payModal.student.id)}
+          periods={periodsFor(payModal.student)}
           tagLabel={tags.get(payModal.student.id)}
           periodCalYear={periodCalYear}
           overrideAmount={calcAmount}
+          planFor={i => planForPeriod(planet.get(payModal.student.id), i)}
+          onPlanChange={(plan, i) => ruajPlanin(payModal.student.id, plan, i)}
           onClose={() => { setPayModal(null); setCalcAmount(undefined); }}
           onSave={async (result) => {
             setPayModal(null); setCalcAmount(undefined); await fetchYearData();
+            setReceiptShtese(result?.shtese);
             if (result?.paymentId) setReceiptPaymentId(result.paymentId);
             if (result?.familyReceiptId) setFamilyReceiptPrintId(result.familyReceiptId);
           }}
@@ -1628,7 +1917,7 @@ export default function UshqimiPage() {
         <UshqimiCalcModal
           student={calcModal}
           price2Meals={priceRateForClass(calcModal.class?.name)}
-          periods={periodsFor(calcModal.id)}
+          periods={periodsFor(calcModal)}
           onClose={() => setCalcModal(null)}
           onApply={(s, amount, canonicalMonth) => {
             setCalcModal(null);
@@ -1646,10 +1935,18 @@ export default function UshqimiPage() {
           onClose={() => setPrintModal(null)}
         />
       )}
+      {rastetOpen && (
+        <RastetKalendariModal
+          rastet={rastetKal}
+          onClose={() => setRastetOpen(false)}
+          onApply={async sel => { await ndreqRastet(sel); setRastetOpen(false); }}
+        />
+      )}
       {receiptPaymentId && (
         <PaymentReceiptModal
           paymentId={receiptPaymentId}
-          onClose={() => setReceiptPaymentId(null)}
+          shtese={receiptShtese}
+          onClose={() => { setReceiptPaymentId(null); setReceiptShtese(undefined); }}
         />
       )}
       {statFilter && (
@@ -1657,6 +1954,7 @@ export default function UshqimiPage() {
           filter={statFilter}
           students={yearStudents}
           onClose={() => setStatFilter(null)}
+          mujorVoneseFor={mujorVoneseFor}
         />
       )}
       {enrollModal && (
@@ -1709,26 +2007,149 @@ export default function UshqimiPage() {
 /* ═══════════════════════════════════════════════════════ */
 /*  Payment Modal — specialized for meals                 */
 /* ═══════════════════════════════════════════════════════ */
-function UshqimiPayModal({ student, existingPayment, month, year, prices, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount, tagLabel }: {
+// Gjendja e një periudhe për skedat dhe kartën (vetëm lexim/llogaritje).
+type PeriodStatusKey = "PAGUAR" | "PJESERISHT" | "PA_PAGUAR" | "ME_VONESE" | "NDERPRERE" | "FALAS";
+const PERIOD_STATUS_UI: Record<PeriodStatusKey, { label: string; cls: string }> = {
+  PAGUAR:     { label: "Paguar",     cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  PJESERISHT: { label: "Pjesërisht", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
+  PA_PAGUAR:  { label: "Pa paguar",  cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" },
+  ME_VONESE:  { label: "Me vonesë",  cls: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+  NDERPRERE:  { label: "Ndërprerë",  cls: "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
+  FALAS:      { label: "Falas",      cls: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" },
+};
+
+function periodStatus(p: Payment | null, finalAmount: number, keste: Kest[] | null, defaultDue: Date): { key: PeriodStatusKey; afati: Date | null } {
+  if (p?.description === SKIPPED_MARKER) return { key: "NDERPRERE", afati: null };
+  if (p?.description === FREE_MARKER) return { key: "FALAS", afati: null };
+  const paid = p?.paidAmount ?? 0;
+  if (p && finalAmount > 0 && paid >= finalAmount - 0.005) return { key: "PAGUAR", afati: null };
+  if (keste) {
+    const vonuar = keste.find(k => k.statusi === "ME_VONESE");
+    if (vonuar) return { key: "ME_VONESE", afati: vonuar.afati };
+    return { key: paid > 0.005 ? "PJESERISHT" : "PA_PAGUAR", afati: afatiAktual(keste) };
+  }
+  const due = p ? new Date(p.dueDate) : defaultDue;
+  // I njëjti rregull si tabela: "me vonesë" kur afati ka kaluar dhe s'është paguar asgjë
+  if (due < new Date() && paid === 0) return { key: "ME_VONESE", afati: due };
+  return { key: paid > 0.005 ? "PJESERISHT" : "PA_PAGUAR", afati: due };
+}
+
+const fmtDMY = (d: Date) => `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+const parseDMY = (s: string): string | null => {
+  const m = s.trim().match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (!m) return null;
+  const d = new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+  if (d.getDate() !== parseInt(m[1]) || d.getMonth() !== parseInt(m[2]) - 1) return null;
+  return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+};
+const ymdLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+const METODAT: { value: string; label: string; title?: string }[] = [
+  { value: "CASH", label: "💶 Cash" },
+  { value: "BANK", label: "🏦 Bankë" },
+  { value: "CARD", label: "💳 Kartelë" },
+  { value: "ONLINE", label: "🌐 Online" },
+  { value: "KOMPENSIM", label: "🤝 Kompensim", title: "E paguar me kompensim — nxënësi s'ka borxh, por paratë s'hyjnë as në arkë, as në bankë." },
+];
+
+/* Dritarja "Pagesa e ushqimit": skedat e 5 periudhave + paneli i periudhës aktive.
+   Paneli rihapet (key) për çdo skedë, që gjendja e formularit të nisë nga e para. */
+function UshqimiPayModal({ student, existingPayment, month, prices, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount, tagLabel, planFor, onPlanChange }: {
   student: StudentRow; existingPayment: Payment | null; month: number; year: number;
   tagLabel?: string;
   prices: Record<string, number>; workingDays: number; periods: Period[];
   periodCalYear: (canonicalMonth: number) => number;
   overrideAmount?: number;
-  onClose: () => void; onSave: (result?: { paymentId?: number; familyReceiptId?: number }) => void;
+  // Plani (Dymujor/Mujor) i periudhës `i`; ndryshimi vlen nga ajo periudhë e tutje.
+  planFor: (periodIdx: number) => UshqimiPlan;
+  onPlanChange: (plan: UshqimiPlan, periodIdx: number) => Promise<boolean>;
+  onClose: () => void; onSave: (result?: { paymentId?: number; familyReceiptId?: number; shtese?: string[] }) => void;
+}) {
+  const [activeMonth, setActiveMonth] = useState(month);
+  // Plani i ndryshuar këtu (pa pritur rifreskimin e faqes)
+  const [planOverride, setPlanOverride] = useState<Map<number, UshqimiPlan>>(new Map());
+  const planAt = (i: number): UshqimiPlan => {
+    let best = -1; let v: UshqimiPlan | null = null;
+    planOverride.forEach((pl, k) => { if (k <= i && k > best) { best = k; v = pl; } });
+    return v ?? planFor(i);
+  };
+
+  const summaries = PERIOD_BUCKETS.map((period, i) => {
+    const p = month === period.canonicalMonth && existingPayment ? existingPayment : findPeriodPayment(student.installments, period.months);
+    const calYear = periodCalYear(period.canonicalMonth);
+    const days = periods[i]?.days ?? workingDays;
+    const amount = p ? p.finalAmount : Math.round(days * prices["2_shujta_ditë"] * 100) / 100;
+    const m = (p?.description || "").match(/^(\d+)\s*ditë/);
+    const pDays = m ? parseInt(m[1]) : (prices["2_shujta_ditë"] > 0 ? Math.round(amount / prices["2_shujta_ditë"]) : days);
+    const keste = p && p.description !== SKIPPED_MARKER && p.description !== FREE_MARKER && planAt(i) === "MUJOR"
+      ? kesteMujore({ months: period.months as [number, number], calYear, split: splitOf(periods[i], "days"), days: pDays, finalAmount: p.finalAmount, paidAmount: p.paidAmount })
+      : null;
+    return { period, p, amount, status: periodStatus(p, amount, keste, new Date(calYear, period.canonicalMonth - 1, 5)) };
+  });
+  const activeIdx = Math.max(0, PERIOD_BUCKETS.findIndex(p => p.canonicalMonth === activeMonth));
+  const active = summaries[activeIdx];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-[460px] animate-fade-in overflow-y-auto max-h-[94vh]" onClick={e => e.stopPropagation()}>
+        <UshqimiPayPanel
+          key={activeMonth}
+          student={student}
+          existingPayment={active.p}
+          month={activeMonth}
+          year={periodCalYear(activeMonth)}
+          prices={prices} workingDays={workingDays} periods={periods} periodCalYear={periodCalYear}
+          overrideAmount={activeMonth === month ? overrideAmount : undefined}
+          tagLabel={tagLabel}
+          planFillestar={planAt(activeIdx)}
+          onPlanChange={async pl => { const ok = await onPlanChange(pl, activeIdx); if (ok) setPlanOverride(prev => new Map(prev).set(activeIdx, pl)); return ok; }}
+          onClose={onClose} onSave={onSave}
+          tabs={
+            <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1" role="tablist">
+              {summaries.map(({ period, amount, status }) => {
+                const on = period.canonicalMonth === activeMonth;
+                const short = period.label.split("/").map(x => x.slice(0, 3)).join("/");
+                return (
+                  <button key={period.label} type="button" role="tab" aria-selected={on}
+                    onClick={() => setActiveMonth(period.canonicalMonth)}
+                    className={`relative shrink-0 min-w-[74px] px-2 py-1.5 rounded-lg border text-center transition-colors ${on
+                      ? "border-violet-500 bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-200"
+                      : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-violet-300"}`}>
+                    <span className="block text-xs font-semibold">{short}</span>
+                    <span className="block text-[11px]">
+                      {status.key === "NDERPRERE" ? "Ndërprerë" : status.key === "FALAS" ? "Falas" : formatCurrency(amount)}
+                    </span>
+                    {status.key === "PAGUAR" && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 text-white text-[10px] leading-4" aria-label="Paguar">✓</span>}
+                    {status.key === "ME_VONESE" && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500" aria-label="Me vonesë" />}
+                  </button>
+                );
+              })}
+            </div>
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function UshqimiPayPanel({ student, existingPayment, month, year, prices, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount, tagLabel, planFillestar = "DYMUJOR", onPlanChange, tabs }: {
+  student: StudentRow; existingPayment: Payment | null; month: number; year: number;
+  tagLabel?: string;
+  prices: Record<string, number>; workingDays: number; periods: Period[];
+  periodCalYear: (canonicalMonth: number) => number;
+  overrideAmount?: number;
+  planFillestar?: UshqimiPlan;
+  onPlanChange?: (plan: UshqimiPlan) => Promise<boolean>;
+  onClose: () => void; onSave: (result?: { paymentId?: number; familyReceiptId?: number; shtese?: string[] }) => void;
+  tabs: ReactNode;
 }) {
   const existing = existingPayment;
   const isCalc = overrideAmount != null;
-  // Ditët parazgjedhur duhet të përputhen me periudhën reale (Kalkulatori i Çmimeve),
-  // jo me vlerën gjenerike "Ditë pune/muaj" — përndryshe të dyja vendet tregojnë numra të ndryshëm.
   const periodIndex = PERIOD_BUCKETS.findIndex(p => p.canonicalMonth === month);
   const bucket = periodIndex >= 0 ? PERIOD_BUCKETS[periodIndex] : null;
   const periodDays = periodIndex >= 0 ? (periods[periodIndex]?.days ?? workingDays) : workingDays;
 
-  // Bileta e periudhës — një qelizë e grafikut mbulon 2 muaj (p.sh. "Nëntor/Dhjetor"),
-  // por disa familje paguajnë vetëm njërin nga ata dy muaj (p.sh. vetëm Nëntorin).
-  // Zgjedhja këtu vetëm rifreson vlerën parazgjedhur të ditëve/etiketës — numri i
-  // ditëve dhe çmimi mbeten plotësisht të editueshëm si më parë.
+  // "Vetëm njëri muaj" (rast i rrallë) — tani brenda "Ndrysho"
   type SubPeriod = "full" | "first" | "second";
   const initialSubPeriod: SubPeriod =
     bucket && existing && existing.month === bucket.months[1] ? "second" : "full";
@@ -1739,56 +2160,75 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       ? Math.max(1, Math.round(existing.finalAmount / prices["2_shujta_ditë"]))
       : periodDays
   );
-
+  // Kalendari (Kalkulatori → Ditët e mësimit sipas muajit)
+  const calSplit = periodIndex >= 0 ? splitOf(periods[periodIndex], "days") : null;
+  function calendarDays(sp: SubPeriod) {
+    if (sp === "full") return periodDays;
+    if (calSplit) return sp === "first" ? calSplit[0] : calSplit[1];
+    return Math.round(periodDays / 2);
+  }
   function handleSubPeriodChange(sp: SubPeriod) {
     setSubPeriod(sp);
-    setDays(sp === "full" ? periodDays : Math.round(periodDays / 2));
+    setDays(calendarDays(sp));
   }
   // Periudhë "Ndërprerë"/"Falas" (shuma 0) → çmimi parazgjedhur, jo 0 € / ditë.
   const [pricePerDay, setPricePerDay] = useState(
     existing && existing.finalAmount > 0 && days > 0 ? Math.round((existing.finalAmount / days) * 100) / 100 : prices["2_shujta_ditë"]
   );
-  const [paidAmount,  setPaidAmount]  = useState(String(existing?.paidAmount ?? ""));
-  const [method,      setMethod]      = useState(existing?.method ?? "CASH");
-  const [dueDate,     setDueDate]     = useState(
-    existing?.dueDate
-      ? new Date(existing.dueDate).toISOString().split("T")[0]
-      : new Date(year, month - 1, 5).toISOString().split("T")[0]
-  );
-  const [paidDate, setPaidDate] = useState(
-    existing?.paidDate
-      ? new Date(existing.paidDate).toISOString().split("T")[0]
-      : new Date().toISOString().split("T")[0]
-  );
+  const [method, setMethod] = useState(existing?.method ?? "CASH");
+  // Afati s'është më fushë: ruhet ai ekzistues (ose parazgjedhja e vjetër, dita 5 e muajit të parë)
+  const dueDate = existing?.dueDate
+    ? new Date(existing.dueDate).toISOString().split("T")[0]
+    : new Date(year, month - 1, 5).toISOString().split("T")[0];
+  const [paidDateTxt, setPaidDateTxt] = useState(fmtDMY(new Date()));
   const [note, setNote] = useState(existing?.note ?? "");
+  const [noteOpen, setNoteOpen] = useState(!!existing?.note);
+  const [editOpen, setEditOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [extraOpen, setExtraOpen] = useState(false);
+  const [print, setPrint] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-
-  // Zgjedhje e lirë e disa periudhave njëherësh (p.sh. Shtator/Tetor +
-  // Nëntor/Dhjetor = 4 muaj) — përveç periudhës që u klikua për ta hapur
-  // modalin (parazgjedhje), admini mund të shtojë/heqë të tjera me tick,
-  // pa qenë e kufizuar vetëm në "një periudhë" ose "krejt vitin".
-  const [selectedPeriods, setSelectedPeriods] = useState<Set<number>>(
-    new Set(periodIndex >= 0 ? [periodIndex] : [])
-  );
-  function togglePeriod(i: number) {
-    setSelectedPeriods(prev => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i); else next.add(i);
-      return next;
-    });
-  }
+  const [shumaError, setShumaError] = useState("");
 
   const finalAmount = isCalc ? (overrideAmount ?? 0) : Math.round(days * pricePerDay * 100) / 100;
-  const paid = parseFloat(paidAmount || "0");
-  const balance = Math.max(0, finalAmount - paid);
+  const paidBefore = existing?.paidAmount ?? 0;
+  const remaining = Math.max(0, Math.round((finalAmount - paidBefore) * 100) / 100);
 
-  // Muaji real që ruhet te pagesa — kur zgjidhet "vetëm njëri muaj", ruhet ai
-  // muaj specifik (jo gjithmonë muaji i parë i bileta), që Afati/etiketa të
-  // pasqyrojnë saktë periudhën reale që u pagua.
+  // Plani i pagesës (Dymujor/Mujor) — ruhet menjëherë kur ndryshohet
+  const [plan, setPlan] = useState<UshqimiPlan>(planFillestar);
+  const [planBusy, setPlanBusy] = useState(false);
+  async function zgjidhPlanin(p: UshqimiPlan) {
+    if (p === plan) return;
+    if (onPlanChange) {
+      setPlanBusy(true);
+      const ok = await onPlanChange(p);
+      setPlanBusy(false);
+      if (!ok) return;
+    }
+    setPlan(p);
+    if (p === "MUJOR" && subPeriod !== "full") { setSubPeriod("full"); setDays(calendarDays("full")); }
+  }
+  const mujorAktiv = plan === "MUJOR" && !isCalc && !!bucket && subPeriod === "full";
+
+  // PAGESA E RE: shuma që paguhet tani (parazgjedhje: sa mbetet) → paguar total = më parë + tani.
+  // "Korrigjo totalin" (menyja ⋯) lejon të shkruhet direkt totali i paguar, si më parë.
+  const [shuma, setShuma] = useState(remaining > 0 ? String(remaining) : "");
+  const [shumaChip, setShumaChip] = useState<"full" | "m1" | "m2" | null>(remaining > 0 ? "full" : null);
+  const [korrigjoTotalin, setKorrigjoTotalin] = useState(false);
+  const [totalKorrigjim, setTotalKorrigjim] = useState(String(paidBefore));
+  const shumaNum = Math.max(0, parseFloat(shuma.replace(",", ".") || "0") || 0);
+  const paid = korrigjoTotalin
+    ? Math.max(0, parseFloat(totalKorrigjim.replace(",", ".") || "0") || 0)
+    : Math.round((paidBefore + shumaNum) * 100) / 100;
+
+  const kesteArgs = bucket ? { months: bucket.months as [number, number], calYear: year, split: calSplit, days, finalAmount } : null;
+  const kesteTani = mujorAktiv && kesteArgs ? kesteMujore({ ...kesteArgs, paidAmount: paidBefore }) : null;
+  const kesteMePagesen = mujorAktiv && kesteArgs ? kesteMujore({ ...kesteArgs, paidAmount: paid }) : null;
+  const kestiRradhes = kesteTani?.find(k => k.statusi !== "PAGUAR");
+
   const effectiveMonth = !bucket || subPeriod === "full" ? month
     : subPeriod === "first" ? bucket.months[0] : bucket.months[1];
-
   const periodLabel = subPeriod === "full"
     ? (bucket?.label ?? MONTHS[month - 1])
     : MONTHS[effectiveMonth - 1];
@@ -1796,19 +2236,41 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
     ? `${periodLabel} ${year}`
     : `${days} ditë × ${formatCurrency(pricePerDay)} — ${periodLabel} ${year}`;
 
-  async function handleSave(withPrint = false) {
+  // Ditët ndryshe nga kalendari = rast i veçantë → arsyeja e detyrueshme.
+  const daysManual = !isCalc && days !== calendarDays(subPeriod);
+  useEffect(() => { if (daysManual) setNoteOpen(true); }, [daysManual]);
+
+  const isSkipped = existing?.description === SKIPPED_MARKER;
+  const isFree    = existing?.description === FREE_MARKER;
+  const status = periodStatus(existing, finalAmount, kesteTani, new Date(dueDate));
+  const fullyPaid = !!existing && finalAmount > 0 && paidBefore >= finalAmount - 0.005;
+
+  // Butonat e muajve: ditët e muajit (kalendari) × çmimi
+  const monthDays: [number, number] = calSplit ?? [Math.ceil(days / 2), Math.floor(days / 2)];
+  const monthAmt = (k: 0 | 1) => Math.round(monthDays[k] * pricePerDay * 100) / 100;
+
+  async function handleSave(withPrint: boolean, paidTotal: number) {
+    if (daysManual && !note.trim()) {
+      setNoteOpen(true);
+      setSaveError(`Ditët (${days}) ndryshojnë nga kalendari (${calendarDays(subPeriod)}). Shkruaj arsyen te "Shënim".`);
+      return;
+    }
+    const paidDate = parseDMY(paidDateTxt);
+    if (paidTotal > 0 && !paidDate) { setSaveError("Data e pagesës s'është e saktë (dd.mm.yyyy)."); return; }
     setSaving(true);
     setSaveError("");
+    const kesteRuajtje = mujorAktiv && kesteArgs ? kesteMujore({ ...kesteArgs, paidAmount: paidTotal }) : null;
+    // Për Mujor: afati i periudhës = afati i këstit të parë të papaguar → vonesa sipas këstit
     const payload = {
       studentId: student.id,
       categoryId: 2,
       amount: finalAmount,
       discount: 0, discountType: null, scholarship: 0,
       finalAmount,
-      paidAmount: paid,
+      paidAmount: paidTotal,
       method,
-      dueDate,
-      paidDate: paid > 0 ? paidDate : null,
+      dueDate: kesteRuajtje ? ymdLocal(afatiAktual(kesteRuajtje)) : dueDate,
+      paidDate: paidTotal > 0 ? (paidTotal > paidBefore + 0.005 || !existing?.paidDate ? paidDate : new Date(existing.paidDate).toISOString().split("T")[0]) : null,
       month: effectiveMonth, year,
       description,
       note: note || null,
@@ -1822,42 +2284,37 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
 
       let receiptPaymentId: number | undefined;
       let ok: boolean;
-
       if (existing) {
-        const r = await fetch(`/api/payments/${existing.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        const r = await fetch(`/api/payments/${existing.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         ok = r.ok;
-        if (r.ok && paid > 0) receiptPaymentId = existing.id;
+        if (r.ok && paidTotal > 0) receiptPaymentId = existing.id;
         if (!r.ok) { const d = await r.json().catch(() => ({})); setSaveError(d.error || `Ruajtja dështoi (gabim ${r.status})`); }
       } else {
-        const r = await fetch("/api/payments", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        const r = await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         ok = r.ok;
-        if (r.ok && paid > 0) {
-          const created = await r.json();
-          receiptPaymentId = created.id;
-        }
+        if (r.ok && paidTotal > 0) receiptPaymentId = (await r.json()).id;
         if (!r.ok) { const d = await r.json().catch(() => ({})); setSaveError(d.error || `Ruajtja dështoi (gabim ${r.status})`); }
       }
       setSaving(false);
       if (!ok) return;
-      onSave(withPrint && receiptPaymentId ? { paymentId: receiptPaymentId } : undefined);
+      // Kuponi i nxënësit mujor: cilin këst mbuloi kjo pagesë dhe sa mbetet nga periudha
+      const shtese = kesteRuajtje && paidTotal > paidBefore + 0.005
+        ? [
+            ...kesteTeMbuluara(kesteRuajtje, paidBefore, paidTotal).map(k =>
+              `Pagesë për: ${MONTHS[k.muaji - 1]} ${k.vit} — ${formatCurrency(k.shuma)}${k.plotesisht ? "" : " (pjesërisht)"}`),
+            `Mbetet nga periudha ${bucket?.label ?? ""} ${year}: ${formatCurrency(Math.max(0, finalAmount - paidTotal))}`,
+          ]
+        : undefined;
+      onSave(withPrint && receiptPaymentId ? { paymentId: receiptPaymentId, shtese } : undefined);
     } catch {
       setSaving(false);
       setSaveError("Gabim rrjeti — provo përsëri.");
     }
   }
 
-  const isSkipped = existing?.description === SKIPPED_MARKER;
-  const isFree    = existing?.description === FREE_MARKER;
-
   async function markAs(marker: string) {
+    const emri = marker === SKIPPED_MARKER ? "Ndërprerë" : "Falas";
+    if (!confirm(`Shëno ${bucket?.label ?? ""} ${year} si "${emri}" për ${student.firstName} ${student.lastName}? Periudha s'ngarkohet më (0 €). Mund të rikthehet më vonë.`)) return;
     setSaving(true);
     setSaveError("");
     const payload: Record<string, unknown> = {
@@ -1876,16 +2333,8 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
         if (cat) payload.categoryId = cat.id;
       }
       const r = existing
-        ? await fetch(`/api/payments/${existing.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          })
-        : await fetch("/api/payments", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
+        ? await fetch(`/api/payments/${existing.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+        : await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       setSaving(false);
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
@@ -1900,18 +2349,15 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
     onSave(undefined);
   }
 
-  const markSkipped = () => markAs(SKIPPED_MARKER);
-  const markFree    = () => markAs(FREE_MARKER);
-
   // Rifillo pas ndërprerjes: periudha kthehet normale me ditët dhe çmimin
   // parazgjedhur (pa pagesë ende) — vetëm kjo periudhë; të tjerat s'preken.
   async function rifillo() {
     if (!existing) return;
     const d = periodDays;
     const cmimi = prices["2_shujta_ditë"];
-    const shuma = Math.round(d * cmimi * 100) / 100;
+    const shumaR = Math.round(d * cmimi * 100) / 100;
     const label = bucket?.label ?? MONTHS[month - 1];
-    if (!confirm(`Rifillo ushqimin për ${student.firstName} ${student.lastName} — ${label} ${year}: ${d} ditë × ${formatCurrency(cmimi)} = ${formatCurrency(shuma)} (pa pagesë ende). Vazhdo?`)) return;
+    if (!confirm(`Rifillo ushqimin për ${student.firstName} ${student.lastName} — ${label} ${year}: ${d} ditë × ${formatCurrency(cmimi)} = ${formatCurrency(shumaR)} (pa pagesë ende). Vazhdo?`)) return;
     setSaving(true);
     setSaveError("");
     try {
@@ -1922,8 +2368,8 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentId: student.id, categoryId: catId,
-          amount: shuma, discount: 0, discountType: null, scholarship: 0,
-          finalAmount: shuma, paidAmount: 0,
+          amount: shumaR, discount: 0, discountType: null, scholarship: 0,
+          finalAmount: shumaR, paidAmount: 0,
           method, dueDate, paidDate: null,
           month, year,
           description: `${d} ditë × ${formatCurrency(cmimi)} — ${label} ${year}`,
@@ -1944,49 +2390,49 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
     onSave(undefined);
   }
 
-  // Disa familje paguajnë krejt vitin (5 periudhat) përnjëherë — llogarit çfarë
-  // mbetet pa u paguar në secilën periudhë dhe i mbyll të gjitha njëherësh, duke
-  // ruajtur intakte periudhat e shënuara "Ndërprerë"/"Falas" dhe ato tashmë të paguara.
+  // "Paguaj edhe periudha të tjera" — e njëjta logjikë si "Paguaj disa periudha njëherësh":
+  // periudhat e zgjedhura mbyllen plotësisht; Ndërprerë/Falas dhe të paguarat s'preken.
   function computeYearPlan() {
     const items = PERIOD_BUCKETS.map((period, i) => {
-      const existing = findPeriodPayment(student.installments, period.months);
+      const ex = findPeriodPayment(student.installments, period.months);
       const calYear = periodCalYear(period.canonicalMonth);
-      if (existing && (existing.description === SKIPPED_MARKER || existing.description === FREE_MARKER)) {
-        return { period, index: i, existing, finalAmount: 0, remaining: 0, calYear };
+      if (ex && (ex.description === SKIPPED_MARKER || ex.description === FREE_MARKER)) {
+        return { period, index: i, existing: ex, finalAmount: 0, remaining: 0, calYear };
       }
-      const days = periods[i]?.days ?? workingDays;
-      const finalAmount = existing ? existing.finalAmount : Math.round(days * prices["2_shujta_ditë"] * 100) / 100;
-      const remaining = existing ? Math.max(0, existing.finalAmount - existing.paidAmount) : finalAmount;
-      return { period, index: i, existing, finalAmount, remaining, calYear };
+      const d = periods[i]?.days ?? workingDays;
+      const fa = ex ? ex.finalAmount : Math.round(d * prices["2_shujta_ditë"] * 100) / 100;
+      const rem = ex ? Math.max(0, ex.finalAmount - ex.paidAmount) : fa;
+      return { period, index: i, existing: ex, finalAmount: fa, remaining: rem, calYear };
     });
-    const total = items.reduce((sum, it) => sum + it.remaining, 0);
-    return { items, total };
+    return { items, total: items.reduce((sum, it) => sum + it.remaining, 0) };
+  }
+  const yearPlan = computeYearPlan();
+  const [selectedExtra, setSelectedExtra] = useState<Set<number>>(new Set());
+  const extraItems = yearPlan.items.filter(it => it.index !== periodIndex && selectedExtra.has(it.index) && it.remaining > 0);
+  const extraTotal = Math.round(extraItems.reduce((s, it) => s + it.remaining, 0) * 100) / 100;
+  function toggleExtra(i: number) {
+    setSelectedExtra(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   }
 
-  const yearPlan = computeYearPlan();
-  const selectedItems = yearPlan.items.filter(it => selectedPeriods.has(it.index) && it.remaining > 0);
-  const selectedTotal = selectedItems.reduce((sum, it) => sum + it.remaining, 0);
-
-  async function handlePaySelected() {
-    if (selectedItems.length === 0) return;
-    const allSelected = selectedPeriods.size === PERIOD_BUCKETS.length;
-    const label = allSelected ? "krejt vitin" : `${selectedItems.length} periudhat e zgjedhura`;
-    if (!confirm(`Do të shënohen si paguar plotësisht ${label} për ${student.firstName} ${student.lastName} — gjithsej ${formatCurrency(selectedTotal)}. Vazhdo?`)) return;
+  async function payItems(items: typeof yearPlan.items, withPrint: boolean) {
+    const allSelected = items.length === PERIOD_BUCKETS.length;
+    const total = items.reduce((s, it) => s + it.remaining, 0);
+    const label = allSelected ? "krejt vitin" : `${items.length} periudha`;
+    if (!confirm(`Do të shënohen si paguar plotësisht ${label} për ${student.firstName} ${student.lastName} — gjithsej ${formatCurrency(total)}. Vazhdo?`)) return;
+    const paidDate = parseDMY(paidDateTxt);
+    if (!paidDate) { setSaveError("Data e pagesës s'është e saktë (dd.mm.yyyy)."); return; }
 
     setSaving(true);
     setSaveError("");
-    const catRes = await fetch("/api/categories");
-    const cats = await catRes.json();
-    const cat = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi");
-    const catId = cat?.id ?? 2;
+    const cats = await fetch("/api/categories").then(r => r.json());
+    const catId = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi")?.id ?? 2;
+    const toPay = items.filter(it => it.remaining > 0);
+    const desc = (it: (typeof items)[number]) => it.existing?.description ?? `${periods[it.index]?.days ?? workingDays} ditë × ${formatCurrency(prices["2_shujta_ditë"])} — ${it.period.label} ${it.calYear}`;
+    const due = (it: (typeof items)[number]) => it.existing?.dueDate
+      ? new Date(it.existing.dueDate).toISOString().split("T")[0]
+      : new Date(it.calYear, it.period.canonicalMonth - 1, 5).toISOString().split("T")[0];
 
-    const toPay = selectedItems.filter(it => it.remaining > 0);
-
-    // Kur zgjidhen 2+ periudha njëherësh, i grupojmë nën një "Dëshmi Pagese" të
-    // vetme (FamilyReceipt — infrastrukturë ekzistuese, jo e kufizuar në familje
-    // me shumë fëmijë) që të mund të printohet vetëm një fletëpagesë e
-    // përmbledhur, në vend që prindi/arkëtari të printojë faturë veç e veç për
-    // secilën periudhe.
+    // 2+ periudha → një "Dëshmi Pagese" e përbashkët (FamilyReceipt), si më parë
     if (toPay.length >= 2) {
       const res = await fetch("/api/family-receipts", {
         method: "POST",
@@ -1998,15 +2444,9 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
           children: toPay.map(it => ({
             studentId: student.id, categoryId: catId,
             amount: it.finalAmount, discount: 0, discountType: null, scholarship: 0,
-            paidAmount: it.finalAmount,
-            method,
-            dueDate: it.existing?.dueDate
-              ? new Date(it.existing.dueDate).toISOString().split("T")[0]
-              : new Date(it.calYear, it.period.canonicalMonth - 1, 5).toISOString().split("T")[0],
-            paidDate,
+            paidAmount: it.finalAmount, method, dueDate: due(it), paidDate,
             month: it.period.canonicalMonth, year: it.calYear,
-            description: it.existing?.description ?? `${periods[it.index]?.days ?? workingDays} ditë × ${formatCurrency(prices["2_shujta_ditë"])} — ${it.period.label} ${it.calYear}`,
-            note: note || it.existing?.note || null,
+            description: desc(it), note: note || it.existing?.note || null,
           })),
         }),
       });
@@ -2017,7 +2457,7 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
         return;
       }
       const { id } = await res.json();
-      onSave({ familyReceiptId: id });
+      onSave(withPrint ? { familyReceiptId: id } : undefined);
       return;
     }
 
@@ -2028,14 +2468,9 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
         studentId: student.id, categoryId: catId,
         amount: it.finalAmount, discount: 0, discountType: null, scholarship: 0,
         finalAmount: it.finalAmount, paidAmount: it.finalAmount,
-        method,
-        dueDate: it.existing?.dueDate
-          ? new Date(it.existing.dueDate).toISOString().split("T")[0]
-          : new Date(it.calYear, it.period.canonicalMonth - 1, 5).toISOString().split("T")[0],
-        paidDate,
+        method, dueDate: due(it), paidDate,
         month: it.period.canonicalMonth, year: it.calYear,
-        description: it.existing?.description ?? `${periods[it.index]?.days ?? workingDays} ditë × ${formatCurrency(prices["2_shujta_ditë"])} — ${it.period.label} ${it.calYear}`,
-        note: note || it.existing?.note || null,
+        description: desc(it), note: note || it.existing?.note || null,
       };
       if (it.existing) {
         const r = await fetch(`/api/payments/${it.existing.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -2050,244 +2485,334 @@ function UshqimiPayModal({ student, existingPayment, month, year, prices, workin
       setSaveError("Disa nga periudhat nuk u ruajtën (gabim serveri) — kontrollo dhe provo përsëri.");
       return;
     }
-    onSave(receiptPaymentId ? { paymentId: receiptPaymentId } : undefined);
+    onSave(withPrint && receiptPaymentId ? { paymentId: receiptPaymentId } : undefined);
   }
 
+  // Butoni i vetëm kryesor
+  const totalButon = Math.round(((korrigjoTotalin ? 0 : shumaNum) + extraTotal) * 100) / 100;
+  async function ruaj() {
+    setShumaError("");
+    if (korrigjoTotalin) { await handleSave(print, paid); return; }
+    if (extraItems.length) {
+      const current = yearPlan.items[periodIndex];
+      const obligimNdryshoi = !!existing && Math.abs(existing.finalAmount - finalAmount) > 0.005;
+      if (shumaNum > 0.005) {
+        if (Math.abs(shumaNum - remaining) > 0.005) { setShumaError(`Kur paguhen disa periudha njëherësh, kjo periudhë paguhet e plotë (${formatCurrency(remaining)}) ose lëre 0.`); return; }
+        if (obligimNdryshoi || !existing && Math.abs(current.finalAmount - finalAmount) > 0.005) { setShumaError("Ruaj së pari ndryshimin e ditëve/çmimit (Ndrysho → Ruaj ndryshimet)."); return; }
+        await payItems([current, ...extraItems], print);
+      } else {
+        await payItems(extraItems, print);
+      }
+      return;
+    }
+    if (shumaNum <= 0.005) { setShumaError("Shkruaj shumën"); return; }
+    await handleSave(print, paid);
+  }
+
+  const initials = `${student.firstName.trim()[0] ?? ""}${student.lastName.trim()[0] ?? ""}`.toUpperCase();
+  const st = PERIOD_STATUS_UI[status.key];
+  const mbetet = Math.max(0, finalAmount - paidBefore);
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg animate-fade-in overflow-y-auto max-h-[92vh]" onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700">
-          <div>
-            <h3 className="font-bold text-slate-900 dark:text-white">Pagesa Ushqimit</h3>
-            <p className="text-sm text-slate-400 mt-0.5">
-              {student.firstName} {student.lastName}
-              {student.class && <span> • Klasa {student.class.name}</span>}
-              {" • "}{periodLabel} {year}
+    <>
+      {/* 1. KOKA */}
+      <div className="flex items-start gap-3 px-5 pt-5 pb-3">
+        <div className="w-10 h-10 shrink-0 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-200 flex items-center justify-center text-sm font-bold">{initials}</div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-slate-900 dark:text-white truncate">{student.firstName} {student.lastName}</h3>
+          <p className="text-xs text-slate-400">{student.class ? `Klasa ${student.class.name} · ` : ""}Pagesa e ushqimit</p>
+          {tagLabel && (
+            <p className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden />{tagLabel}
             </p>
-            {tagLabel && (
-              <p className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden />{tagLabel} — ditët merren nga kolona përkatëse
-              </p>
-            )}
-          </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          )}
         </div>
-
-        <div className="p-5 space-y-4">
-          {/* Calculator override notice */}
-          {isCalc ? (
-            <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl">
-              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm font-medium">
-                <Calculator className="w-4 h-4" />
-                Shumë e llogaritur nga Kalkulatori
-              </div>
-              <span className="text-lg font-black text-amber-600">{formatCurrency(overrideAmount ?? 0)}</span>
-            </div>
-          ) : (
-            <>
-              {bucket && (
-                <div>
-                  <label className="form-label">Periudha</label>
-                  <select
-                    value={subPeriod}
-                    onChange={e => handleSubPeriodChange(e.target.value as "full" | "first" | "second")}
-                    className="form-input"
-                  >
-                    <option value="full">{bucket.label} (të dy muajt)</option>
-                    <option value="first">Vetëm {MONTHS[bucket.months[0] - 1]}</option>
-                    <option value="second">Vetëm {MONTHS[bucket.months[1] - 1]}</option>
-                  </select>
-                </div>
+        <div className="relative">
+          <button type="button" onClick={() => setMenuOpen(v => !v)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700" aria-label="Më shumë">⋯</button>
+          {menuOpen && (
+            <div className="absolute right-0 top-8 z-10 w-56 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-lg py-1 text-sm" onMouseLeave={() => setMenuOpen(false)}>
+              <button type="button" disabled={saving} onClick={() => { setMenuOpen(false); markAs(SKIPPED_MARKER); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700">
+                {isSkipped ? "Ndërprerë (rifresko)" : "Shëno si Ndërprerë"}
+              </button>
+              <button type="button" disabled={saving} onClick={() => { setMenuOpen(false); markAs(FREE_MARKER); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-sky-700 dark:text-sky-300">
+                {isFree ? "Falas (rifresko)" : "Shëno si Falas"}
+              </button>
+              {existing && !isSkipped && !isFree && (
+                <button type="button" onClick={() => { setMenuOpen(false); setKorrigjoTotalin(true); setTotalKorrigjim(String(paidBefore)); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500">
+                  Korrigjo totalin e paguar
+                </button>
               )}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="form-label">Numri i ditëve <span className="text-red-500">*</span></label>
-                  <input type="number" value={days}
-                    onChange={e => setDays(parseInt(e.target.value) || 0)}
-                    className="form-input" min="0" />
-                </div>
-                <div>
-                  <label className="form-label">Çmimi / ditë (€) <span className="text-red-500">*</span></label>
-                  <input type="number" value={pricePerDay}
-                    onChange={e => setPricePerDay(parseFloat(e.target.value) || 0)}
-                    className="form-input" min="0" step="0.01" />
-                </div>
-              </div>
-            </>
+            </div>
           )}
+        </div>
+        <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Mbyll"><X className="w-5 h-5" /></button>
+      </div>
 
-          {/* Summary */}
-          <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800 rounded-xl px-4 py-3 flex items-center justify-between">
-            <span className="text-sm text-primary-700 dark:text-primary-300 font-medium">{description}</span>
-            <span className="text-lg font-black text-primary-600 dark:text-primary-400">{formatCurrency(finalAmount)}</span>
+      <div className="px-5 pb-4 space-y-4">
+        {/* 2. SKEDAT E PERIUDHAVE */}
+        {tabs}
+
+        {/* 3. KARTA E GJENDJES SË PERIUDHËS */}
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-700 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-bold text-slate-800 dark:text-slate-100">{periodLabel} {year}</p>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${st.cls}`}>
+              {st.label}{status.afati && status.key !== "PAGUAR" ? ` · afati ${fmtDMY(status.afati).slice(0, 5)}` : ""}
+            </span>
           </div>
 
-          {/* Payment fields */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="form-label">Paguar (€)</label>
-              <input type="number" value={paidAmount}
-                onChange={e => setPaidAmount(e.target.value)}
-                className="form-input" placeholder="0.00" min="0" step="0.01" />
+          {isCalc ? (
+            <div className="flex items-center justify-between p-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+              <span className="flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm font-medium"><Calculator className="w-4 h-4" /> Shumë nga Kalkulatori</span>
+              <span className="font-black text-amber-600">{formatCurrency(overrideAmount ?? 0)}</span>
             </div>
-            <div>
-              <label className="form-label">Mënyra</label>
-              <select value={method} onChange={e => setMethod(e.target.value)} className="form-input">
-                <option value="CASH">Cash</option>
-                <option value="BANK">Bankë</option>
-                <option value="CARD">Kartelë</option>
-                <option value="ONLINE">Online</option>
-                <option value="KOMPENSIM">Kompensim (marrëveshje)</option>
-              </select>
-              {method === "KOMPENSIM" && <p className="text-[11px] text-slate-500 mt-1">E paguar me kompensim — nxënësi s&apos;ka borxh, por paratë s&apos;hyjnë as në arkë, as në bankë.</p>}
-            </div>
-            <div>
-              <label className="form-label">Afati i Pagesës</label>
-              <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="form-input" />
-            </div>
-            <div>
-              <label className="form-label">Data e Pagesës</label>
-              <input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} className="form-input" />
-            </div>
+          ) : null}
+
+          <div className="grid grid-cols-3 gap-2">
+            <div><p className="text-[11px] text-slate-400">Detyrimi</p><p className="text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(finalAmount)}</p></div>
+            <div><p className="text-[11px] text-slate-400">Paguar</p><p className="text-lg font-bold text-emerald-600">{formatCurrency(paidBefore)}</p></div>
+            <div><p className="text-[11px] text-slate-400">Mbetet</p><p className={`text-lg font-bold ${mbetet > 0.005 ? "text-red-600" : "text-slate-400"}`}>{formatCurrency(mbetet)}</p></div>
           </div>
 
-          <div>
-            <label className="form-label">Shënim (opsionale)</label>
-            <input type="text" value={note} onChange={e => setNote(e.target.value)}
-              className="form-input" placeholder='p.sh. "Borxh i vjetër" ose sqarim tjetër' />
-          </div>
-
-          {/* Balance */}
-          {balance > 0 && paid > 0 && (
-            <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-sm">
-              <span className="text-amber-700 dark:text-amber-400">Borxh i mbetur:</span>
-              <span className="font-bold text-amber-700 dark:text-amber-400">{formatCurrency(balance)}</span>
+          {!isCalc && (
+            <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span>📅 {days} ditë{subPeriod === "full" && calSplit ? ` (${calSplit[0]} + ${calSplit[1]})` : subPeriod !== "full" ? ` (vetëm ${MONTHS[effectiveMonth - 1]})` : ""} × {formatCurrency(pricePerDay)}{daysManual ? <span className="text-amber-600"> · ndryshuar me dorë</span> : null}</span>
+              <button type="button" onClick={() => setEditOpen(v => !v)} className="text-violet-600 dark:text-violet-300 font-medium hover:underline">✎ {editOpen ? "Mbyll" : "Ndrysho"}</button>
             </div>
           )}
 
-          {/* Quick pay */}
-          {finalAmount > 0 && paid < finalAmount && (
-            <button
-              type="button"
-              onClick={() => setPaidAmount(String(finalAmount))}
-              className="w-full py-2 rounded-xl border-2 border-dashed border-green-300 dark:border-green-700 text-green-600 dark:text-green-400 text-sm font-medium hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors flex items-center justify-center gap-2"
-            >
-              <CheckCircle className="w-4 h-4" />
-              Shëno si paguar plotësisht ({formatCurrency(finalAmount)})
-            </button>
-          )}
-
-          {/* Paguaj disa periudha njëherësh — zgjidh me tick cilat, jo vetëm "krejt vitin" */}
-          {yearPlan.total > 0 && (
-            <div className="border-2 border-dashed border-emerald-200 dark:border-emerald-800 rounded-xl p-3 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">Paguaj disa periudha njëherësh</p>
-                <div className="flex items-center gap-2 text-xs">
-                  <button type="button" onClick={() => setSelectedPeriods(new Set(yearPlan.items.filter(it => it.remaining > 0).map(it => it.index)))} className="text-primary-600 hover:underline">Zgjidh të gjitha</button>
-                  <button type="button" onClick={() => setSelectedPeriods(new Set())} className="text-slate-400 hover:underline">Pastro</button>
-                </div>
+          {editOpen && !isCalc && (
+            <div className="space-y-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3">
+              {bucket && (
+                <label className="block">
+                  <span className="text-[11px] text-slate-500">Periudha</span>
+                  <select value={subPeriod} onChange={e => handleSubPeriodChange(e.target.value as SubPeriod)} className="form-input rounded-lg py-1.5 text-sm">
+                    <option value="full">{bucket.label} (të dy muajt)</option>
+                    <option value="first" disabled={plan === "MUJOR"}>Vetëm {MONTHS[bucket.months[0] - 1]}</option>
+                    <option value="second" disabled={plan === "MUJOR"}>Vetëm {MONTHS[bucket.months[1] - 1]}</option>
+                  </select>
+                </label>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="text-[11px] text-slate-500">Ditët</span>
+                  <input type="number" value={days} min="0" onChange={e => setDays(parseInt(e.target.value) || 0)}
+                    className={`form-input rounded-lg py-1.5 text-sm ${daysManual ? "border-amber-400" : ""}`} />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-slate-500">Çmimi / ditë (€)</span>
+                  <input type="number" value={pricePerDay} min="0" step="0.01" onChange={e => setPricePerDay(parseFloat(e.target.value) || 0)}
+                    className="form-input rounded-lg py-1.5 text-sm" />
+                </label>
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {yearPlan.items.map(it => (
-                  <label
-                    key={it.index}
-                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs cursor-pointer border ${
-                      it.remaining <= 0
-                        ? "border-slate-100 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed"
-                        : selectedPeriods.has(it.index)
-                          ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
-                          : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      className="accent-emerald-600"
-                      checked={selectedPeriods.has(it.index)}
-                      disabled={it.remaining <= 0}
-                      onChange={() => togglePeriod(it.index)}
-                    />
-                    <span className="flex-1">{it.period.label}</span>
-                    {it.remaining > 0 && <span className="font-semibold">{formatCurrency(it.remaining)}</span>}
-                  </label>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={handlePaySelected}
-                disabled={saving || selectedItems.length === 0}
-                title="Shënon si paguar plotësisht periudhat e zgjedhura më sipër"
-                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-40"
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                💰 {selectedItems.length === 0
-                  ? "Zgjidh periudhat"
-                  : `Paguaj ${selectedItems.length} periudha (${formatCurrency(selectedTotal)})`}
+              {daysManual ? (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Kalendari: {calendarDays(subPeriod)} ditë — shënimi është i detyrueshëm.
+                  <button type="button" onClick={() => setDays(calendarDays(subPeriod))} className="ml-1 underline">Kthe {calendarDays(subPeriod)}</button>
+                </p>
+              ) : calSplit && <p className="text-[11px] text-indigo-600 dark:text-indigo-300">Nga kalendari: {calSplit[0]} + {calSplit[1]} ditë</p>}
+              <button type="button" disabled={saving} onClick={() => handleSave(false, paidBefore)} className="btn-secondary text-xs w-full justify-center">
+                <Save className="w-3.5 h-3.5" /> Ruaj ndryshimet (pa pagesë)
               </button>
             </div>
           )}
+
+          {bucket && !isSkipped && !isFree && !isCalc && (
+            <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600">
+              {(["DYMUJOR", "MUJOR"] as UshqimiPlan[]).map(p => (
+                <button key={p} type="button" disabled={planBusy} onClick={() => zgjidhPlanin(p)}
+                  className={`py-1.5 rounded-md text-sm font-semibold transition-colors ${plan === p ? "bg-violet-600 text-white" : "text-slate-500 hover:text-violet-600"}`}>
+                  {p === "MUJOR" ? "Mujor" : "Dymujor"}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {kesteTani && (
+            <div className="rounded-lg border border-violet-200 dark:border-violet-800 overflow-hidden bg-white dark:bg-slate-800">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] text-slate-500 bg-violet-50 dark:bg-violet-900/20">
+                    <th className="text-left px-2.5 py-1 font-semibold">Muaji</th>
+                    <th className="px-1.5 py-1 font-semibold text-center">Ditë</th>
+                    <th className="px-1.5 py-1 font-semibold text-right">Shuma</th>
+                    <th className="px-1.5 py-1 font-semibold text-center">Afati</th>
+                    <th className="px-2.5 py-1 font-semibold text-right">Statusi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kesteTani.map(k => (
+                    <tr key={k.muaji} className="border-t border-slate-100 dark:border-slate-700">
+                      <td className="px-2.5 py-1.5 font-medium text-slate-800 dark:text-slate-100">{MONTHS[k.muaji - 1]}</td>
+                      <td className="px-1.5 py-1.5 text-center">{k.dite}</td>
+                      <td className="px-1.5 py-1.5 text-right">{formatCurrency(k.shuma)}</td>
+                      <td className="px-1.5 py-1.5 text-center text-slate-500">{fmtDMY(k.afati).slice(0, 5)}</td>
+                      <td className="px-2.5 py-1.5 text-right">
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                          k.statusi === "PAGUAR" ? PERIOD_STATUS_UI.PAGUAR.cls
+                          : k.statusi === "ME_VONESE" ? PERIOD_STATUS_UI.ME_VONESE.cls
+                          : k.statusi === "PJESERISHT" ? PERIOD_STATUS_UI.PJESERISHT.cls
+                          : PERIOD_STATUS_UI.PA_PAGUAR.cls}`}>
+                          {k.statusi === "PAGUAR" ? "✓ Paguar" : k.statusi === "ME_VONESE" ? "Me vonesë" : k.statusi === "PJESERISHT" ? `Pjesërisht ${formatCurrency(k.paguar)}` : "Pa paguar"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="px-2.5 py-1 text-[10px] text-violet-700 dark:text-violet-300 border-t border-violet-100 dark:border-violet-900/40">
+                Pagesa mbyll automatikisht këstin e parë të papaguar{kestiRradhes ? ` (${MONTHS[kestiRradhes.muaji - 1]})` : ""}.
+              </p>
+            </div>
+          )}
+
+          {isSkipped && (
+            <div className="text-xs text-slate-600 dark:text-slate-300 space-y-2">
+              <p>Kjo periudhë është <strong>Ndërprerë</strong> (nxënësi s&apos;e ndoqi).</p>
+              <button onClick={rifillo} disabled={saving} className="w-full btn-primary justify-center bg-emerald-600 hover:bg-emerald-700 text-sm">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                Rifillo ushqimin — {periodDays} ditë × {formatCurrency(prices["2_shujta_ditë"])}
+              </button>
+            </div>
+          )}
+          {isFree && (
+            <p className="text-xs text-sky-700 dark:text-sky-300">Kjo periudhë është <strong>Falas</strong> (e ndjek pa pagesë). Për ta rikthyer normale: ✎ Ndrysho → Ruaj ndryshimet.</p>
+          )}
         </div>
 
-        {isSkipped && (
-          <div className="mx-5 mb-3 p-3 bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-600 dark:text-slate-300">
-            Kjo periudhë është shënuar si <strong>Ndërprerë</strong> (nxënësi s&apos;e ndoqi). Kliko <strong>Rifillo</strong> për ta rikthyer si periudhë normale (ose ndrysho ditët/çmimin dhe ruaj).
-            <button
-              onClick={rifillo}
-              disabled={saving}
-              className="mt-2 w-full btn-primary justify-center bg-emerald-600 hover:bg-emerald-700"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-              Rifillo ushqimin — {periodDays} ditë × {formatCurrency(prices["2_shujta_ditë"])}
-            </button>
-          </div>
-        )}
-        {isFree && (
-          <div className="mx-5 mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm text-blue-700 dark:text-blue-300">
-            Kjo periudhë është shënuar si <strong>Falas</strong> (nxënësi e ndjek pa pagesë). Plotëso ditë/çmim dhe ruaj për ta rikthyer si periudhë normale.
+        {/* 4. PAGESA E RE */}
+        {!isSkipped && !isFree && (
+          <div className="space-y-3">
+            <p className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">{korrigjoTotalin ? "Korrigjim i totalit të paguar" : "Pagesa e re"}</p>
+
+            {korrigjoTotalin ? (
+              <div>
+                <label className="text-xs text-slate-500">Total i paguar (në vend të {formatCurrency(paidBefore)})</label>
+                <div className="relative">
+                  <input type="number" value={totalKorrigjim} onChange={e => setTotalKorrigjim(e.target.value)} min="0" step="0.01"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 pr-8 text-xl font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">€</span>
+                </div>
+                <button type="button" onClick={() => setKorrigjoTotalin(false)} className="text-xs text-slate-400 underline mt-1">Anulo korrigjimin</button>
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs text-slate-500">Shuma</label>
+                <div className="relative">
+                  <input type="number" inputMode="decimal" value={shuma} min="0" step="0.01" placeholder="0,00"
+                    onChange={e => { setShuma(e.target.value); setShumaChip(null); setShumaError(""); }}
+                    className={`w-full rounded-lg border bg-white dark:bg-slate-900 px-3 py-2.5 pr-8 text-xl font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400 ${shumaError ? "border-red-400" : "border-slate-200 dark:border-slate-600"}`} />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">€</span>
+                </div>
+                {shumaError && <p className="text-xs text-red-600 mt-1">{shumaError}</p>}
+                {!fullyPaid && remaining > 0 && (
+                  <div className="grid grid-cols-3 gap-1.5 mt-2">
+                    {([
+                      ["full", `E plotë · ${formatCurrency(remaining)}`, remaining],
+                      ...(bucket ? [
+                        ["m1", `${MONTHS[bucket.months[0] - 1]} · ${formatCurrency(monthAmt(0))}`, monthAmt(0)],
+                        ["m2", `${MONTHS[bucket.months[1] - 1]} · ${formatCurrency(monthAmt(1))}`, monthAmt(1)],
+                      ] : []),
+                    ] as ["full" | "m1" | "m2", string, number][]).map(([k, label, v]) => (
+                      <button key={k} type="button" onClick={() => { setShuma(String(v)); setShumaChip(k); setShumaError(""); }}
+                        className={`px-1.5 py-1.5 rounded-lg border text-[11px] font-medium truncate transition-colors ${shumaChip === k
+                          ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                          : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-emerald-300"}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-500">Mënyra</label>
+                <div className="flex flex-wrap gap-1.5 mt-0.5">
+                  {METODAT.map(m => (
+                    <button key={m.value} type="button" title={m.title} onClick={() => setMethod(m.value)}
+                      className={`px-2 py-1.5 rounded-lg border text-xs font-medium transition-colors ${method === m.value
+                        ? "border-blue-400 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
+                        : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-blue-300"}`}>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">Data e pagesës</label>
+                <input type="text" value={paidDateTxt} onChange={e => setPaidDateTxt(e.target.value)} placeholder="dd.mm.yyyy"
+                  className={`w-full mt-0.5 rounded-lg border bg-white dark:bg-slate-900 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 ${parseDMY(paidDateTxt) ? "border-slate-200 dark:border-slate-600" : "border-red-400"}`} />
+              </div>
+            </div>
+
+            {noteOpen ? (
+              <div>
+                <label className="text-xs text-slate-500">
+                  {daysManual ? <>Shënim — arsyeja e ditëve <span className="text-red-500">*</span></> : "Shënim"}
+                </label>
+                <input type="text" value={note} onChange={e => setNote(e.target.value)}
+                  className={`w-full rounded-lg border bg-white dark:bg-slate-900 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 ${daysManual && !note.trim() ? "border-amber-400" : "border-slate-200 dark:border-slate-600"}`}
+                  placeholder={daysManual ? 'p.sh. "Nxënës i ri nga 15 shtatori"' : 'p.sh. "Borxh i vjetër" ose sqarim tjetër'} />
+              </div>
+            ) : (
+              <button type="button" onClick={() => setNoteOpen(true)} className="text-xs text-violet-600 dark:text-violet-300 font-medium hover:underline">＋ Shto shënim</button>
+            )}
+
+            {yearPlan.items.some(it => it.index !== periodIndex && it.remaining > 0) && !korrigjoTotalin && (
+              <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-600">
+                <button type="button" onClick={() => setExtraOpen(v => !v)} className="w-full flex items-center justify-between px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+                  <span>▤ Paguaj edhe periudha të tjera{extraItems.length ? ` (${extraItems.length} · ${formatCurrency(extraTotal)})` : ""}</span>
+                  {extraOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                {extraOpen && (
+                  <div className="px-3 pb-3 space-y-2">
+                    <div className="flex items-center justify-end gap-3 text-xs">
+                      <button type="button" onClick={() => setSelectedExtra(new Set(yearPlan.items.filter(it => it.index !== periodIndex && it.remaining > 0).map(it => it.index)))} className="text-primary-600 hover:underline">Zgjidh të gjitha</button>
+                      <button type="button" onClick={() => setSelectedExtra(new Set())} className="text-slate-400 hover:underline">Pastro</button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {yearPlan.items.filter(it => it.index !== periodIndex).map(it => (
+                        <label key={it.index}
+                          className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs cursor-pointer border ${
+                            it.remaining <= 0
+                              ? "border-slate-100 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+                              : selectedExtra.has(it.index)
+                                ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
+                                : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
+                          <input type="checkbox" className="accent-emerald-600" checked={selectedExtra.has(it.index)} disabled={it.remaining <= 0} onChange={() => toggleExtra(it.index)} />
+                          <span className="flex-1">{it.period.label}</span>
+                          {it.remaining > 0 && <span className="font-semibold">{formatCurrency(it.remaining)}</span>}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {saveError && (
-          <p className="mx-5 mb-3 text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{saveError}</p>
-        )}
-
-        {/* Footer */}
-        <div className="flex flex-wrap gap-2 p-5 pt-0">
-          <button onClick={onClose} className="btn-secondary"><X className="w-4 h-4" />Anulo</button>
-          <button
-            onClick={markSkipped}
-            disabled={saving}
-            title="Nxënësi nuk e ndoqi këtë periudhë — s'ngarkohet asnjë shumë, mund të rikthehet më vonë"
-            className="btn-secondary text-slate-500"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
-            {isSkipped ? "Ndërprerë (rifresko)" : "Shëno si Ndërprerë"}
-          </button>
-          <button
-            onClick={markFree}
-            disabled={saving}
-            title="Nxënësi e ndjek këtë periudhë pa pagesë — s'numërohet te të hyrat as te borxhi"
-            className="btn-secondary text-blue-500"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-            {isFree ? "Falas (rifresko)" : "Shëno si Falas"}
-          </button>
-          <button onClick={() => { handleSave(false); }} disabled={saving || finalAmount === 0} className="btn-secondary">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? "Duke ruajtur..." : "Ruaj"}
-          </button>
-          <button
-            onClick={() => { handleSave(true); }}
-            disabled={saving || finalAmount === 0 || paid <= 0}
-            className="btn-primary flex-1 justify-center whitespace-nowrap"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
-            Ruaj &amp; Printo Dëshminë
-          </button>
-        </div>
+        {saveError && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{saveError}</p>}
       </div>
-    </div>
+
+      {/* 5. FUNDI */}
+      <div className="flex items-center gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-700">
+        <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 mr-auto cursor-pointer">
+          <input type="checkbox" checked={print} onChange={e => setPrint(e.target.checked)} className="accent-violet-600" />
+          Printo dëshminë
+        </label>
+        <button onClick={onClose} className="btn-secondary">Anulo</button>
+        {!isSkipped && !isFree && (
+          <button onClick={ruaj} disabled={saving}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            {korrigjoTotalin ? "Ruaj korrigjimin" : `Ruaj pagesën · ${formatCurrency(totalButon)}`}
+          </button>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -2371,6 +2896,81 @@ function EnrollModal({ notEnrolled, onEnroll, onClose }: {
 }
 
 /* ═══════════════════════════════════════════════════════ */
+/*  Rastet nga kalendari — ndreqen vetëm të shënuarat       */
+/* ═══════════════════════════════════════════════════════ */
+function RastetKalendariModal({ rastet, onClose, onApply }: {
+  rastet: RastKalendari[];
+  onClose: () => void;
+  onApply: (sel: RastKalendari[]) => Promise<void>;
+}) {
+  const key = (r: RastKalendari) => `${r.p.id}`;
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const zgjedhur = rastet.filter(r => sel.has(key(r)));
+  async function apliko() {
+    if (!zgjedhur.length) return;
+    if (!confirm(`Ndreq ${zgjedhur.length} raste?\n\nPër secilin: ditët bëhen sa kalendari, detyrimi rillogaritet, pagesat ekzistuese mbeten dhe shpërndahen te këstet, nxënësi kalon në plan Mujor nga ajo periudhë. Ndryshimi ruhet te historia e pagesës.`)) return;
+    setBusy(true);
+    await onApply(zgjedhur);
+    setBusy(false);
+  }
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-white">Rastet nga kalendari</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Periudha me më pak ditë se kalendari. Shëno vetëm ato që i miraton — të tjerat s&apos;preken.</p>
+          </div>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="overflow-auto flex-1">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 text-[11px] text-slate-500">
+              <tr>
+                <th className="px-3 py-2">
+                  <input type="checkbox" checked={sel.size === rastet.length && rastet.length > 0}
+                    onChange={e => setSel(e.target.checked ? new Set(rastet.map(key)) : new Set())} aria-label="Zgjidh të gjitha" />
+                </th>
+                <th className="text-left px-2 py-2">Nxënësi</th>
+                <th className="text-left px-2 py-2">Periudha</th>
+                <th className="px-2 py-2 text-center">Ditë (shënuar → kalendari)</th>
+                <th className="px-2 py-2 text-right">Detyrimi</th>
+                <th className="px-3 py-2 text-right">Paguar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rastet.map(r => (
+                <tr key={key(r)} className="border-t border-slate-100 dark:border-slate-700">
+                  <td className="px-3 py-1.5 text-center">
+                    <input type="checkbox" checked={sel.has(key(r))}
+                      onChange={() => setSel(prev => { const n = new Set(prev); if (n.has(key(r))) n.delete(key(r)); else n.add(key(r)); return n; })} />
+                  </td>
+                  <td className="px-2 py-1.5">{r.s.firstName} {r.s.lastName} <span className="text-xs text-slate-400">{r.s.class?.name}</span></td>
+                  <td className="px-2 py-1.5 text-xs">{PERIOD_BUCKETS[r.i].label} {r.calYear}</td>
+                  <td className="px-2 py-1.5 text-center">{r.ditet} → <b>{r.kal}</b></td>
+                  <td className="px-2 py-1.5 text-right">{formatCurrency(r.p.finalAmount)} → <b>{formatCurrency(r.detRi)}</b></td>
+                  <td className="px-3 py-1.5 text-right">{formatCurrency(r.p.paidAmount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="p-4 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between gap-3">
+          <span className="text-xs text-slate-500">{zgjedhur.length} të zgjedhura</span>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="btn-secondary">Anulo</button>
+            <button onClick={apliko} disabled={busy || !zgjedhur.length} className="btn-primary">
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Ndreq rastet e zgjedhura
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════ */
 /*  Stat list modal                                       */
 /* ═══════════════════════════════════════════════════════ */
 const FILTER_CONFIG: Record<StatFilter, { label: string; color: string }> = {
@@ -2382,12 +2982,13 @@ const FILTER_CONFIG: Record<StatFilter, { label: string; color: string }> = {
   debt:    { label: "Nxënës me borxh",           color: "text-red-500" },
 };
 
-function StatListModal({ filter, students, onClose }: {
+function StatListModal({ filter, students, onClose, mujorVoneseFor }: {
   filter: StatFilter;
   students: StudentRow[];
   onClose: () => void;
+  mujorVoneseFor?: (s: StudentRow) => (periodIdx: number, p: Payment) => boolean | null;
 }) {
-  const withInfo = students.map(s => ({ s, info: computeRealPaymentInfo(s.installments) }));
+  const withInfo = students.map(s => ({ s, info: computeRealPaymentInfo(s.installments, mujorVoneseFor?.(s)) }));
   const filtered = withInfo.filter(({ info }) => {
     if (filter === "all")     return true;
     if (filter === "paid")    return info.status === "PAID";
