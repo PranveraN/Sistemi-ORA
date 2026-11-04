@@ -1,5 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { kesteMujore, afatiAktual, kaVonese, kesteTeMbuluara, planForPeriod, setPlanFrom, parsePlanState, periudhaEParePaFilluar } from "../ushqimiPlan";
+import { kesteMujore, afatiAktual, kaVonese, kesteTeMbuluara, planForPeriod, setPlanFrom, parsePlanState, periudhaEParePaFilluar, parseShujtaState, shujtaForPeriod, setShujtaFrom, shujtaSuffix } from "../ushqimiPlan";
+
+describe("shujtat sipas periudhës", () => {
+  it("parazgjedhje Mëngjes + Drekë; 'vetëm drekë' vlen nga periudha e zgjedhur e tutje", () => {
+    let s = parseShujtaState(null);
+    expect(shujtaForPeriod(s, 3)).toBe("TE_DYJA");
+    s = setShujtaFrom(s, 1, "DREKE");
+    expect([0, 1, 4].map(i => shujtaForPeriod(s, i))).toEqual(["TE_DYJA", "DREKE", "DREKE"]);
+    s = setShujtaFrom(s, 3, "MENGJES");
+    expect([0, 1, 2, 3, 4].map(i => shujtaForPeriod(s, i))).toEqual(["TE_DYJA", "DREKE", "DREKE", "MENGJES", "MENGJES"]);
+    expect(parseShujtaState(JSON.stringify(s))).toEqual(s);
+    expect(setShujtaFrom(s, 1, "TE_DYJA")).toEqual({ nga: {} });
+  });
+  it("prapashtesa e përshkrimit", () => {
+    expect(shujtaSuffix("TE_DYJA")).toBe("");
+    expect(shujtaSuffix("DREKE")).toBe(" · vetëm drekë");
+  });
+});
 
 // Shtator/Tetor 2026, Klasa 1: 17 + 20 = 37 ditë × 4 € = 148 €
 const baza = { months: [9, 10] as [number, number], calYear: 2026, split: [17, 20] as [number, number], days: 37, finalAmount: 148 };

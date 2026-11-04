@@ -7,8 +7,9 @@ import Link from "next/link";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
 import {
-  type PlanState, type UshqimiPlan, type Kest,
+  type PlanState, type UshqimiPlan, type Kest, type Shujta, type ShujtaState,
   planForPeriod, kesteMujore, kaVonese, afatiAktual, kesteTeMbuluara, periudhaEParePaFilluar, isMujorAnywhere,
+  shujtaForPeriod, shujtaSuffix, SHUJTA_LABEL,
 } from "@/lib/ushqimiPlan";
 import { CYCLES, getCycle, isGrade1 } from "@/lib/school-cycles";
 import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
@@ -456,6 +457,8 @@ export default function UshqimiPage() {
   const [tagBusy, setTagBusy] = useState(false);
   // Plani i pagesës së ushqimit (Dymujor/Mujor) për vitin e zgjedhur
   const [planet, setPlanet] = useState<Map<number, PlanState>>(new Map());
+  // Shujtat (Mëngjes + Drekë / vetëm mëngjes / vetëm drekë) për vitin e zgjedhur
+  const [shujtat, setShujtat] = useState<Map<number, ShujtaState>>(new Map());
 
   useEffect(() => {
     fetch("/api/classes").then(r => r.json()).then((data: Class[]) => {
@@ -478,6 +481,12 @@ export default function UshqimiPage() {
   const [price2MealsG1,      setPrice2MealsG1]      = useState(4);
   const [price2MealsG1Saved, setPrice2MealsG1Saved] = useState(4);
   const [savingPriceG1,      setSavingPriceG1]      = useState(false);
+  // Vetëm mëngjes / vetëm drekë (€/ditë), për të gjithë dhe për Klasën e Parë.
+  // Bosh = s'është caktuar → 3/8 dhe 5/8 e çmimit të plotë (si e tregonte Kalkulatori më parë).
+  type CmimetShujta = { m: string; d: string; mG1: string; dG1: string };
+  const [cmimetShujta, setCmimetShujta] = useState<CmimetShujta>({ m: "", d: "", mG1: "", dG1: "" });
+  const [cmimetShujtaSaved, setCmimetShujtaSaved] = useState<string>(JSON.stringify({ m: "", d: "", mG1: "", dG1: "" }));
+  const [savingShujta, setSavingShujta] = useState(false);
   const [workingDays,   setWorkingDays]   = useState(20);
   const [monthsPerYear, setMonthsPerYear] = useState(10);
   const [periods,       setPeriods]       = useState<Period[]>(DEFAULT_PERIODS);
@@ -494,6 +503,8 @@ export default function UshqimiPage() {
       if (!isNaN(v) && v > 0) { setPrice2Meals(v); setPrice2MealsSaved(v); }
       const v1 = parseFloat(s.ushqimiPrice2MealsGrade1);
       if (!isNaN(v1) && v1 > 0) { setPrice2MealsG1(v1); setPrice2MealsG1Saved(v1); }
+      const cs = { m: s.ushqimiPriceMengjes ?? "", d: s.ushqimiPriceDreke ?? "", mG1: s.ushqimiPriceMengjesGrade1 ?? "", dG1: s.ushqimiPriceDrekeGrade1 ?? "" };
+      setCmimetShujta(cs); setCmimetShujtaSaved(JSON.stringify(cs));
     });
   }, []);
 
@@ -511,6 +522,9 @@ export default function UshqimiPage() {
     }).catch(() => {});
     fetch(`/api/ushqimi/plani?year=${year}`).then(r => (r.ok ? r.json() : {})).then((m: Record<string, PlanState>) => {
       if (!cancelled) setPlanet(new Map(Object.entries(m).map(([k, v]) => [parseInt(k), v])));
+    }).catch(() => {});
+    fetch(`/api/ushqimi/shujtat?year=${year}`).then(r => (r.ok ? r.json() : {})).then((m: Record<string, ShujtaState>) => {
+      if (!cancelled) setShujtat(new Map(Object.entries(m).map(([k, v]) => [parseInt(k), v])));
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [year]);
@@ -555,6 +569,14 @@ export default function UshqimiPage() {
     return true;
   }
 
+  async function ruajShujtat(studentId: number, shujta: Shujta, nga: number): Promise<boolean> {
+    const res = await fetch("/api/ushqimi/shujtat", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year, studentId, shujta, nga }) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ruajtja e shujtave dështoi."); return false; }
+    const st: ShujtaState = await res.json();
+    setShujtat(prev => new Map(prev).set(studentId, st));
+    return true;
+  }
+
   // Butoni te rreshti: ndryshon planin vetëm për periudhat që s'kanë filluar ende.
   async function nderroPlaninNgaRreshti(s: StudentRow) {
     const nga = periudhaEParePaFilluar(PERIOD_BUCKETS.map(p => p.months), effectiveYear);
@@ -574,7 +596,7 @@ export default function UshqimiPage() {
     if (!p || p.description === SKIPPED_MARKER || p.description === FREE_MARKER) return null;
     if (planForPeriod(planet.get(s.id), i) !== "MUJOR") return null;
     const m = (p.description || "").match(/^(\d+)\s*ditë/);
-    const rate = priceRateForClass(s.class?.name) || 1;
+    const rate = cmimiPer(s, i) || 1;
     const days = m ? parseInt(m[1]) : Math.round(p.finalAmount / rate);
     return kesteMujore({
       months: PERIOD_BUCKETS[i].months as [number, number],
@@ -592,7 +614,9 @@ export default function UshqimiPage() {
       PERIOD_BUCKETS.forEach((period, i) => {
         const p = findPeriodPayment(s.installments, period.months);
         if (!p || p.description === SKIPPED_MARKER || p.description === FREE_MARKER) return;
-        const rate = priceRateForClass(s.class?.name);
+        // Çmimi i shënuar te periudha (nëse ka), përndryshe ai i shujtave të nxënësit
+        const mc = (p.description || "").match(/^\d+\s*ditë\s*×\s*([\d.,]+)/);
+        const rate = mc ? parseFloat(mc[1].replace(/\./g, "").replace(",", ".")) : cmimiPer(s, i);
         const m = (p.description || "").match(/^(\d+)\s*ditë/);
         const ditet = m ? parseInt(m[1]) : Math.round(p.finalAmount / (rate || 1));
         const kal = tp[i]?.days ?? 0;
@@ -624,7 +648,7 @@ export default function UshqimiPage() {
           dueDate: ymdL(afatiAktual(keste)),
           paidDate: r.p.paidAmount > 0 && r.p.paidDate ? new Date(r.p.paidDate).toISOString().split("T")[0] : null,
           month: period.canonicalMonth, year: r.calYear,
-          description: `${r.kal} ditë × ${formatCurrency(r.rate)} — ${period.label} ${r.calYear}`,
+          description: `${r.kal} ditë × ${formatCurrency(r.rate)} — ${period.label} ${r.calYear}${shujtaSuffix(shujtaForPeriod(shujtat.get(r.s.id), r.i))}`,
           note: `${r.p.note ? `${r.p.note} · ` : ""}Ndrequr nga kalendari (${r.ditet} → ${r.kal} ditë), plan Mujor`,
         }),
       });
@@ -676,6 +700,33 @@ export default function UshqimiPage() {
   // normën e përgjithshme.
   function priceRateForClass(className: string | null | undefined) {
     return isGrade1(className) ? price2MealsG1 : price2Meals;
+  }
+
+  // Çmimi/ditë për secilën zgjedhje shujtash, sipas klasës (Klasa 1 ka çmimet e veta)
+  function cmimetPerKlase(className: string | null | undefined): Record<Shujta, number> {
+    const g1 = isGrade1(className);
+    const full = g1 ? price2MealsG1 : price2Meals;
+    const numOr = (v: string, f: number) => { const n = parseFloat(v); return isNaN(n) || n <= 0 ? f : n; };
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    return {
+      TE_DYJA: full,
+      MENGJES: numOr(g1 ? cmimetShujta.mG1 : cmimetShujta.m, r2(full * 3 / 8)),
+      DREKE: numOr(g1 ? cmimetShujta.dG1 : cmimetShujta.d, r2(full * 5 / 8)),
+    };
+  }
+  // Çmimi/ditë që vlen për nxënësin në periudhën `i` (sipas shujtave të zgjedhura)
+  function cmimiPer(s: { id: number; class?: { name: string } | null }, i: number) {
+    return cmimetPerKlase(s.class?.name)[shujtaForPeriod(shujtat.get(s.id), i)];
+  }
+  async function ruajCmimetShujta() {
+    setSavingShujta(true);
+    const res = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      ushqimiPriceMengjes: cmimetShujta.m, ushqimiPriceDreke: cmimetShujta.d,
+      ushqimiPriceMengjesGrade1: cmimetShujta.mG1, ushqimiPriceDrekeGrade1: cmimetShujta.dG1,
+    }) });
+    setSavingShujta(false);
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Ruajtja dështoi."); return; }
+    setCmimetShujtaSaved(JSON.stringify(cmimetShujta));
   }
 
   // Tab + category ID
@@ -838,9 +889,10 @@ export default function UshqimiPage() {
       .filter(({ period }) => !findPeriodPayment(s.installments, period.months));
     if (!missing.length) return;
 
-    const rate = priceRateForClass(s.class?.name);
     const trackPeriods = periodsFor(s);
     const results = await Promise.all(missing.map(({ period, i }) => {
+      // Çmimi sipas klasës dhe shujtave të nxënësit për atë periudhë
+      const rate = cmimiPer(s, i);
       const days = trackPeriods[i]?.days ?? workingDays;
       const finalAmount = Math.round(days * rate * 100) / 100;
       const calYear = periodCalYear(period.canonicalMonth);
@@ -855,7 +907,7 @@ export default function UshqimiPage() {
           method: "CASH",
           dueDate,
           month: period.canonicalMonth, year: calYear,
-          description: `${days} ditë × ${formatCurrency(rate)} — ${period.label} ${calYear}`,
+          description: `${days} ditë × ${formatCurrency(rate)} — ${period.label} ${calYear}${shujtaSuffix(shujtaForPeriod(shujtat.get(s.id), i))}`,
         }),
       });
     }));
@@ -1251,7 +1303,7 @@ export default function UshqimiPage() {
                 )}
                 <div className="flex items-center gap-1.5 text-xs text-slate-400 pb-2">
                   <Info className="w-3.5 h-3.5" />
-                  Mengjesi: {formatCurrency(price2Meals * 3/8)}/ditë · Dreka: {formatCurrency(price2Meals * 5/8)}/ditë
+                  Vetëm mëngjes: {formatCurrency(cmimetPerKlase(null).MENGJES)}/ditë · Vetëm drekë: {formatCurrency(cmimetPerKlase(null).DREKE)}/ditë
                 </div>
               </div>
 
@@ -1277,6 +1329,36 @@ export default function UshqimiPage() {
                 <div className="flex items-center gap-1.5 text-xs text-slate-400 pb-2">
                   <Info className="w-3.5 h-3.5" />
                   Zbatohet automatikisht për nxënësit e klasave &quot;1A&quot;, &quot;1B&quot;, etj. — pjesa tjetër e shkollës vazhdon me çmimin e përgjithshëm më sipër.
+                </div>
+              </div>
+
+              {/* Vetëm mëngjes / vetëm drekë — 4 çmimet (bashkë me 2 më sipër = 6) */}
+              <div className="px-5 pb-3">
+                <div className="rounded-xl border border-teal-100 dark:border-teal-900/50 p-3 space-y-2">
+                  <p className="text-xs font-bold text-teal-800 dark:text-teal-300">Vetëm mëngjes / vetëm drekë (€ për ditë)</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {([
+                      ["m", "Vetëm mëngjes", cmimetPerKlase(null).MENGJES],
+                      ["d", "Vetëm drekë", cmimetPerKlase(null).DREKE],
+                      ["mG1", "Vetëm mëngjes — Klasa 1", cmimetPerKlase("1").MENGJES],
+                      ["dG1", "Vetëm drekë — Klasa 1", cmimetPerKlase("1").DREKE],
+                    ] as [keyof CmimetShujta, string, number][]).map(([k, label, vlera]) => (
+                      <label key={k} className="block">
+                        <span className="text-[11px] text-slate-500">{label}</span>
+                        <input type="number" min="0" step="0.05" value={cmimetShujta[k]} placeholder={String(vlera)}
+                          onChange={e => setCmimetShujta(prev => ({ ...prev, [k]: e.target.value }))}
+                          className="form-input w-full" />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                    <span>Bosh = 3/8 (mëngjes) dhe 5/8 (drekë) e çmimit të plotë. Vlen vetëm për periudhat e reja ose kur ruhet periudha.</span>
+                    {JSON.stringify(cmimetShujta) !== cmimetShujtaSaved && (
+                      <button onClick={ruajCmimetShujta} disabled={savingShujta} className="btn-primary text-xs">
+                        <Save className="w-3.5 h-3.5" /> {savingShujta ? "Duke ruajtur..." : "Ruaj çmimet e shujtave"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1373,8 +1455,8 @@ export default function UshqimiPage() {
                   <tbody>
                     {periods.map((p, i) => {
                       const total2   = p.days * price2Meals;
-                      const mengjesi = p.days * price2Meals * 3/8;
-                      const dreka    = p.days * price2Meals * 5/8;
+                      const mengjesi = p.days * cmimetPerKlase(null).MENGJES;
+                      const dreka    = p.days * cmimetPerKlase(null).DREKE;
                       const klasa    = p.klasaDays * price2MealsG1;
                       const zbritje  = p.zbritjeDays * price2Meals;
                       return (
@@ -1433,8 +1515,8 @@ export default function UshqimiPage() {
                           <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-200">{totalDays}</td>
                           <td className="px-3 py-2.5 text-center text-slate-500">{price2Meals}€</td>
                           <td className="px-3 py-2.5 text-center text-primary-700 dark:text-primary-300">{formatCurrency(totalDays * price2Meals)}</td>
-                          <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-200">{formatCurrency(totalDays * price2Meals * 3/8)}</td>
-                          <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-200">{formatCurrency(totalDays * price2Meals * 5/8)}</td>
+                          <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-200">{formatCurrency(totalDays * cmimetPerKlase(null).MENGJES)}</td>
+                          <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-200">{formatCurrency(totalDays * cmimetPerKlase(null).DREKE)}</td>
                           <td className="px-3 py-2.5 text-center text-primary-700 dark:text-primary-300">{formatCurrency(totalKlasa * price2MealsG1)}</td>
                           <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-200">{formatCurrency(totalZbritje * price2Meals)}</td>
                         </tr>
@@ -1744,6 +1826,14 @@ export default function UshqimiPage() {
                             Mujor
                           </span>
                         )}
+                        {(() => {
+                          const sh = shujtaForPeriod(shujtat.get(s.id), currentPeriodIdx);
+                          return sh !== "TE_DYJA" && (
+                            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300" title={`${SHUJTA_LABEL[sh]} (periudha aktuale)`}>
+                              {sh === "MENGJES" ? "Mëngjes" : "Drekë"}
+                            </span>
+                          );
+                        })()}
                         {tags.has(s.id) && (
                           <span className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title="Përdor ditët e kolonës 'Zbritje e paparashikueshme'">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden />{tags.get(s.id)}
@@ -1904,6 +1994,9 @@ export default function UshqimiPage() {
           overrideAmount={calcAmount}
           planFor={i => planForPeriod(planet.get(payModal.student.id), i)}
           onPlanChange={(plan, i) => ruajPlanin(payModal.student.id, plan, i)}
+          cmimet={cmimetPerKlase(payModal.student.class?.name)}
+          shujtaFor={i => shujtaForPeriod(shujtat.get(payModal.student.id), i)}
+          onShujtaChange={(sh, i) => ruajShujtat(payModal.student.id, sh, i)}
           onClose={() => { setPayModal(null); setCalcAmount(undefined); }}
           onSave={async (result) => {
             setPayModal(null); setCalcAmount(undefined); await fetchYearData();
@@ -2054,7 +2147,7 @@ const METODAT: { value: string; label: string; title?: string }[] = [
 
 /* Dritarja "Pagesa e ushqimit": skedat e 5 periudhave + paneli i periudhës aktive.
    Paneli rihapet (key) për çdo skedë, që gjendja e formularit të nisë nga e para. */
-function UshqimiPayModal({ student, existingPayment, month, prices, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount, tagLabel, planFor, onPlanChange }: {
+function UshqimiPayModal({ student, existingPayment, month, prices, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount, tagLabel, planFor, onPlanChange, cmimet, shujtaFor, onShujtaChange }: {
   student: StudentRow; existingPayment: Payment | null; month: number; year: number;
   tagLabel?: string;
   prices: Record<string, number>; workingDays: number; periods: Period[];
@@ -2063,9 +2156,19 @@ function UshqimiPayModal({ student, existingPayment, month, prices, workingDays,
   // Plani (Dymujor/Mujor) i periudhës `i`; ndryshimi vlen nga ajo periudhë e tutje.
   planFor: (periodIdx: number) => UshqimiPlan;
   onPlanChange: (plan: UshqimiPlan, periodIdx: number) => Promise<boolean>;
+  // Çmimi/ditë për secilën zgjedhje shujtash (sipas klasës) dhe zgjedhja e periudhës `i`
+  cmimet: Record<Shujta, number>;
+  shujtaFor: (periodIdx: number) => Shujta;
+  onShujtaChange: (shujta: Shujta, periodIdx: number) => Promise<boolean>;
   onClose: () => void; onSave: (result?: { paymentId?: number; familyReceiptId?: number; shtese?: string[] }) => void;
 }) {
   const [activeMonth, setActiveMonth] = useState(month);
+  const [shujtaOverride, setShujtaOverride] = useState<Map<number, Shujta>>(new Map());
+  const shujtaAt = (i: number): Shujta => {
+    let best = -1; let v: Shujta | null = null;
+    shujtaOverride.forEach((s, k) => { if (k <= i && k > best) { best = k; v = s; } });
+    return v ?? shujtaFor(i);
+  };
   // Plani i ndryshuar këtu (pa pritur rifreskimin e faqes)
   const [planOverride, setPlanOverride] = useState<Map<number, UshqimiPlan>>(new Map());
   const planAt = (i: number): UshqimiPlan => {
@@ -2078,9 +2181,9 @@ function UshqimiPayModal({ student, existingPayment, month, prices, workingDays,
     const p = month === period.canonicalMonth && existingPayment ? existingPayment : findPeriodPayment(student.installments, period.months);
     const calYear = periodCalYear(period.canonicalMonth);
     const days = periods[i]?.days ?? workingDays;
-    const amount = p ? p.finalAmount : Math.round(days * prices["2_shujta_ditë"] * 100) / 100;
+    const amount = p ? p.finalAmount : Math.round(days * cmimet[shujtaAt(i)] * 100) / 100;
     const m = (p?.description || "").match(/^(\d+)\s*ditë/);
-    const pDays = m ? parseInt(m[1]) : (prices["2_shujta_ditë"] > 0 ? Math.round(amount / prices["2_shujta_ditë"]) : days);
+    const pDays = m ? parseInt(m[1]) : (cmimet[shujtaAt(i)] > 0 ? Math.round(amount / cmimet[shujtaAt(i)]) : days);
     const keste = p && p.description !== SKIPPED_MARKER && p.description !== FREE_MARKER && planAt(i) === "MUJOR"
       ? kesteMujore({ months: period.months as [number, number], calYear, split: splitOf(periods[i], "days"), days: pDays, finalAmount: p.finalAmount, paidAmount: p.paidAmount })
       : null;
@@ -2103,6 +2206,11 @@ function UshqimiPayModal({ student, existingPayment, month, prices, workingDays,
           tagLabel={tagLabel}
           planFillestar={planAt(activeIdx)}
           onPlanChange={async pl => { const ok = await onPlanChange(pl, activeIdx); if (ok) setPlanOverride(prev => new Map(prev).set(activeIdx, pl)); return ok; }}
+          cmimet={cmimet}
+          shujtaFillestare={shujtaAt(activeIdx)}
+          cmimiPeriudhe={i => cmimet[shujtaAt(i)]}
+          shujtaPeriudhe={shujtaAt}
+          onShujtaChange={async sh => { const ok = await onShujtaChange(sh, activeIdx); if (ok) setShujtaOverride(prev => new Map(prev).set(activeIdx, sh)); return ok; }}
           onClose={onClose} onSave={onSave}
           tabs={
             <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1" role="tablist">
@@ -2132,7 +2240,7 @@ function UshqimiPayModal({ student, existingPayment, month, prices, workingDays,
   );
 }
 
-function UshqimiPayPanel({ student, existingPayment, month, year, prices, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount, tagLabel, planFillestar = "DYMUJOR", onPlanChange, tabs }: {
+function UshqimiPayPanel({ student, existingPayment, month, year, workingDays, periods, periodCalYear, onClose, onSave, overrideAmount, tagLabel, planFillestar = "DYMUJOR", onPlanChange, tabs, cmimet, shujtaFillestare, cmimiPeriudhe, shujtaPeriudhe, onShujtaChange }: {
   student: StudentRow; existingPayment: Payment | null; month: number; year: number;
   tagLabel?: string;
   prices: Record<string, number>; workingDays: number; periods: Period[];
@@ -2142,6 +2250,11 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
   onPlanChange?: (plan: UshqimiPlan) => Promise<boolean>;
   onClose: () => void; onSave: (result?: { paymentId?: number; familyReceiptId?: number; shtese?: string[] }) => void;
   tabs: ReactNode;
+  cmimet: Record<Shujta, number>;
+  shujtaFillestare: Shujta;
+  cmimiPeriudhe: (periodIdx: number) => number;
+  shujtaPeriudhe: (periodIdx: number) => Shujta;
+  onShujtaChange: (shujta: Shujta) => Promise<boolean>;
 }) {
   const existing = existingPayment;
   const isCalc = overrideAmount != null;
@@ -2155,9 +2268,11 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
     bucket && existing && existing.month === bucket.months[1] ? "second" : "full";
   const [subPeriod, setSubPeriod] = useState<SubPeriod>(initialSubPeriod);
 
+  const ditetNgaPershkrimi = (existing?.description || "").match(/^(\d+)\s*ditë/);
   const [days, setDays] = useState(
-    existing && existing.finalAmount > 0 && prices["2_shujta_ditë"] > 0
-      ? Math.max(1, Math.round(existing.finalAmount / prices["2_shujta_ditë"]))
+    ditetNgaPershkrimi && existing && existing.finalAmount > 0 ? parseInt(ditetNgaPershkrimi[1])
+    : existing && existing.finalAmount > 0 && cmimet[shujtaFillestare] > 0
+      ? Math.max(1, Math.round(existing.finalAmount / cmimet[shujtaFillestare]))
       : periodDays
   );
   // Kalendari (Kalkulatori → Ditët e mësimit sipas muajit)
@@ -2173,8 +2288,14 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
   }
   // Periudhë "Ndërprerë"/"Falas" (shuma 0) → çmimi parazgjedhur, jo 0 € / ditë.
   const [pricePerDay, setPricePerDay] = useState(
-    existing && existing.finalAmount > 0 && days > 0 ? Math.round((existing.finalAmount / days) * 100) / 100 : prices["2_shujta_ditë"]
+    existing && existing.finalAmount > 0 && days > 0 ? Math.round((existing.finalAmount / days) * 100) / 100 : cmimet[shujtaFillestare]
   );
+  // Shujtat (Mëngjes + Drekë / vetëm mëngjes / vetëm drekë) — ruhet menjëherë, vlen nga kjo periudhë e tutje.
+  const [shujta, setShujta] = useState<Shujta>(shujtaFillestare);
+  // Ndërrim në mes të periudhës: X ditë me një zgjedhje + Y ditë me tjetrën (kërkon shënim)
+  const [perzier, setPerzier] = useState(false);
+  const [perzA, setPerzA] = useState<{ dite: number; sh: Shujta }>({ dite: 0, sh: "TE_DYJA" });
+  const [perzB, setPerzB] = useState<{ dite: number; sh: Shujta }>({ dite: 0, sh: "DREKE" });
   const [method, setMethod] = useState(existing?.method ?? "CASH");
   // Afati s'është më fushë: ruhet ai ekzistues (ose parazgjedhja e vjetër, dita 5 e muajit të parë)
   const dueDate = existing?.dueDate
@@ -2191,7 +2312,9 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
   const [saveError, setSaveError] = useState("");
   const [shumaError, setShumaError] = useState("");
 
-  const finalAmount = isCalc ? (overrideAmount ?? 0) : Math.round(days * pricePerDay * 100) / 100;
+  const finalAmount = isCalc ? (overrideAmount ?? 0)
+    : perzier ? Math.round((perzA.dite * cmimet[perzA.sh] + perzB.dite * cmimet[perzB.sh]) * 100) / 100
+    : Math.round(days * pricePerDay * 100) / 100;
   const paidBefore = existing?.paidAmount ?? 0;
   const remaining = Math.max(0, Math.round((finalAmount - paidBefore) * 100) / 100);
 
@@ -2210,6 +2333,16 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
     if (p === "MUJOR" && subPeriod !== "full") { setSubPeriod("full"); setDays(calendarDays("full")); }
   }
   const mujorAktiv = plan === "MUJOR" && !isCalc && !!bucket && subPeriod === "full";
+  async function zgjidhShujten(s: Shujta) {
+    if (s === shujta) return;
+    setPlanBusy(true);
+    const ok = await onShujtaChange(s);
+    setPlanBusy(false);
+    if (!ok) return;
+    setShujta(s);
+    setPricePerDay(cmimet[s]);
+    if (shumaChip === "full") { const rem = Math.max(0, Math.round((days * cmimet[s] - paidBefore) * 100) / 100); setShuma(rem > 0 ? String(rem) : ""); }
+  }
 
   // PAGESA E RE: shuma që paguhet tani (parazgjedhje: sa mbetet) → paguar total = më parë + tani.
   // "Korrigjo totalin" (menyja ⋯) lejon të shkruhet direkt totali i paguar, si më parë.
@@ -2232,12 +2365,16 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
   const periodLabel = subPeriod === "full"
     ? (bucket?.label ?? MONTHS[month - 1])
     : MONTHS[effectiveMonth - 1];
+  const shLbl = (s: Shujta) => s === "TE_DYJA" ? "mëngjes+drekë" : s === "MENGJES" ? "vetëm mëngjes" : "vetëm drekë";
   const description = isCalc
     ? `${periodLabel} ${year}`
-    : `${days} ditë × ${formatCurrency(pricePerDay)} — ${periodLabel} ${year}`;
+    : perzier
+      ? `${perzA.dite + perzB.dite} ditë (${perzA.dite} × ${formatCurrency(cmimet[perzA.sh])} ${shLbl(perzA.sh)} + ${perzB.dite} × ${formatCurrency(cmimet[perzB.sh])} ${shLbl(perzB.sh)}) — ${periodLabel} ${year}`
+      : `${days} ditë × ${formatCurrency(pricePerDay)} — ${periodLabel} ${year}${shujtaSuffix(shujta)}`;
 
-  // Ditët ndryshe nga kalendari = rast i veçantë → arsyeja e detyrueshme.
-  const daysManual = !isCalc && days !== calendarDays(subPeriod);
+  // Ditët ndryshe nga kalendari, ose ndërrim shujtash në mes të periudhës = rast i veçantë → arsyeja e detyrueshme.
+  const daysManual = !isCalc && (perzier || days !== calendarDays(subPeriod));
+  useEffect(() => { if (perzier) setDays(perzA.dite + perzB.dite); }, [perzier, perzA.dite, perzB.dite]);
   useEffect(() => { if (daysManual) setNoteOpen(true); }, [daysManual]);
 
   const isSkipped = existing?.description === SKIPPED_MARKER;
@@ -2247,12 +2384,16 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
 
   // Butonat e muajve: ditët e muajit (kalendari) × çmimi
   const monthDays: [number, number] = calSplit ?? [Math.ceil(days / 2), Math.floor(days / 2)];
-  const monthAmt = (k: 0 | 1) => Math.round(monthDays[k] * pricePerDay * 100) / 100;
+  const monthAmt = (k: 0 | 1) => perzier
+    ? Math.round((k === 0 ? perzA.dite * cmimet[perzA.sh] : perzB.dite * cmimet[perzB.sh]) * 100) / 100
+    : Math.round(monthDays[k] * pricePerDay * 100) / 100;
+  // "E plotë" e zgjedhur → shuma ndjek gjithmonë sa mbetet (kur ndryshojnë ditët, çmimi ose shujtat)
+  useEffect(() => { if (shumaChip === "full") setShuma(remaining > 0 ? String(remaining) : ""); }, [remaining, shumaChip]);
 
   async function handleSave(withPrint: boolean, paidTotal: number) {
     if (daysManual && !note.trim()) {
       setNoteOpen(true);
-      setSaveError(`Ditët (${days}) ndryshojnë nga kalendari (${calendarDays(subPeriod)}). Shkruaj arsyen te "Shënim".`);
+      setSaveError(perzier ? 'Ndërrimi i shujtave në mes të periudhës kërkon arsyen te "Shënim".' : `Ditët (${days}) ndryshojnë nga kalendari (${calendarDays(subPeriod)}). Shkruaj arsyen te "Shënim".`);
       return;
     }
     const paidDate = parseDMY(paidDateTxt);
@@ -2354,7 +2495,7 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
   async function rifillo() {
     if (!existing) return;
     const d = periodDays;
-    const cmimi = prices["2_shujta_ditë"];
+    const cmimi = cmimet[shujta];
     const shumaR = Math.round(d * cmimi * 100) / 100;
     const label = bucket?.label ?? MONTHS[month - 1];
     if (!confirm(`Rifillo ushqimin për ${student.firstName} ${student.lastName} — ${label} ${year}: ${d} ditë × ${formatCurrency(cmimi)} = ${formatCurrency(shumaR)} (pa pagesë ende). Vazhdo?`)) return;
@@ -2372,7 +2513,7 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
           finalAmount: shumaR, paidAmount: 0,
           method, dueDate, paidDate: null,
           month, year,
-          description: `${d} ditë × ${formatCurrency(cmimi)} — ${label} ${year}`,
+          description: `${d} ditë × ${formatCurrency(cmimi)} — ${label} ${year}${shujtaSuffix(shujta)}`,
           note: note || null,
         }),
       });
@@ -2400,7 +2541,7 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
         return { period, index: i, existing: ex, finalAmount: 0, remaining: 0, calYear };
       }
       const d = periods[i]?.days ?? workingDays;
-      const fa = ex ? ex.finalAmount : Math.round(d * prices["2_shujta_ditë"] * 100) / 100;
+      const fa = ex ? ex.finalAmount : Math.round(d * cmimiPeriudhe(i) * 100) / 100;
       const rem = ex ? Math.max(0, ex.finalAmount - ex.paidAmount) : fa;
       return { period, index: i, existing: ex, finalAmount: fa, remaining: rem, calYear };
     });
@@ -2427,7 +2568,7 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
     const cats = await fetch("/api/categories").then(r => r.json());
     const catId = cats.find((c: { name: string; id: number }) => c.name === "Ushqimi")?.id ?? 2;
     const toPay = items.filter(it => it.remaining > 0);
-    const desc = (it: (typeof items)[number]) => it.existing?.description ?? `${periods[it.index]?.days ?? workingDays} ditë × ${formatCurrency(prices["2_shujta_ditë"])} — ${it.period.label} ${it.calYear}`;
+    const desc = (it: (typeof items)[number]) => it.existing?.description ?? `${periods[it.index]?.days ?? workingDays} ditë × ${formatCurrency(cmimiPeriudhe(it.index))} — ${it.period.label} ${it.calYear}${shujtaSuffix(shujtaPeriudhe(it.index))}`;
     const due = (it: (typeof items)[number]) => it.existing?.dueDate
       ? new Date(it.existing.dueDate).toISOString().split("T")[0]
       : new Date(it.calYear, it.period.canonicalMonth - 1, 5).toISOString().split("T")[0];
@@ -2576,7 +2717,12 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
 
           {!isCalc && (
             <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <span>📅 {days} ditë{subPeriod === "full" && calSplit ? ` (${calSplit[0]} + ${calSplit[1]})` : subPeriod !== "full" ? ` (vetëm ${MONTHS[effectiveMonth - 1]})` : ""} × {formatCurrency(pricePerDay)}{daysManual ? <span className="text-amber-600"> · ndryshuar me dorë</span> : null}</span>
+              <span>
+                {perzier
+                  ? <>📅 {perzA.dite} × {formatCurrency(cmimet[perzA.sh])} ({shLbl(perzA.sh)}) + {perzB.dite} × {formatCurrency(cmimet[perzB.sh])} ({shLbl(perzB.sh)})</>
+                  : <>📅 {days} ditë{subPeriod === "full" && calSplit ? ` (${calSplit[0]} + ${calSplit[1]})` : subPeriod !== "full" ? ` (vetëm ${MONTHS[effectiveMonth - 1]})` : ""} × {formatCurrency(pricePerDay)}{shujta !== "TE_DYJA" ? ` · ${shLbl(shujta)}` : ""}</>}
+                {daysManual ? <span className="text-amber-600"> · ndryshuar me dorë</span> : null}
+              </span>
               <button type="button" onClick={() => setEditOpen(v => !v)} className="text-violet-600 dark:text-violet-300 font-medium hover:underline">✎ {editOpen ? "Mbyll" : "Ndrysho"}</button>
             </div>
           )}
@@ -2596,7 +2742,7 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
                   <span className="text-[11px] text-slate-500">Ditët</span>
-                  <input type="number" value={days} min="0" onChange={e => setDays(parseInt(e.target.value) || 0)}
+                  <input type="number" value={days} min="0" readOnly={perzier} onChange={e => setDays(parseInt(e.target.value) || 0)}
                     className={`form-input rounded-lg py-1.5 text-sm ${daysManual ? "border-amber-400" : ""}`} />
                 </label>
                 <label className="block">
@@ -2611,6 +2757,33 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
                   <button type="button" onClick={() => setDays(calendarDays(subPeriod))} className="ml-1 underline">Kthe {calendarDays(subPeriod)}</button>
                 </p>
               ) : calSplit && <p className="text-[11px] text-indigo-600 dark:text-indigo-300">Nga kalendari: {calSplit[0]} + {calSplit[1]} ditë</p>}
+              {/* Ndërrim shujtash në mes të periudhës: pjesa e parë me një zgjedhje, pjesa tjetër me tjetrën */}
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 pt-1">
+                <input type="checkbox" checked={perzier} className="accent-teal-600" onChange={e => {
+                  const on = e.target.checked;
+                  setPerzier(on);
+                  if (on) {
+                    const a = calSplit ? calSplit[0] : Math.ceil(days / 2);
+                    setPerzA({ dite: a, sh: shujta });
+                    setPerzB({ dite: Math.max(0, days - a), sh: shujta === "TE_DYJA" ? "DREKE" : "TE_DYJA" });
+                  } else { setDays(calendarDays(subPeriod)); }
+                }} />
+                Shujtat ndryshuan gjatë periudhës
+              </label>
+              {perzier && (
+                <div className="space-y-1.5">
+                  {([[perzA, setPerzA, "Pjesa e parë"], [perzB, setPerzB, "Pjesa e dytë"]] as [typeof perzA, typeof setPerzA, string][]).map(([v, set, lbl]) => (
+                    <div key={lbl} className="grid grid-cols-[1fr_70px_1.4fr] items-center gap-2">
+                      <span className="text-[11px] text-slate-500">{lbl}</span>
+                      <input type="number" min="0" value={v.dite} onChange={e => set({ ...v, dite: parseInt(e.target.value) || 0 })} className="form-input rounded-lg py-1 text-sm" aria-label={`${lbl}: ditë`} />
+                      <select value={v.sh} onChange={e => set({ ...v, sh: e.target.value as Shujta })} className="form-input rounded-lg py-1 text-xs" aria-label={`${lbl}: shujtat`}>
+                        {(["TE_DYJA", "MENGJES", "DREKE"] as Shujta[]).map(s => <option key={s} value={s}>{SHUJTA_LABEL[s]} · {formatCurrency(cmimet[s])}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                  <p className="text-[11px] text-teal-700 dark:text-teal-300">= {perzA.dite + perzB.dite} ditë, {formatCurrency(finalAmount)} · shënimi është i detyrueshëm. Për periudhat e ardhshme zgjidh shujtat me butonat më poshtë.</p>
+                </div>
+              )}
               <button type="button" disabled={saving} onClick={() => handleSave(false, paidBefore)} className="btn-secondary text-xs w-full justify-center">
                 <Save className="w-3.5 h-3.5" /> Ruaj ndryshimet (pa pagesë)
               </button>
@@ -2623,6 +2796,30 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
                 <button key={p} type="button" disabled={planBusy} onClick={() => zgjidhPlanin(p)}
                   className={`py-1.5 rounded-md text-sm font-semibold transition-colors ${plan === p ? "bg-violet-600 text-white" : "text-slate-500 hover:text-violet-600"}`}>
                   {p === "MUJOR" ? "Mujor" : "Dymujor"}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Periudhë e ruajtur me çmim tjetër nga zgjedhja aktuale e shujtave — s'ndryshohet vetë, vetëm me klikim */}
+          {existing && !isSkipped && !isFree && !isCalc && !perzier && !(existing.description || "").includes("(")
+            && existing.finalAmount > 0 && Math.abs(pricePerDay - cmimet[shujta]) > 0.005 && (
+            <div className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+              <span>Ruajtur me {formatCurrency(pricePerDay)}/ditë; zgjedhja tani: {SHUJTA_LABEL[shujta]} {formatCurrency(cmimet[shujta])}.</span>
+              <button type="button" onClick={() => {
+                setPricePerDay(cmimet[shujta]);
+                if (shumaChip === "full") { const rem = Math.max(0, Math.round((days * cmimet[shujta] - paidBefore) * 100) / 100); setShuma(rem > 0 ? String(rem) : ""); }
+              }} className="shrink-0 font-semibold underline">Përditëso çmimin</button>
+            </div>
+          )}
+
+          {bucket && !isSkipped && !isFree && !isCalc && !perzier && (
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600" title="Shujtat — çmimi/ditë merret nga Kalkulatori">
+              {(["TE_DYJA", "MENGJES", "DREKE"] as Shujta[]).map(s => (
+                <button key={s} type="button" disabled={planBusy} onClick={() => zgjidhShujten(s)}
+                  className={`py-1.5 rounded-md text-xs font-semibold transition-colors ${shujta === s ? "bg-teal-600 text-white" : "text-slate-500 hover:text-teal-600"}`}>
+                  {s === "TE_DYJA" ? "Mëngjes + Drekë" : s === "MENGJES" ? "Mëngjes" : "Drekë"}
+                  <span className={`block text-[10px] font-normal ${shujta === s ? "text-teal-100" : "text-slate-400"}`}>{formatCurrency(cmimet[s])}/ditë</span>
                 </button>
               ))}
             </div>
@@ -2671,7 +2868,7 @@ function UshqimiPayPanel({ student, existingPayment, month, year, prices, workin
               <p>Kjo periudhë është <strong>Ndërprerë</strong> (nxënësi s&apos;e ndoqi).</p>
               <button onClick={rifillo} disabled={saving} className="w-full btn-primary justify-center bg-emerald-600 hover:bg-emerald-700 text-sm">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                Rifillo ushqimin — {periodDays} ditë × {formatCurrency(prices["2_shujta_ditë"])}
+                Rifillo ushqimin — {periodDays} ditë × {formatCurrency(cmimet[shujta])}
               </button>
             </div>
           )}

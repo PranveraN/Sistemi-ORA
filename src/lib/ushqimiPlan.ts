@@ -56,6 +56,54 @@ export function isMujorAnywhere(state: PlanState | undefined): boolean {
   return !!state && Object.values(state.nga).includes("MUJOR");
 }
 
+// ── Shujtat: Mëngjes + Drekë (parazgjedhje) / Vetëm mëngjes / Vetëm drekë ──
+// Ruhet si plani: StudentTag (module "USHQIMI_SHUJTA"), { nga: { "<periudha>": Shujta } },
+// vlen nga ajo periudhë e tutje. Çmimi/ditë i secilës zgjidhet te Kalkulatori.
+export type Shujta = "TE_DYJA" | "MENGJES" | "DREKE";
+export const SHUJTA_MODULE = "USHQIMI_SHUJTA";
+export const SHUJTA_LABEL: Record<Shujta, string> = { TE_DYJA: "Mëngjes + Drekë", MENGJES: "Vetëm mëngjes", DREKE: "Vetëm drekë" };
+export interface ShujtaState { nga: Record<string, Shujta> }
+const isShujta = (v: unknown): v is Shujta => v === "TE_DYJA" || v === "MENGJES" || v === "DREKE";
+
+export function parseShujtaState(label: string | null | undefined): ShujtaState {
+  try {
+    const o = JSON.parse(label ?? "");
+    if (o && typeof o === "object" && o.nga && typeof o.nga === "object") {
+      const nga: Record<string, Shujta> = {};
+      for (const [k, v] of Object.entries(o.nga)) if (isShujta(v)) nga[String(parseInt(k))] = v;
+      return { nga };
+    }
+  } catch { /* bosh */ }
+  return { nga: {} };
+}
+
+export function shujtaForPeriod(state: ShujtaState | undefined, idx: number): Shujta {
+  if (!state) return "TE_DYJA";
+  let best = -1, v: Shujta = "TE_DYJA";
+  for (const [k, s] of Object.entries(state.nga)) {
+    const i = parseInt(k);
+    if (i <= idx && i > best) { best = i; v = s; }
+  }
+  return v;
+}
+
+export function setShujtaFrom(state: ShujtaState | undefined, fromIdx: number, shujta: Shujta): ShujtaState {
+  const nga: Record<string, Shujta> = {};
+  for (const [k, v] of Object.entries(state?.nga ?? {})) if (parseInt(k) < fromIdx) nga[k] = v;
+  nga[String(fromIdx)] = shujta;
+  const out: Record<string, Shujta> = {};
+  let prev: Shujta = "TE_DYJA";
+  for (const k of Object.keys(nga).map(Number).sort((a, b) => a - b)) {
+    if (nga[k] !== prev) { out[String(k)] = nga[k]; prev = nga[k]; }
+  }
+  return { nga: out };
+}
+
+/** Prapashtesa e përshkrimit të periudhës, p.sh. " · vetëm drekë" (bosh për të dyja). */
+export function shujtaSuffix(s: Shujta): string {
+  return s === "MENGJES" ? " · vetëm mëngjes" : s === "DREKE" ? " · vetëm drekë" : "";
+}
+
 export type KestStatus = "PAGUAR" | "PJESERISHT" | "PA_PAGUAR" | "ME_VONESE";
 
 export interface Kest {

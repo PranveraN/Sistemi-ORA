@@ -34,6 +34,11 @@ const DEFAULTS: Record<string, string> = {
   enrollmentDelayDays: "10",              // pas sa ditësh "Për shqyrtim" shënohet "vonesë"
   ushqimiPrice2Meals: "4",
   ushqimiPrice2MealsGrade1: "4",
+  // Vetëm mëngjes / vetëm drekë (€/ditë) — bosh = si më parë (3/8 dhe 5/8 e çmimit të plotë)
+  ushqimiPriceMengjes: "",
+  ushqimiPriceDreke: "",
+  ushqimiPriceMengjesGrade1: "",
+  ushqimiPriceDrekeGrade1: "",
   transportLocations: JSON.stringify([
     { label: "Prishtinë",    price: 65 },
     { label: "Fushë Kosovë", price: 55 },
