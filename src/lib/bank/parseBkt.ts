@@ -198,5 +198,13 @@ export function parseBktPages(pages: string[], partStarts: number[] = [], partNa
   if (res.gjendjaPerfundimtare !== null && prev !== res.gjendjaPerfundimtare)
     res.gabimet.push(`Gjendja përfundimtare: banka ${eur(res.gjendjaPerfundimtare)} €, lexuar ${eur(prev ?? 0)} €.`);
   if (!res.rows.length) res.gabimet.push("Asnjë rresht s'u lexua — a është ekstrakt i BKT-së?");
+  // PDF e prerë (mungojnë faqet e fundit): s'ka CLOSING BALANCE / totale — s'mund të vërtetohet që s'mungon asgjë
+  else if (res.gjendjaPerfundimtare === null || (!res.bankaDebi && !res.bankaKredi)) {
+    const last = res.rows[res.rows.length - 1];
+    const pj = res.pjeset[res.pjeset.length - 1];
+    res.gabimet.push(`PDF-ja duket e paplotë: s'ka gjendjen përfundimtare (CLOSING BALANCE) dhe totalet e bankës në fund. `
+      + `Rreshti i fundit i lexuar është ${dmyS(last.data)}${pj?.deri ? `, ndërsa ekstrakti thotë se mbulon deri më ${dmyS(pj.deri)}` : ""}. `
+      + `Shkarko sërish ekstraktin e plotë nga e-banking-u.`);
+  }
   return res;
 }
