@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import { Upload, Loader2, FileText, CheckCircle2, AlertTriangle, Clock, Trash2, Plus } from "lucide-react";
-import { eur, dmy, LLOJET, STATUSI_EK, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
+import { eur, dmy, LLOJET, STATUSI_EK, ProgressBar, readingProgress, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
 
 // Moduli "Banka": ngarkimi i ekstrakteve PDF (BKT), bilanci sipas zërave dhe
 // menaxhimi i zërave/rregullave. Asgjë s'hyn në bilanc pa "Importo".
@@ -49,6 +49,8 @@ function EkstraktetTab() {
   const [rows, setRows] = useState<EkRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState(0);
+  const [uploadName, setUploadName] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -58,23 +60,32 @@ function EkstraktetTab() {
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
-  // Rifreskim çdo 3 sekonda kur ka ekstrakt që po lexohet
+  // Rifreskim çdo 2 sekonda kur ka ekstrakt që po lexohet
   useEffect(() => {
     if (!rows.some(r => r.statusi === "NE_PERPUNIM")) return;
-    const t = setInterval(load, 3000);
+    const t = setInterval(load, 2000);
     return () => clearInterval(t);
   }, [rows, load]);
 
-  async function upload(e: React.ChangeEvent<HTMLInputElement>) {
+  // Dërgimi me XMLHttpRequest — që të shihet përqindja e ngarkimit të skedarit
+  function upload(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    setUploading(true); setErr(null);
+    setUploading(true); setUploadPct(0); setUploadName(f.name); setErr(null);
     const fd = new FormData(); fd.append("file", f);
-    const r = await fetch("/api/banka/ekstrakte", { method: "POST", body: fd });
-    setUploading(false);
-    if (!r.ok) { const d = await r.json().catch(() => ({})); setErr(d.error || "Ngarkimi dështoi."); return; }
-    load();
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/banka/ekstrakte");
+    xhr.upload.onprogress = ev => { if (ev.lengthComputable) setUploadPct(ev.loaded / ev.total * 100); };
+    xhr.onload = () => {
+      setUploading(false);
+      if (xhr.status >= 200 && xhr.status < 300) { load(); return; }
+      let msg = "Ngarkimi dështoi.";
+      try { msg = JSON.parse(xhr.responseText).error || msg; } catch { /* përgjigje jo-JSON */ }
+      setErr(msg);
+    };
+    xhr.onerror = () => { setUploading(false); setErr("Lidhja me serverin dështoi gjatë ngarkimit."); };
+    xhr.send(fd);
   }
 
   return (
@@ -91,6 +102,10 @@ function EkstraktetTab() {
         <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-primary">
           {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Zgjidh PDF-në
         </button>
+        {uploading && (
+          <ProgressBar className="w-full" pct={uploadPct}
+            label={uploadPct >= 100 ? `${uploadName} — u dërgua, po fillon leximi…` : `Po dërgohet ${uploadName}…`} />
+        )}
         {err && <p className="w-full text-sm text-rose-600">{err}</p>}
       </div>
 
@@ -115,7 +130,11 @@ function EkstraktetTab() {
                         {r.statusi === "NE_PERPUNIM" ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : r.statusi === "IMPORTUAR" ? <CheckCircle2 className="w-3 h-3 mr-1" /> : r.statusi === "GABIM" ? <AlertTriangle className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
                         {st.t}{r.statusi === "NE_PERPUNIM" ? ` · faqja ${r.faqetGati}/${r.faqetGjithsej}` : ""}
                       </span>
-                      {r.statusi === "NE_PERPUNIM" && !r.nePunim && <div className="text-[11px] text-amber-600 mt-1">Leximi u ndërpre — hape dhe kliko "Lexo sërish".</div>}
+                      {r.statusi === "NE_PERPUNIM" && r.nePunim && (() => {
+                        const p = readingProgress(r.faqetGati, r.faqetGjithsej);
+                        return <ProgressBar className="mt-2 min-w-[220px]" pct={p.pct} label={p.label} />;
+                      })()}
+                      {r.statusi === "NE_PERPUNIM" && !r.nePunim &&<div className="text-[11px] text-amber-600 mt-1">Leximi u ndërpre — hape dhe kliko "Lexo sërish".</div>}
                       {r.paKlasifikuara > 0 && r.statusi !== "NE_PERPUNIM" && <div className="text-[11px] text-amber-600 mt-1">{r.paKlasifikuara} pa zë</div>}
                     </td>
                     <td className="table-cell text-right text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{eur(r.totalKredi)}</td>

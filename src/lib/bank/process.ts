@@ -53,7 +53,7 @@ async function processEkstrakt(id: number): Promise<void> {
     await prisma.bankEkstrakt.update({ where: { id }, data: { statusi: "NE_PERPUNIM", faqetGati: 0, gabimi: null } });
     let last = 0;
     const pages = await ocrPdf(pdf, async (done, total) => {
-      if (done === total || Date.now() - last > 1500) {
+      if (done === total || Date.now() - last > 1000) {
         last = Date.now();
         await prisma.bankEkstrakt.update({ where: { id }, data: { faqetGati: done, faqetGjithsej: total } });
       }

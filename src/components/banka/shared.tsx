@@ -184,3 +184,25 @@ export const STATUSI_EK: Record<string, { t: string; c: string }> = {
   DRAFT:       { t: "Draft – pret kontrollin", c: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
   IMPORTUAR:   { t: "Importuar", c: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
 };
+
+/** Shirit progresi me animacion (vija që lëvizin) dhe përqindjen. */
+export function ProgressBar({ pct, label, className = "" }: { pct: number; label?: string; className?: string }) {
+  const p = Math.max(0, Math.min(100, Math.round(pct)));
+  return (
+    <div className={className}>
+      <div className="flex justify-between text-xs text-slate-500 mb-1">
+        <span>{label}</span><span className="font-semibold text-primary-700 dark:text-primary-300 tabular-nums">{p}%</span>
+      </div>
+      <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+        <div className="h-full rounded-full bg-primary-600 transition-[width] duration-700 ease-out bank-progress-stripes" style={{ width: `${Math.max(p, 2)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** Përqindja e leximit të një ekstrakti + teksti i fazës. */
+export function readingProgress(faqetGati: number, faqetGjithsej: number): { pct: number; label: string } {
+  if (!faqetGjithsej) return { pct: 0, label: "Po fillon leximi…" };
+  if (faqetGati >= faqetGjithsej) return { pct: 99, label: "Po kontrollohen dhe ruhen rreshtat…" };
+  return { pct: (faqetGati / faqetGjithsej) * 97, label: `Po lexohet faqja ${faqetGati} nga ${faqetGjithsej}` };
+}

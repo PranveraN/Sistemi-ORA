@@ -155,3 +155,12 @@
     to { background-color: transparent; }
   }
 }
+
+/* Banka — shiriti i progresit me vija që lëvizin */
+.bank-progress-stripes {
+  background-image: linear-gradient(45deg, rgba(255,255,255,.22) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.22) 50%, rgba(255,255,255,.22) 75%, transparent 75%, transparent);
+  background-size: 1rem 1rem;
+  animation: bank-progress-move 0.8s linear infinite;
+}
+@keyframes bank-progress-move { from { background-position: 1rem 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .bank-progress-stripes { animation: none; } }

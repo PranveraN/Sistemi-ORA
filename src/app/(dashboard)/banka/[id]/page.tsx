@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { Loader2, CheckCircle2, AlertTriangle, RotateCcw, Wand2, Trash2, Undo2 } from "lucide-react";
-import { eur, dmy, STATUSI_EK, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
+import { eur, dmy, STATUSI_EK, ProgressBar, readingProgress, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
 
 interface Ek {
   id: number; llogaria: string | null; periudhaNga: string | null; periudhaDeri: string | null; emriSkedarit: string | null;
@@ -28,7 +28,7 @@ export default function EkstraktPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     if (ek?.statusi !== "NE_PERPUNIM") return;
-    const t = setInterval(load, 3000);
+    const t = setInterval(load, 2000);
     return () => clearInterval(t);
   }, [ek?.statusi, load]);
 
@@ -103,8 +103,7 @@ export default function EkstraktPage() {
 
           {ek.statusi === "NE_PERPUNIM" && (
             <div className="mt-4">
-              <div className="flex justify-between text-xs text-slate-500 mb-1"><span>Po lexohet faqja {ek.faqetGati} nga {ek.faqetGjithsej}…</span><span>{ek.faqetGjithsej ? Math.round(ek.faqetGati / ek.faqetGjithsej * 100) : 0}%</span></div>
-              <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden"><div className="h-full bg-primary-600 transition-all" style={{ width: `${ek.faqetGjithsej ? ek.faqetGati / ek.faqetGjithsej * 100 : 0}%` }} /></div>
+              {(() => { const p = readingProgress(ek.faqetGati, ek.faqetGjithsej); return <ProgressBar pct={p.pct} label={p.label} />; })()}
               <p className="text-xs text-slate-400 mt-2">Mund ta mbyllësh faqen — leximi vazhdon në sfond (rreth 1–3 minuta për 100 faqe).</p>
             </div>
           )}
