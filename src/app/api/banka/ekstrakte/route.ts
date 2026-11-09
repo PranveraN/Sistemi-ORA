@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { bankCtx, bad } from "@/lib/bank/api";
 import { ensureBankDefaults } from "@/lib/bank/rules";
-import { savePdf, startProcessing, isProcessing } from "@/lib/bank/process";
+import { savePdfs, startProcessing, isProcessing } from "@/lib/bank/process";
 import { countPdfImages } from "@/lib/bank/pdfImages";
 
-const MAX_BYTES = 80 * 1024 * 1024;
+const MAX_BYTES = 150 * 1024 * 1024; // gjithsej, për të gjitha pjesët
 
-// GET → lista e ekstrakteve · POST (multipart "file") → ngarkon PDF-në dhe nis leximin në sfond
+// GET → lista e ekstrakteve · POST (multipart "file", një ose më shumë) → NJË ekstrakt nga të gjitha
+// skedarët (p.sh. viti 2024 në 2 PDF) dhe nis leximin në sfond
 export async function GET() {
   const ctx = await bankCtx(); if (ctx instanceof NextResponse) return ctx;
   const rows = await prisma.bankEkstrakt.findMany({
@@ -22,20 +23,28 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const ctx = await bankCtx(); if (ctx instanceof NextResponse) return ctx;
   const form = await req.formData().catch(() => null);
-  const file = form?.get("file");
-  if (!(file instanceof File)) return bad(form ? "Zgjidh skedarin PDF të ekstraktit." : "Skedari s'mbërriti i plotë te serveri (mund të jetë shumë i madh) — provo sërish.");
-  if (!/\.pdf$/i.test(file.name)) return bad("Pranohet vetëm PDF (ekstrakti i bankës).");
-  if (file.size > MAX_BYTES) return bad("Skedari është shumë i madh (maks. 80 MB).");
-  const data = Buffer.from(await file.arrayBuffer());
-  if (data.subarray(0, 5).toString("latin1") !== "%PDF-") return bad("Skedari s'është PDF i vlefshëm.");
-  const pages = countPdfImages(data);
-  if (!pages) return bad("PDF-ja s'ka faqe të skanuara — s'mund të lexohet si ekstrakt BKT.");
+  const files = (form?.getAll("file") ?? []).filter((f): f is File => f instanceof File);
+  if (!files.length) return bad(form ? "Zgjidh skedarin PDF të ekstraktit." : "Skedarët s'mbërritën të plotë te serveri (mund të jenë shumë të mëdhenj) — provo sërish.");
+  if (files.length > 12) return bad("Maksimumi 12 pjesë për një ekstrakt.");
+  if (files.reduce((s, f) => s + f.size, 0) > MAX_BYTES) return bad("Skedarët janë shumë të mëdhenj (gjithsej maks. 150 MB).");
+  const datas: Buffer[] = [];
+  let pages = 0;
+  for (const file of files) {
+    if (!/\.pdf$/i.test(file.name)) return bad(`"${file.name}" s'është PDF — pranohen vetëm ekstraktet PDF.`);
+    const data = Buffer.from(await file.arrayBuffer());
+    if (data.subarray(0, 5).toString("latin1") !== "%PDF-") return bad(`"${file.name}" s'është PDF i vlefshëm.`);
+    const n = countPdfImages(data);
+    if (!n) return bad(`"${file.name}" s'ka faqe të skanuara — s'mund të lexohet si ekstrakt BKT.`);
+    pages += n;
+    datas.push(data);
+  }
+  const emri = files.map(f => f.name).join(" + ").slice(0, 200);
 
   await ensureBankDefaults(prisma, ctx.orgId);
   const ek = await prisma.bankEkstrakt.create({
-    data: { organizationId: ctx.orgId, emriSkedarit: file.name.slice(0, 200), statusi: "NE_PERPUNIM", faqetGjithsej: pages, ngarkuarNga: ctx.userName },
+    data: { organizationId: ctx.orgId, emriSkedarit: emri, statusi: "NE_PERPUNIM", faqetGjithsej: pages, ngarkuarNga: ctx.userName },
   });
-  savePdf(ek.id, data);
+  savePdfs(ek.id, datas);
   startProcessing(ek.id);
   return NextResponse.json(ek, { status: 201 });
 }

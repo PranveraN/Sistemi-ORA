@@ -2,23 +2,44 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { ocrPdf } from "@/lib/bank/ocr";
+import { countPdfImages } from "@/lib/bank/pdfImages";
 import { parseBktPages, type BktRow } from "@/lib/bank/parseBkt";
 import { loadRules, matchRule } from "@/lib/bank/rules";
 
 // Përpunimi i një ekstrakti në sfond: PDF → OCR → rreshtat → kontrolli i gjendjes →
 // zërat e propozuar. Rezultati ruhet si DRAFT; asgjë s'hyn në bilanc pa konfirmim
-// ("Importo"). PDF-ja ruhet pranë databazës (bank-pdf/<id>.pdf) si dokument burimor.
+// ("Importo"). PDF-të ruhen pranë databazës si dokument burimor: bank-pdf/<id>.pdf, dhe kur
+// ekstrakti vjen në disa pjesë: <id>-p2.pdf, <id>-p3.pdf… (renditen sipas datave gjatë leximit).
 
 function dataDir(): string {
   const raw = (process.env.DATABASE_URL || "").replace(/^file:/, "");
   const db = path.isAbsolute(raw) ? raw : path.join(process.cwd(), "prisma", raw);
   return path.join(path.dirname(db), "bank-pdf");
 }
-export const pdfPath = (id: number) => path.join(dataDir(), `${id}.pdf`);
+const partPath = (id: number, n: number) => path.join(dataDir(), n === 1 ? `${id}.pdf` : `${id}-p${n}.pdf`);
 
-export function savePdf(id: number, data: Buffer) {
+/** Skedarët PDF të një ekstrakti (1 ose më shumë pjesë), sipas radhës së ngarkimit. */
+export function pdfPaths(id: number): string[] {
+  const out: string[] = [];
+  for (let n = 1; fs.existsSync(partPath(id, n)); n++) out.push(partPath(id, n));
+  return out;
+}
+
+export function savePdfs(id: number, parts: Buffer[]) {
   fs.mkdirSync(dataDir(), { recursive: true });
-  fs.writeFileSync(pdfPath(id), data);
+  parts.forEach((data, i) => fs.writeFileSync(partPath(id, i + 1), data));
+}
+
+export function deletePdfs(id: number) {
+  for (const p of pdfPaths(id)) fs.rmSync(p, { force: true });
+}
+
+// Data e parë që gjendet në tekstin e një pjese (periudha "FROM", ose rreshti i parë) — për renditjen
+const MON: Record<string, string> = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+function firstDate(pages: string[]): string {
+  const text = pages.join("\n").replace(/0CT/g, "OCT");
+  const m = text.match(/FROM\s*\(NGA DATA\):\s*(\d{2})-([A-Z]{3})-(\d{2})/) ?? text.match(/^\s*(\d{2})-([A-Z]{3})-(\d{2})\s/m);
+  return m && MON[m[2]] ? `20${m[3]}-${MON[m[2]]}-${m[1]}` : "9999";
 }
 
 /** Viti shkollor (viti fillestar) i një date — sipas viteve të regjistruara; ndryshe 01.09–31.08. */
@@ -49,15 +70,25 @@ async function processEkstrakt(id: number): Promise<void> {
   const ek = await prisma.bankEkstrakt.findUnique({ where: { id } });
   if (!ek) return;
   try {
-    const pdf = fs.readFileSync(pdfPath(id));
-    await prisma.bankEkstrakt.update({ where: { id }, data: { statusi: "NE_PERPUNIM", faqetGati: 0, gabimi: null } });
-    let last = 0;
-    const pages = await ocrPdf(pdf, async (done, total) => {
-      if (done === total || Date.now() - last > 1000) {
-        last = Date.now();
-        await prisma.bankEkstrakt.update({ where: { id }, data: { faqetGati: done, faqetGjithsej: total } });
-      }
-    });
+    const files = pdfPaths(id).map(p => fs.readFileSync(p));
+    if (!files.length) throw new Error("PDF-ja e këtij ekstrakti s'gjendet — ngarkoje sërish.");
+    const total = files.reduce((s, f) => s + countPdfImages(f), 0);
+    await prisma.bankEkstrakt.update({ where: { id }, data: { statusi: "NE_PERPUNIM", faqetGati: 0, faqetGjithsej: total, gabimi: null } });
+    let last = 0, offset = 0;
+    const parts: string[][] = [];
+    for (const pdf of files) {
+      const texts = await ocrPdf(pdf, async (done) => {
+        const d = offset + done;
+        if (d === total || Date.now() - last > 1000) {
+          last = Date.now();
+          await prisma.bankEkstrakt.update({ where: { id }, data: { faqetGati: d, faqetGjithsej: total } });
+        }
+      });
+      offset += texts.length;
+      parts.push(texts);
+    }
+    // Pjesët renditen sipas datës së tyre të parë (pavarësisht radhës së zgjedhjes)
+    const pages = parts.map(p => ({ p, d: firstDate(p) })).sort((a, b) => a.d.localeCompare(b.d)).flatMap(x => x.p);
     const res = parseBktPages(pages);
     const rules = await loadRules(prisma, ek.organizationId);
     const syOf = await schoolYearResolver(ek.organizationId);

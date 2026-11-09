@@ -13,8 +13,8 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts", "xlsx"],
     // Ekstraktet e bankës (PDF të skanuara) kalojnë 10 MB — parazgjedhja e Next.js për trupin e
-    // kërkesës që kalon nga middleware-i; pa këtë skedari mbërrin i prerë (moduli Banka, maks. 80 MB).
-    middlewareClientMaxBodySize: "100mb",
+    // kërkesës që kalon nga middleware-i; pa këtë skedari mbërrin i prerë (moduli Banka, maks. 150 MB gjithsej).
+    middlewareClientMaxBodySize: "200mb",
   },
 };
 

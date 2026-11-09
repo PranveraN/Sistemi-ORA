@@ -1,8 +1,7 @@
-import fs from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { bankCtx, bad, intId } from "@/lib/bank/api";
-import { pdfPath, isProcessing } from "@/lib/bank/process";
+import { deletePdfs, isProcessing } from "@/lib/bank/process";
 
 type P = { params: Promise<{ id: string }> };
 
@@ -30,6 +29,6 @@ export async function DELETE(_: NextRequest, { params }: P) {
     prisma.bankLevizje.deleteMany({ where: { ekstraktId: id } }),
     prisma.bankEkstrakt.delete({ where: { id } }),
   ]);
-  fs.rmSync(pdfPath(id), { force: true });
+  deletePdfs(id);
   return NextResponse.json({ ok: true });
 }

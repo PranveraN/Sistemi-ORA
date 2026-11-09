@@ -68,12 +68,14 @@ function EkstraktetTab() {
   }, [rows, load]);
 
   // Dërgimi me XMLHttpRequest — që të shihet përqindja e ngarkimit të skedarit
+  // Një ose disa PDF → NJË ekstrakt (p.sh. viti 2024 i ndarë në 2 skedarë)
   function upload(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
+    const fs = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!f) return;
-    setUploading(true); setUploadPct(0); setUploadName(f.name); setErr(null);
-    const fd = new FormData(); fd.append("file", f);
+    if (!fs.length) return;
+    if (fs.length > 1 && !confirm(`Këta ${fs.length} skedarë janë pjesë të të NJËJTIT ekstrakt (p.sh. i njëjti vit i ndarë në pjesë)?\n\n${fs.map(f => "• " + f.name).join("\n")}\n\nBashkohen në një ekstrakt dhe renditen vetë sipas datave. Për ekstrakte të ndryshme (vite të tjera), ngarkoji veç e veç.`)) return;
+    setUploading(true); setUploadPct(0); setUploadName(fs.length > 1 ? `${fs.length} skedarë` : fs[0].name); setErr(null);
+    const fd = new FormData(); for (const f of fs) fd.append("file", f);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/banka/ekstrakte");
     xhr.upload.onprogress = ev => { if (ev.lengthComputable) setUploadPct(ev.loaded / ev.total * 100); };
@@ -95,10 +97,10 @@ function EkstraktetTab() {
           <h2 className="font-bold text-slate-900 dark:text-white">Ngarko ekstraktin e bankës (PDF)</h2>
           <p className="text-xs text-slate-500 mt-1">
             Ekstrakti BKT "Llogaria e-Deklarata" (edhe i skanuar). Sistemi e lexon vetë, kontrollon çdo rresht me gjendjen e bankës
-            dhe propozon zërat. Asgjë s&apos;hyn në bilanc derisa ta kontrollosh dhe të klikosh <b>Importo</b>.
+            dhe propozon zërat. Nëse një ekstrakt është ndarë në disa PDF (p.sh. 2024 në 2 skedarë), zgjidhi të gjitha njëherësh — bëhen një ekstrakt. Asgjë s&apos;hyn në bilanc derisa ta kontrollosh dhe të klikosh <b>Importo</b>.
           </p>
         </div>
-        <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={upload} />
+        <input ref={fileRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={upload} />
         <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-primary">
           {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Zgjidh PDF-në
         </button>

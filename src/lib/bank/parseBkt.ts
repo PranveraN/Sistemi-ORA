@@ -74,11 +74,21 @@ export function parseBktPages(pages: string[]): BktResult {
       line = fixDates(line);
       if (!res.llogaria) { const a = line.match(/AccountNo:\s*(\d{10,})/); if (a) res.llogaria = a[1]; }
       const per = line.match(/FROM\s*\(NGA DATA\):\s*(\S+)\s+TO\s*\(NE DATEN\):\s*(\S+)/);
-      if (per) { res.periudhaNga = isoDate(per[1]); res.periudhaDeri = isoDate(per[2]); continue; }
-      if (/OPENING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v) res.gjendjaFillestare = cents(v[1]); cur = null; continue; }
+      if (per) {
+        const nga = isoDate(per[1]), deri = isoDate(per[2]);
+        if (nga && (!res.periudhaNga || nga < res.periudhaNga)) res.periudhaNga = nga;
+        if (deri && (!res.periudhaDeri || deri > res.periudhaDeri)) res.periudhaDeri = deri;
+        continue;
+      }
+      if (/OPENING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v && res.gjendjaFillestare === null) res.gjendjaFillestare = cents(v[1]); cur = null; continue; }
       if (/CLOSING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v) res.gjendjaPerfundimtare = cents(v[1]); cur = null; continue; }
       const tot = line.match(/^\s*(\d+)\s+(DEBIT|CREDIT)\(S\)\s+([\d,]+\.\d{2})/);
-      if (tot) { const v = { nr: +tot[1], shuma: cents(tot[3]) }; if (tot[2] === "DEBIT") res.bankaDebi = v; else res.bankaKredi = v; continue; }
+      if (tot) {
+        // Kur ekstrakti vjen në disa pjesë (PDF), secila pjesë ka totalet e veta — mblidhen
+        const add = (a: { nr: number; shuma: number } | null) => ({ nr: (a?.nr ?? 0) + +tot[1], shuma: (a?.shuma ?? 0) + cents(tot[3]) });
+        if (tot[2] === "DEBIT") res.bankaDebi = add(res.bankaDebi); else res.bankaKredi = add(res.bankaKredi);
+        continue;
+      }
       const g = line.match(TX_RE);
       if (g && !/BALANCE/.test(line)) {
         const mid = g[2];

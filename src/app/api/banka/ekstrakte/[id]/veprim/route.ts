@@ -1,8 +1,7 @@
-import fs from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { bankCtx, bad, intId } from "@/lib/bank/api";
-import { pdfPath, startProcessing, isProcessing, reclassify } from "@/lib/bank/process";
+import { pdfPaths, startProcessing, isProcessing, reclassify } from "@/lib/bank/process";
 
 // POST { veprimi }:
 //   IMPORTO        DRAFT → IMPORTUAR (lëvizjet hyjnë në bilanc; dyfishet mbeten jashtë)
@@ -44,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (veprimi === "RIFILLO") {
     if (ek.statusi === "IMPORTUAR") return bad("Ekstrakti është i importuar — fillimisht ktheje në draft.");
     if (isProcessing(id)) return bad("Ekstrakti po lexohet tashmë.");
-    if (!fs.existsSync(pdfPath(id))) return bad("PDF-ja e këtij ekstrakti s'gjendet më — ngarkoje sërish.");
+    if (!pdfPaths(id).length) return bad("PDF-ja e këtij ekstrakti s'gjendet më — ngarkoje sërish.");
     startProcessing(id);
     return NextResponse.json({ ok: true });
   }
