@@ -41,6 +41,8 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [target, setTarget] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  // Dritarja "Shto zë të ri" — krijon zërin dhe ua cakton menjëherë rreshtave `ids`
+  const [newZer, setNewZer] = useState<{ ids: number[]; emri: string; lloji: string; err?: string } | null>(null);
   const zerById = useMemo(() => new Map(zerat.map(z => [z.id, z])), [zerat]);
   const aktive = zerat.filter(z => z.aktiv);
 
@@ -73,6 +75,24 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
     if (await patch([...sel], { zerId: target === "null" ? null : parseInt(target) })) setSel(new Set());
   }
 
+  function openNewZer(ids: number[], hyrje: boolean) {
+    if (!ids.length) { alert("Zgjidh fillimisht rreshtat (☑) që do t'i vendosësh te zëri i ri."); return; }
+    setNewZer({ ids, emri: "", lloji: hyrje ? "E_HYRE" : "SHPENZIM" });
+  }
+
+  async function createZer() {
+    if (!newZer) return;
+    if (!newZer.emri.trim()) { setNewZer({ ...newZer, err: "Shkruaj emrin e zërit." }); return; }
+    setBusy(true);
+    const res = await fetch("/api/banka/zerat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ emri: newZer.emri.trim(), lloji: newZer.lloji }) });
+    const d = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) { setNewZer({ ...newZer, err: d.error || "Zëri s'u krijua." }); return; }
+    const ids = newZer.ids;
+    setNewZer(null);
+    if (await patch(ids, { zerId: d.id })) { setSel(new Set()); setTarget(""); }
+  }
+
   async function saveRule(r: Levizje) {
     if (!r.zerId) { alert("Fillimisht zgjidh zërin e këtij rreshti, pastaj ruaje si rregull."); return; }
     const fjala = prompt(`Rregull i ri për zërin "${zerById.get(r.zerId)?.emri}".\nÇdo rresht ${r.kredi > 0 ? "hyrje" : "dalje"} që përmban këtë fjalë do ta marrë këtë zë:`, r.pala ?? "");
@@ -90,6 +110,7 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
         const zs = aktive.filter(z => z.lloji === k);
         return zs.length ? <optgroup key={k} label={l.label}>{zs.map(z => <option key={z.id} value={z.id}>{z.emri}</option>)}</optgroup> : null;
       })}
+      <option value="__new">+ Shto zë të ri…</option>
     </>
   );
 
@@ -108,7 +129,11 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
         {!readOnly && (
           <div className="ml-auto flex items-center gap-2">
             <span className="text-xs text-slate-500">{sel.size} të zgjedhur →</span>
-            <select value={target} onChange={e => setTarget(e.target.value)} className="form-input w-56 py-1.5 text-sm">
+            <select value={target} onChange={e => {
+              if (e.target.value !== "__new") { setTarget(e.target.value); return; }
+              const ids = [...sel];
+              openNewZer(ids, rows.some(r => ids.includes(r.id) && r.kredi > 0));
+            }} className="form-input w-56 py-1.5 text-sm">
               <option value="">Bart te zëri…</option>
               {zerOptions}
             </select>
@@ -151,7 +176,7 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
                     ) : (
                       <div className="flex items-center gap-1">
                         <select value={r.zerId ?? "null"} disabled={busy}
-                          onChange={e => patch([r.id], { zerId: e.target.value === "null" ? null : parseInt(e.target.value) })}
+                          onChange={e => e.target.value === "__new" ? openNewZer([r.id], r.kredi > 0) : patch([r.id], { zerId: e.target.value === "null" ? null : parseInt(e.target.value) })}
                           className={`form-input py-1 text-xs ${r.zerId ? "" : "border-amber-300 dark:border-amber-700"}`}>
                           {zerOptions}
                         </select>
@@ -174,6 +199,33 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
           </tbody>
         </table>
       </div>
+
+      {newZer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !busy && setNewZer(null)}>
+          <form className="card w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); createZer(); }}>
+            <h3 className="font-bold text-slate-900 dark:text-white">Zë i ri</h3>
+            <p className="text-xs text-slate-500">Krijohet dhe u caktohet menjëherë {newZer.ids.length === 1 ? "këtij rreshti" : `${newZer.ids.length} rreshtave të zgjedhur`}.</p>
+            <div>
+              <label className="form-label">Emri</label>
+              <input autoFocus value={newZer.emri} onChange={e => setNewZer({ ...newZer, emri: e.target.value, err: undefined })} className="form-input" placeholder="p.sh. Huazim i përkohshëm" maxLength={100} />
+            </div>
+            <div>
+              <label className="form-label">Lloji</label>
+              <select value={newZer.lloji} onChange={e => setNewZer({ ...newZer, lloji: e.target.value })} className="form-input">
+                {Object.entries(LLOJET).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">
+                E hyrë / Shpenzim / Kthim hyjnë në bilanc. Financim (huazime, kalime mjetesh) dhe Jashtë bilancit ndiqen veçmas.
+              </p>
+            </div>
+            {newZer.err && <p className="text-sm text-rose-600">{newZer.err}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setNewZer(null)} disabled={busy} className="btn-secondary">Anulo</button>
+              <button type="submit" disabled={busy} className="btn-primary">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Krijo dhe cakto</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
