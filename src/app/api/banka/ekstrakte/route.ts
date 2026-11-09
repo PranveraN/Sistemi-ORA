@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { bankCtx, bad } from "@/lib/bank/api";
 import { ensureBankDefaults } from "@/lib/bank/rules";
 import { savePdfs, startProcessing, isProcessing } from "@/lib/bank/process";
-import { countPdfImages } from "@/lib/bank/pdfImages";
+import { countPdfPages } from "@/lib/bank/pdfText";
 
 const MAX_BYTES = 150 * 1024 * 1024; // gjithsej, për të gjitha pjesët
 
@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
     if (!/\.pdf$/i.test(file.name)) return bad(`"${file.name}" s'është PDF — pranohen vetëm ekstraktet PDF.`);
     const data = Buffer.from(await file.arrayBuffer());
     if (data.subarray(0, 5).toString("latin1") !== "%PDF-") return bad(`"${file.name}" s'është PDF i vlefshëm.`);
-    const n = countPdfImages(data);
-    if (!n) return bad(`"${file.name}" s'ka faqe të skanuara — s'mund të lexohet si ekstrakt BKT.`);
+    const n = countPdfPages(data);
+    if (!n) return bad(`"${file.name}" s'ka faqe — a është PDF e plotë?`);
     pages += n;
     datas.push(data);
   }

@@ -43,17 +43,18 @@ const fixDates = (l: string) => l.replace(/\b([0-9O]{2})-(0CT|OCT|N0V|D3C)-([0-9
 
 const TX_RE = new RegExp(String.raw`^\s*${DATE}\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$`);
 // Rreshtat e kokës/fundit të faqes dhe logos që s'janë pjesë e përshkrimit
-const PAGE_NOISE = /DEBIT\(S\)|CREDIT\(S\)|Informacione t|Banka Kombetare Tregtare Kosove|Depozitat? e sigur|Depozituesit|FSDK|drejtohuni|Per informacione|UNAUTH|VEPRIM I|BANKA KOMBETARE TREGTARE|^\s*[RK][o0]sova\s*$|NY IK|^\s*\(?Rt\s|BOOKING DATE|Shenim:|BKT-se|Data Krijimit|e-Deklarata|AccountNo:|Pershkrimi|DESCRIPTION/;
+const PAGE_NOISE = /DEBIT\(S\)|CREDIT\(S\)|Informacione t|Banka Kombetare Tregtare Kosove|Depozitat? e sigur|Depozituesit|FSDK|drejtohuni|Per informacione|UNAUTH|VEPRIM I|BANKA KOMBETARE TREGTARE|^\s*[RK][o0]sova\s*$|NY IK|^\s*\(?Rt\s|STATEMENT NO|^\s*-{20,}|BOOKING DATE|Shenim:|BKT-se|Data Krijimit|e-Deklarata|AccountNo:|Pershkrimi|DESCRIPTION/;
 // Rreshta teknikë të transferit që s'ndihmojnë klasifikimin
-const TECH = /Event Desc|User Refno|Charges Desc|Charge Amt|Tr\. Amt::|Corres\.|Com: :/;
+const TECH = /Event Desc|User Refno|Charges Desc|Charge Amt|Tr\. Amt::|Corres\.|Com: :|^\s*\d{10,}\s*$/;
 
 const clean = (s: string) => s.replace(/\s*;\s*/g, "").replace(/\s+/g, " ").trim();
 
 function palaDhePershkrimi(lloji: string, drejtimi: BktRow["drejtimi"], lines: string[]): { pala: string; pershkrimi: string } {
   const L = lines.filter(l => !TECH.test(l) && l.replace(/[^A-Za-z]/g, "").length >= 4);
   const get = (re: RegExp) => { for (const l of L) { const m = l.match(re); if (m) return clean(m[1]); } return ""; };
-  const order = get(/By Order Of:{0,2}\s*(.+)$/).replace(/-?\/[A-Z]{0,2}\d{6,}.*$/, "").replace(/^\/[A-Z]{0,2}\d+$/, "").trim();
-  const ben = get(/Ft - Ben\s+(.+)$/).replace(/^[-/]*(XK\d+|\d+)?-?/, "").trim();
+  const order = get(/By Order Of:{0,2}\s*(.+)$/).replace(/-?\/[A-Z]{0,2}\d{6,}.*$/, "").replace(/^\/[A-Z]{0,2}\d+$/, "").replace(/\s+\d{10,}$/, "").trim();
+  // Përfituesi: "Ft - Ben -EMRI" / "Ft - Ben /XK…-EMRI" ose (transfertat ACH) "Beneficiary::XK… Emri"
+  const ben = (get(/Ft - Ben\s+(.+)$/) || get(/Beneficiary::\s*(.+)$/)).replace(/^[-/]*(XK\d+|\d+)?[-\s]?/, "").trim();
   const pershkrimi = clean(L.map(l => l.replace(/^Ft - /, "").replace(/^Payment D\d\s*/, "").replace(/^Details:\s*:?/, "")).join(" · "));
   let pala = "";
   if (/COMMISSION|KOMISION/.test(lloji)) pala = "BKT";

@@ -3,6 +3,7 @@ import path from "path";
 import { prisma } from "@/lib/prisma";
 import { ocrPdf } from "@/lib/bank/ocr";
 import { countPdfImages } from "@/lib/bank/pdfImages";
+import { pdfTextPages } from "@/lib/bank/pdfText";
 import { parseBktPages, type BktRow } from "@/lib/bank/parseBkt";
 import { loadRules, matchRule } from "@/lib/bank/rules";
 
@@ -72,12 +73,16 @@ async function processEkstrakt(id: number): Promise<void> {
   try {
     const files = pdfPaths(id).map(p => fs.readFileSync(p));
     if (!files.length) throw new Error("PDF-ja e këtij ekstrakti s'gjendet — ngarkoje sërish.");
-    const total = files.reduce((s, f) => s + countPdfImages(f), 0);
+    // PDF me tekst (e-banking) lexohet drejtpërdrejt; PDF e skanuar (foto) kalon nga OCR-ja
+    const textOf = await Promise.all(files.map(f => pdfTextPages(f)));
+    const total = files.reduce((s, f, i) => s + (textOf[i]?.length ?? countPdfImages(f)), 0);
     await prisma.bankEkstrakt.update({ where: { id }, data: { statusi: "NE_PERPUNIM", faqetGati: 0, faqetGjithsej: total, gabimi: null } });
     let last = 0, offset = 0;
     const parts: string[][] = [];
-    for (const pdf of files) {
-      const texts = await ocrPdf(pdf, async (done) => {
+    for (const [fi, pdf] of files.entries()) {
+      const direct = textOf[fi];
+      if (!direct && !countPdfImages(pdf)) throw new Error("Një nga PDF-të s'ka as tekst ekstrakti, as faqe të skanuara — a është ekstrakt i BKT-së?");
+      const texts = direct ?? await ocrPdf(pdf, async (done) => {
         const d = offset + done;
         if (d === total || Date.now() - last > 1000) {
           last = Date.now();
@@ -85,6 +90,7 @@ async function processEkstrakt(id: number): Promise<void> {
         }
       });
       offset += texts.length;
+      if (direct) await prisma.bankEkstrakt.update({ where: { id }, data: { faqetGati: offset } });
       parts.push(texts);
     }
     // Pjesët renditen sipas datës së tyre të parë (pavarësisht radhës së zgjedhjes)
