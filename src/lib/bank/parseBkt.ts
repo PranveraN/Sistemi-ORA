@@ -43,7 +43,10 @@ export const refKey = (ref: string) => ref.toUpperCase().replace(/O/g, "0").repl
 const shiftDay = (iso: string, d: number) => { const t = new Date(`${iso}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + d); return t.toISOString().slice(0, 10); };
 
 const MON: Record<string, number> = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
-const cents = (s: string) => Math.round(parseFloat(s.replace(/,/g, "")) * 100);
+// Shuma në cent. Gjendja negative shkruhet nga banka me minus në fund ("1.00-") ose në fillim ("-1.00").
+const cents = (s: string) => { const neg = /^-|-$/.test(s.trim()); return (neg ? -1 : 1) * Math.round(parseFloat(s.replace(/[,\s-]/g, "")) * 100); };
+const BAL = String.raw`(-?[\d,]+\.\d{2}-?)`;
+const BAL_END = new RegExp(BAL + String.raw`\s*$`);
 const DATE = String.raw`(\d{2}-[A-Z]{3}-\d{2})`;
 function isoDate(d: string): string | null {
   const m = /^(\d{2})-([A-Z]{3})-(\d{2})$/.exec(d);
@@ -54,7 +57,7 @@ function isoDate(d: string): string | null {
 const fixDates = (l: string) => l.replace(/\b([0-9O]{2})-(0CT|OCT|N0V|D3C)-([0-9O]{2})\b/g,
   (_, a: string, b: string, c: string) => `${a.replace(/O/g, "0")}-${b.replace("0", "O").replace("3", "E")}-${c.replace(/O/g, "0")}`);
 
-const TX_RE = new RegExp(String.raw`^\s*${DATE}\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$`);
+const TX_RE = new RegExp(String.raw`^\s*${DATE}\s+(.+?)\s+([\d,]+\.\d{2})\s+${BAL}\s*$`);
 // Rreshtat e kokës/fundit të faqes dhe logos që s'janë pjesë e përshkrimit
 const PAGE_NOISE = /DEBIT\(S\)|CREDIT\(S\)|Informacione t|Banka Kombetare Tregtare Kosove|Depozitat? e sigur|Depozituesit|FSDK|drejtohuni|Per informacione|UNAUTH|VEPRIM I|BANKA KOMBETARE TREGTARE|^\s*[RK][o0]sova\s*$|NY IK|^\s*\(?Rt\s|STATEMENT NO|^\s*-{20,}|BOOKING DATE|Shenim:|BKT-se|Data Krijimit|e-Deklarata|AccountNo:|Pershkrimi|DESCRIPTION/;
 // Rreshta teknikë të transferit që s'ndihmojnë klasifikimin
@@ -107,8 +110,8 @@ export function parseBktPages(pages: string[], partStarts: number[] = [], partNa
         if (deri && (!res.periudhaDeri || deri > res.periudhaDeri)) res.periudhaDeri = deri;
         continue;
       }
-      if (/OPENING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v) { const pj = pjeset[partIdx(pi)]; if (pj && pj.fillestare === null) pj.fillestare = cents(v[1]); if (res.gjendjaFillestare === null) res.gjendjaFillestare = cents(v[1]); else pendingOpening = cents(v[1]); } cur = null; continue; }
-      if (/CLOSING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v) { res.gjendjaPerfundimtare = cents(v[1]); const pj = pjeset[partIdx(pi)]; if (pj) pj.perfundimtare = cents(v[1]); } cur = null; continue; }
+      if (/OPENING BALANCE/.test(line)) { const v = line.match(BAL_END); if (v) { const pj = pjeset[partIdx(pi)]; if (pj && pj.fillestare === null) pj.fillestare = cents(v[1]); if (res.gjendjaFillestare === null) res.gjendjaFillestare = cents(v[1]); else pendingOpening = cents(v[1]); } cur = null; continue; }
+      if (/CLOSING BALANCE/.test(line)) { const v = line.match(BAL_END); if (v) { res.gjendjaPerfundimtare = cents(v[1]); const pj = pjeset[partIdx(pi)]; if (pj) pj.perfundimtare = cents(v[1]); } cur = null; continue; }
       const tot = line.match(/^\s*(\d+)\s+(DEBIT|CREDIT)\(S\)\s+([\d,]+\.\d{2})/);
       if (tot) {
         // Kur ekstrakti vjen në disa pjesë (PDF), secila pjesë ka totalet e veta — mblidhen
