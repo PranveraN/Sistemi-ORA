@@ -162,7 +162,7 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
                   </td>
                   <td className="table-cell py-2 text-xs whitespace-nowrap">
                     {readOnly || r.statusi === "DYFISHT" ? (r.vitiShkollor ? `${r.vitiShkollor}–${r.vitiShkollor + 1}` : "—") : (
-                      <select value={r.vitiShkollor ?? ""} disabled={busy} onChange={e => patch([r.id], { vitiShkollor: parseInt(e.target.value) })} className="form-input py-1 text-xs w-[104px]">
+                      <select value={r.vitiShkollor ?? ""} disabled={busy} onChange={e => patch([r.id], { vitiShkollor: parseInt(e.target.value) })} className="form-input py-1 text-xs w-[124px]">
                         {[...new Set([r.vitiShkollor ?? 0, ...(r.vitiShkollor ? [r.vitiShkollor - 1, r.vitiShkollor + 1] : [])])].filter(Boolean).sort().map(y => <option key={y} value={y}>{y}–{y + 1}</option>)}
                       </select>
                     )}

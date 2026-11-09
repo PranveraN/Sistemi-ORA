@@ -83,13 +83,50 @@ const DEFAULT_RREGULLAT: [string, "HYRJE" | "DALJE" | null, string | null, numbe
 
 /** Krijon zërat dhe rregullat fillestare vetëm nëse organizata s'ka ende asnjë zë. */
 export async function ensureBankDefaults(db: PrismaClient, orgId: number): Promise<void> {
-  if (await db.bankZer.count({ where: { organizationId: orgId } })) return;
-  const ids = new Map<string, number>();
-  for (const [i, z] of DEFAULT_ZERAT.entries()) {
-    const row = await db.bankZer.create({ data: { organizationId: orgId, emri: z.emri, lloji: z.lloji, renditja: i } });
-    ids.set(z.emri, row.id);
+  if (!(await db.bankZer.count({ where: { organizationId: orgId } }))) {
+    const ids = new Map<string, number>();
+    for (const [i, z] of DEFAULT_ZERAT.entries()) {
+      const row = await db.bankZer.create({ data: { organizationId: orgId, emri: z.emri, lloji: z.lloji, renditja: i } });
+      ids.set(z.emri, row.id);
+    }
+    await db.bankRregull.createMany({
+      data: DEFAULT_RREGULLAT.map(([fjala, drejtimi, zer, prioriteti]) => ({ organizationId: orgId, fjala, drejtimi, zerId: zer ? ids.get(zer)! : null, prioriteti })),
+    });
   }
-  await db.bankRregull.createMany({
-    data: DEFAULT_RREGULLAT.map(([fjala, drejtimi, zer, prioriteti]) => ({ organizationId: orgId, fjala, drejtimi, zerId: zer ? ids.get(zer)! : null, prioriteti })),
-  });
+  await applyUpgrades(db, orgId);
+}
+
+// ── Shtesat e mëvonshme (një herë për organizatë; versioni ruhet te Setting) ──────────
+// v2 (09.11.2026): kalimet mes llogarive të Akademisë Ora (…1291 ↔ …1194) — Financim,
+// jashtë bilancit; para rregullit të vjetër që i linte "Të paklasifikuara".
+const UPGRADES: { v: number; zerat: { emri: string; lloji: ZerLloji }[]; rregullat: [string, "HYRJE" | "DALJE" | null, string, number][] }[] = [
+  {
+    v: 2,
+    zerat: [
+      { emri: "Kalim mjetesh nga llogaria tjetër e Akademisë Ora", lloji: "FINANCIM" },
+      { emri: "Kalim mjetesh te llogaria tjetër e Akademisë Ora", lloji: "FINANCIM" },
+    ],
+    rregullat: [
+      ["BY ORDER OF AKADEMIA ORA", "HYRJE", "Kalim mjetesh nga llogaria tjetër e Akademisë Ora", 25],
+      ["1971897927031194", "DALJE", "Kalim mjetesh te llogaria tjetër e Akademisë Ora", 26],
+    ],
+  },
+];
+
+async function applyUpgrades(db: PrismaClient, orgId: number) {
+  const key = `bankDefaultsVersion:${orgId}`;
+  const current = parseInt((await db.setting.findUnique({ where: { key } }))?.value ?? "1");
+  for (const u of UPGRADES.filter(u => u.v > current)) {
+    const max = (await db.bankZer.aggregate({ where: { organizationId: orgId }, _max: { renditja: true } }))._max.renditja ?? 0;
+    const ids = new Map<string, number>();
+    for (const [i, z] of u.zerat.entries()) {
+      const ex = await db.bankZer.findFirst({ where: { organizationId: orgId, emri: z.emri } });
+      ids.set(z.emri, ex?.id ?? (await db.bankZer.create({ data: { organizationId: orgId, emri: z.emri, lloji: z.lloji, renditja: max + 1 + i } })).id);
+    }
+    for (const [fjala, drejtimi, zer, prioriteti] of u.rregullat) {
+      if (await db.bankRregull.findFirst({ where: { organizationId: orgId, fjala, drejtimi, zerId: ids.get(zer) } })) continue;
+      await db.bankRregull.create({ data: { organizationId: orgId, fjala, drejtimi, zerId: ids.get(zer)!, prioriteti } });
+    }
+    await db.setting.upsert({ where: { key }, update: { value: String(u.v) }, create: { key, value: String(u.v) } });
+  }
 }
