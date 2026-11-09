@@ -33,6 +33,13 @@ export interface BktResult {
 export interface BktPjese { emri: string; nga: string | null; deri: string | null; fillestare: number | null; perfundimtare: number | null }
 export interface BktMungese { nga: string; deri: string; diferenca: number; mes: [string, string] }
 
+/**
+ * Referenca e bankës në formë të krahasueshme: OCR-ja i ngatërron shkronjat me shifrat (O↔0, I/L↔1,
+ * S↔5, B↔8, Z↔2), p.sh. "771ACEN24166M39O" (tekst) vs "771ACEN24166M390" (skanim). Përdoret vetëm
+ * për gjetjen e rreshtave të njëjtë — referenca origjinale ruhet e pandryshuar.
+ */
+export const refKey = (ref: string) => ref.toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1").replace(/S/g, "5").replace(/B/g, "8").replace(/Z/g, "2").replace(/s+/g, "");
+
 const shiftDay = (iso: string, d: number) => { const t = new Date(`${iso}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + d); return t.toISOString().slice(0, 10); };
 
 const MON: Record<string, number> = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
@@ -135,7 +142,7 @@ export function parseBktPages(pages: string[], partStarts: number[] = [], partNa
   const dups: { shuma: number; twin: Raw }[] = [];
   const uniq: Raw[] = [];
   for (const r of raw) {
-    const k = [r.data, r.referenca, r.lloji, r.shuma, r.gjendja].join("|");
+    const k = [r.data, refKey(r.referenca), r.lloji, r.shuma, r.gjendja].join("|");
     const twin = seen.get(k);
     if (twin) { dups.push({ shuma: r.shuma, twin }); continue; }
     seen.set(k, r);
@@ -172,9 +179,9 @@ export function parseBktPages(pages: string[], partStarts: number[] = [], partNa
 
   // Kur secila pjesë ka totalet e veta, shuma e tyre përmban dy herë rreshtat e përsëritur — hiqen.
   // (Nëse totalet janë vetëm në pjesën e fundit, ato i numërojnë një herë — s'preken.)
-  const twinKey = new Map(uniq.map((u, i) => [[u.data, u.referenca, u.lloji, u.shuma, u.gjendja].join("|"), i]));
+  const twinKey = new Map(uniq.map((u, i) => [[u.data, refKey(u.referenca), u.lloji, u.shuma, u.gjendja].join("|"), i]));
   for (const d of totLines > 1 ? dups : []) {
-    const i = twinKey.get([d.twin.data, d.twin.referenca, d.twin.lloji, d.twin.shuma, d.twin.gjendja].join("|"));
+    const i = twinKey.get([d.twin.data, refKey(d.twin.referenca), d.twin.lloji, d.twin.shuma, d.twin.gjendja].join("|"));
     const dir = i !== undefined ? res.rows[i].drejtimi : null;
     if (dir === "DALJE" && res.bankaDebi) res.bankaDebi = { nr: res.bankaDebi.nr - 1, shuma: res.bankaDebi.shuma - d.shuma };
     if (dir === "HYRJE" && res.bankaKredi) res.bankaKredi = { nr: res.bankaKredi.nr - 1, shuma: res.bankaKredi.shuma - d.shuma };

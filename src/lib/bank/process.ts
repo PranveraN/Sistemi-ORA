@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ocrPdf } from "@/lib/bank/ocr";
 import { countPdfImages } from "@/lib/bank/pdfImages";
 import { pdfTextPages } from "@/lib/bank/pdfText";
-import { parseBktPages, type BktRow } from "@/lib/bank/parseBkt";
+import { parseBktPages, refKey, type BktRow } from "@/lib/bank/parseBkt";
 import { loadRules, matchRule } from "@/lib/bank/rules";
 
 // Përpunimi i një ekstrakti në sfond: PDF → OCR → rreshtat → kontrolli i gjendjes →
@@ -54,7 +54,7 @@ export async function schoolYearResolver(orgId: number): Promise<(d: Date) => nu
 }
 
 const celesi = (llogaria: string | null, r: BktRow) =>
-  [llogaria ?? "", r.data, r.referenca, r.lloji, r.drejtimi === "DALJE" ? r.shuma : 0, r.drejtimi === "HYRJE" ? r.shuma : 0, r.gjendja].join("|");
+  [llogaria ?? "", r.data, refKey(r.referenca), r.lloji, r.drejtimi === "DALJE" ? r.shuma : 0, r.drejtimi === "HYRJE" ? r.shuma : 0, r.gjendja].join("|");
 
 // Një ekstrakt në një kohë (OCR-ja është e rëndë)
 let queue: Promise<void> = Promise.resolve();
