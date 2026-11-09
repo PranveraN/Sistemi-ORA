@@ -68,7 +68,9 @@ function palaDhePershkrimi(lloji: string, drejtimi: BktRow["drejtimi"], lines: s
 /** `partStarts` = indekset e faqeve ku fillon një PDF tjetër (rreshtat e një pjese s'i ngjiten asaj para). */
 export function parseBktPages(pages: string[], partStarts: number[] = []): BktResult {
   const res: BktResult = { llogaria: null, periudhaNga: null, periudhaDeri: null, gjendjaFillestare: null, gjendjaPerfundimtare: null, bankaDebi: null, bankaKredi: null, rows: [], perseritur: 0, gabimet: [] };
-  type Raw = Omit<BktRow, "drejtimi" | "pala" | "pershkrimi">;
+  // `hapja` = gjendja fillestare e një pjese tjetër (PDF) që fillon me këtë rresht
+  type Raw = Omit<BktRow, "drejtimi" | "pala" | "pershkrimi"> & { hapja?: number };
+  let pendingOpening: number | undefined;
   const raw: Raw[] = [];
   let cur: Raw | null = null;
 
@@ -85,7 +87,7 @@ export function parseBktPages(pages: string[], partStarts: number[] = []): BktRe
         if (deri && (!res.periudhaDeri || deri > res.periudhaDeri)) res.periudhaDeri = deri;
         continue;
       }
-      if (/OPENING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v && res.gjendjaFillestare === null) res.gjendjaFillestare = cents(v[1]); cur = null; continue; }
+      if (/OPENING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v) { if (res.gjendjaFillestare === null) res.gjendjaFillestare = cents(v[1]); else pendingOpening = cents(v[1]); } cur = null; continue; }
       if (/CLOSING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v) res.gjendjaPerfundimtare = cents(v[1]); cur = null; continue; }
       const tot = line.match(/^\s*(\d+)\s+(DEBIT|CREDIT)\(S\)\s+([\d,]+\.\d{2})/);
       if (tot) {
@@ -103,7 +105,8 @@ export function parseBktPages(pages: string[], partStarts: number[] = []): BktRe
         const data = isoDate(g[1]);
         if (!data) { res.gabimet.push(`Faqja ${pi + 1}: data e palexueshme "${g[1]}"`); continue; }
         cur = { nr: raw.length + 1, faqja: pi + 1, data, dataValuta: vd ? isoDate(vd[1]) : null,
-          lloji: (r ? mid.slice(0, r.index) : mid).trim(), referenca: r ? r[1] : "", shuma: cents(g[3]), gjendja: cents(g[4]), rreshtat: [] };
+          lloji: (r ? mid.slice(0, r.index) : mid).trim(), referenca: r ? r[1] : "", shuma: cents(g[3]), gjendja: cents(g[4]), rreshtat: [], hapja: pendingOpening };
+        pendingOpening = undefined;
         raw.push(cur);
         continue;
       }
@@ -130,7 +133,18 @@ export function parseBktPages(pages: string[], partStarts: number[] = []): BktRe
   // Zinxhiri i gjendjes: drejtimi i çdo rreshti + kontrolli
   let prev = res.gjendjaFillestare;
   if (prev === null) res.gabimet.push("Gjendja fillestare (OPENING BALANCE) s'u gjet.");
+  const eurS = (c: number) => (c / 100).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " €";
+  const dmyS = (d: string) => d.split("-").reverse().join(".");
+  let lastDate: string | null = null;
   for (const r of uniq) {
+    // Fillon një pjesë tjetër: nëse gjendja e saj fillestare s'është aty ku mbaroi e mëparshmja, mungon një periudhë
+    if (r.hapja !== undefined && prev !== null && r.hapja !== prev) {
+      res.gabimet.push(`Mungon periudha mes pjesëve: deri më ${lastDate ? dmyS(lastDate) : "—"} gjendja ishte ${eurS(prev)}, `
+        + `kurse pjesa tjetër fillon (rreshti i parë ${dmyS(r.data)}) me ${eurS(r.hapja)} — diferenca ${eurS(r.hapja - prev)}. `
+        + `Ngarko edhe ekstraktin e periudhës që mungon.`);
+      prev = r.hapja;
+    }
+    lastDate = r.data;
     let drejtimi: BktRow["drejtimi"] = null;
     if (prev !== null && prev - r.shuma === r.gjendja) drejtimi = "DALJE";
     else if (prev !== null && prev + r.shuma === r.gjendja) drejtimi = "HYRJE";
