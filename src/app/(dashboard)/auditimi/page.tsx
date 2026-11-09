@@ -7,7 +7,7 @@ import FindingDetail from "@/components/auditimi/FindingDetail";
 import HistoryTab from "@/components/auditimi/HistoryTab";
 import RulesTab from "@/components/auditimi/RulesTab";
 import { SEV_LABEL, SEV_CLASS, SEVERITIES, STATUS_LABEL, STATUS_CLASS, STATUSES, MODULE_LABEL, RUN_STATUS, euro, fmtDateTime } from "@/components/auditimi/labels";
-import { ACADEMIC_YEARS } from "@/lib/academicYear";
+import { useAcademicYears } from "@/lib/useAcademicYears";
 import { ShieldCheck, Loader2, Play, Printer, ChevronLeft, ChevronRight, Download } from "lucide-react";
 
 // "Auditimi" (Faza 4) — gjetjet e motorit të rregullave: përmbledhja, lista me
@@ -42,6 +42,7 @@ const columns = [
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
 export default function AuditimiPage() {
+  const academicYears = useAcademicYears();
   const [tab, setTab] = useState<Tab>("gjetjet");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [rows, setRows] = useState<Finding[]>([]);
@@ -205,7 +206,7 @@ export default function AuditimiPage() {
                 </select></div>
               <div><label htmlFor="f-year" className="form-label">Viti akademik</label>
                 <select id="f-year" className="form-input" value={f.year} onChange={e => setFilter("year", e.target.value)}>
-                  <option value="">Të gjitha</option>{ACADEMIC_YEARS.map(y => <option key={y} value={y}>{y}–{y + 1}</option>)}
+                  <option value="">Të gjitha</option>{academicYears.map(y => <option key={y} value={y}>{y}–{y + 1}</option>)}
                 </select></div>
               <div><label htmlFor="f-from" className="form-label">Nga</label><input id="f-from" type="date" className="form-input" value={f.from} onChange={e => setFilter("from", e.target.value)} /></div>
               <div><label htmlFor="f-to" className="form-label">Deri</label><input id="f-to" type="date" className="form-input" value={f.to} onChange={e => setFilter("to", e.target.value)} /></div>

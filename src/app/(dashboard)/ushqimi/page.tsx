@@ -12,7 +12,8 @@ import {
   shujtaForPeriod, shujtaSuffix, SHUJTA_LABEL,
 } from "@/lib/ushqimiPlan";
 import { CYCLES, getCycle, isGrade1 } from "@/lib/school-cycles";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { useAcademicYears } from "@/lib/useAcademicYears";
 import { BADGE_CSS, buildBadgeCardHTML } from "@/lib/badge-html";
 import * as XLSX from "xlsx";
 import {
@@ -419,6 +420,7 @@ function calcPrices(price2Meals: number, workingDays: number, monthsPerYear: num
 
 /* ═══════════════════════════════════════════════════════ */
 export default function UshqimiPage() {
+  const academicYears = useAcademicYears();
   const now = new Date();
   const [month, setMonth]   = useState(now.getMonth() + 1);
   const [year, setYear]     = useState(DEFAULT_ACADEMIC_YEAR);
@@ -1079,7 +1081,7 @@ export default function UshqimiPage() {
             )}
             <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-28">
               <option value={0}>Të gjitha</option>
-              {(yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS).map(y => (
+              {(yearType === "academic" ? academicYears : CALENDAR_YEARS).map(y => (
                 <option key={y} value={y}>{yearType === "academic" ? `${y}–${y + 1}` : y}</option>
               ))}
             </select>

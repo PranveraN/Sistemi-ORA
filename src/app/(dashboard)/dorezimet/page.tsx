@@ -5,7 +5,8 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import { Printer, ArrowRightLeft, Info, Loader2 } from "lucide-react";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
-import { ACADEMIC_YEARS, DEFAULT_ACADEMIC_YEAR } from "@/lib/academicYear";
+import { DEFAULT_ACADEMIC_YEAR } from "@/lib/academicYear";
+import { useAcademicYears } from "@/lib/useAcademicYears";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import { xlDate } from "@/lib/exportExcel";
 
@@ -77,6 +78,7 @@ const toHandover = (r: Row): Handover => ({
 });
 
 export default function DorezimetPage() {
+  const academicYears = useAcademicYears();
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [year, setYear] = useState(DEFAULT_ACADEMIC_YEAR);
@@ -141,7 +143,7 @@ export default function DorezimetPage() {
               {[9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8].map(m => <option key={m} value={m}>{MONTHS[m - 1]}</option>)}
             </select>
             <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-32" aria-label="Viti shkollor">
-              {ACADEMIC_YEARS.map(y => <option key={y} value={y}>{y}–{y + 1}</option>)}
+              {academicYears.map(y => <option key={y} value={y}>{y}–{y + 1}</option>)}
             </select>
             <ExportExcelButton<Row> fileName={`Dorezimet-${periodLabel}`} rows={rows} columns={columns} />
           </div>

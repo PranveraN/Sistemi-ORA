@@ -13,7 +13,8 @@ import GradeOneCard from "@/components/dashboard/GradeOneCard";
 import GradeNineLeaversCard, { type GradeNineLeaverRow } from "@/components/dashboard/GradeNineLeaversCard";
 import ClassChangesCard, { type ClassChangeRow } from "@/components/dashboard/ClassChangesCard";
 import { isGrade1 } from "@/lib/school-cycles";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { useAcademicYears } from "@/lib/useAcademicYears";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import { xlDate } from "@/lib/exportExcel";
 
@@ -29,6 +30,7 @@ interface MovementsData {
 interface MovementExportRow { lloji: string; emri: string; klasa: string | null; data: string; detaje: string }
 
 export default function LevizjetPage() {
+  const academicYears = useAcademicYears();
   const [yearType, setYearType] = useState<YearType>("academic");
   const [year, setYear] = useState(DEFAULT_ACADEMIC_YEAR);
   const [data, setData] = useState<MovementsData | null>(null);
@@ -42,11 +44,11 @@ export default function LevizjetPage() {
   const [classFilter, setClassFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "new" | "departed">("all");
 
-  const years = yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+  const years = yearType === "academic" ? academicYears : CALENDAR_YEARS;
 
   function switchYearType(yt: YearType) {
     setYearType(yt);
-    const yrs = yt === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+    const yrs = yt === "academic" ? academicYears : CALENDAR_YEARS;
     if (!yrs.includes(year)) setYear(yrs[yrs.length - 2] ?? yrs[0]);
   }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { parseDay, validateYearDates } from "@/lib/schoolYears";
 
 const LABEL_RE = /^\d{4}-\d{4}$/;
 
@@ -23,8 +24,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     data.label = label;
   }
-  if (body.startDate !== undefined) data.startDate = body.startDate ? new Date(body.startDate) : null;
-  if (body.endDate !== undefined) data.endDate = body.endDate ? new Date(body.endDate) : null;
+  if (body.startDate !== undefined) data.startDate = parseDay(body.startDate);
+  if (body.endDate !== undefined) data.endDate = parseDay(body.endDate);
+
+  // Kur ndryshojnë datat: fillimi para mbarimit, pa mbivendosje me vitet e tjera.
+  if (body.startDate !== undefined || body.endDate !== undefined) {
+    const current = await prisma.schoolYear.findUnique({ where: { id: parseInt(id) } });
+    if (!current) return NextResponse.json({ error: "Viti nuk u gjet" }, { status: 404 });
+    const others = await prisma.schoolYear.findMany({ where: { organizationId: current.organizationId }, select: { id: true, label: true, startDate: true, endDate: true } });
+    const dateErr = validateYearDates({
+      id: current.id, label: (data.label as string) ?? current.label,
+      startDate: body.startDate !== undefined ? (data.startDate as Date | null) : current.startDate,
+      endDate: body.endDate !== undefined ? (data.endDate as Date | null) : current.endDate,
+    }, others);
+    if (dateErr) return NextResponse.json({ error: dateErr }, { status: 400 });
+  }
 
   try {
     // Aktivizim i thjeshtë i vitit — VETËM ndryshon flamurin "active" (asnjë

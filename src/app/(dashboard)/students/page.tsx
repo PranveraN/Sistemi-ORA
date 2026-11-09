@@ -11,7 +11,8 @@ import {
   Trash2, Download, X, MessageSquare, Wallet, AlertCircle, CheckCircle2, CreditCard, FilterX,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { useAcademicYears } from "@/lib/useAcademicYears";
 import YearPicker from "@/components/dashboard/YearPicker";
 import { useModuleAccess } from "@/lib/useModuleAccess";
 import { STATUS_COLORS } from "@/lib/smsStatus";
@@ -75,6 +76,7 @@ function useDebounced<T>(value: T, ms = 300): T {
 }
 
 export default function StudentsPage() {
+  const academicYears = useAcademicYears();
   const sp = useSearchParams();
   const router = useRouter();
   const { canAccess } = useModuleAccess();
@@ -194,7 +196,7 @@ export default function StudentsPage() {
 
   function switchYearType(yt: YearType) {
     setYearType(yt);
-    const yrs = yt === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+    const yrs = yt === "academic" ? academicYears : CALENDAR_YEARS;
     if (!yrs.includes(year)) setYear(yrs[yrs.length - 2] ?? yrs[0]);
     resetPage();
   }
@@ -438,7 +440,7 @@ export default function StudentsPage() {
               </button>
             ))}
           </div>
-          <YearPicker years={yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS} year={year} yearType={yearType}
+          <YearPicker years={yearType === "academic" ? academicYears : CALENDAR_YEARS} year={year} yearType={yearType}
             onSelect={y => { setYear(y); resetPage(); }} />
         </div>
 

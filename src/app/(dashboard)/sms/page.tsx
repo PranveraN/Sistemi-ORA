@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { formatDateTime } from "@/lib/utils";
 import { PERIOD_BUCKETS } from "@/lib/food-periods";
-import { ACADEMIC_YEARS, DEFAULT_ACADEMIC_YEAR } from "@/lib/academicYear";
+import { DEFAULT_ACADEMIC_YEAR } from "@/lib/academicYear";
+import { useAcademicYears } from "@/lib/useAcademicYears";
 import { Search, X, Loader2, AlertTriangle, ChevronRight, Send, FlaskConical, RotateCcw } from "lucide-react";
 import {
   type MessageType, type MessageStatus, MESSAGE_TYPES, statusesForType, statusLabel, STATUS_COLORS,
@@ -81,6 +82,7 @@ const readLs = (k: string) => { try { return localStorage.getItem(k) ?? ""; } ca
 const writeLs = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* s'ka rëndësi */ } };
 
 export default function SmsPage() {
+  const academicYears = useAcademicYears();
   const searchParams = useSearchParams();
   const familyPhoneParam = searchParams.get("familyPhone") || "";
   const studentsParam = searchParams.get("students") || "";   // nga faqja e Nxënësve
@@ -454,7 +456,7 @@ export default function SmsPage() {
                 {type !== "GENERAL" && (
                   <label className="text-xs text-slate-500">Viti<br />
                     <select value={year} onChange={e => setYear(Number(e.target.value))} className="form-input w-auto py-1.5 text-sm mt-1">
-                      {ACADEMIC_YEARS.map(y => <option key={y} value={y}>{y}/{y + 1}</option>)}
+                      {academicYears.map(y => <option key={y} value={y}>{y}/{y + 1}</option>)}
                     </select>
                   </label>
                 )}

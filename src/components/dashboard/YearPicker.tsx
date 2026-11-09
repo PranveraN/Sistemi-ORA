@@ -12,6 +12,8 @@ export default function YearPicker({ years, year, yearType, onSelect }: {
   years: readonly number[]; year: number; yearType: YearType; onSelect: (y: number) => void;
 }) {
   const [showMore, setShowMore] = useState(false);
+  // Viti i zgjedhur shfaqet gjithmonë, edhe nëse (ende) s'është te lista e regjistruar
+  if (!years.includes(year)) years = [...years, year].sort((a, b) => a - b);
   const recent = years.slice(-VISIBLE_YEARS_COUNT);
   const older = years.slice(0, -VISIBLE_YEARS_COUNT);
   const label = (y: number) => yearType === "academic" ? `${y}–${y + 1}` : String(y);

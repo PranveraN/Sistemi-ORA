@@ -9,7 +9,8 @@ import {
   MessageSquare, Ban, Undo2,
 } from "lucide-react";
 import { formatCurrency, formatDate, MONTHS } from "@/lib/utils";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, getDateRange, type YearType } from "@/lib/academicYear";
+import { CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, getDateRange, type YearType } from "@/lib/academicYear";
+import { useAcademicYears } from "@/lib/useAcademicYears";
 import * as XLSX from "xlsx";
 import FamilyReceiptPrintModal from "@/components/finance/FamilyReceiptPrintModal";
 import { askPrintBranding, applyPrintBranding } from "@/lib/printBranding";
@@ -357,6 +358,7 @@ function exportLibratReport(stats: Stats, periodLabel: string) {
 
 /* ════════════════════════════════════════════════════════ */
 export default function LibratPage() {
+  const academicYears = useAcademicYears();
   const [tab, setTab] = useState<"shitjet" | "produktet" | "raport" | "dorezim">("shitjet");
 
   /* ── Periudha (Vit Akademik / Kalendarik + Muaj + Vit) ── */
@@ -937,7 +939,7 @@ export default function LibratPage() {
               </select>
               <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="form-input w-28">
                 <option value={0}>Të gjitha</option>
-                {(yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS).map(y => (
+                {(yearType === "academic" ? academicYears : CALENDAR_YEARS).map(y => (
                   <option key={y} value={y}>{yearType === "academic" ? `${y}–${y + 1}` : y}</option>
                 ))}
               </select>

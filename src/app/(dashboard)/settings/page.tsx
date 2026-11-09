@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { DEFAULT_EVIDENCA_TEMPLATE } from "@/lib/evidencaConfig";
+import { invalidateAcademicYears } from "@/lib/useAcademicYears";
 
 /* ─── Types ───────────────────────────────────────────────── */
 interface SchoolInfo {
@@ -2117,6 +2118,10 @@ function SchoolYearsSection() {
   const [years, setYears] = useState<SchoolYearRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [newLabel, setNewLabel] = useState("");
+  const [newStart, setNewStart] = useState("");
+  const [newEnd, setNewEnd] = useState("");
+  const [editDates, setEditDates] = useState<{ id: number; start: string; end: string } | null>(null);
+  const [savingDates, setSavingDates] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addErr, setAddErr] = useState<string | null>(null);
   const [pricesForYear, setPricesForYear] = useState<number | null>(null);
@@ -2138,14 +2143,41 @@ function SchoolYearsSection() {
     setAdding(true); setAddErr(null);
     const r = await fetch("/api/school-years", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: newLabel.trim() }),
+      body: JSON.stringify({ label: newLabel.trim(), startDate: newStart || undefined, endDate: newEnd || undefined }),
     });
     const data = await r.json();
     setAdding(false);
     if (!r.ok) { setAddErr(data.error || "Gabim"); return; }
-    setNewLabel("");
+    setNewLabel(""); setNewStart(""); setNewEnd("");
+    invalidateAcademicYears();
     fetchYears();
   }
+
+  // Etiketa "2027-2028" → datat e propozuara 01.09.2027 – 31.08.2028 (ndryshohen lirisht)
+  function onLabelChange(v: string) {
+    setNewLabel(v);
+    const m = /^(\d{4})-(\d{4})$/.exec(v.trim());
+    if (m && +m[2] === +m[1] + 1) { setNewStart(`${m[1]}-09-01`); setNewEnd(`${m[2]}-08-31`); }
+  }
+
+  async function handleSaveDates() {
+    if (!editDates) return;
+    setSavingDates(true);
+    const r = await fetch(`/api/school-years/${editDates.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ startDate: editDates.start, endDate: editDates.end }),
+    });
+    setSavingDates(false);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || "Ruajtja dështoi."); return; }
+    setEditDates(null);
+    fetchYears();
+  }
+
+  const activeStart = (() => { const a = years.find(y => y.active); return a ? parseInt(a.label) : null; })();
+  const statusOf = (y: SchoolYearRow) => y.active ? null
+    : activeStart !== null && parseInt(y.label) < activeStart ? { t: "I kaluar", c: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300" }
+    : { t: "I ardhshëm", c: "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300" };
+  const dmy = (iso: string | null) => iso ? iso.slice(0, 10).split("-").reverse().join(".") : "—";
 
   async function openPrices(yearId: number) {
     if (pricesForYear === yearId) { setPricesForYear(null); return; }
@@ -2175,6 +2207,7 @@ function SchoolYearsSection() {
     if (!confirm(`Fshi vitin "${label}"?`)) return;
     const r = await fetch(`/api/school-years/${id}`, { method: "DELETE" });
     if (!r.ok) { const d = await r.json(); alert(d.error); return; }
+    invalidateAcademicYears();
     fetchYears();
   }
 
@@ -2203,13 +2236,20 @@ function SchoolYearsSection() {
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
           <Plus className="w-3.5 h-3.5" /> Shto Vit të Ri
         </p>
-        <div className="flex gap-2">
-          <input value={newLabel} onChange={e => setNewLabel(e.target.value)}
-            className="form-input flex-1" placeholder='p.sh. "2027-2028"' required />
+        <div className="flex flex-wrap gap-2">
+          <input value={newLabel} onChange={e => onLabelChange(e.target.value)}
+            className="form-input flex-1 min-w-[140px]" placeholder='p.sh. "2027-2028"' required />
+          <label className="flex items-center gap-1.5 text-xs text-slate-500">Nga
+            <input type="date" value={newStart} onChange={e => setNewStart(e.target.value)} className="form-input py-1.5 text-sm" />
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-slate-500">Deri
+            <input type="date" value={newEnd} onChange={e => setNewEnd(e.target.value)} className="form-input py-1.5 text-sm" />
+          </label>
           <button type="submit" disabled={adding} className="btn-primary flex-shrink-0 px-3">
             {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
           </button>
         </div>
+        <p className="text-[11px] text-slate-400 mt-2">Datat propozohen 01.09 – 31.08 dhe mund të ndryshohen. Vitet s&apos;mund të mbivendosen.</p>
         {addErr && <p className="text-xs text-red-500 mt-2">{addErr}</p>}
       </form>
 
@@ -2228,6 +2268,25 @@ function SchoolYearsSection() {
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                       <Star className="w-3 h-3" /> Aktiv
                     </span>
+                  )}
+                  {statusOf(y) && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusOf(y)!.c}`}>{statusOf(y)!.t}</span>
+                  )}
+                  {editDates?.id === y.id ? (
+                    <span className="flex items-center gap-1.5">
+                      <input type="date" value={editDates.start} onChange={e => setEditDates({ ...editDates, start: e.target.value })} className="form-input py-1 text-xs" />
+                      <span className="text-slate-400 text-xs">–</span>
+                      <input type="date" value={editDates.end} onChange={e => setEditDates({ ...editDates, end: e.target.value })} className="form-input py-1 text-xs" />
+                      <button onClick={handleSaveDates} disabled={savingDates} className="btn-primary text-xs px-2 py-1" title="Ruaj datat">
+                        {savingDates ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      </button>
+                      <button onClick={() => setEditDates(null)} className="btn-secondary text-xs px-2 py-1">Anulo</button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setEditDates({ id: y.id, start: y.startDate?.slice(0, 10) ?? "", end: y.endDate?.slice(0, 10) ?? "" })}
+                      className="text-xs text-slate-400 hover:text-primary-600 underline-offset-2 hover:underline" title="Ndrysho datat">
+                      {dmy(y.startDate)} – {dmy(y.endDate)}
+                    </button>
                   )}
                 </div>
                 <div className="flex items-center gap-2">

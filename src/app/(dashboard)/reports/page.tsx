@@ -9,7 +9,8 @@ import {
   ResponsiveContainer, Cell
 } from "recharts";
 import { Download, FileBarChart, AlertCircle, GraduationCap, Receipt, Layers } from "lucide-react";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
+import { CALENDAR_YEARS, type YearType } from "@/lib/academicYear";
+import { useAcademicYears } from "@/lib/useAcademicYears";
 
 const REPORT_TYPES = [
   { value: "monthly",  label: "Pagesat Mujore", icon: FileBarChart },
@@ -21,6 +22,7 @@ const REPORT_TYPES = [
 const COLORS = ["#2563eb", "#7c3aed", "#059669", "#d97706", "#dc2626", "#0891b2", "#c026d3", "#16a34a", "#ea580c", "#0d9488", "#9333ea", "#e11d48"];
 
 export default function ReportsPage() {
+  const academicYears = useAcademicYears();
   const [reportType, setReportType] = useState("monthly");
   const [yearType, setYearType]     = useState<YearType>("calendar");
   const [year, setYear]             = useState(new Date().getFullYear());
@@ -29,11 +31,11 @@ export default function ReportsPage() {
   const [loading, setLoading]       = useState(true);
   const [periodLabel, setPeriodLabel] = useState("");
 
-  const years = yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+  const years = yearType === "academic" ? academicYears : CALENDAR_YEARS;
 
   function switchYearType(yt: YearType) {
     setYearType(yt);
-    const yrs = yt === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+    const yrs = yt === "academic" ? academicYears : CALENDAR_YEARS;
     if (!yrs.includes(year)) setYear(yrs[yrs.length - 2] ?? yrs[0]);
   }
 

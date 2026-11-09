@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { currentSchoolYearStart } from "@/lib/academicYear";
+import { defaultSchoolYearDates, labelStartYear, parseDay, validateYearDates } from "@/lib/schoolYears";
 
 const LABEL_RE = /^\d{4}-\d{4}$/;
 
@@ -63,19 +65,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Formati i vitit duhet të jetë "YYYY-YYYY", p.sh. "2027-2028"' }, { status: 400 });
   }
 
+  // Datat: ato të dhëna, ose 01.09 – 31.08 nëse s'jepen; pa mbivendosje me vitet e tjera.
+  const startYear = labelStartYear(label);
+  if (startYear === null) {
+    return NextResponse.json({ error: 'Viti duhet të jetë dy vite radhazi, p.sh. "2027-2028"' }, { status: 400 });
+  }
+  const def = defaultSchoolYearDates(startYear);
+  const startDate = body.startDate ? parseDay(body.startDate) : def.startDate;
+  const endDate = body.endDate ? parseDay(body.endDate) : def.endDate;
+  if (!startDate || !endDate) return NextResponse.json({ error: "Data e pavlefshme." }, { status: 400 });
+  const others = await prisma.schoolYear.findMany({ where: { organizationId: orgId }, select: { id: true, label: true, startDate: true, endDate: true } });
+  const dateErr = validateYearDates({ label, startDate, endDate }, others);
+  if (dateErr) return NextResponse.json({ error: dateErr }, { status: 400 });
+
   try {
     const year = await prisma.schoolYear.create({
-      data: {
-        label,
-        startDate: body.startDate ? new Date(body.startDate) : null,
-        endDate: body.endDate ? new Date(body.endDate) : null,
-        active: false,
-        organizationId: orgId,
-      },
+      data: { label, startDate, endDate, active: false, organizationId: orgId },
     });
 
-    // Fillo çmimet e vitit të ri me vlerat aktuale — admini i redakton më pas.
-    const categories = await prisma.paymentCategory.findMany({ where: { organizationId: orgId } });
+    // Fillo çmimet e vitit të ri me vlerat aktuale — admini i redakton më pas. Vetëm për
+    // vitin aktual/të ardhshëm: çmimi i sotëm s'vlen për një vit të kaluar.
+    const categories = startYear >= currentSchoolYearStart()
+      ? await prisma.paymentCategory.findMany({ where: { organizationId: orgId } })
+      : [];
     if (categories.length) {
       await prisma.paymentCategoryPrice.createMany({
         data: categories.map(c => ({ categoryId: c.id, schoolYearId: year.id, defaultAmount: c.defaultAmount })),

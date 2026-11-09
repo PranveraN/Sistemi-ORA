@@ -17,7 +17,8 @@ import FinancialOverview from "@/components/dashboard/FinancialOverview";
 import YearPicker from "@/components/dashboard/YearPicker";
 import ShkollimiFinancialOverview from "@/components/dashboard/ShkollimiFinancialOverview";
 import CashBoxesTable from "@/components/dashboard/CashBoxesTable";
-import { ACADEMIC_YEARS, CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { CALENDAR_YEARS, DEFAULT_ACADEMIC_YEAR, type YearType } from "@/lib/academicYear";
+import { useAcademicYears } from "@/lib/useAcademicYears";
 import { useModuleAccess } from "@/lib/useModuleAccess";
 
 interface DashboardData {
@@ -64,6 +65,7 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const academicYears = useAcademicYears();
   const [yearType, setYearType] = useState<YearType>("academic");
   const [year, setYear] = useState(DEFAULT_ACADEMIC_YEAR);
   const [data, setData] = useState<DashboardData | null>(null);
@@ -76,11 +78,11 @@ export default function DashboardPage() {
   const [mainTab, setMainTab] = useState<"permbledhje" | "financat">("permbledhje");
   const { canAccess } = useModuleAccess();
 
-  const years = yearType === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+  const years = yearType === "academic" ? academicYears : CALENDAR_YEARS;
 
   function switchYearType(yt: YearType) {
     setYearType(yt);
-    const yrs = yt === "academic" ? ACADEMIC_YEARS : CALENDAR_YEARS;
+    const yrs = yt === "academic" ? academicYears : CALENDAR_YEARS;
     if (!yrs.includes(year)) setYear(yrs[yrs.length - 2] ?? yrs[0]);
   }
 

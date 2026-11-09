@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import YearPicker from "@/components/dashboard/YearPicker";
-import { ACADEMIC_YEARS } from "@/lib/academicYear";
+import { useAcademicYears } from "@/lib/useAcademicYears";
 import {
   Plus, X, Save, Settings2, CheckCircle, Loader2, LayoutGrid, Table2, GraduationCap,
   Users, AlertTriangle, UserX, ArrowRightLeft, History, Info,
@@ -33,6 +33,7 @@ interface Overview {
 const collator = new Intl.Collator("sq", { numeric: true, sensitivity: "base" });
 
 export default function ClassesPage() {
+  const academicYears = useAcademicYears();
   const sp = useSearchParams();
   const { data: session } = useSession();
   const role = (session?.user as { role?: string } | undefined)?.role;
@@ -158,7 +159,7 @@ export default function ClassesPage() {
 
         {/* ── 1. Koka ── */}
         <div className="flex flex-wrap items-center gap-3 justify-between">
-          <YearPicker years={ACADEMIC_YEARS} year={effectiveYear} yearType="academic" onSelect={y => { setYear(y); setFilter(""); }} />
+          <YearPicker years={academicYears} year={effectiveYear} yearType="academic" onSelect={y => { setYear(y); setFilter(""); }} />
           {!readOnlyRole && (
             <div className="flex flex-wrap gap-2">
               {canPromote && (
