@@ -30,7 +30,7 @@ const STATUS: Record<string, { t: string; c: string }> = {
   DYFISHT:        { t: "dyfisht", c: "text-rose-600" },
 };
 
-type Filter = "all" | "pa" | "HYRJE" | "DALJE" | `z${number}`;
+type Filter = "all" | "pa" | "dup" | "HYRJE" | "DALJE" | `z${number}`;
 
 /** Tabela e lëvizjeve: filtra, kërkim, zgjedhje e shumëfishtë, bartje te zëri, "ruaj si rregull". */
 export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
@@ -50,6 +50,7 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
     const t = q.trim().toLowerCase();
     return rows.filter(r => {
       if (filter === "pa" && (r.zerId !== null || r.statusi === "DYFISHT")) return false;
+      if (filter === "dup" && r.statusi !== "DYFISHT") return false;
       if (filter === "HYRJE" && !(r.kredi > 0)) return false;
       if (filter === "DALJE" && !(r.debi > 0)) return false;
       if (filter.startsWith("z") && r.zerId !== parseInt(filter.slice(1))) return false;
@@ -120,6 +121,7 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
         <select value={filter} onChange={e => setFilter(e.target.value as Filter)} className="form-input w-auto py-1.5 text-sm">
           <option value="all">Të gjitha ({rows.length})</option>
           <option value="pa">Të paklasifikuara ({rows.filter(r => r.zerId === null && r.statusi !== "DYFISHT").length})</option>
+          {rows.some(r => r.statusi === "DYFISHT") && <option value="dup">Dyfisht – tashmë të importuar ({rows.filter(r => r.statusi === "DYFISHT").length})</option>}
           <option value="HYRJE">Vetëm hyrjet</option>
           <option value="DALJE">Vetëm daljet</option>
           {zerat.filter(z => rows.some(r => r.zerId === z.id)).map(z => <option key={z.id} value={`z${z.id}`}>{z.emri} ({rows.filter(r => r.zerId === z.id).length})</option>)}

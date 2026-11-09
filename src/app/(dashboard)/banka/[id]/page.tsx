@@ -10,7 +10,8 @@ interface Ek {
   id: number; llogaria: string | null; periudhaNga: string | null; periudhaDeri: string | null; emriSkedarit: string | null;
   gjendjaFillestare: number | null; gjendjaPerfundimtare: number | null; totalDebi: number | null; totalKredi: number | null;
   nrDebi: number | null; nrKredi: number | null; statusi: string; faqetGati: number; faqetGjithsej: number; gabimi: string | null;
-  ngarkuarNga: string | null; importuarAt: string | null; importuarNga: string | null; nePunim: boolean; levizjet: Levizje[];
+  ngarkuarNga: string | null; importuarAt: string | null; importuarNga: string | null; nePunim: boolean; levizjet: Levizje[]; perseritur: number;
+  mbivendosjet: { id: number; periudhaNga: string | null; periudhaDeri: string | null; statusi: string; emriSkedarit: string | null; teNjejte: number }[];
 }
 
 export default function EkstraktPage() {
@@ -120,6 +121,20 @@ export default function EkstraktPage() {
                   {kontrolli && !ek.gabimi ? <><CheckCircle2 className="w-4 h-4" /> Përputhet</> : <><AlertTriangle className="w-4 h-4" /> S&apos;përputhet</>}
                 </p>
               </div>
+            </div>
+          )}
+          {(ek.mbivendosjet?.length > 0 || ek.perseritur > 0 || ek.levizjet.some(r => r.statusi === "DYFISHT")) && (
+            <div className="mt-3 rounded-lg p-3 bg-amber-50 dark:bg-amber-900/20 text-sm text-amber-800 dark:text-amber-200 space-y-1">
+              <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Mbivendosje datash me ekstrakte të tjera</p>
+              {ek.mbivendosjet?.map(o => (
+                <p key={o.id}>
+                  <a href={`/banka/${o.id}`} className="underline">Ekstrakti {dmy(o.periudhaNga)} – {dmy(o.periudhaDeri)}</a> ({STATUSI_EK[o.statusi]?.t ?? o.statusi}{o.emriSkedarit ? `, ${o.emriSkedarit}` : ""})
+                  {" "}mbulon edhe disa nga këto data — <b>{o.teNjejte}</b> rreshta janë të njëjtë.
+                  {o.statusi === "IMPORTUAR" ? " Ata s'importohen sërish (shënohen “dyfisht”)." : " Importo vetëm njërin: kur importohet i dyti, rreshtat e përbashkët shënohen “dyfisht” dhe s'futen."}
+                </p>
+              ))}
+              {ek.levizjet.some(r => r.statusi === "DYFISHT") && <p><b>{ek.levizjet.filter(r => r.statusi === "DYFISHT").length}</b> rreshta janë tashmë të importuar nga një ekstrakt tjetër — mbeten jashtë bilancit (filtri &quot;Dyfisht&quot;).</p>}
+              {ek.perseritur > 0 && <p><b>{ek.perseritur}</b> rreshta ishin në dy pjesë (PDF) njëherësh — u mbajtën vetëm një herë.</p>}
             </div>
           )}
           {ek.gabimi && (

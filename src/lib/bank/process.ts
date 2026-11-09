@@ -88,8 +88,10 @@ async function processEkstrakt(id: number): Promise<void> {
       parts.push(texts);
     }
     // Pjesët renditen sipas datës së tyre të parë (pavarësisht radhës së zgjedhjes)
-    const pages = parts.map(p => ({ p, d: firstDate(p) })).sort((a, b) => a.d.localeCompare(b.d)).flatMap(x => x.p);
-    const res = parseBktPages(pages);
+    const sorted = parts.map(p => ({ p, d: firstDate(p) })).sort((a, b) => a.d.localeCompare(b.d)).map(x => x.p);
+    const partStarts = sorted.map((_, i) => sorted.slice(0, i).reduce((n, p) => n + p.length, 0));
+    const pages = sorted.flat();
+    const res = parseBktPages(pages, partStarts);
     const rules = await loadRules(prisma, ek.organizationId);
     const syOf = await schoolYearResolver(ek.organizationId);
 
@@ -128,6 +130,7 @@ async function processEkstrakt(id: number): Promise<void> {
           totalDebi: sum("debi"), totalKredi: sum("kredi"),
           nrDebi: rows.filter(r => r.debi > 0).length, nrKredi: rows.filter(r => r.kredi > 0).length,
           faqetGati: pages.length, faqetGjithsej: pages.length,
+          perseritur: res.perseritur,
           statusi: res.gabimet.length ? "GABIM" : "DRAFT",
           gabimi: res.gabimet.length ? res.gabimet.slice(0, 30).join("\n") : null,
         },

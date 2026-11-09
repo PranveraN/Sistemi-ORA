@@ -2290,6 +2290,7 @@ model BankEkstrakt {
   statusi            String    @default("NE_PERPUNIM")
   faqetGati          Int       @default(0)
   faqetGjithsej      Int       @default(0)
+  perseritur         Int       @default(0) // rreshta të përsëritur mes pjesëve (PDF) — u mbajtën një herë
   gabimi             String?
   ngarkuarNga        String?
   importuarAt        DateTime?

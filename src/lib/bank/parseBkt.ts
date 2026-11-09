@@ -25,6 +25,7 @@ export interface BktResult {
   bankaDebi: { nr: number; shuma: number } | null;
   bankaKredi: { nr: number; shuma: number } | null;
   rows: BktRow[];
+  perseritur: number;       // rreshta të përsëritur mes pjesëve (u mbajtën një herë)
   gabimet: string[];        // bosh = gjithçka përputhet
 }
 
@@ -63,13 +64,16 @@ function palaDhePershkrimi(lloji: string, drejtimi: BktRow["drejtimi"], lines: s
   return { pala: pala.slice(0, 120), pershkrimi: pershkrimi.slice(0, 1000) };
 }
 
-export function parseBktPages(pages: string[]): BktResult {
-  const res: BktResult = { llogaria: null, periudhaNga: null, periudhaDeri: null, gjendjaFillestare: null, gjendjaPerfundimtare: null, bankaDebi: null, bankaKredi: null, rows: [], gabimet: [] };
+/** `partStarts` = indekset e faqeve ku fillon një PDF tjetër (rreshtat e një pjese s'i ngjiten asaj para). */
+export function parseBktPages(pages: string[], partStarts: number[] = []): BktResult {
+  const res: BktResult = { llogaria: null, periudhaNga: null, periudhaDeri: null, gjendjaFillestare: null, gjendjaPerfundimtare: null, bankaDebi: null, bankaKredi: null, rows: [], perseritur: 0, gabimet: [] };
   type Raw = Omit<BktRow, "drejtimi" | "pala" | "pershkrimi">;
   const raw: Raw[] = [];
   let cur: Raw | null = null;
 
+  let totLines = 0; // sa pjesë kishin totalet e veta (DEBIT(S))
   pages.forEach((text, pi) => {
+    if (partStarts.includes(pi)) cur = null;
     for (let line of text.split(/\r?\n/)) {
       line = fixDates(line);
       if (!res.llogaria) { const a = line.match(/AccountNo:\s*(\d{10,})/); if (a) res.llogaria = a[1]; }
@@ -87,6 +91,7 @@ export function parseBktPages(pages: string[]): BktResult {
         // Kur ekstrakti vjen në disa pjesë (PDF), secila pjesë ka totalet e veta — mblidhen
         const add = (a: { nr: number; shuma: number } | null) => ({ nr: (a?.nr ?? 0) + +tot[1], shuma: (a?.shuma ?? 0) + cents(tot[3]) });
         if (tot[2] === "DEBIT") res.bankaDebi = add(res.bankaDebi); else res.bankaKredi = add(res.bankaKredi);
+        if (tot[2] === "DEBIT") totLines++;
         continue;
       }
       const g = line.match(TX_RE);
@@ -107,16 +112,40 @@ export function parseBktPages(pages: string[]): BktResult {
     }
   });
 
+  // Pjesë që mbivendosen (p.sh. PDF-ja 1 deri 15.07, PDF-ja 2 nga 10.07): i njëjti rresht
+  // (data, referenca, lloji, shuma, gjendja pas tij) mbahet vetëm një herë.
+  const seen = new Map<string, Raw>();
+  const dups: { shuma: number; twin: Raw }[] = [];
+  const uniq: Raw[] = [];
+  for (const r of raw) {
+    const k = [r.data, r.referenca, r.lloji, r.shuma, r.gjendja].join("|");
+    const twin = seen.get(k);
+    if (twin) { dups.push({ shuma: r.shuma, twin }); continue; }
+    seen.set(k, r);
+    uniq.push({ ...r, nr: uniq.length + 1 });
+  }
+  res.perseritur = dups.length;
+
   // Zinxhiri i gjendjes: drejtimi i çdo rreshti + kontrolli
   let prev = res.gjendjaFillestare;
   if (prev === null) res.gabimet.push("Gjendja fillestare (OPENING BALANCE) s'u gjet.");
-  for (const r of raw) {
+  for (const r of uniq) {
     let drejtimi: BktRow["drejtimi"] = null;
     if (prev !== null && prev - r.shuma === r.gjendja) drejtimi = "DALJE";
     else if (prev !== null && prev + r.shuma === r.gjendja) drejtimi = "HYRJE";
     else res.gabimet.push(`Rreshti ${r.nr} (faqja ${r.faqja}, ${r.data}, ${(r.shuma / 100).toFixed(2)} €): gjendja s'përputhet — kontrollo leximin.`);
     prev = r.gjendja;
     res.rows.push({ ...r, drejtimi, ...palaDhePershkrimi(r.lloji, drejtimi, r.rreshtat) });
+  }
+
+  // Kur secila pjesë ka totalet e veta, shuma e tyre përmban dy herë rreshtat e përsëritur — hiqen.
+  // (Nëse totalet janë vetëm në pjesën e fundit, ato i numërojnë një herë — s'preken.)
+  const twinKey = new Map(uniq.map((u, i) => [[u.data, u.referenca, u.lloji, u.shuma, u.gjendja].join("|"), i]));
+  for (const d of totLines > 1 ? dups : []) {
+    const i = twinKey.get([d.twin.data, d.twin.referenca, d.twin.lloji, d.twin.shuma, d.twin.gjendja].join("|"));
+    const dir = i !== undefined ? res.rows[i].drejtimi : null;
+    if (dir === "DALJE" && res.bankaDebi) res.bankaDebi = { nr: res.bankaDebi.nr - 1, shuma: res.bankaDebi.shuma - d.shuma };
+    if (dir === "HYRJE" && res.bankaKredi) res.bankaKredi = { nr: res.bankaKredi.nr - 1, shuma: res.bankaKredi.shuma - d.shuma };
   }
 
   // Krahasimi me totalet e bankës

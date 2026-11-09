@@ -15,7 +15,20 @@ export async function GET(_: NextRequest, { params }: P) {
     where: { ekstraktId: id }, orderBy: { nr: "asc" },
     select: { id: true, nr: true, faqja: true, data: true, referenca: true, lloji: true, debi: true, kredi: true, gjendja: true, pala: true, pershkrimi: true, zerId: true, vitiShkollor: true, statusi: true, shenim: true },
   });
-  return NextResponse.json({ ...ek, nePunim: isProcessing(id), levizjet });
+  // Ekstraktet e tjera të së njëjtës llogari, periudha e të cilëve mbivendoset me këtë (sipas datave),
+  // dhe sa rreshta të përbashkët kanë (të njëjtat data, referenca, shuma, gjendje)
+  let mbivendosjet: { id: number; periudhaNga: Date | null; periudhaDeri: Date | null; statusi: string; emriSkedarit: string | null; teNjejte: number }[] = [];
+  if (ek.llogaria && ek.periudhaNga && ek.periudhaDeri) {
+    const others = await prisma.bankEkstrakt.findMany({
+      where: { organizationId: ctx.orgId, id: { not: id }, llogaria: ek.llogaria, periudhaNga: { lte: ek.periudhaDeri }, periudhaDeri: { gte: ek.periudhaNga } },
+      select: { id: true, periudhaNga: true, periudhaDeri: true, statusi: true, emriSkedarit: true }, orderBy: { periudhaNga: "asc" },
+    });
+    const keys = levizjet.length ? (await prisma.bankLevizje.findMany({ where: { ekstraktId: id }, select: { celesi: true } })).map(r => r.celesi) : [];
+    mbivendosjet = await Promise.all(others.map(async o => ({
+      ...o, teNjejte: keys.length ? await prisma.bankLevizje.count({ where: { ekstraktId: o.id, celesi: { in: keys } } }) : 0,
+    })));
+  }
+  return NextResponse.json({ ...ek, nePunim: isProcessing(id), levizjet, mbivendosjet });
 }
 
 export async function DELETE(_: NextRequest, { params }: P) {
