@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   const ctx = await bankCtx(); if (ctx instanceof NextResponse) return ctx;
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
-  if (!(file instanceof File)) return bad("Zgjidh skedarin PDF të ekstraktit.");
+  if (!(file instanceof File)) return bad(form ? "Zgjidh skedarin PDF të ekstraktit." : "Skedari s'mbërriti i plotë te serveri (mund të jetë shumë i madh) — provo sërish.");
   if (!/\.pdf$/i.test(file.name)) return bad("Pranohet vetëm PDF (ekstrakti i bankës).");
   if (file.size > MAX_BYTES) return bad("Skedari është shumë i madh (maks. 80 MB).");
   const data = Buffer.from(await file.arrayBuffer());
