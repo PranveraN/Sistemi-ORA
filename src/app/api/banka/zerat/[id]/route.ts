@@ -5,7 +5,11 @@ import { isZerLloji } from "@/lib/bank/rules";
 
 type P = { params: Promise<{ id: string }> };
 
-// PATCH { emri?, lloji?, aktiv? } · DELETE → vetëm nëse zëri s'ka asnjë rresht/rregull (përndryshe çaktivizohet)
+// PATCH { emri?, lloji?, aktiv? }
+// DELETE ?zhvendosTe=<zerId|null> → fshin zërin. Nëse ka rreshta/rregulla, duhet treguar ku
+// kalojnë: rreshtat te zëri tjetër (ose "Të paklasifikuara" me null), rregullat te zëri
+// tjetër (me null fshihen, që të mos e lënë qëllimisht pa zë atë që më parë klasifikonin).
+// Asnjë rresht banke s'fshihet.
 export async function PATCH(req: NextRequest, { params }: P) {
   const ctx = await bankCtx(); if (ctx instanceof NextResponse) return ctx;
   const id = intId((await params).id); if (!id) return bad("ID e pavlefshme");
@@ -24,12 +28,28 @@ export async function PATCH(req: NextRequest, { params }: P) {
   return NextResponse.json(await prisma.bankZer.update({ where: { id }, data }));
 }
 
-export async function DELETE(_: NextRequest, { params }: P) {
+export async function DELETE(req: NextRequest, { params }: P) {
   const ctx = await bankCtx(); if (ctx instanceof NextResponse) return ctx;
   const id = intId((await params).id); if (!id) return bad("ID e pavlefshme");
   const z = await prisma.bankZer.findFirst({ where: { id, organizationId: ctx.orgId }, include: { _count: { select: { levizjet: true, rregullat: true } } } });
   if (!z) return bad("Zëri s'u gjet", 404);
-  if (z._count.levizjet || z._count.rregullat) return bad("Zëri përdoret nga rreshta ose rregulla — çaktivizoje në vend që ta fshish.");
-  await prisma.bankZer.delete({ where: { id } });
-  return NextResponse.json({ ok: true });
+
+  const raw = new URL(req.url).searchParams.get("zhvendosTe");
+  const used = z._count.levizjet + z._count.rregullat > 0;
+  if (used && raw === null) return bad(`Zëri ka ${z._count.levizjet} rreshta dhe ${z._count.rregullat} rregulla — zgjidh ku të kalojnë.`);
+  let target: number | null = null;
+  if (raw !== null && raw !== "null") {
+    target = intId(raw);
+    if (!target || target === id) return bad("Zgjidh një zë tjetër.");
+    if (!(await prisma.bankZer.findFirst({ where: { id: target, organizationId: ctx.orgId, aktiv: true } }))) return bad("Zëri i ri s'u gjet ose është çaktivizuar.");
+  }
+
+  await prisma.$transaction([
+    prisma.bankLevizje.updateMany({ where: { zerId: id }, data: { zerId: target, statusi: target ? "KONFIRMUAR" : "PA_KLASIFIKUAR" } }),
+    target
+      ? prisma.bankRregull.updateMany({ where: { zerId: id }, data: { zerId: target } })
+      : prisma.bankRregull.deleteMany({ where: { zerId: id } }),
+    prisma.bankZer.delete({ where: { id } }),
+  ]);
+  return NextResponse.json({ ok: true, rreshta: z._count.levizjet, rregulla: z._count.rregullat });
 }

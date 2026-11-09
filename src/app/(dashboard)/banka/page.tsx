@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
-import { Upload, Loader2, FileText, CheckCircle2, AlertTriangle, Clock, Trash2, Plus } from "lucide-react";
+import { Upload, Loader2, FileText, CheckCircle2, AlertTriangle, Clock, Trash2, Plus, Pencil, Check, X } from "lucide-react";
 import { eur, dmy, LLOJET, STATUSI_EK, ProgressBar, readingProgress, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
 
 // Moduli "Banka": ngarkimi i ekstrakteve PDF (BKT), bilanci sipas zërave dhe
@@ -285,6 +285,14 @@ function ZeratTab() {
     load(); return true;
   }
 
+  const [edit, setEdit] = useState<{ id: number; emri: string } | null>(null);
+  const [del, setDel] = useState<{ z: Zer; target: string } | null>(null);
+  // Zë i papërdorur → fshihet me një konfirmim; i përdorur → dritarja "ku kalojnë rreshtat"
+  function askDelete(z: Zer) {
+    if (!z._count?.levizjet && !z._count?.rregullat) { if (confirm(`Fshi zërin "${z.emri}"?`)) send(`/api/banka/zerat/${z.id}`, "DELETE"); return; }
+    setDel({ z, target: "" });
+  }
+
   const zerName = (id: number | null) => id ? zerat.find(z => z.id === id)?.emri ?? "?" : "— Të paklasifikuara";
 
   return (
@@ -304,20 +312,53 @@ function ZeratTab() {
         <ul className="divide-y divide-slate-100 dark:divide-slate-700/50">
           {zerat.map(z => (
             <li key={z.id} className={`px-4 py-2.5 flex items-center gap-2 ${z.aktiv ? "" : "opacity-50"}`}>
-              <span className="flex-1 text-sm font-medium">{z.emri}</span>
+              {edit?.id === z.id ? (
+                <form className="flex-1 flex items-center gap-1" onSubmit={async e => { e.preventDefault(); if (edit.emri.trim() && await send(`/api/banka/zerat/${z.id}`, "PATCH", { emri: edit.emri.trim() })) setEdit(null); }}>
+                  <input autoFocus value={edit.emri} onChange={e => setEdit({ id: z.id, emri: e.target.value })} onKeyDown={e => e.key === "Escape" && setEdit(null)} className="form-input py-1 text-sm" maxLength={100} />
+                  <button className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="Ruaj"><Check className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => setEdit(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded" title="Anulo"><X className="w-4 h-4" /></button>
+                </form>
+              ) : (
+                <span className="flex-1 text-sm font-medium">{z.emri}</span>
+              )}
               <select value={z.lloji} onChange={e => send(`/api/banka/zerat/${z.id}`, "PATCH", { lloji: e.target.value })} className="form-input w-auto py-1 text-xs">
                 {Object.entries(LLOJET).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}
               </select>
               <span className="text-[11px] text-slate-400 w-16 text-right">{z._count?.levizjet ?? 0} rreshta</span>
-              <button onClick={() => { const n = prompt("Emri i ri i zërit:", z.emri); if (n?.trim()) send(`/api/banka/zerat/${z.id}`, "PATCH", { emri: n.trim() }); }} className="text-xs text-slate-400 hover:text-primary-600">Riemërto</button>
+              <button onClick={() => setEdit({ id: z.id, emri: z.emri })} className="p-1 text-slate-400 hover:text-primary-600" title="Ndrysho emrin"><Pencil className="w-3.5 h-3.5" /></button>
               <button onClick={() => send(`/api/banka/zerat/${z.id}`, "PATCH", { aktiv: !z.aktiv })} className="text-xs text-slate-400 hover:text-primary-600">{z.aktiv ? "Çaktivizo" : "Aktivizo"}</button>
-              {!z._count?.levizjet && !z._count?.rregullat && (
-                <button onClick={() => confirm(`Fshi zërin "${z.emri}"?`) && send(`/api/banka/zerat/${z.id}`, "DELETE")} className="p-1 text-slate-300 hover:text-rose-600" title="Fshi"><Trash2 className="w-3.5 h-3.5" /></button>
-              )}
+              <button onClick={() => askDelete(z)} className="p-1 text-slate-300 hover:text-rose-600" title="Fshi"><Trash2 className="w-3.5 h-3.5" /></button>
             </li>
           ))}
         </ul>
       </div>
+
+      {del && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDel(null)}>
+          <div className="card w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-slate-900 dark:text-white">Fshi zërin &quot;{del.z.emri}&quot;</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Ky zë ka <b>{del.z._count?.levizjet ?? 0} rreshta</b> dhe <b>{del.z._count?.rregullat ?? 0} rregulla</b>.
+              Rreshtat e bankës nuk fshihen — zgjidh ku kalojnë:
+            </p>
+            <select value={del.target} onChange={e => setDel({ ...del, target: e.target.value })} className="form-input">
+              <option value="">Zgjidh…</option>
+              <option value="null">— Të paklasifikuara (rregullat e tij fshihen)</option>
+              {Object.entries(LLOJET).map(([k, l]) => {
+                const zs = zerat.filter(x => x.aktiv && x.lloji === k && x.id !== del.z.id);
+                return zs.length ? <optgroup key={k} label={l.label}>{zs.map(x => <option key={x.id} value={x.id}>{x.emri}</option>)}</optgroup> : null;
+              })}
+            </select>
+            <p className="text-[11px] text-slate-400">Nëse ka rreshta nga ekstrakte të importuara, bilanci ndryshon sipas zërit ku kalojnë.</p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setDel(null)} className="btn-secondary">Anulo</button>
+              <button disabled={!del.target} onClick={async () => { if (await send(`/api/banka/zerat/${del.z.id}?zhvendosTe=${del.target}`, "DELETE")) setDel(null); }} className="btn-danger">
+                <Trash2 className="w-4 h-4" /> Fshi zërin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="card overflow-hidden">
         <div className="p-4 border-b border-slate-100 dark:border-slate-700">
