@@ -2223,3 +2223,117 @@ model LirimKujdestar {
   @@index([staffId])
 }
 
+
+// ── Banka: ekstraktet, lëvizjet, zërat dhe rregullat (09.11.2026) ─────────────
+// Bilanci merret nga banka: çdo rresht i ekstraktit ruhet siç është në bankë
+// (shumat në cent) dhe klasifikohet në një "zë". Lloji i zërit vendos si hyn në
+// bilanc. Asnjë tabelë ekzistuese s'preket.
+
+// Zëri i një lëvizjeje bankare. Lloji:
+//   E_HYRE   – e hyrë (+ në bilanc), p.sh. Shkollimi – prindi / TIMI / depozitë cash
+//   SHPENZIM – shpenzim (− në bilanc), p.sh. Paga, Qiraja, Rryma
+//   KTHIM    – kthim i një të hyre (zbritet nga të hyrat), p.sh. pagesa e prindit e kthyer
+//   FINANCIM – huazim, kthim huazimi, kalim mjetesh — jashtë bilancit, ndiqet veçmas
+//   JASHTE   – lëvizje jashtë bilancit, p.sh. tërheqje cash (cash-i shpenzohet me fatura)
+model BankZer {
+  id             Int       @id @default(autoincrement())
+  organizationId Int       @default(1)
+  emri           String
+  lloji          String    // E_HYRE | SHPENZIM | KTHIM | FINANCIM | JASHTE
+  renditja       Int       @default(0)
+  aktiv          Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  levizjet       BankLevizje[]
+  rregullat      BankRregull[]
+
+  @@unique([organizationId, emri])
+}
+
+// Rregull klasifikimi: nëse teksti i lëvizjes (lloji + pala + përshkrimi) përmban
+// `fjala` (pa dallim shkronjash), propozohet `zerId`. zerId = null → "Të paklasifikuara"
+// (rregull që e mban qëllimisht një rresht pa zë, p.sh. kalimet e mjeteve).
+// Kontrollohen sipas `prioriteti` (më i vogli i pari); fiton i pari që përputhet.
+model BankRregull {
+  id             Int       @id @default(autoincrement())
+  organizationId Int       @default(1)
+  fjala          String
+  drejtimi       String?   // HYRJE | DALJE | null = të dyja
+  zerId          Int?
+  zer            BankZer?  @relation(fields: [zerId], references: [id])
+  prioriteti     Int       @default(100)
+  aktiv          Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId, prioriteti])
+}
+
+// Një ekstrakt i ngarkuar (PDF). Statusi:
+//   NE_PERPUNIM – OCR po punon (progresi te faqetGati/faqetGjithsej)
+//   GABIM       – leximi dështoi ose gjendja s'përputhet (shih `gabimi`)
+//   DRAFT       – lexuar dhe i kontrolluar; pret klasifikimin dhe konfirmimin
+//   IMPORTUAR   – i konfirmuar; lëvizjet e tij hyjnë në bilanc
+model BankEkstrakt {
+  id                 Int       @id @default(autoincrement())
+  organizationId     Int       @default(1)
+  llogaria           String?   // p.sh. 1971897927031291
+  periudhaNga        DateTime?
+  periudhaDeri       DateTime?
+  gjendjaFillestare  Int?      // cent
+  gjendjaPerfundimtare Int?    // cent
+  totalDebi          Int?      // cent
+  totalKredi         Int?      // cent
+  nrDebi             Int?
+  nrKredi            Int?
+  emriSkedarit       String?
+  statusi            String    @default("NE_PERPUNIM")
+  faqetGati          Int       @default(0)
+  faqetGjithsej      Int       @default(0)
+  gabimi             String?
+  ngarkuarNga        String?
+  importuarAt        DateTime?
+  importuarNga       String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  levizjet           BankLevizje[]
+
+  @@index([organizationId, statusi])
+}
+
+// Një rresht i ekstraktit. Shumat në cent (njëra nga debi/kredi > 0).
+// `celesi` = llogaria|data|referenca|lloji|debi|kredi|gjendja — për kontrollin e dyfishimit
+// mes ekstrakteve (i njëjti rresht s'importohet dy herë).
+// Statusi: PROPOZUAR (zëri nga rregullat) | KONFIRMUAR (zgjedhur/kontrolluar nga njeriu) |
+//          PA_KLASIFIKUAR (pa zë) | DYFISHT (ekziston në një ekstrakt tjetër të importuar)
+model BankLevizje {
+  id             Int          @id @default(autoincrement())
+  organizationId Int          @default(1)
+  ekstraktId     Int
+  ekstrakt       BankEkstrakt @relation(fields: [ekstraktId], references: [id])
+  nr             Int          // radha në ekstrakt
+  faqja          Int?
+  llogaria       String?
+  data           DateTime
+  dataValuta     DateTime?
+  referenca      String?
+  lloji          String?      // lloji në bankë: TRANSFER, COMMISSION, CASH DEPOSIT...
+  debi           Int          @default(0)
+  kredi          Int          @default(0)
+  gjendja        Int?
+  pala           String?      // paguesi (hyrje) / përfituesi (dalje)
+  pershkrimi     String?
+  zerId          Int?
+  zer            BankZer?     @relation(fields: [zerId], references: [id])
+  vitiShkollor   Int?         // viti fillestar (2020 = 2020–21); sipas datës, i ndryshueshëm
+  statusi        String       @default("PA_KLASIFIKUAR")
+  shenim         String?
+  celesi         String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([ekstraktId, nr])
+  @@index([organizationId, celesi])
+  @@index([organizationId, data])
+  @@index([zerId])
+}

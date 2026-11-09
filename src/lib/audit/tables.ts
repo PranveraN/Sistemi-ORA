@@ -32,6 +32,10 @@ export const AUDITED_TABLES: AuditedTable[] = [
   { table: "TimiInvestInvoice" },
   { table: "PaymentCategory" },
   { table: "PaymentCategoryPrice" },
+  { table: "BankEkstrakt", columns: ["statusi", "importuarAt", "importuarNga"] },
+  { table: "BankLevizje", columns: ["zerId", "vitiShkollor", "statusi"] },
+  { table: "BankZer" },
+  { table: "BankRregull" },
   { table: "Student", columns: ["classId", "discountPct", "paymentPlan", "status", "enrollDate", "inactiveDate", "leaveReason", "organizationId"] },
 ];
 

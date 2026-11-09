@@ -43,6 +43,7 @@ const navSections = [
       { href: "/timi-invest", icon: Landmark,      label: "TIMI Invest", roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/dorezimet", icon: ArrowRightLeft,  label: "Dorëzimet",  roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/hyrat",     icon: TrendingUp,     label: "Të Hyrat",   roles: ["ADMIN", "FINANCE"] as Role[] },
+      { href: "/banka",     icon: Landmark,       label: "Banka",      roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/bilanci",    icon: Scale,          label: "Bilanci",      roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/investime",  icon: Building2,      label: "Investimet",   roles: ["ADMIN", "FINANCE"] as Role[] },
       { href: "/arka",       icon: Vault,          label: "Numërimi i Arkave", roles: ["ADMIN", "FINANCE"] as Role[] },

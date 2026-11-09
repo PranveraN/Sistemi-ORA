@@ -35,6 +35,7 @@ export const MODULES: ModuleDef[] = [
   { key: "shpenzime",       label: "Shpenzimet e Përgjithshme", pathPrefixes: ["/shpenzime"] },
   { key: "dorezimet",       label: "Dorëzimet",                 pathPrefixes: ["/dorezimet"] },
   { key: "hyrat",           label: "Të Hyra Tjera",              pathPrefixes: ["/hyrat"] },
+  { key: "banka",           label: "Banka (ekstraktet)",         pathPrefixes: ["/banka"] },
   { key: "sekretaria",      label: "Sekretaria",                pathPrefixes: ["/sekretaria"] },
   { key: "families",        label: "Familjet",                  pathPrefixes: ["/families"] },
   { key: "dokumentet",      label: "Dokumentet",                pathPrefixes: ["/dokumentet"] },
@@ -76,7 +77,7 @@ export type ConfigurableRole = (typeof CONFIGURABLE_ROLES)[number];
 const FINANCE_MODULES = [
   "shkollimi", "eshkollori", "ushqimi", "uniforma", "librat",
   "payments", "invoices", "faturat-rregullta", "kerkesat", "materiale",
-  "shpenzime", "dorezimet", "hyrat", "bilanci", "investime", "reports", "arka", "timi",
+  "shpenzime", "dorezimet", "hyrat", "banka", "bilanci", "investime", "reports", "arka", "timi",
 ];
 const SECRETARY_MODULES = ["sms", "sekretaria", "dokumentet", "lirimet"];
 const SHARED_MODULES = ["dashboard", "students", "families", "levizjet", "regjistrimet", "classes", "arkiva", "fletorja"];

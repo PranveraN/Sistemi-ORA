@@ -19,6 +19,7 @@
     "@anthropic-ai/sdk": "^0.131.0",
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "^5.22.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -35,6 +36,7 @@
     "recharts": "^2.13.3",
     "resend": "^6.25.0",
     "tailwind-merge": "^2.5.5",
+    "tesseract.js": "^7.0.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

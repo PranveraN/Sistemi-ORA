@@ -28,6 +28,7 @@ const API_MODULE_PREFIXES: { prefix: string; moduleKey: string | string[] }[] = 
   { prefix: "/api/sekretaria",         moduleKey: "sekretaria" },
   { prefix: "/api/eshkollori",         moduleKey: "eshkollori" },
   { prefix: "/api/lirimet",            moduleKey: "lirimet" },
+  { prefix: "/api/banka",              moduleKey: "banka" },
 ];
 
 // API-të financiare TË PËRBASHKËTA (s'mund të futen te API_MODULE_PREFIXES, sepse

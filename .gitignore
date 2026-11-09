@@ -41,3 +41,6 @@ src/app/api/shpenzime/debug/
 *.pem
 .vercel
 npm-debug.log*
+
+# Ekstraktet e bankës (PDF burimore, të dhëna personale)
+prisma/bank-pdf/
