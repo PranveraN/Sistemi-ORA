@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
-import { Loader2, CheckCircle2, AlertTriangle, RotateCcw, Wand2, Trash2, Undo2 } from "lucide-react";
+import { Loader2, CheckCircle2, AlertTriangle, RotateCcw, Wand2, Trash2, Undo2, Combine } from "lucide-react";
 import { eur, dmy, STATUSI_EK, ProgressBar, readingProgress, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
 
 interface Ek {
@@ -20,11 +20,15 @@ export default function EkstraktPage() {
   const [ek, setEk] = useState<Ek | null>(null);
   const [zerat, setZerat] = useState<Zer[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [others, setOthers] = useState<{ id: number; llogaria: string | null; periudhaNga: string | null; periudhaDeri: string | null; statusi: string }[]>([]);
+  const [meId, setMeId] = useState("");
 
   const load = useCallback(async () => {
     const [a, b] = await Promise.all([fetch(`/api/banka/ekstrakte/${id}`), fetch("/api/banka/zerat")]);
     if (a.ok) setEk(await a.json());
     if (b.ok) setZerat(await b.json());
+    const c = await fetch("/api/banka/ekstrakte");
+    if (c.ok) setOthers(await c.json());
   }, [id]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -43,6 +47,18 @@ export default function EkstraktPage() {
     if (veprimi === "IMPORTO" && d.dyfishta) alert(`${d.dyfishta} rreshta ishin të importuar më parë dhe u lanë jashtë (dyfisht).`);
     if (veprimi === "RIKLASIFIKO") alert(`${d.ndryshuar} rreshta morën zë të ri sipas rregullave.`);
     load();
+  }
+
+  async function bashko() {
+    const o = others.find(x => String(x.id) === meId);
+    if (!o || !confirm(`Ta bashkoj me ekstraktin ${dmy(o.periudhaNga)} – ${dmy(o.periudhaDeri)}? Bëhen një rresht; asnjë rresht banke s'humbet.`)) return;
+    setBusy("BASHKO");
+    const r = await fetch(`/api/banka/ekstrakte/${id}/veprim`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ veprimi: "BASHKO", meId: o.id }) });
+    const d = await r.json().catch(() => ({}));
+    setBusy(null);
+    if (!r.ok) { alert(d.error || "Bashkimi dështoi."); return; }
+    setMeId("");
+    if (String(d.id) !== String(id)) router.push(`/banka/${d.id}`); else load();
   }
 
   async function fshi() {
@@ -135,6 +151,20 @@ export default function EkstraktPage() {
               ))}
               {ek.levizjet.some(r => r.statusi === "DYFISHT") && <p><b>{ek.levizjet.filter(r => r.statusi === "DYFISHT").length}</b> rreshta janë tashmë të importuar nga një ekstrakt tjetër — mbeten jashtë bilancit (filtri &quot;Dyfisht&quot;).</p>}
               {ek.perseritur > 0 && <p><b>{ek.perseritur}</b> rreshta ishin në dy pjesë (PDF) njëherësh — u mbajtën vetëm një herë.</p>}
+            </div>
+          )}
+          {ek.statusi === "DRAFT" && others.some(o => o.id !== ek.id && o.statusi === "DRAFT" && o.llogaria === ek.llogaria) && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-slate-500">I njëjti vit është ngarkuar në dy herë? Bashkoje në një rresht:</span>
+              <select value={meId} onChange={e => setMeId(e.target.value)} className="form-input w-auto py-1.5 text-sm">
+                <option value="">Zgjidh ekstraktin…</option>
+                {others.filter(o => o.id !== ek.id && o.statusi === "DRAFT" && o.llogaria === ek.llogaria).map(o => (
+                  <option key={o.id} value={o.id}>{dmy(o.periudhaNga)} – {dmy(o.periudhaDeri)}</option>
+                ))}
+              </select>
+              <button onClick={bashko} disabled={!meId || !!busy} className="btn-secondary py-1.5 text-sm">
+                {busy === "BASHKO" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Combine className="w-4 h-4" />} Bashko
+              </button>
             </div>
           )}
           {ek.gabimi && (

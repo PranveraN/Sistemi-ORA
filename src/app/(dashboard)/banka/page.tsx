@@ -67,6 +67,14 @@ function EkstraktetTab() {
     return () => clearInterval(t);
   }, [rows, load]);
 
+  async function fshi(r: EkRow) {
+    const per = r.periudhaNga ? `${dmy(r.periudhaNga)} – ${dmy(r.periudhaDeri)}` : r.emriSkedarit;
+    if (!confirm(`Ta hedh poshtë ngarkimin "${per}"? Rreshtat e lexuar fshihen (s'janë importuar); PDF-në mund ta ngarkosh sërish.`)) return;
+    const res = await fetch(`/api/banka/ekstrakte/${r.id}`, { method: "DELETE" });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Fshirja dështoi."); return; }
+    load();
+  }
+
   // Dërgimi me XMLHttpRequest — që të shihet përqindja e ngarkimit të skedarit
   // Një ose disa PDF → NJË ekstrakt (p.sh. viti 2024 i ndarë në 2 skedarë)
   function upload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -142,7 +150,14 @@ function EkstraktetTab() {
                     <td className="table-cell text-right text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{eur(r.totalKredi)}</td>
                     <td className="table-cell text-right text-rose-700 dark:text-rose-400 whitespace-nowrap">{eur(r.totalDebi)}</td>
                     <td className="table-cell text-right">{r.rreshta || "—"}</td>
-                    <td className="table-cell text-right"><Link href={`/banka/${r.id}`} className="btn-secondary py-1.5 text-xs inline-flex">Hap</Link></td>
+                    <td className="table-cell text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1">
+                        <Link href={`/banka/${r.id}`} className="btn-secondary py-1.5 text-xs inline-flex">Hap</Link>
+                        {r.statusi !== "IMPORTUAR" && !r.nePunim && (
+                          <button onClick={() => fshi(r)} className="p-1.5 text-slate-300 hover:text-rose-600" title="Hidhe poshtë (fshi këtë ngarkim)"><Trash2 className="w-4 h-4" /></button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}

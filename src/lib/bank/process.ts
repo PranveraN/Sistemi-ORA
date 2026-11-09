@@ -163,3 +163,62 @@ export async function reclassify(ekstraktId: number, orgId: number): Promise<num
   }
   return changed;
 }
+
+/**
+ * Bashkon dy ekstrakte të paimportuara të së njëjtës llogari në NJË (p.sh. 2024 i ngarkuar në dy herë),
+ * pa i rilexuar PDF-të. Kërkon që pjesët të lidhen: gjendja përfundimtare e të parit = gjendja
+ * fillestare e të dytit (përndryshe mungon një periudhë). Rreshtat e njëjtë (mbivendosje) mbahen
+ * një herë. I dyti zhduket; PDF-të e tij bëhen pjesë të të parit. Kthen mesazhin e gabimit ose null.
+ */
+export async function mergeEkstrakte(orgId: number, aId: number, bId: number): Promise<string | null> {
+  if (aId === bId) return "Zgjidh një ekstrakt tjetër.";
+  const both = await prisma.bankEkstrakt.findMany({ where: { organizationId: orgId, id: { in: [aId, bId] } } });
+  if (both.length !== 2) return "Ekstrakti s'u gjet.";
+  if (both.some(e => e.statusi === "IMPORTUAR")) return "Njëri është i importuar — fillimisht ktheje në draft.";
+  if (both.some(e => e.statusi !== "DRAFT")) return "Bashkohen vetëm ekstrakte të lexuara pa gabime (Draft).";
+  if (both.some(e => isProcessing(e.id))) return "Njëri po lexohet ende.";
+  if (both[0].llogaria !== both[1].llogaria) return "Ekstraktet janë të llogarive të ndryshme.";
+  const [first, second] = [...both].sort((x, y) => (x.periudhaNga?.getTime() ?? 0) - (y.periudhaNga?.getTime() ?? 0));
+  const eur = (c: number | null) => ((c ?? 0) / 100).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " €";
+  const dmy = (d: Date | null) => d ? d.toISOString().slice(0, 10).split("-").reverse().join(".") : "—";
+
+  // Rreshtat e të dytit që janë edhe te i pari (mbivendosje datash) s'barten
+  const firstKeys = new Set((await prisma.bankLevizje.findMany({ where: { ekstraktId: first.id }, select: { celesi: true } })).map(r => r.celesi));
+  const secondRows = await prisma.bankLevizje.findMany({ where: { ekstraktId: second.id }, orderBy: { nr: "asc" } });
+  const dupIds = secondRows.filter(r => firstKeys.has(r.celesi)).map(r => r.id);
+  const overlap = dupIds.length > 0;
+  // Pa mbivendosje: pjesa e dytë duhet të fillojë aty ku mbaron e para
+  if (!overlap && first.gjendjaPerfundimtare !== second.gjendjaFillestare) {
+    return `Pjesët s'lidhen: ekstrakti ${dmy(first.periudhaNga)} – ${dmy(first.periudhaDeri)} mbaron me ${eur(first.gjendjaPerfundimtare)}, `
+      + `ndërsa ${dmy(second.periudhaNga)} – ${dmy(second.periudhaDeri)} fillon me ${eur(second.gjendjaFillestare)} `
+      + `(diferenca ${eur((second.gjendjaFillestare ?? 0) - (first.gjendjaPerfundimtare ?? 0))}). `
+      + `Mungon ekstrakti i periudhës mes tyre — ngarkoje edhe atë, pastaj bashkoji.`;
+  }
+
+  const firstCount = await prisma.bankLevizje.count({ where: { ekstraktId: first.id } });
+  const moved = secondRows.filter(r => !firstKeys.has(r.celesi));
+  const sumK = (await prisma.bankLevizje.aggregate({ where: { ekstraktId: first.id }, _sum: { kredi: true, debi: true } }))._sum;
+  const addK = moved.reduce((s, r) => s + r.kredi, 0), addD = moved.reduce((s, r) => s + r.debi, 0);
+
+  await prisma.$transaction(async tx => {
+    for (const [i, r] of moved.entries()) await tx.bankLevizje.update({ where: { id: r.id }, data: { ekstraktId: first.id, nr: firstCount + i + 1 } });
+    if (dupIds.length) await tx.bankLevizje.deleteMany({ where: { id: { in: dupIds } } });
+    await tx.bankEkstrakt.update({
+      where: { id: first.id },
+      data: {
+        periudhaDeri: second.periudhaDeri, gjendjaPerfundimtare: second.gjendjaPerfundimtare,
+        totalKredi: (sumK.kredi ?? 0) + addK, totalDebi: (sumK.debi ?? 0) + addD,
+        nrKredi: (first.nrKredi ?? 0) + moved.filter(r => r.kredi > 0).length, nrDebi: (first.nrDebi ?? 0) + moved.filter(r => r.debi > 0).length,
+        faqetGati: first.faqetGati + second.faqetGati, faqetGjithsej: first.faqetGjithsej + second.faqetGjithsej,
+        perseritur: first.perseritur + second.perseritur + dupIds.length,
+        emriSkedarit: [first.emriSkedarit, second.emriSkedarit].filter(Boolean).join(" + ").slice(0, 200),
+      },
+    });
+    await tx.bankEkstrakt.delete({ where: { id: second.id } });
+  }, { timeout: 120_000 });
+
+  // PDF-të e të dytit bëhen pjesë të të parit (dokumenti burimor ruhet)
+  let n = pdfPaths(first.id).length;
+  for (const p of pdfPaths(second.id)) fs.renameSync(p, partPath(first.id, ++n));
+  return null;
+}
