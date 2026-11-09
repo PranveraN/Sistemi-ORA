@@ -145,6 +145,15 @@ function EkstraktetTab() {
                         return <ProgressBar className="mt-2 min-w-[220px]" pct={p.pct} label={p.label} />;
                       })()}
                       {r.statusi === "NE_PERPUNIM" && !r.nePunim &&<div className="text-[11px] text-amber-600 mt-1">Leximi u ndërpre — hape dhe kliko "Lexo sërish".</div>}
+                      {r.statusi === "GABIM" && r.gabimi && (
+                        <div className="mt-1.5 max-w-[420px] rounded-md bg-rose-50 dark:bg-rose-900/20 px-2 py-1.5 text-[11px] leading-snug text-rose-700 dark:text-rose-300">
+                          <b>Pse s&apos;u ngarkua:</b>
+                          <ul className="list-disc pl-4 mt-0.5 space-y-0.5">
+                            {r.gabimi.split("\n").filter(Boolean).slice(0, 3).map((g, i) => <li key={i}>{g}</li>)}
+                          </ul>
+                          {r.gabimi.split("\n").filter(Boolean).length > 3 && <Link href={`/banka/${r.id}`} className="underline">+ {r.gabimi.split("\n").filter(Boolean).length - 3} të tjera — hape</Link>}
+                        </div>
+                      )}
                       {r.paKlasifikuara > 0 && r.statusi !== "NE_PERPUNIM" && <div className="text-[11px] text-amber-600 mt-1">{r.paKlasifikuara} pa zë</div>}
                     </td>
                     <td className="table-cell text-right text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{eur(r.totalKredi)}</td>
