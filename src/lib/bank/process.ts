@@ -94,10 +94,12 @@ async function processEkstrakt(id: number): Promise<void> {
       parts.push(texts);
     }
     // Pjesët renditen sipas datës së tyre të parë (pavarësisht radhës së zgjedhjes)
-    const sorted = parts.map(p => ({ p, d: firstDate(p) })).sort((a, b) => a.d.localeCompare(b.d)).map(x => x.p);
+    const names = (ek.emriSkedarit ?? "").split(" + ");
+    const order = parts.map((p, i) => ({ p, d: firstDate(p), name: names[i] ?? "" })).sort((a, b) => a.d.localeCompare(b.d));
+    const sorted = order.map(x => x.p);
     const partStarts = sorted.map((_, i) => sorted.slice(0, i).reduce((n, p) => n + p.length, 0));
     const pages = sorted.flat();
-    const res = parseBktPages(pages, partStarts);
+    const res = parseBktPages(pages, partStarts, order.map(x => x.name));
     const rules = await loadRules(prisma, ek.organizationId);
     const syOf = await schoolYearResolver(ek.organizationId);
 

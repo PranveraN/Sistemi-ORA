@@ -66,7 +66,9 @@ function palaDhePershkrimi(lloji: string, drejtimi: BktRow["drejtimi"], lines: s
 }
 
 /** `partStarts` = indekset e faqeve ku fillon një PDF tjetër (rreshtat e një pjese s'i ngjiten asaj para). */
-export function parseBktPages(pages: string[], partStarts: number[] = []): BktResult {
+export function parseBktPages(pages: string[], partStarts: number[] = [], partNames: string[] = []): BktResult {
+  // Emri i skedarit (PDF) të cilit i përket një faqe — për mesazhet e gabimeve
+  const partOf = (pi: number) => { let k = 0; partStarts.forEach((st, i) => { if (pi >= st) k = i; }); return partNames[k] ? `"${partNames[k]}"` : `pjesa ${k + 1}`; };
   const res: BktResult = { llogaria: null, periudhaNga: null, periudhaDeri: null, gjendjaFillestare: null, gjendjaPerfundimtare: null, bankaDebi: null, bankaKredi: null, rows: [], perseritur: 0, gabimet: [] };
   // `hapja` = gjendja fillestare e një pjese tjetër (PDF) që fillon me këtë rresht
   type Raw = Omit<BktRow, "drejtimi" | "pala" | "pershkrimi"> & { hapja?: number };
@@ -135,16 +137,16 @@ export function parseBktPages(pages: string[], partStarts: number[] = []): BktRe
   if (prev === null) res.gabimet.push("Gjendja fillestare (OPENING BALANCE) s'u gjet.");
   const eurS = (c: number) => (c / 100).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " €";
   const dmyS = (d: string) => d.split("-").reverse().join(".");
-  let lastDate: string | null = null;
+  let lastDate: string | null = null, lastPage = 0;
   for (const r of uniq) {
     // Fillon një pjesë tjetër: nëse gjendja e saj fillestare s'është aty ku mbaroi e mëparshmja, mungon një periudhë
     if (r.hapja !== undefined && prev !== null && r.hapja !== prev) {
-      res.gabimet.push(`Mungon periudha mes pjesëve: deri më ${lastDate ? dmyS(lastDate) : "—"} gjendja ishte ${eurS(prev)}, `
-        + `kurse pjesa tjetër fillon (rreshti i parë ${dmyS(r.data)}) me ${eurS(r.hapja)} — diferenca ${eurS(r.hapja - prev)}. `
-        + `Ngarko edhe ekstraktin e periudhës që mungon.`);
+      res.gabimet.push(`Mungon periudha mes pjesëve: ${partOf(lastPage)} mbaron më ${lastDate ? dmyS(lastDate) : "—"} me gjendje ${eurS(prev)}, `
+        + `kurse ${partOf(r.faqja - 1)} fillon më ${dmyS(r.data)} me ${eurS(r.hapja)} — diferenca ${eurS(r.hapja - prev)}. `
+        + `Ngarko edhe ekstraktin e bankës për datat mes tyre.`);
       prev = r.hapja;
     }
-    lastDate = r.data;
+    lastDate = r.data; lastPage = r.faqja - 1;
     let drejtimi: BktRow["drejtimi"] = null;
     if (prev !== null && prev - r.shuma === r.gjendja) drejtimi = "DALJE";
     else if (prev !== null && prev + r.shuma === r.gjendja) drejtimi = "HYRJE";
