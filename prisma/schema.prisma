@@ -2329,6 +2329,9 @@ model BankLevizje {
   zer            BankZer?     @relation(fields: [zerId], references: [id])
   vitiShkollor   Int?         // viti fillestar (2020 = 2020–21); sipas datës, i ndryshueshëm
   statusi        String       @default("PA_KLASIFIKUAR")
+  // Importi bëhet për rresht (viti kalendarik "i hapur"): vetëm rreshtat e importuar hyjnë në bilanc
+  importuar      Boolean      @default(false)
+  importuarAt    DateTime?
   shenim         String?
   celesi         String
   createdAt      DateTime     @default(now())
@@ -2337,5 +2340,6 @@ model BankLevizje {
   @@index([ekstraktId, nr])
   @@index([organizationId, celesi])
   @@index([organizationId, data])
+  @@index([organizationId, llogaria, data])
   @@index([zerId])
 }

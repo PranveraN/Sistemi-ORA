@@ -20,7 +20,7 @@ export const LLOJET: Record<string, { label: string; cls: string }> = {
 export interface Zer { id: number; emri: string; lloji: string; aktiv: boolean; _count?: { levizjet: number; rregullat: number } }
 export interface Levizje {
   id: number; nr: number; data: string; lloji: string | null; debi: number; kredi: number; gjendja?: number | null;
-  pala: string | null; pershkrimi: string | null; zerId: number | null; vitiShkollor: number | null; statusi: string; shenim: string | null;
+  pala: string | null; pershkrimi: string | null; zerId: number | null; vitiShkollor: number | null; statusi: string; shenim: string | null; importuar?: boolean;
 }
 
 const STATUS: Record<string, { t: string; c: string }> = {
@@ -30,7 +30,7 @@ const STATUS: Record<string, { t: string; c: string }> = {
   DYFISHT:        { t: "dyfisht", c: "text-rose-600" },
 };
 
-type Filter = "all" | "pa" | "dup" | "HYRJE" | "DALJE" | `z${number}`;
+type Filter = "all" | "pa" | "dup" | "pret" | "HYRJE" | "DALJE" | `z${number}`;
 
 /** Tabela e lëvizjeve: filtra, kërkim, zgjedhje e shumëfishtë, bartje te zëri, "ruaj si rregull". */
 export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
@@ -51,6 +51,7 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
     return rows.filter(r => {
       if (filter === "pa" && (r.zerId !== null || r.statusi === "DYFISHT")) return false;
       if (filter === "dup" && r.statusi !== "DYFISHT") return false;
+      if (filter === "pret" && (r.importuar !== false || r.statusi === "DYFISHT")) return false;
       if (filter === "HYRJE" && !(r.kredi > 0)) return false;
       if (filter === "DALJE" && !(r.debi > 0)) return false;
       if (filter.startsWith("z") && r.zerId !== parseInt(filter.slice(1))) return false;
@@ -121,7 +122,8 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
         <select value={filter} onChange={e => setFilter(e.target.value as Filter)} className="form-input w-auto py-1.5 text-sm">
           <option value="all">Të gjitha ({rows.length})</option>
           <option value="pa">Të paklasifikuara ({rows.filter(r => r.zerId === null && r.statusi !== "DYFISHT").length})</option>
-          {rows.some(r => r.statusi === "DYFISHT") && <option value="dup">Dyfisht – tashmë të importuar ({rows.filter(r => r.statusi === "DYFISHT").length})</option>}
+          {rows.some(r => r.statusi === "DYFISHT") && <option value="dup">Dyfisht – janë në një ngarkim tjetër ({rows.filter(r => r.statusi === "DYFISHT").length})</option>}
+          {rows.some(r => r.importuar === false && r.statusi !== "DYFISHT") && <option value="pret">Presin importin ({rows.filter(r => r.importuar === false && r.statusi !== "DYFISHT").length})</option>}
           <option value="HYRJE">Vetëm hyrjet</option>
           <option value="DALJE">Vetëm daljet</option>
           {zerat.filter(z => rows.some(r => r.zerId === z.id)).map(z => <option key={z.id} value={`z${z.id}`}>{z.emri} ({rows.filter(r => r.zerId === z.id).length})</option>)}
@@ -185,7 +187,7 @@ export function LevizjetTable({ rows, zerat, readOnly, onChanged }: {
                         <button onClick={() => saveRule(r)} title="Ruaj si rregull" className="p-1 text-slate-400 hover:text-primary-600"><Wand2 className="w-3.5 h-3.5" /></button>
                       </div>
                     )}
-                    {st && <div className={`text-[10px] mt-0.5 ${st.c}`}>{st.t}{z ? ` · ${LLOJET[z.lloji]?.label ?? ""}` : ""}</div>}
+                    {st && <div className={`text-[10px] mt-0.5 ${st.c}`}>{st.t}{z ? ` · ${LLOJET[z.lloji]?.label ?? ""}` : ""}{r.importuar ? " · ✓ në bilanc" : ""}</div>}
                   </td>
                   <td className="table-cell py-2 text-xs whitespace-nowrap">
                     {readOnly || r.statusi === "DYFISHT" ? (r.vitiShkollor ? `${r.vitiShkollor}–${r.vitiShkollor + 1}` : "—") : (
@@ -315,5 +317,27 @@ export function PjesetTable({ json, totals }: { json: string | null; totals?: { 
         );
       })()}
     </table>
+  );
+}
+
+export type MuajStatus = "ok" | "pret" | "mungon" | "pjeserisht" | "ardhshem" | "bosh";
+const MUAJT = ["Jan", "Shk", "Mar", "Pri", "Maj", "Qer", "Kor", "Gus", "Sht", "Tet", "Nën", "Dhj"];
+const MUAJ_STIL: Record<MuajStatus, { c: string; t: string }> = {
+  ok:         { c: "bg-emerald-500 text-white", t: "importuar" },
+  pret:       { c: "bg-amber-400 text-white", t: "i ngarkuar — pret importin" },
+  pjeserisht: { c: "bg-rose-200 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200", t: "mungojnë disa ditë" },
+  mungon:     { c: "bg-rose-500 text-white", t: "mungon" },
+  ardhshem:   { c: "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500", t: "ende s'ka ardhur" },
+  bosh:       { c: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300", t: "pa lëvizje në bankë" },
+};
+
+/** 12 kutiza për muajt e vitit: ✓ importuar · pret importin · mungon (plotësisht/pjesërisht) · i ardhshëm. */
+export function MuajtChips({ muajt }: { muajt: MuajStatus[] }) {
+  return (
+    <div className="flex gap-0.5">
+      {muajt.map((m, i) => (
+        <span key={i} title={`${MUAJT[i]}: ${MUAJ_STIL[m].t}`} className={`w-7 h-5 rounded text-[9px] font-semibold flex items-center justify-center ${MUAJ_STIL[m].c}`}>{MUAJT[i]}</span>
+      ))}
+    </div>
   );
 }

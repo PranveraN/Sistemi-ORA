@@ -58,14 +58,16 @@ const celesi = (llogaria: string | null, r: BktRow) =>
 
 // Një ekstrakt në një kohë (OCR-ja është e rëndë)
 let queue: Promise<void> = Promise.resolve();
-const running = new Set<number>();
+const running = new Set<number>();   // në radhë + ai që po lexohet
+let current: number | null = null;  // ai që po lexohet tani
 
 export function startProcessing(id: number): void {
   if (running.has(id)) return;
   running.add(id);
-  queue = queue.then(() => processEkstrakt(id)).catch(e => console.error("[banka] përpunimi dështoi", id, e)).finally(() => running.delete(id));
+  queue = queue.then(() => { current = id; return processEkstrakt(id); }).catch(e => console.error("[banka] përpunimi dështoi", id, e)).finally(() => { running.delete(id); if (current === id) current = null; });
 }
 export const isProcessing = (id: number) => running.has(id);
+export const isReadingNow = (id: number) => current === id;
 
 async function processEkstrakt(id: number): Promise<void> {
   const ek = await prisma.bankEkstrakt.findUnique({ where: { id } });
@@ -103,10 +105,10 @@ async function processEkstrakt(id: number): Promise<void> {
     const rules = await loadRules(prisma, ek.organizationId);
     const syOf = await schoolYearResolver(ek.organizationId);
 
-    // Kontrolli i dyfishimit me ekstraktet e IMPORTUARA
+    // Kontrolli i dyfishimit me çdo ngarkim tjetër të lexuar (viti "i hapur": i pari që erdhi mbetet)
     const keys = res.rows.map(r => celesi(res.llogaria, r));
     const existing = new Set((await prisma.bankLevizje.findMany({
-      where: { organizationId: ek.organizationId, celesi: { in: keys }, ekstrakt: { statusi: "IMPORTUAR" } }, select: { celesi: true },
+      where: { organizationId: ek.organizationId, celesi: { in: keys }, ekstraktId: { not: id }, statusi: { not: "DYFISHT" }, ekstrakt: { statusi: { in: ["DRAFT", "IMPORTUAR"] } } }, select: { celesi: true },
     })).map(x => x.celesi));
 
     const rows = res.rows.map((r, i) => {
@@ -140,7 +142,9 @@ async function processEkstrakt(id: number): Promise<void> {
           faqetGati: pages.length, faqetGjithsej: pages.length,
           perseritur: res.perseritur,
           pjeset: JSON.stringify({ pjeset: res.pjeset, mungojne: res.mungojne }),
-          statusi: res.gabimet.length ? "GABIM" : "DRAFT",
+          // Bllokon gjithçka përveç "Mungojnë datat" (periudhë e munguar mes pjesëve, që pamja e
+          // vitit e tregon si "Mungon" dhe plotësohet me një ngarkim tjetër)
+          statusi: res.gabimet.some(g => !g.startsWith("Mungojnë datat")) ? "GABIM" : "DRAFT",
           gabimi: res.gabimet.length ? res.gabimet.slice(0, 30).join("\n") : null,
         },
       });
@@ -177,7 +181,7 @@ export async function mergeEkstrakte(orgId: number, aId: number, bId: number): P
   if (aId === bId) return "Zgjidh një ekstrakt tjetër.";
   const both = await prisma.bankEkstrakt.findMany({ where: { organizationId: orgId, id: { in: [aId, bId] } } });
   if (both.length !== 2) return "Ekstrakti s'u gjet.";
-  if (both.some(e => e.statusi === "IMPORTUAR")) return "Njëri është i importuar — fillimisht ktheje në draft.";
+  if (await prisma.bankLevizje.count({ where: { ekstraktId: { in: [aId, bId] }, importuar: true } })) return "Njëri ka rreshta të importuar — fillimisht ktheji në draft.";
   if (both.some(e => e.statusi !== "DRAFT")) return "Bashkohen vetëm ekstrakte të lexuara pa gabime (Draft).";
   if (both.some(e => isProcessing(e.id))) return "Njëri po lexohet ende.";
   if (both[0].llogaria !== both[1].llogaria) return "Ekstraktet janë të llogarive të ndryshme.";
@@ -224,4 +228,18 @@ export async function mergeEkstrakte(orgId: number, aId: number, bId: number): P
   let n = pdfPaths(first.id).length;
   for (const p of pdfPaths(second.id)) fs.renameSync(p, partPath(first.id, ++n));
   return null;
+}
+
+/** Rizbaton rregullat te rreshtat e dhënë që s'janë zgjedhur me dorë (për pamjen e vitit). */
+export async function reclassifyIds(ids: number[], orgId: number): Promise<number> {
+  const rules = await loadRules(prisma, orgId);
+  const rows = await prisma.bankLevizje.findMany({ where: { id: { in: ids }, organizationId: orgId, statusi: { in: ["PROPOZUAR", "PA_KLASIFIKUAR"] } } });
+  let changed = 0;
+  for (const r of rows) {
+    const rule = matchRule({ lloji: r.lloji, pala: r.pala, pershkrimi: r.pershkrimi, drejtimi: r.kredi > 0 ? "HYRJE" : "DALJE" }, rules);
+    const zerId = rule?.zerId ?? null;
+    const statusi = zerId ? "PROPOZUAR" : "PA_KLASIFIKUAR";
+    if (zerId !== r.zerId || statusi !== r.statusi) { await prisma.bankLevizje.update({ where: { id: r.id }, data: { zerId, statusi } }); changed++; }
+  }
+  return changed;
 }

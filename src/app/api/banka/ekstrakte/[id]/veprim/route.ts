@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { bankCtx, bad, intId } from "@/lib/bank/api";
 import { pdfPaths, startProcessing, isProcessing, reclassify, mergeEkstrakte } from "@/lib/bank/process";
+import { importRows, unimportRows } from "@/lib/bank/years";
 
 // POST { veprimi }:
-//   IMPORTO        DRAFT → IMPORTUAR (lëvizjet hyjnë në bilanc; dyfishet mbeten jashtë)
-//   KTHE_NE_DRAFT  IMPORTUAR → DRAFT (dalin nga bilanci; asgjë s'fshihet)
+//   IMPORTO        importon rreshtat e këtij ngarkimi (hyjnë në bilanc; dyfishet mbeten jashtë)
+//   KTHE_NE_DRAFT  i nxjerr rreshtat e tij nga bilanci (asgjë s'fshihet)
 //   RIKLASIFIKO    rizbaton rregullat te rreshtat jo të zgjedhur me dorë
 //   RIFILLO        lexon PDF-në nga e para (pas një gabimi ose ndërprerjeje)
 //   BASHKO { meId } bashkon dy ekstrakte draft të së njëjtës llogari në një (pa rilexim)
@@ -26,23 +27,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   if (veprimi === "IMPORTO") {
-    if (ek.statusi !== "DRAFT") return bad(ek.statusi === "GABIM" ? "Ekstrakti ka gabime leximi — s'mund të importohet." : "Vetëm një ekstrakt në draft mund të importohet.");
-    // Kontrolli i dyfishimit në momentin e importit (mund të jetë importuar diçka ndërkohë)
-    const rows = await prisma.bankLevizje.findMany({ where: { ekstraktId: id }, select: { id: true, celesi: true } });
-    const dup = new Set((await prisma.bankLevizje.findMany({
-      where: { organizationId: ctx.orgId, celesi: { in: rows.map(r => r.celesi) }, ekstrakt: { statusi: "IMPORTUAR" }, ekstraktId: { not: id } }, select: { celesi: true },
-    })).map(r => r.celesi));
-    const dupIds = rows.filter(r => dup.has(r.celesi)).map(r => r.id);
-    await prisma.$transaction([
-      ...(dupIds.length ? [prisma.bankLevizje.updateMany({ where: { id: { in: dupIds } }, data: { statusi: "DYFISHT", zerId: null } })] : []),
-      prisma.bankEkstrakt.update({ where: { id }, data: { statusi: "IMPORTUAR", importuarAt: new Date(), importuarNga: ctx.userName } }),
-    ]);
-    return NextResponse.json({ ok: true, dyfishta: dupIds.length });
+    if (ek.statusi === "GABIM" || ek.statusi === "NE_PERPUNIM") return bad(ek.statusi === "GABIM" ? "Ekstrakti ka gabime leximi — s'mund të importohet." : "Ekstrakti po lexohet ende.");
+    const ids = (await prisma.bankLevizje.findMany({ where: { ekstraktId: id }, select: { id: true } })).map(r => r.id);
+    const r = await importRows(prisma, ctx.orgId, ids);
+    await prisma.bankEkstrakt.update({ where: { id }, data: { importuarNga: ctx.userName } });
+    return NextResponse.json({ ok: true, importuar: r.importuar, dyfishta: r.dyfisht });
   }
 
   if (veprimi === "KTHE_NE_DRAFT") {
-    if (ek.statusi !== "IMPORTUAR") return bad("Ekstrakti s'është i importuar.");
-    await prisma.bankEkstrakt.update({ where: { id }, data: { statusi: "DRAFT", importuarAt: null, importuarNga: null } });
+    const ids = (await prisma.bankLevizje.findMany({ where: { ekstraktId: id, importuar: true }, select: { id: true } })).map(r => r.id);
+    if (!ids.length) return bad("Ekstrakti s'ka rreshta të importuar.");
+    await unimportRows(prisma, ctx.orgId, ids);
     return NextResponse.json({ ok: true });
   }
 
@@ -51,7 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   if (veprimi === "RIFILLO") {
-    if (ek.statusi === "IMPORTUAR") return bad("Ekstrakti është i importuar — fillimisht ktheje në draft.");
+    if (await prisma.bankLevizje.count({ where: { ekstraktId: id, importuar: true } })) return bad("Ky ngarkim ka rreshta të importuar — fillimisht ktheji në draft.");
     if (isProcessing(id)) return bad("Ekstrakti po lexohet tashmë.");
     if (!pdfPaths(id).length) return bad("PDF-ja e këtij ekstrakti s'gjendet më — ngarkoje sërish.");
     startProcessing(id);

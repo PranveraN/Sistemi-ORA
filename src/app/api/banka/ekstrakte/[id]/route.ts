@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { bankCtx, bad, intId } from "@/lib/bank/api";
-import { deletePdfs, isProcessing } from "@/lib/bank/process";
+import { deletePdfs, isProcessing, reclassify } from "@/lib/bank/process";
 
 type P = { params: Promise<{ id: string }> };
 
@@ -36,12 +36,23 @@ export async function DELETE(_: NextRequest, { params }: P) {
   const id = intId((await params).id); if (!id) return bad("ID e pavlefshme");
   const ek = await prisma.bankEkstrakt.findFirst({ where: { id, organizationId: ctx.orgId } });
   if (!ek) return bad("Ekstrakti s'u gjet", 404);
-  if (ek.statusi === "IMPORTUAR") return bad("Ekstrakti është i importuar — fillimisht ktheje në draft.");
+  if (await prisma.bankLevizje.count({ where: { ekstraktId: id, importuar: true } })) return bad("Ky ngarkim ka rreshta të importuar — fillimisht ktheji në draft.");
   if (isProcessing(id)) return bad("Ekstrakti po lexohet — prit sa të mbarojë.");
+  // Rreshtat e këtij ngarkimi mund t'i kenë bërë "dyfisht" rreshtat e njëjtë në ngarkime të tjera —
+  // pas fshirjes ata kthehen normalë (ndryshe do të mbeteshin jashtë bilancit pa arsye)
+  const keys = (await prisma.bankLevizje.findMany({ where: { ekstraktId: id, statusi: { not: "DYFISHT" } }, select: { celesi: true } })).map(r => r.celesi);
   await prisma.$transaction([
     prisma.bankLevizje.deleteMany({ where: { ekstraktId: id } }),
     prisma.bankEkstrakt.delete({ where: { id } }),
   ]);
   deletePdfs(id);
-  return NextResponse.json({ ok: true });
+  const orphans = await prisma.bankLevizje.findMany({ where: { organizationId: ctx.orgId, statusi: "DYFISHT", celesi: { in: keys } }, orderBy: { id: "asc" }, select: { id: true, celesi: true, ekstraktId: true } });
+  const alive = new Set((await prisma.bankLevizje.findMany({ where: { organizationId: ctx.orgId, statusi: { not: "DYFISHT" }, celesi: { in: orphans.map(o => o.celesi) } }, select: { celesi: true } })).map(r => r.celesi));
+  const revive: number[] = [];
+  for (const o of orphans) if (!alive.has(o.celesi)) { alive.add(o.celesi); revive.push(o.id); }
+  if (revive.length) {
+    await prisma.bankLevizje.updateMany({ where: { id: { in: revive } }, data: { statusi: "PA_KLASIFIKUAR" } });
+    for (const ekId of new Set(orphans.filter(o => revive.includes(o.id)).map(o => o.ekstraktId))) await reclassify(ekId, ctx.orgId);
+  }
+  return NextResponse.json({ ok: true, rikthyer: revive.length });
 }

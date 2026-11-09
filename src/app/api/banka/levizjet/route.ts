@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { bankCtx, bad } from "@/lib/bank/api";
 
-// GET ?paKlasifikuara=1&vitiShkollor=2020 → lëvizjet e IMPORTUARA (p.sh. "Të paklasifikuara" në të gjitha ekstraktet)
+// GET ?paKlasifikuara=1&vitiShkollor=2020 → lëvizjet e importuara (p.sh. "Të paklasifikuara" në të gjitha ekstraktet)
 // PATCH { ids, zerId?, vitiShkollor?, shenim? } → bart rreshtat te një zë (null = Të paklasifikuara),
 //        ndryshon vitin shkollor ose shënimin. Rreshtat "DYFISHT" s'preken.
 export async function GET(req: NextRequest) {
   const ctx = await bankCtx(); if (ctx instanceof NextResponse) return ctx;
   const sp = new URL(req.url).searchParams;
-  const where: Record<string, unknown> = { organizationId: ctx.orgId, ekstrakt: { statusi: "IMPORTUAR" }, statusi: { not: "DYFISHT" } };
+  const where: Record<string, unknown> = { organizationId: ctx.orgId, importuar: true, statusi: { not: "DYFISHT" } };
   if (sp.get("paKlasifikuara") === "1") where.zerId = null;
   else if (sp.get("zerId")) where.zerId = parseInt(sp.get("zerId")!);
   if (sp.get("vitiShkollor")) where.vitiShkollor = parseInt(sp.get("vitiShkollor")!);

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import { Upload, Loader2, FileText, CheckCircle2, AlertTriangle, Clock, Trash2, Plus, Pencil, Check, X } from "lucide-react";
-import { eur, dmy, LLOJET, STATUSI_EK, ProgressBar, readingProgress, PjesetTable, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
+import { eur, dmy, LLOJET, ProgressBar, readingProgress, PjesetTable, MuajtChips, type MuajStatus, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
 
 // Moduli "Banka": ngarkimi i ekstrakteve PDF (BKT), bilanci sipas zërave dhe
 // menaxhimi i zërave/rregullave. Asgjë s'hyn në bilanc pa "Importo".
@@ -38,15 +38,20 @@ export default function BankaPage() {
   );
 }
 
-/* ── Ekstraktet ─────────────────────────────────────────────────────────── */
-interface EkRow {
-  id: number; llogaria: string | null; periudhaNga: string | null; periudhaDeri: string | null; emriSkedarit: string | null;
-  statusi: string; faqetGati: number; faqetGjithsej: number; totalDebi: number | null; totalKredi: number | null;
-  rreshta: number; paKlasifikuara: number; gabimi: string | null; createdAt: string; importuarAt: string | null; nePunim: boolean; pjeset: string | null;
+/* ── Ekstraktet: viti kalendarik "i hapur" ──────────────────────────────── */
+interface Pritje {
+  id: number; emriSkedarit: string | null; statusi: string; faqetGati: number; faqetGjithsej: number; gabimi: string | null; pjeset: string | null;
+  periudhaNga: string | null; periudhaDeri: string | null; totalKredi: number | null; totalDebi: number | null; nePunim: boolean; aktiv: boolean;
+}
+interface Vit {
+  llogaria: string; viti: number; nga: string | null; deri: string | null; fillestare: number | null; perfundimtare: number | null;
+  rreshta: number; kredi: number; debi: number; paZe: number; paImportuar: number; importuar: number;
+  muajt: MuajStatus[]; mungojne: { nga: string; deri: string; diferenca: number }[]; ngarkime: number;
 }
 
 function EkstraktetTab() {
-  const [rows, setRows] = useState<EkRow[]>([]);
+  const [vitet, setVitet] = useState<Vit[]>([]);
+  const [pritje, setPritje] = useState<Pritje[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
@@ -55,17 +60,17 @@ function EkstraktetTab() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    const r = await fetch("/api/banka/ekstrakte");
-    if (r.ok) setRows(await r.json());
+    const r = await fetch("/api/banka/vitet");
+    if (r.ok) { const d = await r.json(); setVitet(d.vitet); setPritje(d.pritje); }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
-  // Rifreskim çdo 2 sekonda kur ka ekstrakt që po lexohet
+  // Rifreskim çdo 2 sekonda kur ka ngarkim që po lexohet
   useEffect(() => {
-    if (!rows.some(r => r.statusi === "NE_PERPUNIM")) return;
+    if (!pritje.some(r => r.statusi === "NE_PERPUNIM")) return;
     const t = setInterval(load, 2000);
     return () => clearInterval(t);
-  }, [rows, load]);
+  }, [pritje, load]);
 
   async function rilexo(id: number) {
     const res = await fetch(`/api/banka/ekstrakte/${id}/veprim`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ veprimi: "RIFILLO" }) });
@@ -73,21 +78,19 @@ function EkstraktetTab() {
     load();
   }
 
-  async function fshi(r: EkRow) {
-    const per = r.periudhaNga ? `${dmy(r.periudhaNga)} – ${dmy(r.periudhaDeri)}` : r.emriSkedarit;
-    if (!confirm(`Ta hedh poshtë ngarkimin "${per}"? Rreshtat e lexuar fshihen (s'janë importuar); PDF-në mund ta ngarkosh sërish.`)) return;
+  async function fshi(r: Pritje) {
+    if (!confirm(`Ta hedh poshtë ngarkimin "${r.emriSkedarit}"? PDF-në mund ta ngarkosh sërish.`)) return;
     const res = await fetch(`/api/banka/ekstrakte/${r.id}`, { method: "DELETE" });
     if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Fshirja dështoi."); return; }
     load();
   }
 
-  // Dërgimi me XMLHttpRequest — që të shihet përqindja e ngarkimit të skedarit
-  // Një ose disa PDF → NJË ekstrakt (p.sh. viti 2024 i ndarë në 2 skedarë)
+  // Një ose disa PDF (muaj, vit, pjesë) → sistemi i vendos te viti përkatës sipas datave.
+  // Dërgimi me XMLHttpRequest — që të shihet përqindja.
   function upload(e: React.ChangeEvent<HTMLInputElement>) {
     const fs = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (!fs.length) return;
-    if (fs.length > 1 && !confirm(`Këta ${fs.length} skedarë janë pjesë të të NJËJTIT ekstrakt (p.sh. i njëjti vit i ndarë në pjesë)?\n\n${fs.map(f => "• " + f.name).join("\n")}\n\nBashkohen në një ekstrakt dhe renditen vetë sipas datave. Për ekstrakte të ndryshme (vite të tjera), ngarkoji veç e veç.`)) return;
     setUploading(true); setUploadPct(0); setUploadName(fs.length > 1 ? `${fs.length} skedarë` : fs[0].name); setErr(null);
     const fd = new FormData(); for (const f of fs) fd.append("file", f);
     const xhr = new XMLHttpRequest();
@@ -110,8 +113,9 @@ function EkstraktetTab() {
         <div className="flex-1 min-w-[260px]">
           <h2 className="font-bold text-slate-900 dark:text-white">Ngarko ekstraktin e bankës (PDF)</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Ekstrakti BKT "Llogaria e-Deklarata" (edhe i skanuar). Sistemi e lexon vetë, kontrollon çdo rresht me gjendjen e bankës
-            dhe propozon zërat. Nëse një ekstrakt është ndarë në disa PDF (p.sh. 2024 në 2 skedarë), zgjidhi të gjitha njëherësh — bëhen një ekstrakt. Asgjë s&apos;hyn në bilanc derisa ta kontrollosh dhe të klikosh <b>Importo</b>.
+            Ngarko çdo PDF të BKT-së — një muaj, disa muaj ose një vit (edhe të skanuar). Sistemi lexon datat, i vendos rreshtat
+            te <b>viti kalendarik</b> përkatës, s&apos;i fut dy herë rreshtat që ekzistojnë dhe tregon muajt që mungojnë.
+            Asgjë s&apos;hyn në bilanc derisa ta kontrollosh dhe të klikosh <b>Importo</b>.
           </p>
         </div>
         <input ref={fileRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={upload} />
@@ -125,65 +129,69 @@ function EkstraktetTab() {
         {err && <p className="w-full text-sm text-rose-600">{err}</p>}
       </div>
 
+      {pritje.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700 text-sm font-semibold text-slate-700 dark:text-slate-200">Ngarkime në pritje ose me gabim</div>
+          <ul className="divide-y divide-slate-100 dark:divide-slate-700/50">
+            {pritje.map(r => {
+              const tjera = (r.gabimi ?? "").split("\n").filter(g => g && !g.startsWith("Mungojnë datat"));
+              return (
+                <li key={r.id} className="px-4 py-3 flex flex-wrap items-start gap-3">
+                  <div className="flex-1 min-w-[260px]">
+                    <p className="text-sm font-medium flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-slate-400" />{r.emriSkedarit}</p>
+                    {r.statusi === "NE_PERPUNIM" && r.nePunim && !r.aktiv && <p className="text-xs text-slate-500 mt-1">Në radhë — lexohet pasi të mbarojë ngarkimi para tij.</p>}
+                    {r.statusi === "NE_PERPUNIM" && r.aktiv && (() => { const p = readingProgress(r.faqetGati, r.faqetGjithsej); return <ProgressBar className="mt-2 max-w-md" pct={p.pct} label={p.label} />; })()}
+                    {r.statusi === "NE_PERPUNIM" && !r.nePunim && <p className="text-xs text-amber-600 mt-1">Leximi u ndërpre — kliko &quot;Lexo sërish&quot;.</p>}
+                    {r.statusi === "GABIM" && (
+                      <div className="mt-1.5 max-w-2xl rounded-md bg-rose-50 dark:bg-rose-900/20 px-2 py-1.5 text-[11px] leading-snug text-rose-700 dark:text-rose-300">
+                        <b>Pse s&apos;u ngarkua:</b>
+                        {r.pjeset && <PjesetTable json={r.pjeset} totals={{ kredi: r.totalKredi, debi: r.totalDebi }} />}
+                        {tjera.length > 0 && <ul className="list-disc pl-4 mt-0.5 space-y-0.5">{tjera.slice(0, 4).map((g, i) => <li key={i}>{g}</li>)}</ul>}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {(r.statusi === "GABIM" || !r.nePunim) && <button onClick={() => rilexo(r.id)} className="btn-secondary py-1.5 text-xs">Lexo sërish</button>}
+                    <Link href={`/banka/${r.id}`} className="btn-secondary py-1.5 text-xs inline-flex">Hap</Link>
+                    {!r.nePunim && <button onClick={() => fshi(r)} className="p-1.5 text-slate-300 hover:text-rose-600" title="Hidhe poshtë"><Trash2 className="w-4 h-4" /></button>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       <div className="card overflow-hidden">
-        {loading ? <div className="py-10 text-center text-sm text-slate-400">Duke ngarkuar…</div> : !rows.length ? (
-          <div className="py-10 text-center text-sm text-slate-400">Asnjë ekstrakt ende.</div>
+        {loading ? <div className="py-10 text-center text-sm text-slate-400">Duke ngarkuar…</div> : !vitet.length ? (
+          <div className="py-10 text-center text-sm text-slate-400">Asnjë vit ende — ngarko një ekstrakt.</div>
         ) : (
           <table className="w-full">
             <thead className="bg-slate-50 dark:bg-slate-800/60"><tr>
-              <th className="table-header">Periudha</th><th className="table-header">Llogaria / skedari</th><th className="table-header">Statusi</th>
-              <th className="table-header text-right">Hyrje</th><th className="table-header text-right">Dalje</th><th className="table-header text-right">Rreshta</th><th className="table-header" />
+              <th className="table-header">Viti</th><th className="table-header">Muajt</th><th className="table-header text-right">Gjendja</th>
+              <th className="table-header text-right">Hyrje</th><th className="table-header text-right">Dalje</th><th className="table-header">Statusi</th><th className="table-header" />
             </tr></thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-              {rows.map(r => {
-                const st = STATUSI_EK[r.statusi] ?? { t: r.statusi, c: "" };
-                return (
-                  <tr key={r.id}>
-                    <td className="table-cell whitespace-nowrap">{r.periudhaNga ? `${dmy(r.periudhaNga)} – ${dmy(r.periudhaDeri)}` : "—"}</td>
-                    <td className="table-cell text-xs"><div className="font-medium">{r.llogaria ?? "…"}</div><div className="text-slate-400 flex items-center gap-1"><FileText className="w-3 h-3" />{r.emriSkedarit}</div></td>
-                    <td className="table-cell">
-                      <span className={`badge ${st.c}`}>
-                        {r.statusi === "NE_PERPUNIM" ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : r.statusi === "IMPORTUAR" ? <CheckCircle2 className="w-3 h-3 mr-1" /> : r.statusi === "GABIM" ? <AlertTriangle className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
-                        {st.t}{r.statusi === "NE_PERPUNIM" ? ` · faqja ${r.faqetGati}/${r.faqetGjithsej}` : ""}
-                      </span>
-                      {r.statusi === "NE_PERPUNIM" && r.nePunim && (() => {
-                        const p = readingProgress(r.faqetGati, r.faqetGjithsej);
-                        return <ProgressBar className="mt-2 min-w-[220px]" pct={p.pct} label={p.label} />;
-                      })()}
-                      {r.statusi === "NE_PERPUNIM" && !r.nePunim &&<div className="text-[11px] text-amber-600 mt-1">Leximi u ndërpre — hape dhe kliko "Lexo sërish".</div>}
-                      {r.statusi === "GABIM" && r.gabimi && (
-                        <div className="mt-1.5 max-w-[420px] rounded-md bg-rose-50 dark:bg-rose-900/20 px-2 py-1.5 text-[11px] leading-snug text-rose-700 dark:text-rose-300">
-                          <b>Pse s&apos;u ngarkua:</b>
-                          {r.pjeset && <PjesetTable json={r.pjeset} totals={{ kredi: r.totalKredi, debi: r.totalDebi, rreshta: r.rreshta }} />}
-                          {(() => {
-                            // Periudhat që mungojnë i tregon tabela; këtu vetëm gabimet e tjera
-                            const tjera = r.gabimi.split("\n").filter(g => g && !g.startsWith("Mungojnë datat"));
-                            return tjera.length > 0 && (
-                              <>
-                                <ul className="list-disc pl-4 mt-0.5 space-y-0.5">{tjera.slice(0, 3).map((g, i) => <li key={i}>{g}</li>)}</ul>
-                                {tjera.length > 3 && <Link href={`/banka/${r.id}`} className="underline">+ {tjera.length - 3} të tjera — hape</Link>}
-                              </>
-                            );
-                          })()}
-                          <button onClick={() => rilexo(r.id)} className="mt-1 underline">Lexo sërish</button>
-                        </div>
-                      )}
-                      {r.paKlasifikuara > 0 && r.statusi !== "NE_PERPUNIM" && <div className="text-[11px] text-amber-600 mt-1">{r.paKlasifikuara} pa zë</div>}
-                    </td>
-                    <td className="table-cell text-right text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{eur(r.totalKredi)}</td>
-                    <td className="table-cell text-right text-rose-700 dark:text-rose-400 whitespace-nowrap">{eur(r.totalDebi)}</td>
-                    <td className="table-cell text-right">{r.rreshta || "—"}</td>
-                    <td className="table-cell text-right whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1">
-                        <Link href={`/banka/${r.id}`} className="btn-secondary py-1.5 text-xs inline-flex">Hap</Link>
-                        {r.statusi !== "IMPORTUAR" && !r.nePunim && (
-                          <button onClick={() => fshi(r)} className="p-1.5 text-slate-300 hover:text-rose-600" title="Hidhe poshtë (fshi këtë ngarkim)"><Trash2 className="w-4 h-4" /></button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {vitet.map(v => (
+                <tr key={`${v.llogaria}-${v.viti}`}>
+                  <td className="table-cell">
+                    <div className="text-lg font-extrabold text-slate-900 dark:text-white">{v.viti}</div>
+                    <div className="text-[11px] text-slate-400">{v.llogaria} · {v.ngarkime} ngarkim{v.ngarkime === 1 ? "" : "e"}</div>
+                  </td>
+                  <td className="table-cell"><MuajtChips muajt={v.muajt} /><div className="text-[11px] text-slate-400 mt-1">{dmy(v.nga)} – {dmy(v.deri)}</div></td>
+                  <td className="table-cell text-right text-xs whitespace-nowrap">{eur(v.fillestare)}<div className="text-slate-400">→ {eur(v.perfundimtare)}</div></td>
+                  <td className="table-cell text-right text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{eur(v.kredi)}</td>
+                  <td className="table-cell text-right text-rose-700 dark:text-rose-400 whitespace-nowrap">{eur(v.debi)}</td>
+                  <td className="table-cell text-xs">
+                    {v.mungojne.map((m, i) => <div key={i} className="text-rose-600 font-semibold">⚠ Mungon {dmy(m.nga)} – {dmy(m.deri)}</div>)}
+                    {v.paImportuar > 0
+                      ? <div className="text-amber-600">{v.paImportuar} rreshta presin importin</div>
+                      : <div className="text-emerald-700 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Importuar</div>}
+                    {v.paZe > 0 && <div className="text-amber-600">{v.paZe} pa zë</div>}
+                  </td>
+                  <td className="table-cell text-right"><Link href={`/banka/viti/${v.llogaria}/${v.viti}`} className="btn-secondary py-1.5 text-xs inline-flex">Hap</Link></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         )}

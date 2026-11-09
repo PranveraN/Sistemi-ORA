@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { bankCtx } from "@/lib/bank/api";
 import { ZER_LLOJET, type ZerLloji } from "@/lib/bank/rules";
 
-// Bilanci nga banka: vetëm ekstraktet e IMPORTUARA, pa rreshtat e dyfishtë.
+// Bilanci nga banka: vetëm rreshtat e importuar, pa rreshtat e dyfishtë.
 // GET ?yearType=academic|calendar&viti=2020 (pa viti = të gjitha vitet)
 // Për çdo zë: neto = kreditë − debitë (e hyrë > 0, shpenzim < 0).
 // Rezultati = E_HYRE + KTHIM + SHPENZIM; FINANCIM dhe JASHTE tregohen veçmas.
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const yearType = sp.get("yearType") === "calendar" ? "calendar" : "academic";
   const viti = sp.get("viti") ? parseInt(sp.get("viti")!) : null;
 
-  const base = { organizationId: ctx.orgId, ekstrakt: { statusi: "IMPORTUAR" }, statusi: { not: "DYFISHT" } };
+  const base = { organizationId: ctx.orgId, importuar: true, statusi: { not: "DYFISHT" } };
   const where: Record<string, unknown> = { ...base };
   if (viti !== null) {
     if (yearType === "academic") where.vitiShkollor = viti;
