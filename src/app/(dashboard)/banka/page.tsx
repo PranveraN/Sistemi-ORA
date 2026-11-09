@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import { Upload, Loader2, FileText, CheckCircle2, AlertTriangle, Clock, Trash2, Plus, Pencil, Check, X } from "lucide-react";
-import { eur, dmy, LLOJET, STATUSI_EK, ProgressBar, readingProgress, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
+import { eur, dmy, LLOJET, STATUSI_EK, ProgressBar, readingProgress, PjesetTable, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
 
 // Moduli "Banka": ngarkimi i ekstrakteve PDF (BKT), bilanci sipas zërave dhe
 // menaxhimi i zërave/rregullave. Asgjë s'hyn në bilanc pa "Importo".
@@ -42,7 +42,7 @@ export default function BankaPage() {
 interface EkRow {
   id: number; llogaria: string | null; periudhaNga: string | null; periudhaDeri: string | null; emriSkedarit: string | null;
   statusi: string; faqetGati: number; faqetGjithsej: number; totalDebi: number | null; totalKredi: number | null;
-  rreshta: number; paKlasifikuara: number; gabimi: string | null; createdAt: string; importuarAt: string | null; nePunim: boolean;
+  rreshta: number; paKlasifikuara: number; gabimi: string | null; createdAt: string; importuarAt: string | null; nePunim: boolean; pjeset: string | null;
 }
 
 function EkstraktetTab() {
@@ -66,6 +66,12 @@ function EkstraktetTab() {
     const t = setInterval(load, 2000);
     return () => clearInterval(t);
   }, [rows, load]);
+
+  async function rilexo(id: number) {
+    const res = await fetch(`/api/banka/ekstrakte/${id}/veprim`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ veprimi: "RIFILLO" }) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Rileximi dështoi."); return; }
+    load();
+  }
 
   async function fshi(r: EkRow) {
     const per = r.periudhaNga ? `${dmy(r.periudhaNga)} – ${dmy(r.periudhaDeri)}` : r.emriSkedarit;
@@ -148,10 +154,18 @@ function EkstraktetTab() {
                       {r.statusi === "GABIM" && r.gabimi && (
                         <div className="mt-1.5 max-w-[420px] rounded-md bg-rose-50 dark:bg-rose-900/20 px-2 py-1.5 text-[11px] leading-snug text-rose-700 dark:text-rose-300">
                           <b>Pse s&apos;u ngarkua:</b>
-                          <ul className="list-disc pl-4 mt-0.5 space-y-0.5">
-                            {r.gabimi.split("\n").filter(Boolean).slice(0, 3).map((g, i) => <li key={i}>{g}</li>)}
-                          </ul>
-                          {r.gabimi.split("\n").filter(Boolean).length > 3 && <Link href={`/banka/${r.id}`} className="underline">+ {r.gabimi.split("\n").filter(Boolean).length - 3} të tjera — hape</Link>}
+                          {r.pjeset && <PjesetTable json={r.pjeset} />}
+                          {(() => {
+                            // Periudhat që mungojnë i tregon tabela; këtu vetëm gabimet e tjera
+                            const tjera = r.gabimi.split("\n").filter(g => g && !g.startsWith("Mungojnë datat"));
+                            return tjera.length > 0 && (
+                              <>
+                                <ul className="list-disc pl-4 mt-0.5 space-y-0.5">{tjera.slice(0, 3).map((g, i) => <li key={i}>{g}</li>)}</ul>
+                                {tjera.length > 3 && <Link href={`/banka/${r.id}`} className="underline">+ {tjera.length - 3} të tjera — hape</Link>}
+                              </>
+                            );
+                          })()}
+                          <button onClick={() => rilexo(r.id)} className="mt-1 underline">Lexo sërish</button>
                         </div>
                       )}
                       {r.paKlasifikuara > 0 && r.statusi !== "NE_PERPUNIM" && <div className="text-[11px] text-amber-600 mt-1">{r.paKlasifikuara} pa zë</div>}

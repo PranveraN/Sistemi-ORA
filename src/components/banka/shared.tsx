@@ -260,3 +260,37 @@ export function readingProgress(faqetGati: number, faqetGjithsej: number): { pct
   if (faqetGati >= faqetGjithsej) return { pct: 99, label: "Po kontrollohen dhe ruhen rreshtat…" };
   return { pct: (faqetGati / faqetGjithsej) * 97, label: `Po lexohet faqja ${faqetGati} nga ${faqetGjithsej}` };
 }
+
+/** Tabela e pjesëve (PDF) të një ekstrakti me periudhën e secilës dhe datat që mungojnë mes tyre. */
+export function PjesetTable({ json }: { json: string | null }) {
+  let d: { pjeset: { emri: string; nga: string | null; deri: string | null; fillestare: number | null; perfundimtare: number | null }[];
+    mungojne: { nga: string; deri: string; diferenca: number; mes: [string, string] }[] } | null = null;
+  try { d = json ? JSON.parse(json) : null; } catch { d = null; }
+  if (!d?.pjeset?.length) return null;
+  const rows: ({ k: "p"; i: number } | { k: "m"; i: number })[] = [];
+  d.pjeset.forEach((p, i) => {
+    rows.push({ k: "p", i });
+    d!.mungojne.forEach((m, j) => { if (m.mes[0] === p.emri) rows.push({ k: "m", i: j }); });
+  });
+  return (
+    <table className="w-full text-[11px] mt-1">
+      <thead><tr className="text-left text-slate-500"><th className="pr-3 font-semibold">Skedari</th><th className="pr-3 font-semibold">Periudha që mbulon</th><th className="pr-3 font-semibold text-right">Fillon me</th><th className="font-semibold text-right">Mbaron me</th></tr></thead>
+      <tbody>
+        {rows.map((r, n) => r.k === "p" ? (
+          <tr key={n} className="text-slate-700 dark:text-slate-200">
+            <td className="pr-3 py-0.5 font-semibold">{d!.pjeset[r.i].emri}</td>
+            <td className="pr-3 py-0.5 whitespace-nowrap">{dmy(d!.pjeset[r.i].nga)} – {dmy(d!.pjeset[r.i].deri)}</td>
+            <td className="pr-3 py-0.5 text-right whitespace-nowrap">{eur(d!.pjeset[r.i].fillestare)}</td>
+            <td className="py-0.5 text-right whitespace-nowrap">{eur(d!.pjeset[r.i].perfundimtare)}</td>
+          </tr>
+        ) : (
+          <tr key={n} className="bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 font-semibold">
+            <td className="pr-3 py-0.5">⚠ Mungon</td>
+            <td className="pr-3 py-0.5 whitespace-nowrap">{dmy(d!.mungojne[r.i].nga)} – {dmy(d!.mungojne[r.i].deri)}</td>
+            <td colSpan={2} className="py-0.5 text-right whitespace-nowrap">diferenca {eur(d!.mungojne[r.i].diferenca)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}

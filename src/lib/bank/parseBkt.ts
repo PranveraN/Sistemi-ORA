@@ -26,8 +26,14 @@ export interface BktResult {
   bankaKredi: { nr: number; shuma: number } | null;
   rows: BktRow[];
   perseritur: number;       // rreshta të përsëritur mes pjesëve (u mbajtën një herë)
+  pjeset: BktPjese[];       // çdo PDF me periudhën dhe gjendjet e veta (sipas radhës së datave)
+  mungojne: BktMungese[];   // periudhat që mungojnë mes pjesëve
   gabimet: string[];        // bosh = gjithçka përputhet
 }
+export interface BktPjese { emri: string; nga: string | null; deri: string | null; fillestare: number | null; perfundimtare: number | null }
+export interface BktMungese { nga: string; deri: string; diferenca: number; mes: [string, string] }
+
+const shiftDay = (iso: string, d: number) => { const t = new Date(`${iso}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + d); return t.toISOString().slice(0, 10); };
 
 const MON: Record<string, number> = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
 const cents = (s: string) => Math.round(parseFloat(s.replace(/,/g, "")) * 100);
@@ -68,8 +74,11 @@ function palaDhePershkrimi(lloji: string, drejtimi: BktRow["drejtimi"], lines: s
 /** `partStarts` = indekset e faqeve ku fillon një PDF tjetër (rreshtat e një pjese s'i ngjiten asaj para). */
 export function parseBktPages(pages: string[], partStarts: number[] = [], partNames: string[] = []): BktResult {
   // Emri i skedarit (PDF) të cilit i përket një faqe — për mesazhet e gabimeve
-  const partOf = (pi: number) => { let k = 0; partStarts.forEach((st, i) => { if (pi >= st) k = i; }); return partNames[k] ? `"${partNames[k]}"` : `pjesa ${k + 1}`; };
-  const res: BktResult = { llogaria: null, periudhaNga: null, periudhaDeri: null, gjendjaFillestare: null, gjendjaPerfundimtare: null, bankaDebi: null, bankaKredi: null, rows: [], perseritur: 0, gabimet: [] };
+  const partIdx = (pi: number) => { let k = 0; partStarts.forEach((st, i) => { if (pi >= st) k = i; }); return k; };
+  const nameOf = (k: number) => partNames[k] || `Pjesa ${k + 1}`;
+  const nParts = Math.max(1, partStarts.length);
+  const pjeset: BktPjese[] = Array.from({ length: nParts }, (_, k) => ({ emri: nameOf(k), nga: null, deri: null, fillestare: null, perfundimtare: null }));
+  const res: BktResult = { llogaria: null, periudhaNga: null, periudhaDeri: null, gjendjaFillestare: null, gjendjaPerfundimtare: null, bankaDebi: null, bankaKredi: null, rows: [], perseritur: 0, pjeset, mungojne: [], gabimet: [] };
   // `hapja` = gjendja fillestare e një pjese tjetër (PDF) që fillon me këtë rresht
   type Raw = Omit<BktRow, "drejtimi" | "pala" | "pershkrimi"> & { hapja?: number };
   let pendingOpening: number | undefined;
@@ -85,12 +94,14 @@ export function parseBktPages(pages: string[], partStarts: number[] = [], partNa
       const per = line.match(/FROM\s*\(NGA DATA\):\s*(\S+)\s+TO\s*\(NE DATEN\):\s*(\S+)/);
       if (per) {
         const nga = isoDate(per[1]), deri = isoDate(per[2]);
+        const pj = pjeset[partIdx(pi)];
+        if (pj && !pj.nga) { pj.nga = nga; pj.deri = deri; }
         if (nga && (!res.periudhaNga || nga < res.periudhaNga)) res.periudhaNga = nga;
         if (deri && (!res.periudhaDeri || deri > res.periudhaDeri)) res.periudhaDeri = deri;
         continue;
       }
-      if (/OPENING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v) { if (res.gjendjaFillestare === null) res.gjendjaFillestare = cents(v[1]); else pendingOpening = cents(v[1]); } cur = null; continue; }
-      if (/CLOSING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v) res.gjendjaPerfundimtare = cents(v[1]); cur = null; continue; }
+      if (/OPENING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v) { const pj = pjeset[partIdx(pi)]; if (pj && pj.fillestare === null) pj.fillestare = cents(v[1]); if (res.gjendjaFillestare === null) res.gjendjaFillestare = cents(v[1]); else pendingOpening = cents(v[1]); } cur = null; continue; }
+      if (/CLOSING BALANCE/.test(line)) { const v = line.match(/([\d,]+\.\d{2})\s*$/); if (v) { res.gjendjaPerfundimtare = cents(v[1]); const pj = pjeset[partIdx(pi)]; if (pj) pj.perfundimtare = cents(v[1]); } cur = null; continue; }
       const tot = line.match(/^\s*(\d+)\s+(DEBIT|CREDIT)\(S\)\s+([\d,]+\.\d{2})/);
       if (tot) {
         // Kur ekstrakti vjen në disa pjesë (PDF), secila pjesë ka totalet e veta — mblidhen
@@ -141,9 +152,13 @@ export function parseBktPages(pages: string[], partStarts: number[] = [], partNa
   for (const r of uniq) {
     // Fillon një pjesë tjetër: nëse gjendja e saj fillestare s'është aty ku mbaroi e mëparshmja, mungon një periudhë
     if (r.hapja !== undefined && prev !== null && r.hapja !== prev) {
-      res.gabimet.push(`Mungon periudha mes pjesëve: ${partOf(lastPage)} mbaron më ${lastDate ? dmyS(lastDate) : "—"} me gjendje ${eurS(prev)}, `
-        + `kurse ${partOf(r.faqja - 1)} fillon më ${dmyS(r.data)} me ${eurS(r.hapja)} — diferenca ${eurS(r.hapja - prev)}. `
-        + `Ngarko edhe ekstraktin e bankës për datat mes tyre.`);
+      // Datat që mungojnë: nga dita pas mbarimit të pjesës së mëparshme deri një ditë para fillimit të kësaj
+      const a = pjeset[partIdx(lastPage)], b = pjeset[partIdx(r.faqja - 1)];
+      let nga = shiftDay(a.deri ?? lastDate ?? r.data, 1), deri = shiftDay(b.nga ?? r.data, -1);
+      if (nga > deri) { nga = lastDate ?? r.data; deri = r.data; }
+      res.mungojne.push({ nga, deri, diferenca: r.hapja - prev, mes: [a.emri, b.emri] });
+      res.gabimet.push(`Mungojnë datat ${dmyS(nga)} – ${dmyS(deri)}: "${a.emri}" mbaron me ${eurS(prev)}, "${b.emri}" fillon me ${eurS(r.hapja)} `
+        + `(diferenca ${eurS(r.hapja - prev)}). Ngarko ekstraktin e bankës për këto data.`);
       prev = r.hapja;
     }
     lastDate = r.data; lastPage = r.faqja - 1;

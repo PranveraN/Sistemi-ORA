@@ -4,13 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import { Loader2, CheckCircle2, AlertTriangle, RotateCcw, Wand2, Trash2, Undo2, Combine } from "lucide-react";
-import { eur, dmy, STATUSI_EK, ProgressBar, readingProgress, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
+import { eur, dmy, STATUSI_EK, ProgressBar, readingProgress, PjesetTable, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
 
 interface Ek {
   id: number; llogaria: string | null; periudhaNga: string | null; periudhaDeri: string | null; emriSkedarit: string | null;
   gjendjaFillestare: number | null; gjendjaPerfundimtare: number | null; totalDebi: number | null; totalKredi: number | null;
   nrDebi: number | null; nrKredi: number | null; statusi: string; faqetGati: number; faqetGjithsej: number; gabimi: string | null;
-  ngarkuarNga: string | null; importuarAt: string | null; importuarNga: string | null; nePunim: boolean; levizjet: Levizje[]; perseritur: number;
+  ngarkuarNga: string | null; importuarAt: string | null; importuarNga: string | null; nePunim: boolean; levizjet: Levizje[]; perseritur: number; pjeset: string | null;
   mbivendosjet: { id: number; periudhaNga: string | null; periudhaDeri: string | null; statusi: string; emriSkedarit: string | null; teNjejte: number }[];
 }
 
@@ -165,6 +165,12 @@ export default function EkstraktPage() {
               <button onClick={bashko} disabled={!meId || !!busy} className="btn-secondary py-1.5 text-sm">
                 {busy === "BASHKO" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Combine className="w-4 h-4" />} Bashko
               </button>
+            </div>
+          )}
+          {ek.pjeset && (() => { try { const p = JSON.parse(ek.pjeset); return p.pjeset?.length > 1 || p.mungojne?.length > 0; } catch { return false; } })() && (
+            <div className="mt-3 rounded-lg p-3 bg-slate-50 dark:bg-slate-800/60">
+              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Skedarët e këtij ekstrakti</p>
+              <PjesetTable json={ek.pjeset} />
             </div>
           )}
           {ek.gabimi && (

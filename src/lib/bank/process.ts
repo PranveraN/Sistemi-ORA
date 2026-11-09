@@ -139,6 +139,7 @@ async function processEkstrakt(id: number): Promise<void> {
           nrDebi: rows.filter(r => r.debi > 0).length, nrKredi: rows.filter(r => r.kredi > 0).length,
           faqetGati: pages.length, faqetGjithsej: pages.length,
           perseritur: res.perseritur,
+          pjeset: JSON.stringify({ pjeset: res.pjeset, mungojne: res.mungojne }),
           statusi: res.gabimet.length ? "GABIM" : "DRAFT",
           gabimi: res.gabimet.length ? res.gabimet.slice(0, 30).join("\n") : null,
         },
