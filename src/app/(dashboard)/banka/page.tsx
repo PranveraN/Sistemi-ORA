@@ -3,18 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
+import Grafikone from "@/components/banka/Grafikone";
 import { Upload, Loader2, FileText, CheckCircle2, AlertTriangle, Clock, Trash2, Plus, Pencil, Check, X } from "lucide-react";
 import { eur, dmy, LLOJET, ProgressBar, readingProgress, PjesetTable, MuajtChips, type MuajStatus, LevizjetTable, type Zer, type Levizje } from "@/components/banka/shared";
 
 // Moduli "Banka": ngarkimi i ekstrakteve PDF (BKT), bilanci sipas zërave dhe
 // menaxhimi i zërave/rregullave. Asgjë s'hyn në bilanc pa "Importo".
 
-type Tab = "ekstraktet" | "permbledhja" | "paklasifikuara" | "zerat";
+type Tab = "ekstraktet" | "grafikonet" | "permbledhja" | "paklasifikuara" | "zerat";
 
 export default function BankaPage() {
   const [tab, setTab] = useState<Tab>("ekstraktet");
   const tabs: { k: Tab; t: string }[] = [
-    { k: "ekstraktet", t: "Ekstraktet" }, { k: "permbledhja", t: "Bilanci sipas zërave" },
+    { k: "ekstraktet", t: "Ekstraktet" }, { k: "grafikonet", t: "Grafikonet" }, { k: "permbledhja", t: "Bilanci sipas zërave" },
     { k: "paklasifikuara", t: "Të paklasifikuara" }, { k: "zerat", t: "Zërat & rregullat" },
   ];
   return (
@@ -30,6 +31,7 @@ export default function BankaPage() {
           ))}
         </div>
         {tab === "ekstraktet" && <EkstraktetTab />}
+        {tab === "grafikonet" && <Grafikone />}
         {tab === "permbledhja" && <PermbledhjaTab />}
         {tab === "paklasifikuara" && <PaKlasifikuaraTab />}
         {tab === "zerat" && <ZeratTab />}
