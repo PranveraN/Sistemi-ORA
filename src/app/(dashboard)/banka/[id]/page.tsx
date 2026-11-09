@@ -170,7 +170,7 @@ export default function EkstraktPage() {
           {ek.pjeset && (() => { try { const p = JSON.parse(ek.pjeset); return p.pjeset?.length > 1 || p.mungojne?.length > 0; } catch { return false; } })() && (
             <div className="mt-3 rounded-lg p-3 bg-slate-50 dark:bg-slate-800/60">
               <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Skedarët e këtij ekstrakti</p>
-              <PjesetTable json={ek.pjeset} />
+              <PjesetTable json={ek.pjeset} totals={{ kredi: ek.totalKredi, debi: ek.totalDebi, rreshta: ek.levizjet.length }} />
             </div>
           )}
           {ek.gabimi && (

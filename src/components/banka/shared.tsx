@@ -262,7 +262,7 @@ export function readingProgress(faqetGati: number, faqetGjithsej: number): { pct
 }
 
 /** Tabela e pjesëve (PDF) të një ekstrakti me periudhën e secilës dhe datat që mungojnë mes tyre. */
-export function PjesetTable({ json }: { json: string | null }) {
+export function PjesetTable({ json, totals }: { json: string | null; totals?: { kredi: number | null; debi: number | null; rreshta?: number | null } }) {
   let d: { pjeset: { emri: string; nga: string | null; deri: string | null; fillestare: number | null; perfundimtare: number | null }[];
     mungojne: { nga: string; deri: string; diferenca: number; mes: [string, string] }[] } | null = null;
   try { d = json ? JSON.parse(json) : null; } catch { d = null; }
@@ -291,6 +291,29 @@ export function PjesetTable({ json }: { json: string | null }) {
           </tr>
         ))}
       </tbody>
+      {d.pjeset.length > 1 && (() => {
+        // Gjithsej: nga fillimi i pjesës së parë deri në fund të së fundit (pjesët janë sipas datave)
+        const p0 = d!.pjeset[0], pN = d!.pjeset[d!.pjeset.length - 1];
+        return (
+          <tfoot>
+            <tr className="border-t border-slate-300 dark:border-slate-600 font-bold text-slate-900 dark:text-white">
+              <td className="pr-3 pt-1">Gjithsej</td>
+              <td className="pr-3 pt-1 whitespace-nowrap">{dmy(p0.nga)} – {dmy(pN.deri)}</td>
+              <td className="pr-3 pt-1 text-right whitespace-nowrap">{eur(p0.fillestare)}</td>
+              <td className="pt-1 text-right whitespace-nowrap">{eur(pN.perfundimtare)}</td>
+            </tr>
+            {totals && (
+              <tr className="text-slate-600 dark:text-slate-300">
+                <td colSpan={4} className="pt-0.5 text-right">
+                  Hyrje <b className="text-emerald-700 dark:text-emerald-400">{eur(totals.kredi)}</b>
+                  {" · "}Dalje <b className="text-rose-700 dark:text-rose-400">{eur(totals.debi)}</b>
+                  {totals.rreshta != null && <>{" · "}{totals.rreshta} rreshta</>}
+                </td>
+              </tr>
+            )}
+          </tfoot>
+        );
+      })()}
     </table>
   );
 }

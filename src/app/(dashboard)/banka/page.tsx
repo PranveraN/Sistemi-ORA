@@ -154,7 +154,7 @@ function EkstraktetTab() {
                       {r.statusi === "GABIM" && r.gabimi && (
                         <div className="mt-1.5 max-w-[420px] rounded-md bg-rose-50 dark:bg-rose-900/20 px-2 py-1.5 text-[11px] leading-snug text-rose-700 dark:text-rose-300">
                           <b>Pse s&apos;u ngarkua:</b>
-                          {r.pjeset && <PjesetTable json={r.pjeset} />}
+                          {r.pjeset && <PjesetTable json={r.pjeset} totals={{ kredi: r.totalKredi, debi: r.totalDebi, rreshta: r.rreshta }} />}
                           {(() => {
                             // Periudhat që mungojnë i tregon tabela; këtu vetëm gabimet e tjera
                             const tjera = r.gabimi.split("\n").filter(g => g && !g.startsWith("Mungojnë datat"));
